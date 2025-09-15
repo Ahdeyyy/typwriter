@@ -77,7 +77,8 @@
         "px-2 py-1",
       ]}>{diag.severity.toUpperCase()}:</span
     >
-    {diag.message} (Line: {diag.range.start} - {diag.range.end}) Hints: {#each diag.hints as hint}
+    {diag.message} (Line: {diag.location.line} - {diag.location.end_line})
+    (column: {diag.location.column} - {diag.location.end_column}) Hints: {#each diag.hints as hint}
       <div class="ml-4 text-sm text-gray-500 list-disc list-inside">{hint}</div>
     {/each}
   </li>

@@ -36,13 +36,15 @@ export type RenderResponse = {
 
 export type Severity = "Warning" | "Error"
 
-export type Range = {
-    start: number;
-    end: number;
+export type Location = {
+    line: number;
+    column: number;
+    end_line: number;
+    end_column: number;
 }
 
 export type DiagnosticResponse = {
-    range: Range;
+    location: Location;
     severity: Severity;
     message: string;
     hints: string[];

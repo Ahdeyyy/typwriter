@@ -1,19 +1,28 @@
 use base64::engine::general_purpose;
 use base64::Engine;
+use typst::World;
 
 use crate::world;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::vec;
 use typst::diag::{Severity, SourceDiagnostic};
-use typst::{compile, layout::Page};
+use typst::{compile, layout::Page, WorldExt};
 // use typst_ide::{autocomplete, jump_from_click, jump_from_cursor, IdeWorld};
 use typst_render::render;
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, Default)]
 pub struct Range<T> {
     pub start: T,
     pub end: T,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct DiagnosticPosition {
+    pub line: usize,
+    pub column: usize,
+    pub end_line: usize,
+    pub end_column: usize,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -24,7 +33,7 @@ pub enum TypstSeverity {
 
 #[derive(Serialize, Clone, Debug)]
 pub struct TypstSourceDiagnostic {
-    pub range: Range<usize>,
+    pub location: DiagnosticPosition,
     pub severity: TypstSeverity,
     pub message: String,
     pub hints: Vec<String>,
@@ -48,13 +57,13 @@ pub struct WorkSpace {
 }
 
 impl WorkSpace {
-    pub fn new(root: PathBuf) -> Self {
+    pub fn new(root: PathBuf, font_dir: PathBuf) -> Self {
         let entries: Vec<PathBuf> = std::fs::read_dir(&root)
             .unwrap()
             .filter_map(|res| res.ok().map(|e| e.path()))
             .collect();
 
-        let mut typst_world = world::SimpleWorld::new(root.clone());
+        let mut typst_world = world::SimpleWorld::new(root.clone(), font_dir);
 
         // Load all files in the workspace into the Typst world
 
@@ -118,29 +127,50 @@ impl WorkSpace {
             self.typst_world.reset();
             self.typst_world.set_main_source(name, source);
             let warned = compile::<typst::layout::PagedDocument>(&self.typst_world);
+
             // add all the warnings to the diagnostic
             let mut warnings: Vec<TypstSourceDiagnostic> = vec![];
             for warning in warned.warnings {
-                let diagnostic_with_hints =
-                    SourceDiagnostic::with_hints(warning.clone(), warning.hints);
-                let diagnostic_range = match diagnostic_with_hints.clone().span.range() {
-                    Some(r) => Range {
-                        start: r.start,
-                        end: r.end,
-                    },
-                    None => Range { start: 0, end: 0 },
-                };
+                let diagnostic_span = warning.clone().span;
+                dbg!(diagnostic_span.clone());
+                dbg!(warning.clone());
+                let diagnostic_range = self.typst_world.range(diagnostic_span).unwrap_or_default();
+                let world_source = self
+                    .typst_world
+                    .source(diagnostic_span.id().unwrap_or(self.typst_world.main()));
 
-                let hints = diagnostic_with_hints.hints;
+                let diagnostic_position = match world_source {
+                    Ok(source) => {
+                        let line = source.byte_to_line(diagnostic_range.start).unwrap_or(0);
+                        let column = source.byte_to_column(diagnostic_range.start).unwrap_or(0);
+                        let end_line = source.byte_to_line(diagnostic_range.end).unwrap_or(0);
+                        let end_column = source.byte_to_column(diagnostic_range.end).unwrap_or(0);
+
+                        DiagnosticPosition {
+                            line: line + 1,
+                            column: column + 1,
+                            end_line: end_line + 1,
+                            end_column: end_column + 1,
+                        }
+                    }
+                    Err(_) => DiagnosticPosition {
+                        line: 0,
+                        column: 0,
+                        end_line: 0,
+                        end_column: 0,
+                    },
+                };
+                let hints =
+                    SourceDiagnostic::with_hints(warning.clone(), warning.clone().hints).hints;
 
                 let diagnostic = TypstSourceDiagnostic {
                     hints: hints.iter().map(|s| s.to_string()).collect(),
-                    range: diagnostic_range,
-                    severity: match diagnostic_with_hints.severity {
+                    location: diagnostic_position,
+                    severity: match warning.severity {
                         Severity::Error => TypstSeverity::Error,
                         Severity::Warning => TypstSeverity::Warning,
                     },
-                    message: diagnostic_with_hints.message.to_string(),
+                    message: warning.message.to_string(),
                 };
 
                 warnings.push(diagnostic);
@@ -158,26 +188,49 @@ impl WorkSpace {
                 Err(err) => {
                     let mut errors: Vec<TypstSourceDiagnostic> = vec![];
                     for e in err {
-                        let diagnostic_with_hints =
-                            SourceDiagnostic::with_hints(e.clone(), e.hints);
-                        let diagnostic_range = match diagnostic_with_hints.clone().span.range() {
-                            Some(r) => Range {
-                                start: r.start,
-                                end: r.end,
-                            },
-                            None => Range { start: 0, end: 0 },
-                        };
+                        let diagnostic_range =
+                            self.typst_world.range(e.clone().span).unwrap_or_default();
 
-                        let hints = diagnostic_with_hints.hints;
+                        let world_source = self
+                            .typst_world
+                            .source(e.clone().span.id().unwrap_or(self.typst_world.main()));
+
+                        let diagnostic_position = match world_source {
+                            Ok(source) => {
+                                let line = source.byte_to_line(diagnostic_range.start).unwrap_or(0);
+                                let column =
+                                    source.byte_to_column(diagnostic_range.start).unwrap_or(0);
+                                let end_line =
+                                    source.byte_to_line(diagnostic_range.end).unwrap_or(0);
+                                let end_column =
+                                    source.byte_to_column(diagnostic_range.end).unwrap_or(0);
+                                DiagnosticPosition {
+                                    line: line + 1,
+                                    column: column + 1,
+                                    end_line: end_line + 1,
+                                    end_column: end_column + 1,
+                                }
+                            }
+                            Err(_) => DiagnosticPosition {
+                                line: 0,
+                                column: 0,
+                                end_line: 0,
+                                end_column: 0,
+                            },
+                        };
+                        dbg!(diagnostic_range.clone());
+                        dbg!(diagnostic_position.clone());
+
+                        let hints = SourceDiagnostic::with_hints(e.clone(), e.clone().hints).hints;
 
                         let diagnostic = TypstSourceDiagnostic {
                             hints: hints.iter().map(|s| s.to_string()).collect(),
-                            range: diagnostic_range,
-                            severity: match diagnostic_with_hints.severity {
+                            location: diagnostic_position,
+                            severity: match e.clone().severity {
                                 Severity::Error => TypstSeverity::Error,
                                 Severity::Warning => TypstSeverity::Warning,
                             },
-                            message: diagnostic_with_hints.message.to_string(),
+                            message: e.clone().message.to_string(),
                         };
                         // dbg!(diagnostic.clone());
                         errors.push(diagnostic);

@@ -61,13 +61,14 @@ impl SimpleWorld {
     /// Create a new `SimpleWorld`.
     ///
     /// - `main_path`: The path to the main Typst file to compile.
-    pub fn new(root: PathBuf) -> Self {
+    pub fn new(root: PathBuf, font_dir: PathBuf) -> Self {
         let vpath = VirtualPath::new("main.typ");
 
         let main_id = FileId::new(None, vpath);
         let fonts = Fonts::searcher()
             .include_system_fonts(true)
-            .search_with(["../assets/fonts"]);
+            .search_with([font_dir]);
+
         // Setup package storage. This will use the default cache directories
         // for Typst packages on the respective operating system.
         let downloader = Downloader::new("typwriter-app/0.1.0");

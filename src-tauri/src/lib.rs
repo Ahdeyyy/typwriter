@@ -1,7 +1,7 @@
 use crate::workspace::{RenderResponse, WorkSpace};
 use serde::Serialize;
 use std::{path::PathBuf, sync::Mutex};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
 mod typst_compiler;
 mod workspace;
 mod world;
@@ -9,11 +9,17 @@ mod world;
 // Open a workspace at the given path
 #[tauri::command]
 fn open_workspace(
+    app: AppHandle,
     state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
     path: String,
 ) -> Result<(), ()> {
-    let mut app = state.lock().unwrap();
-    *app = Some(WorkSpace::new(PathBuf::from(path)));
+    let resource_path = app
+        .path()
+        .resolve("fonts/", BaseDirectory::Resource)
+        .unwrap_or_default();
+
+    let mut ws = state.lock().unwrap();
+    *ws = Some(WorkSpace::new(PathBuf::from(path), resource_path));
     Ok(())
 }
 
