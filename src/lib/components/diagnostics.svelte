@@ -15,7 +15,6 @@
     listen<DiagnosticResponse[]>("compilation-diagnostics", (event) => {
       diagnostics = event.payload
 
-      console.log("Diagnostics event: ", event.payload)
       app.newDiagnostics = diagnostics.length
     })
   })

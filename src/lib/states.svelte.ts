@@ -1,5 +1,5 @@
 import { readTextFile, readDir, lstat } from "@tauri-apps/plugin-fs";
-import { compile, getFolderName, saveTextToFile } from "./utils";
+import { buildFileTree, buildFileTreeRel, compile, getFolderName, joinFsPath, saveTextToFile } from "./utils";
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from "@tauri-apps/api/core";
 import { CodeMirrorEditor } from "./components/codemirror.svelte";
@@ -12,6 +12,13 @@ import Editor from "./components/editor.svelte";
 //     saveOnChange: true,
 //     autoStart: true,
 // });
+
+function byteOffsetToCharOffset(text: string, byteOffset: number): number {
+    const encoder = new TextEncoder();
+    const encodedText = encoder.encode(text.slice(0, byteOffset));
+    return encodedText.length;
+}
+
 class App {
     // The absolute path of the workspace
     workspacePath = $state("")
@@ -19,7 +26,7 @@ class App {
     workspaceName = $state("")
 
     // The entries (files and folders) in the directory
-    entries = $state<string[]>([])
+    entries = $state<string[] | any[] | string>([])
 
     text = $state("")
     // The path of the currently opened file - a relative? absolute probably path to the root of the workspace
@@ -56,16 +63,19 @@ class App {
             }
             this.workspacePath = folder;
             this.workspaceName = name;
-            const dirs = await readDir(folder);
-            // console.log(folder)
-            for (const dir of dirs) {
-                // console.log(dir)
-                if (dir.isFile) {
-                    this.entries.push(dir.name)
-                }
-            }
+            // const dirs = await readDir(folder);
 
+            // for (const dir of dirs) {
+            //     // console.log(dir)
+            //     if (dir.isFile) {
+            //         this.entries.push(dir.name)
+            //     }
+            // }
 
+            const tree = await buildFileTreeRel(folder)
+            this.entries = tree
+            console.log(this.entries)
+            // recent.update(s => {
 
             return true
         }
@@ -79,9 +89,19 @@ class App {
 
 
 
+    async moveEditorCursor(bytePosition: number) {
+        if (!this.view) return;
+        const charPosition = bytePosition;
+        const transaction = this.view.state.update({
+            selection: { anchor: charPosition, head: charPosition },
+            scrollIntoView: true,
+        });
+        this.view.dispatch(transaction);
+        this.view.focus();
+    }
 
     async openFile(file: string): Promise<boolean> {
-        const path = `${this.workspacePath}\\${file}`
+        const path = joinFsPath(this.workspacePath, file)
         this.currentFilePath = path
         // console.log(this.currentFilePath)
         try {
@@ -91,9 +111,15 @@ class App {
         } catch (e) {
             console.error("[ERROR] - opening file: ", e)
         }
-        const contents = await readTextFile(path)
 
-        this.text = contents
+        try {
+            const contents = await readTextFile(path)
+            this.text = contents
+
+        } catch (e) {
+            console.error("[ERROR] - error reading file contents: ", e)
+        }
+
 
         if (this.view) {
             const tr = this.view.state.update({
@@ -106,7 +132,7 @@ class App {
                 // the previous undo history. Setting a user event prevents this.
                 userEvent: "replace-document",
             })
-            console.log("Text changed, updating editor", this.text)
+
             this.view.dispatch(tr)
         }
 

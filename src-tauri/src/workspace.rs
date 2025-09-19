@@ -1,6 +1,8 @@
 use base64::engine::general_purpose;
 use base64::Engine;
+use typst::layout::{Frame, PagedDocument, Point};
 use typst::World;
+use typst_ide::{jump_from_click, Jump};
 
 use crate::world;
 use serde::Serialize;
@@ -54,6 +56,8 @@ pub struct WorkSpace {
     // compilation_cache: HashMap<PathBuf, Vec<Page>>, // cache of compiled files
     // diagnostics_cache: HashMap<PathBuf, Vec<TypstSourceDiagnostic>>, // cache of diagnostics
     typst_world: world::SimpleWorld,
+    compilation_cache: Option<PagedDocument>, // cache for the compiled file
+    render_scale: f32,                        // scale factor used for rendering
 }
 
 impl WorkSpace {
@@ -72,7 +76,7 @@ impl WorkSpace {
                 if let Some(name) = entry.file_name().and_then(|n| n.to_str()) {
                     if let Ok(data) = std::fs::read(entry) {
                         let data = typst::foundations::Bytes::new(data);
-                        typst_world.add_file(name, data);
+                        typst_world.add_file(name, entry.clone(), data);
                     }
                 }
             }
@@ -86,7 +90,19 @@ impl WorkSpace {
             // compilation_cache: HashMap::new(),
             // diagnostics_cache: HashMap::new(),
             typst_world,
+            compilation_cache: None,
+
+            render_scale: 1.0, // default scale factor
         }
+    }
+
+    pub fn get_page_from_cache(&self, page_number: usize) -> Option<&Page> {
+        if let Some(ref doc) = self.compilation_cache {
+            if page_number < doc.pages.len() {
+                return Some(&doc.pages[page_number]);
+            }
+        }
+        None
     }
 
     pub fn set_active_file(&mut self, path: PathBuf) {
@@ -180,9 +196,9 @@ impl WorkSpace {
 
             match warned.output {
                 Ok(doc) => {
+                    self.compilation_cache = Some(doc.clone());
                     let pages = doc.pages;
 
-                    // self.compilation_cache.insert(path.clone(), pages.clone());
                     return Ok((pages, warnings));
                 }
                 Err(err) => {
@@ -250,12 +266,32 @@ impl WorkSpace {
         }
     }
 
-    pub fn render_current_pages(&self, pages: Vec<Page>, scale: f32) -> Vec<RenderResponse> {
+    pub fn render_current_pages(&mut self, pages: Vec<Page>, scale: f32) -> Vec<RenderResponse> {
+        self.render_scale = scale; // Store the scale for coordinate transformations
+        println!("=== Render Debug ===");
+        println!("Render scale (pixels per point): {:.2}", scale);
+
         let mut rendered_pages = Vec::new();
-        for page in pages {
+        for (i, page) in pages.iter().enumerate() {
+            let frame_size = page.frame.size();
+            println!(
+                "Page {}: Frame size: {:.1} x {:.1} pt",
+                i,
+                frame_size.x.to_pt(),
+                frame_size.y.to_pt()
+            );
+
             let bmp = render(&page, scale);
+            println!(
+                "Page {}: Rendered size: {} x {} px",
+                i,
+                bmp.width(),
+                bmp.height()
+            );
+
             if let Ok(image) = bmp.encode_png() {
                 let image_base64 = general_purpose::STANDARD.encode(image);
+
                 rendered_pages.push(RenderResponse {
                     image: image_base64,
                     width: bmp.width(),
@@ -265,7 +301,6 @@ impl WorkSpace {
         }
         rendered_pages
     }
-
     pub fn list_entries(&self) -> &Vec<PathBuf> {
         &self.entries
     }
@@ -285,19 +320,63 @@ impl WorkSpace {
             .collect();
     }
 
-    // pub fn jump_from_click(&self, doc: &PagedDocument, frame: &Frame, click: &Point) {
-    //     let pos = jump_from_click(self.typst_world, doc, frame, click);
-    //     match pos {
-    //         Some(j) => {
-    //             // Handle the jump position
-    //             match j {
-    //                 Position{page, point} => {},
+    pub fn get_compilation_cache(&self) -> Option<&PagedDocument> {
+        self.compilation_cache.as_ref()
+    }
 
-    //             }
-    //         }
-    //         None => {}
-    //     }
+    pub fn get_render_scale(&self) -> f32 {
+        self.render_scale
+    }
+
+    // pub enum Jump {
+    // /// Jump to a position in a file.
+    // File(FileId, usize),
+    // /// Jump to an external URL.
+    // Url(Url),
+    // /// Jump to a point on a page.
+    // Position(Position),
     // }
+
+    // currently only handles clicks that result in a jump to a file or position
+    // returns the byte position
+    // TODO: handle the other cases
+    pub fn document_click(
+        &self,
+        doc: &PagedDocument,
+        frame: &Frame,
+        click: &Point,
+    ) -> Option<usize> {
+        let pos = jump_from_click(&self.typst_world, doc, frame, *click);
+        match pos {
+            Some(Jump::File(file_id, position)) => {
+                if let Some(file_path) = self.typst_world.get_file_path(file_id) {
+                    println!(
+                        "Jump to file: {} at byte position: {}",
+                        file_path.display(),
+                        position
+                    );
+                }
+                Some(position)
+            }
+            Some(Jump::Position(position)) => {
+                println!(
+                    "Jump to page: {} at point: ({}, {})",
+                    position.page,
+                    position.point.x.to_raw(),
+                    position.point.y.to_raw()
+                );
+                None
+            }
+            Some(Jump::Url(url)) => {
+                println!("Jump to URL: {}", url.as_str());
+                None
+            }
+            None => {
+                println!("No jump target found at the clicked position.");
+                None
+            }
+        }
+    }
 
     // pub fn set_active_file(&mut self, path: PathBuf) {
     //     if self.active_files.contains(&path) {

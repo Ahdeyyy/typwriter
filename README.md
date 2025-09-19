@@ -6,7 +6,7 @@ A flexible editor for Typst documents.
 
 - [x] Real-time compilation of Typst documents.
 - [x] Display of compilation diagnostics.
-- [x] Rendering of compiled pages as images.
+- [x] Rendering of compiled pages via high-DPI canvas.
 - [ ] Support for custom fonts.
 - [x] Cross-platform support (Windows, macOS, Linux).
 - [ ] Syntax highlighting and code completion (planned).

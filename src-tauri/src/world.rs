@@ -12,6 +12,7 @@ use typst::{Library, World};
 
 use chrono::{Datelike, Utc};
 use typst::syntax::package::PackageSpec;
+use typst_ide::IdeWorld;
 use typst_kit::download::Downloader;
 use typst_kit::fonts::{FontSlot, Fonts};
 use typst_kit::package::PackageStorage;
@@ -53,6 +54,7 @@ pub struct SimpleWorld {
     fonts: Vec<FontSlot>,
     /// A simple cache for files read during a single compilation.
     files: Mutex<HashMap<FileId, FileResult<Bytes>>>,
+    file_paths: Mutex<HashMap<FileId, PathBuf>>,
     /// Manages the storage of downloaded packages.
     package_storage: PackageStorage,
 }
@@ -83,6 +85,7 @@ impl SimpleWorld {
             fonts: fonts.fonts,
             files: Mutex::new(HashMap::new()),
             package_storage,
+            file_paths: Mutex::new(HashMap::new()),
         }
     }
 
@@ -102,11 +105,18 @@ impl SimpleWorld {
         self.main
     }
 
-    pub fn add_file(&mut self, name: &str, source: Bytes) -> FileId {
+    pub fn add_file(&mut self, name: &str, path: PathBuf, source: Bytes) -> FileId {
         let vpath = VirtualPath::new(name);
         let id = FileId::new(None, vpath);
         self.files.lock().unwrap().insert(id, Ok(source));
+        self.file_paths.lock().unwrap().insert(id, path);
         id
+    }
+}
+
+impl IdeWorld for SimpleWorld {
+    fn upcast(&self) -> &dyn World {
+        self
     }
 }
 
@@ -188,5 +198,9 @@ impl SimpleWorld {
             .prepare_package(spec, &mut PrintDownload)?;
 
         vpath.resolve(&package_root).ok_or(FileError::AccessDenied)
+    }
+
+    pub fn get_file_path(&self, id: FileId) -> Option<PathBuf> {
+        self.file_paths.lock().unwrap().get(&id).cloned()
     }
 }

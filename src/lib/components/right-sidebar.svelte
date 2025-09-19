@@ -9,8 +9,21 @@
   import { onMount, onDestroy } from "svelte"
   import { listen } from "@tauri-apps/api/event"
   import type { RenderResponse } from "@/types"
+  import { app } from "@/states.svelte"
 
   let { open = $bindable(false) }: { open?: boolean } = $props()
+
+  function pxToPt(pixels: number): number {
+    const DPI_ASSUMPTION = 96 // Standard DPI for CSS pixels
+    const devicePixelRatio = window.devicePixelRatio || 1
+
+    // Calculate physical pixels
+    const physicalPixels = pixels * devicePixelRatio
+
+    // Convert physical pixels to points
+    const points = (physicalPixels / DPI_ASSUMPTION) * 72
+    return points
+  }
 
   const keys = new PressedKeys()
   keys.onKeys(["Control", "k"], () => {
@@ -51,7 +64,20 @@
   <div>
     <Preview
       pages={preview_images || []}
-      onclick={(event, index, x, y) => {}}
+      onclick={async (event, index, x, y) => {
+        try {
+          let result = await invoke("page_click", {
+            pageNumber: index,
+            x: x,
+            y: y,
+            sourceText: app.text,
+          })
+          console.log("Result from page_click:", result)
+          app.moveEditorCursor(result as number)
+        } catch (error) {
+          console.error("Error invoking page_click:", error)
+        }
+      }}
     />
   </div>
 {/if}

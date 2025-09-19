@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-show",
@@ -24,6 +26,17 @@
     "fs:allow-rename",
     "fs:allow-document-write",
     "fs:write-all",
-    "fs:read-all"
+    "fs:read-all",
+    "fs:allow-app-read-recursive",
+    "fs:allow-app-write-recursive",
+    "fs:allow-read-text-file",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        {
+          "path": "$HOME/**"
+        }
+      ]
+    }
   ]
 }

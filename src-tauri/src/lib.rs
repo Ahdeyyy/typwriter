@@ -2,9 +2,83 @@ use crate::workspace::{RenderResponse, WorkSpace};
 use serde::Serialize;
 use std::{path::PathBuf, sync::Mutex};
 use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
+use typst::layout::{Abs, Point};
 mod typst_compiler;
 mod workspace;
 mod world;
+
+fn pixel_to_point(x: f64, scale: f32) -> f64 {
+    // Convert image pixels back to document points
+    // Since we render at scale factor, we need to divide by scale to get document coordinates
+    x / scale as f64
+}
+
+fn byte_position_to_char_position(str: &str, byte_position: usize) -> usize {
+    str.char_indices()
+        .map(|(i, _)| i)
+        .take_while(|&i| i < byte_position)
+        .count()
+}
+
+#[tauri::command]
+fn page_click(
+    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+    page_number: usize,
+    source_text: String,
+    x: f64,
+    y: f64,
+) -> Result<usize, ()> {
+    let workspace = state.lock().unwrap();
+
+    println!("=== Page Click Debug ===");
+    println!("Page: {}, Raw coords: ({:.1}, {:.1})", page_number, x, y);
+    match workspace.as_ref() {
+        Some(ws) => {
+            let scale = ws.get_render_scale();
+            let page = ws.get_page_from_cache(page_number);
+            match page {
+                Some(doc) => {
+                    let frame = doc.frame.clone();
+                    let point = Point::new(
+                        Abs::pt(pixel_to_point(x, scale)),
+                        Abs::pt(pixel_to_point(y, scale)),
+                    );
+                    println!(
+                        "click point: ({}, {}) scale: {}",
+                        point.x.to_raw(),
+                        point.y.to_raw(),
+                        scale
+                    );
+                    match ws.get_compilation_cache() {
+                        Some(cache) => {
+                            if let Some(byte_position) = ws.document_click(cache, &frame, &point) {
+                                println!("Click resulted in byte position: {}", byte_position);
+                                return Ok(byte_position_to_char_position(
+                                    &source_text,
+                                    byte_position,
+                                ));
+                            } else {
+                                println!("Click did not result in a jump");
+                                return Err(());
+                            }
+                        }
+                        None => {
+                            println!("No compilation cache available");
+                            return Err(());
+                        }
+                    }
+                }
+                None => {
+                    println!("No page found in cache for page number: {}", page_number);
+                    return Err(());
+                }
+            }
+        }
+        None => {
+            return Err(());
+        }
+    }
+}
 
 // Open a workspace at the given path
 #[tauri::command]
@@ -119,7 +193,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_workspace,
             open_file,
-            compile_file
+            compile_file,
+            page_click
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

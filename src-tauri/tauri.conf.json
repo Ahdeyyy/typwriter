@@ -9,7 +9,6 @@
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../build"
   },
-
   "app": {
     "windows": [
       {
@@ -23,7 +22,6 @@
       "csp": null
     }
   },
-
   "bundle": {
     "active": true,
     "targets": "all",
