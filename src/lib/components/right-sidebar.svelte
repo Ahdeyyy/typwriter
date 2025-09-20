@@ -2,9 +2,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core"
   import Preview from "./preview.svelte"
-  import { Skeleton } from "$lib/components/ui/skeleton/index.js"
-  import { slide } from "svelte/transition"
-  import { expoInOut } from "svelte/easing"
   import { PressedKeys } from "runed"
   import { onMount, onDestroy } from "svelte"
   import { listen, type UnlistenFn } from "@tauri-apps/api/event"

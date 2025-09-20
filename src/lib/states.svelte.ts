@@ -7,7 +7,7 @@ import { yaml } from "@codemirror/lang-yaml"
 import { basicSetup } from "codemirror";
 import { Compartment, type Extension } from "@codemirror/state";
 import { espresso } from "thememirror";
-import { get } from "svelte/store";
+import { createScrollbarTheme } from "./utils"
 
 // const recent = new RuneStore('recent_workspaces', { workspaces: [] as { name: string, path: string }[] }, {
 //     saveOnChange: true,
@@ -46,9 +46,12 @@ class App {
 
     canCompileFile = $state(true)
 
+    zoomLevel = $state(1)
+
     constructor() {
 
     }
+
     async openWorkspace(): Promise<boolean> {
         const folder = await open({
             multiple: false,
@@ -140,6 +143,7 @@ class App {
             const editorWidth = EditorView.theme({
                 "&": { width: "100%" },
             })
+            const scrollbarTheme = createScrollbarTheme({})
 
             const extensions: Extension[] = []
 
@@ -149,6 +153,7 @@ class App {
             extensions.push(basicSetup)
             extensions.push(fixedHeight)
             extensions.push(editorWidth)
+            extensions.push(scrollbarTheme)
 
             if (getFileType(file) === "yaml" || getFileType(file) === "yml") {
                 extensions.push(yaml())

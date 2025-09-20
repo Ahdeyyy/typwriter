@@ -182,3 +182,73 @@ export const buildFileTreeRel = async (absRoot: string, relBase = ""): Promise<a
 	}
 	return tree;
 }
+
+import type { Extension } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
+
+type ScrollbarColors = {
+	background?: string; // Background color of the editor
+	scrollbarTrack?: string; // Color of the scrollbar track
+	scrollbarThumb?: string; // Color of the scrollbar thumb
+	scrollbarThumbHover?: string; // Color of the scrollbar thumb on hover
+	scrollbarThumbActive?: string; // Color of the scrollbar thumb when active
+}
+
+export function createScrollbarTheme(colors: ScrollbarColors = {}): Extension {
+	const {
+		background = '#ffffff',
+		scrollbarTrack = '#80C7FF',
+		scrollbarThumb = '##C1E2F8',
+		scrollbarThumbHover = '#C1E2F8',
+		scrollbarThumbActive = '#C1E2F8'
+	} = colors;
+
+	return EditorView.theme({
+		'&.cm-editor .cm-scroller::-webkit-scrollbar': {
+			width: '12px',
+			height: '12px',
+		},
+		'&.cm-editor .cm-scroller::-webkit-scrollbar-track': {
+			background: scrollbarTrack,
+			borderRadius: '7px',
+		},
+		'&.cm-editor .cm-scroller::-webkit-scrollbar-thumb': {
+			background: scrollbarThumb,
+			borderRadius: '7px',
+			border: `2px solid ${background}`,
+			minHeight: '30px',
+		},
+		'&.cm-editor .cm-scroller::-webkit-scrollbar-thumb:hover': {
+			background: scrollbarThumbHover,
+		},
+		'&.cm-editor .cm-scroller::-webkit-scrollbar-thumb:active': {
+			background: scrollbarThumbActive,
+		},
+		'&.cm-editor .cm-scroller::-webkit-scrollbar-corner': {
+			background: background,
+		},
+		// Firefox scrollbar styling
+		'&.cm-editor .cm-scroller': {
+			scrollbarWidth: 'thin',
+			scrollbarColor: `${scrollbarThumb} ${scrollbarTrack}`,
+		}
+	});
+}
+
+// Light theme colors
+export const lightScrollbar = createScrollbarTheme({
+	background: '#ffffff',
+	scrollbarTrack: '#f8f8f8',
+	scrollbarThumb: '#d0d0d0',
+	scrollbarThumbHover: '#b0b0b0',
+	scrollbarThumbActive: '#999999'
+});
+
+// Dark theme colors  
+export const darkScrollbar = createScrollbarTheme({
+	background: '#1e1e1e',
+	scrollbarTrack: '#2d2d2d',
+	scrollbarThumb: '#555555',
+	scrollbarThumbHover: '#777777',
+	scrollbarThumbActive: '#888888'
+});

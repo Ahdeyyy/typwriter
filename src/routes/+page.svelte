@@ -11,6 +11,7 @@
   import Diagnostics from "@/components/diagnostics.svelte"
   import { compile, saveTextToFile } from "@/utils"
   import Editor from "@/components/editor.svelte"
+  import NoSelectedFile from "@/components/no-selected-file.svelte"
 
   let { data }: { data: LayoutData } = $props()
 </script>
@@ -19,7 +20,11 @@
   <div
     class={["gap-2", "relative ", app.isPreviewPaneOpen && "grid grid-cols-2"]}
   >
-    <Editor />
+    {#if app.currentFilePath !== ""}
+      <Editor />
+    {:else}
+      <NoSelectedFile />
+    {/if}
     <RightSidebar bind:open={app.isPreviewPaneOpen} />
   </div>
 </main>

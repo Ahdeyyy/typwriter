@@ -172,3 +172,41 @@
     @apply h-screen;
   }
 }
+
+/* Editor / CodeMirror scrollbar theme matching ScrollArea */
+/* Use the same variables and rounded thumb as ScrollArea component */
+#editor,
+.cm-scroller {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* WebKit-based browsers */
+#editor::-webkit-scrollbar,
+.cm-scroller::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+#editor::-webkit-scrollbar-track,
+.cm-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#editor::-webkit-scrollbar-thumb,
+.cm-scroller::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+#editor::-webkit-scrollbar-thumb:hover,
+.cm-scroller::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--border) 75%, transparent);
+}
+
+#editor [data-slot="scroll-area-thumb"],
+.cm-scroller [data-slot="scroll-area-thumb"] {
+  background: var(--border) !important;
+}

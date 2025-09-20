@@ -3,11 +3,13 @@
   import * as DropdownMenu from "@/components/ui/dropdown-menu"
   import { ChevronDown } from "@lucide/svelte"
   import { app } from "@/states.svelte"
+
+  let dropdownOpen = $state(false)
 </script>
 
 <Sidebar.Menu>
   <Sidebar.MenuItem>
-    <DropdownMenu.Root>
+    <DropdownMenu.Root bind:open={dropdownOpen}>
       <DropdownMenu.Trigger>
         {#snippet child({ props })}
           <Sidebar.MenuButton {...props}>
@@ -19,7 +21,16 @@
       <DropdownMenu.Content class="w-(--bits-dropdown-menu-anchor-width)">
         <DropdownMenu.Item>
           {#snippet child({ props })}
-            <Sidebar.MenuButton {...props} onclick={() => app.openWorkspace()}>
+            <Sidebar.MenuButton
+              {...props}
+              onclick={async () => {
+                let result = await app.openWorkspace()
+                // close the dropdown if a workspace was selected
+                if (result) {
+                  dropdownOpen = false
+                }
+              }}
+            >
               Open Workspace
             </Sidebar.MenuButton>
           {/snippet}
