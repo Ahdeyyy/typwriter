@@ -34,11 +34,11 @@
             fixedHeight,
             editorWidth,
             basicSetup,
-            EditorView.updateListener.of((v) => {
+            EditorView.updateListener.of(async (v) => {
               if (v.docChanged) {
                 const text = v.state.doc.toString()
-                debouncedCompile(text)
-                debouncedSave(text)
+                await debouncedCompile(text)
+                await debouncedSave(text)
               }
             }),
           ],
@@ -48,25 +48,6 @@
     )
     app.loadEditor(view)
   })
-
-  // $effect(() => {
-  //   let { text, currentFilePath } = app
-  //   console.log("App text changed:", text)
-  //   console.log("Current file path:", currentFilePath)
-  //   // use the current file path to get the the file extension, and set the language accordingly
-  //   const tr = view.state.update({
-  //     changes: {
-  //       from: 0,
-  //       to: view.state.doc.length,
-  //       insert: text,
-  //     },
-  //     // This is an important step to prevent the change from being merged with
-  //     // the previous undo history. Setting a user event prevents this.
-  //     userEvent: "replace-document",
-  //   })
-  //   console.log("Text changed, updating editor")
-  //   view.dispatch(tr)
-  // })
 </script>
 
 <div bind:this={editor} id="editor"></div>

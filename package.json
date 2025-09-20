@@ -22,6 +22,8 @@
     "@tauri-apps/plugin-opener": "^2.5.0",
     "@tauri-store/svelte": "^2.6.1",
     "codemirror": "^6.0.2",
+    "eslint-plugin-neverthrow": "^1.1.4",
+    "neverthrow": "^8.2.0",
     "runed": "^0.31.1",
     "tauri-awesome-rpc": "^0.1.3"
   },

@@ -41,6 +41,8 @@ class App {
 
     newDiagnostics = $state(0)
 
+    renderPosition = $state({ x: 0, y: 0, page: 0 })
+
     view = $state<EditorView | undefined>(undefined)
 
     constructor() {
@@ -99,6 +101,8 @@ class App {
         this.view.dispatch(transaction);
         this.view.focus();
     }
+
+
 
     async openFile(file: string): Promise<boolean> {
         const path = joinFsPath(this.workspacePath, file)

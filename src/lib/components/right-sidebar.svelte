@@ -7,7 +7,7 @@
   import { expoInOut } from "svelte/easing"
   import { PressedKeys } from "runed"
   import { onMount, onDestroy } from "svelte"
-  import { listen } from "@tauri-apps/api/event"
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event"
   import type { RenderResponse } from "@/types"
   import { app } from "@/states.svelte"
 
@@ -35,27 +35,28 @@
 
   let lastVersion = 0
 
-  type RenderedPagesEvent = { version: number; pages: RenderResponse[] }
+  type RenderedPagesEvent = RenderResponse[]
+
+  let unlisten: UnlistenFn | undefined = undefined
+
+  onDestroy(() => {
+    if (unlisten) {
+      unlisten()
+    }
+  })
 
   onMount(async () => {
-    const unlisten = await listen<RenderedPagesEvent>(
-      "rendered-pages",
-      (event) => {
-        const { version, pages } = event.payload
-        if (version < lastVersion) return
-        lastVersion = version
-
-        let imgs: HTMLImageElement[] = []
-        for (const page of pages) {
-          const img = new Image()
-          img.src = `data:image/png;base64,${page.image}`
-          img.width = page.width
-          img.height = page.height
-          imgs.push(img)
-        }
-        preview_images = imgs
+    unlisten = await listen<RenderedPagesEvent>("rendered-pages", (event) => {
+      let imgs: HTMLImageElement[] = []
+      for (const page of event.payload) {
+        const img = new Image()
+        img.src = `data:image/png;base64,${page.image}`
+        img.width = page.width
+        img.height = page.height
+        imgs.push(img)
       }
-    )
+      preview_images = imgs
+    })
   })
 </script>
 
@@ -67,10 +68,10 @@
       onclick={async (event, index, x, y) => {
         try {
           let result = await invoke("page_click", {
-            pageNumber: index,
+            page_number: index,
             x: x,
             y: y,
-            sourceText: app.text,
+            source_text: app.text,
           })
           console.log("Result from page_click:", result)
           app.moveEditorCursor(result as number)

@@ -1,8 +1,9 @@
 use base64::engine::general_purpose;
 use base64::Engine;
-use typst::layout::{Frame, PagedDocument, Point};
+use typst::layout::{Frame, PagedDocument, Point, Position};
 use typst::World;
-use typst_ide::{jump_from_click, Jump};
+use typst_ide::{jump_from_click, jump_from_cursor, Jump};
+use typst_syntax::Source;
 
 use crate::world;
 use serde::Serialize;
@@ -94,6 +95,27 @@ impl WorkSpace {
 
             render_scale: 1.0, // default scale factor
         }
+    }
+
+    pub fn move_document_to_cursor(
+        &self,
+        doc: &PagedDocument,
+        source_text: String,
+        cursor: usize,
+    ) -> Option<Position> {
+        let id = self.typst_world.main();
+        let source = self.typst_world.source(id).ok()?;
+        let pos = jump_from_cursor(doc, &source, cursor);
+        println!("Jump Debug:");
+        print!("file id: {:?}\n", id);
+        print!("source text: {:?}\n", source_text);
+        print!("source : {:?}\n", source);
+        println!("---");
+        println!("Cursor byte position: {}", cursor);
+        println!("Jump positions found: {:?}", pos);
+        println!("---");
+
+        pos.get(0).cloned()
     }
 
     pub fn get_page_from_cache(&self, page_number: usize) -> Option<&Page> {

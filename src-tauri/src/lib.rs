@@ -1,8 +1,10 @@
 use crate::workspace::{RenderResponse, WorkSpace};
+use ipc::compile_file;
 use serde::Serialize;
 use std::{path::PathBuf, sync::Mutex};
 use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
 use typst::layout::{Abs, Point};
+mod ipc;
 mod typst_compiler;
 mod workspace;
 mod world;
@@ -20,7 +22,14 @@ fn byte_position_to_char_position(str: &str, byte_position: usize) -> usize {
         .count()
 }
 
-#[tauri::command]
+#[derive(Serialize, Clone, Debug)]
+struct DocumentPosition {
+    page: usize,
+    x: f64,
+    y: f64,
+}
+
+#[tauri::command(rename_all = "snake_case")]
 fn page_click(
     state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
     page_number: usize,
@@ -81,7 +90,7 @@ fn page_click(
 }
 
 // Open a workspace at the given path
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn open_workspace(
     app: AppHandle,
     state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
@@ -118,60 +127,58 @@ fn open_file(
 // Compile the currently active file in the workspace
 // during the compilation emit diagnostics that can be captured in the frontend
 // emit the compiled pages that can be rendered in the frontend
-#[tauri::command]
-fn compile_file(
-    app: AppHandle,
-    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
-    source: String,
-    file_path: String,
-    version: u64,
-) -> Result<(), ()> {
-    let mut ws = state.lock().unwrap();
-    let path = PathBuf::from(file_path);
+// #[tauri::command]
+// fn compile_file(
+//     app: AppHandle,
+//     state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+//     source: String,
+//     file_path: String,
+//     scale: f32,
+//     cursor_position: usize,
+// ) -> Result<(), ()> {
+//     let mut ws = state.lock().unwrap();
+//     let path = PathBuf::from(file_path);
+//     let byte_position = char_to_byte_position(&source_text, char_position);
 
-    match ws.as_mut() {
-        Some(workspace) => match workspace.compile_file(&path, source) {
-            Ok((pages, diagnostics)) => {
-                let _ = app.emit("compilation-diagnostics", diagnostics);
+//     match ws.as_mut() {
+//         Some(workspace) => match workspace.compile_file(&path, source) {
+//             Ok((pages, diagnostics)) => {
+//                 let _ = app.emit("compilation-diagnostics", diagnostics);
 
-                let rendered_pages = workspace.render_current_pages(pages, 1.0);
+//                 let rendered_pages = workspace.render_current_pages(pages, scale);
 
-                #[derive(Serialize, Clone, Debug)]
-                struct RenderedPagesEvent {
-                    version: u64,
-                    pages: Vec<RenderResponse>,
-                }
+//                 #[derive(Serialize, Clone, Debug)]
+//                 struct RenderedPagesEvent {
+//                     pages: Vec<RenderResponse>,
+//                 }
 
-                let payload = RenderedPagesEvent {
-                    version,
-                    pages: rendered_pages,
-                };
-                let _ = app.emit("rendered-pages", payload);
+//                 let payload = RenderedPagesEvent {
+//                     pages: rendered_pages,
+//                 };
+//                 let _ = app.emit("rendered-pages", payload);
 
-                return Ok(());
-            }
-            Err(diagnostics) => {
-                let _ = app.emit("compilation-diagnostics", diagnostics);
-                #[derive(Serialize, Clone, Debug)]
-                struct RenderedPagesEvent {
-                    version: u64,
-                    pages: Vec<RenderResponse>,
-                }
-                let payload = RenderedPagesEvent {
-                    version,
-                    pages: Vec::<RenderResponse>::new(),
-                };
-                let _ = app.emit("rendered-pages", payload);
+//                 return Ok(());
+//             }
+//             Err(diagnostics) => {
+//                 let _ = app.emit("compilation-diagnostics", diagnostics);
+//                 #[derive(Serialize, Clone, Debug)]
+//                 struct RenderedPagesEvent {
+//                     pages: Vec<RenderResponse>,
+//                 }
+//                 let payload = RenderedPagesEvent {
+//                     pages: Vec::<RenderResponse>::new(),
+//                 };
+//                 let _ = app.emit("rendered-pages", payload);
 
-                return Ok(());
-            }
-        },
-        None => {
-            dbg!("no workspace open");
-            return Err(());
-        }
-    }
-}
+//                 return Ok(());
+//             }
+//         },
+//         None => {
+//             dbg!("no workspace open");
+//             return Err(());
+//         }
+//     }
+// }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -194,7 +201,7 @@ pub fn run() {
             open_workspace,
             open_file,
             compile_file,
-            page_click
+            page_click,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -4,6 +4,7 @@ import { useDebounce } from "runed";
 import { twMerge } from "tailwind-merge";
 import { app } from "./states.svelte";
 import { writeTextFile, readDir } from "@tauri-apps/plugin-fs";
+import { compile_file } from "./ipc";
 
 
 export function cn(...inputs: ClassValue[]) {
@@ -107,18 +108,11 @@ export function joinFsPath(...parts: Array<string | undefined | null>): string {
 
 
 
-let compileVersion = 0;
-export const compile = async (text: string) => {
 
-	try {
-		compileVersion++;
-		await invoke("compile_file", {
-			source: text,
-			filePath: app.currentFilePath,
-			version: compileVersion,
-		})
-	} catch (e) {
-		console.error("[ERROR] - Compiling file: ", e)
+export const compile = async (text: string) => {
+	let res = await compile_file(text, app.currentFilePath, 1, app.view?.state.selection.ranges[0].from || 0);
+	if (res) {
+		console.error("[ERROR] - compiling file: ", res);
 	}
 }
 

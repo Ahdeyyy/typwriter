@@ -12,7 +12,7 @@
   let diagnostics = $state([] as Array<DiagnosticResponse>)
 
   onMount(() => {
-    listen<DiagnosticResponse[]>("compilation-diagnostics", (event) => {
+    listen<DiagnosticResponse[]>("source-diagnostics", (event) => {
       diagnostics = event.payload
 
       app.newDiagnostics = diagnostics.length
