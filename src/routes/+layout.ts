@@ -4,7 +4,6 @@
 import type { LayoutLoad } from './$types';
 import { RuneStore } from '@tauri-store/svelte';
 import { app } from "../lib/states.svelte";
-import { CodeMirrorEditor } from '@/components/codemirror.svelte';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 
 // See: https://v2.tauri.app/start/frontend/sveltekit/ for more info

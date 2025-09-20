@@ -15,7 +15,7 @@
   // Hold references to per-page wrapper divs (for scroll calculations)
   let pageWrappers: HTMLDivElement[] = []
   // Reference to scroll area root element (bits-ui root). We'll query its viewport child.
-  let scrollAreaRef: HTMLElement | null = null
+  let scrollAreaRef: HTMLElement | null = $state<HTMLElement | null>(null)
   let dpr = $state(1)
   let zoom = $state(1) // 1 = 100%
   const MIN_ZOOM = 0.25
@@ -138,38 +138,48 @@
 </script>
 
 <ScrollArea orientation="both" class="h-95svh w-full" bind:ref={scrollAreaRef}>
-  <div class="flex flex-col gap-6">
-    {#each pages as page, index}
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
-        bind:this={pageWrappers[index]}
-        onclick={(event) => {
-          const canvas = event.target as HTMLCanvasElement
-          const rect = canvas.getBoundingClientRect()
-          const displayX = event.clientX - rect.left
-          const displayY = event.clientY - rect.top
-          // convert back to natural coordinates by dividing by zoom
-          const x = displayX / zoom
-          const y = displayY / zoom
-          console.log(
-            `Click coordinates for page ${index} (canvas):\n  Display: ${displayX.toFixed(1)}, ${displayY.toFixed(1)} (size: ${rect.width.toFixed(1)}x${rect.height.toFixed(1)})\n  Natural: ${x.toFixed(1)}, ${y.toFixed(1)} (image size: ${page.naturalWidth}x${page.naturalHeight})\n  Zoom: ${(zoom * 100).toFixed(0)}%`
-          )
-          onclick(event, index, x, y)
-        }}
-        style="height: {page.height * zoom}px; width: {page.width * zoom}px;"
-      >
-        <canvas
-          bind:this={canvasEls[index]}
-          width={page.width * zoom * dpr}
-          height={page.height * zoom * dpr}
-          style={"width: {page.width * zoom}px; height: {page.height * zoom}px; display: block; margin: 0 auto;"}
-        ></canvas>
-      </div>
-    {:else}
-      <p class="text-center">No pages available for preview.</p>
-    {/each}
-  </div>
+  {#if app.canCompileFile}
+    <div class="flex flex-col gap-6">
+      {#each pages as page, index}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          bind:this={pageWrappers[index]}
+          onclick={(event) => {
+            const canvas = event.target as HTMLCanvasElement
+            const rect = canvas.getBoundingClientRect()
+            const displayX = event.clientX - rect.left
+            const displayY = event.clientY - rect.top
+            // convert back to natural coordinates by dividing by zoom
+            const x = displayX / zoom
+            const y = displayY / zoom
+            console.log(
+              `Click coordinates for page ${index} (canvas):\n  Display: ${displayX.toFixed(1)}, ${displayY.toFixed(1)} (size: ${rect.width.toFixed(1)}x${rect.height.toFixed(1)})\n  Natural: ${x.toFixed(1)}, ${y.toFixed(1)} (image size: ${page.naturalWidth}x${page.naturalHeight})\n  Zoom: ${(zoom * 100).toFixed(0)}%`
+            )
+            onclick(event, index, x, y)
+          }}
+          style="height: {page.height * zoom}px; width: {page.width * zoom}px;"
+        >
+          <canvas
+            bind:this={canvasEls[index]}
+            width={page.width * zoom * dpr}
+            height={page.height * zoom * dpr}
+            style={"width: {page.width * zoom}px; height: {page.height * zoom}px; display: block; margin: 0 auto;"}
+          ></canvas>
+        </div>
+      {:else}
+        <div class="flex h-full w-full items-center justify-center">
+          <p class="text-center text-muted-foreground">No preview available.</p>
+        </div>
+      {/each}
+    </div>
+  {:else}
+    <div class="flex h-full w-full items-center justify-center">
+      <p class="text-center text-muted-foreground">
+        Preview is available only for .typ files.
+      </p>
+    </div>
+  {/if}
 </ScrollArea>
 
 <style>

@@ -1,23 +1,20 @@
 import { readTextFile, readDir, lstat } from "@tauri-apps/plugin-fs";
-import { buildFileTree, buildFileTreeRel, compile, getFolderName, joinFsPath, saveTextToFile } from "./utils";
+import { buildFileTreeRel, getFileType, getFolderName, joinFsPath } from "./utils";
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from "@tauri-apps/api/core";
-import { CodeMirrorEditor } from "./components/codemirror.svelte";
-import { EditorView, type ViewUpdate } from "@codemirror/view";
-import { useDebounce } from "runed";
-import Editor from "./components/editor.svelte";
-
+import { EditorView, lineNumbers, type ViewUpdate } from "@codemirror/view";
+import { yaml } from "@codemirror/lang-yaml"
+import { basicSetup } from "codemirror";
+import { Compartment, type Extension } from "@codemirror/state";
+import { espresso } from "thememirror";
+import { get } from "svelte/store";
 
 // const recent = new RuneStore('recent_workspaces', { workspaces: [] as { name: string, path: string }[] }, {
 //     saveOnChange: true,
 //     autoStart: true,
 // });
 
-function byteOffsetToCharOffset(text: string, byteOffset: number): number {
-    const encoder = new TextEncoder();
-    const encodedText = encoder.encode(text.slice(0, byteOffset));
-    return encodedText.length;
-}
+
 
 class App {
     // The absolute path of the workspace
@@ -45,6 +42,10 @@ class App {
 
     view = $state<EditorView | undefined>(undefined)
 
+    editorExtensions = $state(new Compartment())
+
+    canCompileFile = $state(true)
+
     constructor() {
 
     }
@@ -65,19 +66,9 @@ class App {
             }
             this.workspacePath = folder;
             this.workspaceName = name;
-            // const dirs = await readDir(folder);
-
-            // for (const dir of dirs) {
-            //     // console.log(dir)
-            //     if (dir.isFile) {
-            //         this.entries.push(dir.name)
-            //     }
-            // }
 
             const tree = await buildFileTreeRel(folder)
             this.entries = tree
-            console.log(this.entries)
-            // recent.update(s => {
 
             return true
         }
@@ -89,8 +80,6 @@ class App {
         this.view = view
     }
 
-
-
     async moveEditorCursor(bytePosition: number) {
         if (!this.view) return;
         const charPosition = bytePosition;
@@ -101,8 +90,6 @@ class App {
         this.view.dispatch(transaction);
         this.view.focus();
     }
-
-
 
     async openFile(file: string): Promise<boolean> {
         const path = joinFsPath(this.workspacePath, file)
@@ -124,6 +111,12 @@ class App {
             console.error("[ERROR] - error reading file contents: ", e)
         }
 
+        if (getFileType(file) === "typ") {
+            this.canCompileFile = true
+        } else {
+            this.canCompileFile = false
+        }
+
 
         if (this.view) {
             const tr = this.view.state.update({
@@ -138,13 +131,36 @@ class App {
             })
 
             this.view.dispatch(tr)
+
+            const fixedHeight = EditorView.theme({
+                "&": { height: "94svh" },
+                ".cm-scroller": { overflow: "auto" },
+            })
+
+            const editorWidth = EditorView.theme({
+                "&": { width: "100%" },
+            })
+
+            const extensions: Extension[] = []
+
+            extensions.push(lineNumbers())
+            extensions.push(espresso)
+            extensions.push(EditorView.lineWrapping)
+            extensions.push(basicSetup)
+            extensions.push(fixedHeight)
+            extensions.push(editorWidth)
+
+            if (getFileType(file) === "yaml" || getFileType(file) === "yml") {
+                extensions.push(yaml())
+            }
+
+            this.view.dispatch({
+                effects: this.editorExtensions.reconfigure(extensions)
+            })
+
+
         }
 
-        // await compile(this.text)
-
-        // if (this.editor.view) {
-        //     this.editor.view.destroy()
-        // }
 
         return false;
     }

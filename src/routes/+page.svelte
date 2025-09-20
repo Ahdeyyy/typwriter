@@ -4,7 +4,6 @@
   import { EditorView, ViewUpdate } from "@codemirror/view"
   import { useDebounce } from "runed"
   import { onMount } from "svelte"
-  import { CodeMirrorEditor } from "@/components/codemirror.svelte"
   import { app } from "@/states.svelte"
   import RightSidebar from "@/components/right-sidebar.svelte"
   import { Button } from "@/components/ui/button"
