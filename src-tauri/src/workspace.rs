@@ -3,16 +3,15 @@ use base64::Engine;
 use typst::layout::{Frame, PagedDocument, Point, Position};
 use typst::World;
 use typst_ide::{jump_from_click, jump_from_cursor, Jump};
-use typst_syntax::Source;
 
-use crate::world;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::vec;
 use typst::diag::{Severity, SourceDiagnostic};
 use typst::{compile, layout::Page, WorldExt};
-// use typst_ide::{autocomplete, jump_from_click, jump_from_cursor, IdeWorld};
 use typst_render::render;
+
+use crate::world::Typstworld;
 
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct Range<T> {
@@ -56,7 +55,7 @@ pub struct WorkSpace {
     // active_files: Vec<PathBuf>,    // files currently open in the editor
     // compilation_cache: HashMap<PathBuf, Vec<Page>>, // cache of compiled files
     // diagnostics_cache: HashMap<PathBuf, Vec<TypstSourceDiagnostic>>, // cache of diagnostics
-    typst_world: world::SimpleWorld,
+    typst_world: Typstworld,
     compilation_cache: Option<PagedDocument>, // cache for the compiled file
     render_scale: f32,                        // scale factor used for rendering
 }
@@ -68,7 +67,7 @@ impl WorkSpace {
             .filter_map(|res| res.ok().map(|e| e.path()))
             .collect();
 
-        let mut typst_world = world::SimpleWorld::new(root.clone(), font_dir);
+        let mut typst_world = Typstworld::new(root.clone(), font_dir);
 
         // Load all files in the workspace into the Typst world
 
@@ -106,14 +105,6 @@ impl WorkSpace {
         let id = self.typst_world.main();
         let source = self.typst_world.source(id).ok()?;
         let pos = jump_from_cursor(doc, &source, cursor);
-        println!("Jump Debug:");
-        print!("file id: {:?}\n", id);
-        print!("source text: {:?}\n", source_text);
-        print!("source : {:?}\n", source);
-        println!("---");
-        println!("Cursor byte position: {}", cursor);
-        println!("Jump positions found: {:?}", pos);
-        println!("---");
 
         pos.get(0).cloned()
     }
@@ -130,9 +121,6 @@ impl WorkSpace {
     pub fn set_active_file(&mut self, path: PathBuf) {
         if path.exists() && path.is_file() {
             self.current_file = Some(path.clone());
-            // if !self.active_files.contains(&path) {
-            //     self.active_files.push(path);
-            // }
         }
     }
 
@@ -213,8 +201,6 @@ impl WorkSpace {
 
                 warnings.push(diagnostic);
             }
-            // self.diagnostics_cache
-            //     .insert(path.clone(), warnings.clone());
 
             match warned.output {
                 Ok(doc) => {
@@ -277,8 +263,6 @@ impl WorkSpace {
 
                     all_diagnostics.extend(errors);
 
-                    // self.diagnostics_cache
-                    //     .insert(path.clone(), all_diagnostics.clone());
                     return Err(all_diagnostics);
                 }
             }
@@ -331,10 +315,6 @@ impl WorkSpace {
         self.current_file.as_ref()
     }
 
-    // pub fn get_active_files(&self) -> &Vec<PathBuf> {
-    //     &self.active_files
-    // }
-
     pub fn refresh(&mut self) {
         self.entries = std::fs::read_dir(&self.root)
             .unwrap()
@@ -349,15 +329,6 @@ impl WorkSpace {
     pub fn get_render_scale(&self) -> f32 {
         self.render_scale
     }
-
-    // pub enum Jump {
-    // /// Jump to a position in a file.
-    // File(FileId, usize),
-    // /// Jump to an external URL.
-    // Url(Url),
-    // /// Jump to a point on a page.
-    // Position(Position),
-    // }
 
     // currently only handles clicks that result in a jump to a file or position
     // returns the byte position

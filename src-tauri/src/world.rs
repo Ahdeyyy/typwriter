@@ -33,6 +33,8 @@ impl typst_kit::download::Progress for PrintDownload {
     }
 }
 
+// TODO: Implement caching of files on disk between compilations
+// TODO: use within_root for virtual paths when creating FileIds for local files
 /// A world for Typst compilation with file system access and package management.
 ///
 /// This implementation provides the essential functionality for Typst compilation,
@@ -41,7 +43,8 @@ impl typst_kit::download::Progress for PrintDownload {
 /// - Caching of read files within a single compilation pass.
 /// - Automatic discovery of system fonts.
 /// - Support for downloading and using packages from the `@preview` namespace.
-pub struct SimpleWorld {
+///
+pub struct Typstworld {
     /// The root directory for the project.
     root: PathBuf,
     /// The `FileId` of the main source file.
@@ -59,8 +62,8 @@ pub struct SimpleWorld {
     package_storage: PackageStorage,
 }
 
-impl SimpleWorld {
-    /// Create a new `SimpleWorld`.
+impl Typstworld {
+    /// Create a new `Typstworld`.
     ///
     /// - `main_path`: The path to the main Typst file to compile.
     pub fn new(root: PathBuf, font_dir: PathBuf) -> Self {
@@ -114,13 +117,13 @@ impl SimpleWorld {
     }
 }
 
-impl IdeWorld for SimpleWorld {
+impl IdeWorld for Typstworld {
     fn upcast(&self) -> &dyn World {
         self
     }
 }
 
-impl World for SimpleWorld {
+impl World for Typstworld {
     fn library(&self) -> &LazyHash<Library> {
         &self.library
     }
@@ -172,7 +175,7 @@ impl World for SimpleWorld {
     }
 }
 
-impl SimpleWorld {
+impl Typstworld {
     /// Resolves a file, handling local files and packages.
     fn resolve_file(&self, id: FileId) -> FileResult<Bytes> {
         let path = match id.package() {

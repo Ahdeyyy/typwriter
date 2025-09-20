@@ -1,14 +1,9 @@
+use crate::utils::{byte_position_to_char_position, char_to_byte_position, pixel_to_point};
 use crate::workspace::WorkSpace;
 use serde::Serialize;
 use std::{path::PathBuf, sync::Mutex};
-use tauri::{AppHandle, Emitter};
-
-fn char_to_byte_position(str: &str, char_position: usize) -> usize {
-    str.char_indices()
-        .map(|(i, _)| i)
-        .nth(char_position)
-        .unwrap_or(str.len())
-}
+use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
+use typst::layout::{Abs, Point};
 
 #[derive(Serialize, Clone, Debug)]
 struct PreviewPosition {
@@ -16,21 +11,6 @@ struct PreviewPosition {
     x: f64,
     y: f64,
 }
-
-// #[derive(Serialize, Clone, Debug)]
-// struct RenderEventPayload {
-//     pages: Vec<RenderResponse>,
-// }
-
-// #[derive(Serialize, Clone, Debug)]
-// struct DiagnosticEventPayload {
-//     diagnostics: Vec<TypstSourceDiagnostic>,
-// }
-
-// #[derive(Serialize, Clone, Debug)]
-// struct PreviewPositionPayload {
-//     position: PreviewPosition,
-// }
 
 /// IPC command to compile a file with its source text
 /// Emits the compilation diagnostics and rendered pages back to the frontend
@@ -81,6 +61,108 @@ pub fn compile_file(
         }
         None => {
             // No active workspace
+            return Err(());
+        }
+    }
+}
+
+#[derive(Serialize, Clone, Debug)]
+struct DocumentPosition {
+    page: usize,
+    x: f64,
+    y: f64,
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn page_click(
+    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+    page_number: usize,
+    source_text: String,
+    x: f64,
+    y: f64,
+) -> Result<usize, ()> {
+    let workspace = state.lock().unwrap();
+
+    println!("=== Page Click Debug ===");
+    println!("Page: {}, Raw coords: ({:.1}, {:.1})", page_number, x, y);
+    match workspace.as_ref() {
+        Some(ws) => {
+            let scale = ws.get_render_scale();
+            let page = ws.get_page_from_cache(page_number);
+            match page {
+                Some(doc) => {
+                    let frame = doc.frame.clone();
+                    let point = Point::new(
+                        Abs::pt(pixel_to_point(x, scale)),
+                        Abs::pt(pixel_to_point(y, scale)),
+                    );
+                    println!(
+                        "click point: ({}, {}) scale: {}",
+                        point.x.to_raw(),
+                        point.y.to_raw(),
+                        scale
+                    );
+                    match ws.get_compilation_cache() {
+                        Some(cache) => {
+                            if let Some(byte_position) = ws.document_click(cache, &frame, &point) {
+                                println!("Click resulted in byte position: {}", byte_position);
+                                return Ok(byte_position_to_char_position(
+                                    &source_text,
+                                    byte_position,
+                                ));
+                            } else {
+                                println!("Click did not result in a jump");
+                                return Err(());
+                            }
+                        }
+                        None => {
+                            println!("No compilation cache available");
+                            return Err(());
+                        }
+                    }
+                }
+                None => {
+                    println!("No page found in cache for page number: {}", page_number);
+                    return Err(());
+                }
+            }
+        }
+        None => {
+            return Err(());
+        }
+    }
+}
+
+// Open a workspace at the given path
+#[tauri::command(rename_all = "snake_case")]
+pub fn open_workspace(
+    app: AppHandle,
+    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+    path: String,
+) -> Result<(), ()> {
+    let resource_path = app
+        .path()
+        .resolve("fonts/", BaseDirectory::Resource)
+        .unwrap_or_default();
+
+    let mut ws = state.lock().unwrap();
+    *ws = Some(WorkSpace::new(PathBuf::from(path), resource_path));
+    Ok(())
+}
+
+// Open a file in the currently active workspace
+#[tauri::command]
+pub fn open_file(
+    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+    file_path: String,
+) -> Result<(), ()> {
+    let mut workspace = state.lock().unwrap();
+    match workspace.as_mut() {
+        Some(ws) => {
+            ws.set_active_file(PathBuf::from(file_path));
+            return Ok(());
+        }
+        None => {
             return Err(());
         }
     }
