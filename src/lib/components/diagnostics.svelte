@@ -9,13 +9,11 @@
   import { LucidePanelBottom } from "@lucide/svelte"
   import { ScrollArea } from "@/components/ui/scroll-area"
 
-  let diagnostics = $state([] as Array<DiagnosticResponse>)
-
   onMount(() => {
     listen<DiagnosticResponse[]>("source-diagnostics", (event) => {
-      diagnostics = event.payload
+      app.diagnostics = event.payload
 
-      app.newDiagnostics = diagnostics.length
+      app.newDiagnostics = app.diagnostics.length
     })
   })
 </script>
@@ -45,13 +43,13 @@
     <Sheet.Header>
       <Sheet.Title>Diagnostic</Sheet.Title>
       <Sheet.Description>
-        {#if diagnostics.length === 0}
+        {#if app.diagnostics.length === 0}
           <div class="p-2">No issues found. Your document is clean!</div>
         {:else}
           <div class="p-2 border-t-1 border-black max-h-40 overflow-y-auto">
             <ScrollArea orientation="vertical">
               <ol class=" list-inside space-y-2">
-                {#each diagnostics as diag (diag.message)}
+                {#each app.diagnostics as diag (diag.message)}
                   {@render diagnostic(diag)}
                 {/each}
               </ol>

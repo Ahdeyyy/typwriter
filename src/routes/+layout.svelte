@@ -20,24 +20,25 @@
   bind:open={app.isFileTreeOpen}
 >
   <LeftSidebar />
-  <Sidebar.Inset>
-    <main class="100-svw h-95vh">
-      <nav class="flex items-center gap-1">
-        <Sidebar.Trigger />
-        <Diagnostics />
-        <Button
-          size="icon"
-          class="size-7"
-          variant="ghost"
-          onclick={() => (app.isPreviewPaneOpen = !app.isPreviewPaneOpen)}
-        >
-          <LucidePanelRight />
-        </Button>
-      </nav>
+<Sidebar.Inset >
 
-      {@render children?.()}
-    </main>
-  </Sidebar.Inset>
+  <main class="100-svw h-95vh">
+    <nav class="flex items-center gap-1">
+      <Sidebar.Trigger />
+      <Diagnostics />
+      <Button
+        size="icon"
+        class="size-7"
+        variant="ghost"
+        onclick={() => (app.isPreviewPaneOpen = !app.isPreviewPaneOpen)}
+        >
+        <LucidePanelRight />
+      </Button>
+    </nav>
+    
+    {@render children?.()}
+  </main>
+</Sidebar.Inset>
 </Sidebar.Provider>
 
 <style>

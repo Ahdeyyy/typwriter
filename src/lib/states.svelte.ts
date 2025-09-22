@@ -6,14 +6,66 @@ import { EditorView, lineNumbers, type ViewUpdate } from "@codemirror/view";
 import { yaml } from "@codemirror/lang-yaml"
 import { basicSetup } from "codemirror";
 import { Compartment, type Extension } from "@codemirror/state";
-import { espresso } from "thememirror";
+import { espresso, tomorrow, dracula, boysAndGirls, coolGlow, amy, } from "thememirror";
+import { githubDark } from '@ddietr/codemirror-themes/github-dark'
+import { aura } from '@ddietr/codemirror-themes/aura'
+import { tokyoNight } from '@ddietr/codemirror-themes/tokyo-night'
+import { tokyoNightDay } from "@ddietr/codemirror-themes/tokyo-night-day"
 import { createScrollbarTheme } from "./utils"
+import type { DiagnosticResponse } from "./types"
+import { linter, type Diagnostic } from "@codemirror/lint";
+import { typst } from "codemirror-lang-typst"
+
 
 // const recent = new RuneStore('recent_workspaces', { workspaces: [] as { name: string, path: string }[] }, {
 //     saveOnChange: true,
 //     autoStart: true,
 // });
 
+function flattenLineAndColumn(line: number, column: number): number {
+    // Diagnostics coming from the compiler use 1-based line/column.
+    // Prefer using the active CodeMirror document if available for exact offsets;
+    // otherwise fall back to the in-memory `app.text` string.
+    const l = Math.max(1, Math.floor(line));
+    const c = Math.max(1, Math.floor(column));
+
+    // Helper to clamp a value between min and max
+    const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
+    // Try to use the active EditorView's document (accurate and accounts for CRLF)
+    try {
+        // `app` is exported later in this module; accessing it here at call-time is fine
+        if (typeof app !== "undefined" && app.view && app.view.state) {
+            const doc = app.view.state.doc;
+            const totalLines = doc.lines;
+            const useLine = clamp(l, 1, totalLines);
+            const lineObj = doc.line(useLine);
+            // column is 1-based where 1 == first character; allow column to be one past line end
+            const maxCol = lineObj.length + 1;
+            const useCol = clamp(c, 1, maxCol);
+            return lineObj.from + (useCol - 1);
+        }
+    } catch (e) {
+        // fall through to text fallback
+    }
+
+    // Fallback: compute offset from the plain text buffer (`app.text`).
+    const text = (typeof app !== "undefined" && app.text != null) ? String(app.text) : "";
+    const lines = text.split(/\r\n|\r|\n/);
+    const useLine = clamp(l, 1, Math.max(1, lines.length));
+    const lineStr = lines[useLine - 1] || "";
+    const maxCol = lineStr.length + 1;
+    const useCol = clamp(c, 1, maxCol);
+
+    let offset = 0;
+    for (let i = 0; i < useLine - 1; i++) {
+        // assume original separators were single-character newlines for offset calculation
+        offset += lines[i].length + 1;
+    }
+    offset += useCol - 1;
+
+    return clamp(offset, 0, text.length);
+}
 
 
 class App {
@@ -48,8 +100,25 @@ class App {
 
     zoomLevel = $state(1)
 
+    diagnostics = $state([] as Array<DiagnosticResponse>)
+
     constructor() {
 
+    }
+
+    typstLinter() {
+        return linter(view => {
+            let diagnostics: Diagnostic[] = []
+            for (const diag of this.diagnostics) {
+                diagnostics.push({
+                    from: flattenLineAndColumn(diag.location.line, diag.location.column),
+                    to: flattenLineAndColumn(diag.location.end_line, diag.location.end_column),
+                    message: diag.message,
+                    severity: diag.severity.toLocaleLowerCase() as Diagnostic["severity"],
+                })
+            }
+            return diagnostics
+        })
     }
 
     async openWorkspace(): Promise<boolean> {
@@ -148,7 +217,7 @@ class App {
             const extensions: Extension[] = []
 
             extensions.push(lineNumbers())
-            extensions.push(espresso)
+            extensions.push(tokyoNight)
             extensions.push(EditorView.lineWrapping)
             extensions.push(basicSetup)
             extensions.push(fixedHeight)
@@ -157,6 +226,11 @@ class App {
 
             if (getFileType(file) === "yaml" || getFileType(file) === "yml") {
                 extensions.push(yaml())
+            }
+
+            if (getFileType(file) === "typ") {
+                extensions.push(typst())
+                extensions.push(this.typstLinter())
             }
 
             this.view.dispatch({

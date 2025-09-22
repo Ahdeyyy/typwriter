@@ -9,7 +9,7 @@
   import { getFileName } from "@/utils"
 </script>
 
-<Sidebar.Root variant="floating" side="left">
+<Sidebar.Root variant="inset" side="left">
   <Sidebar.Header>
     <WorkspaceSwitcher />
   </Sidebar.Header>
