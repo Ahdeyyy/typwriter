@@ -12,9 +12,8 @@
   "app": {
     "windows": [
       {
+        "decorations": false,
         "title": "typwriter",
-        "width": 800,
-        "height": 600,
         "maximized": true
       }
     ],
