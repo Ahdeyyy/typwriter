@@ -1,15 +1,15 @@
 <!-- Contains the file tree -->
 <script lang="ts">
-  import * as Sidebar from "$lib/components/ui/sidebar"
-  import { app } from "@/states.svelte"
-  import { Button } from "./ui/button"
-  import WorkspaceSwitcher from "./workspace-switcher.svelte"
-  import { ChevronRightIcon, FileIcon, FolderIcon } from "@lucide/svelte"
-  import * as Collapsible from "./ui/collapsible"
-  import { getFileName } from "@/utils"
+  import * as Sidebar from "$lib/components/ui/sidebar";
+  import { appState } from "@/states.svelte";
+  import { Button } from "./ui/button";
+  import WorkspaceSwitcher from "./workspace-switcher.svelte";
+  import { ChevronRightIcon, FileIcon, FolderIcon } from "@lucide/svelte";
+  import * as Collapsible from "./ui/collapsible";
+  import { getFileName } from "@/utils";
 </script>
 
-<Sidebar.Root variant="inset" side="left">
+<Sidebar.Root variant="sidebar" side="left">
   <Sidebar.Header>
     <WorkspaceSwitcher />
   </Sidebar.Header>
@@ -17,7 +17,7 @@
     <Sidebar.Group>
       <Sidebar.GroupContent>
         <Sidebar.Menu>
-          {#each app.entries as item, index (index)}
+          {#each appState.entries as item, index (index)}
             {@render Tree({ item })}
           {/each}
         </Sidebar.Menu>
@@ -33,11 +33,11 @@
   {#if items.length == 0}
     {#if name}
       <Sidebar.MenuButton
-        isActive={name === getFileName(app.currentFilePath)}
+        isActive={name === getFileName(appState.currentFilePath)}
         class="data-[active=true]:bg-primary/30"
         onclick={() => {
-          if (name !== getFileName(app.currentFilePath)) {
-            app.openFile(name)
+          if (name !== getFileName(appState.currentFilePath)) {
+            appState.openFile(name);
           }
         }}
       >

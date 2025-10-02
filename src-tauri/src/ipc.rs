@@ -1,6 +1,6 @@
 use crate::utils::{byte_position_to_char_position, char_to_byte_position, pixel_to_point};
-use crate::workspace::WorkSpace;
-use serde::Serialize;
+use crate::workspace::{self, DocumentClickResponseType, WorkSpace};
+use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, sync::Mutex};
 use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
 use typst::layout::{Abs, Point};
@@ -73,6 +73,13 @@ struct DocumentPosition {
     y: f64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ClickError {
+    NoWorkspace,
+    NoPage,
+    NoCompilationCache,
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub fn page_click(
     state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
@@ -80,7 +87,7 @@ pub fn page_click(
     source_text: String,
     x: f64,
     y: f64,
-) -> Result<usize, ()> {
+) -> Result<DocumentClickResponseType, ClickError> {
     let workspace = state.lock().unwrap();
 
     println!("=== Page Click Debug ===");
@@ -104,31 +111,22 @@ pub fn page_click(
                     );
                     match ws.get_compilation_cache() {
                         Some(cache) => {
-                            if let Some(byte_position) = ws.document_click(cache, &frame, &point) {
-                                println!("Click resulted in byte position: {}", byte_position);
-                                return Ok(byte_position_to_char_position(
-                                    &source_text,
-                                    byte_position,
-                                ));
-                            } else {
-                                println!("Click did not result in a jump");
-                                return Err(());
-                            }
+                            return Ok(ws.document_click(source_text, cache, &frame, &point))
                         }
                         None => {
                             println!("No compilation cache available");
-                            return Err(());
+                            return Err(ClickError::NoCompilationCache);
                         }
                     }
                 }
                 None => {
                     println!("No page found in cache for page number: {}", page_number);
-                    return Err(());
+                    return Err(ClickError::NoPage);
                 }
             }
         }
         None => {
-            return Err(());
+            return Err(ClickError::NoWorkspace);
         }
     }
 }
@@ -151,7 +149,7 @@ pub fn open_workspace(
 }
 
 // Open a file in the currently active workspace
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn open_file(
     state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
     file_path: String,
@@ -166,4 +164,36 @@ pub fn open_file(
             return Err(());
         }
     }
+}
+
+// TODO: add additional formats for the export function
+#[tauri::command(rename_all = "snake_case")]
+pub fn export_to(
+    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+    file_path: String,
+    export_path: String,
+    source: String,
+) -> Result<(), ()> {
+    let mut workspace = state.lock().unwrap();
+    dbg!("=== EXPORT_FILE CALLED ===");
+    dbg!(export_path.clone());
+    match workspace.as_mut() {
+        Some(ws) => {
+            let _ = ws.export_file(
+                &PathBuf::from(file_path),
+                source,
+                &PathBuf::from(export_path.clone()),
+                crate::workspace::ExportFormat::Pdf,
+            );
+            dbg!("=== EXPORT_FILE SUCCEEDED ===");
+            dbg!(export_path.clone());
+        }
+        None => {
+            dbg!("=== EXPORT_FILE FAILED ===");
+            dbg!(export_path);
+
+            return Err(());
+        }
+    }
+    Ok(())
 }

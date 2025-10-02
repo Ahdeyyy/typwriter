@@ -35,8 +35,8 @@ function flattenLineAndColumn(line: number, column: number): number {
     // Try to use the active EditorView's document (accurate and accounts for CRLF)
     try {
         // `app` is exported later in this module; accessing it here at call-time is fine
-        if (typeof app !== "undefined" && app.view && app.view.state) {
-            const doc = app.view.state.doc;
+        if (typeof appState !== "undefined" && appState.view && appState.view.state) {
+            const doc = appState.view.state.doc;
             const totalLines = doc.lines;
             const useLine = clamp(l, 1, totalLines);
             const lineObj = doc.line(useLine);
@@ -50,7 +50,7 @@ function flattenLineAndColumn(line: number, column: number): number {
     }
 
     // Fallback: compute offset from the plain text buffer (`app.text`).
-    const text = (typeof app !== "undefined" && app.text != null) ? String(app.text) : "";
+    const text = (typeof appState !== "undefined" && appState.text != null) ? String(appState.text) : "";
     const lines = text.split(/\r\n|\r|\n/);
     const useLine = clamp(l, 1, Math.max(1, lines.length));
     const lineStr = lines[useLine - 1] || "";
@@ -169,7 +169,7 @@ class App {
         // console.log(this.currentFilePath)
         try {
             await invoke('open_file', {
-                filePath: path
+                file_path: path
             })
         } catch (e) {
             console.error("[ERROR] - opening file: ", e)
@@ -205,7 +205,7 @@ class App {
             this.view.dispatch(tr)
 
             const fixedHeight = EditorView.theme({
-                "&": { height: "94svh" },
+                "&": { height: "90svh" },
                 ".cm-scroller": { overflow: "auto" },
             })
 
@@ -253,4 +253,4 @@ class App {
 // when compilation is done the pages of the document is sent to the preview handler
 // when compilation is done the diagnostic are sent to the handler
 
-export const app = new App()
+export const appState = new App()

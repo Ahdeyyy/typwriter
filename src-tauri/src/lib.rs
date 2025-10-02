@@ -2,7 +2,7 @@ mod ipc;
 pub mod utils;
 mod workspace;
 pub mod world;
-use ipc::{compile_file, open_file, open_workspace, page_click};
+use ipc::{compile_file, export_to, open_file, open_workspace, page_click};
 use std::sync::Mutex;
 use tauri::Manager;
 use workspace::WorkSpace;
@@ -29,6 +29,7 @@ pub fn run() {
             open_file,
             compile_file,
             page_click,
+            export_to,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

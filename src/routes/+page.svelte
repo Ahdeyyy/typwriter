@@ -4,7 +4,7 @@
   import { EditorView, ViewUpdate } from "@codemirror/view"
   import { useDebounce } from "runed"
   import { onMount } from "svelte"
-  import { app } from "@/states.svelte"
+  import { appState } from "@/states.svelte"
   import RightSidebar from "@/components/right-sidebar.svelte"
   import { Button } from "@/components/ui/button"
   import type { LayoutData } from "./$types"
@@ -18,13 +18,17 @@
 
 <main class="container p-2 max-h-screen">
   <div
-    class={["gap-2", "relative ", app.isPreviewPaneOpen && "grid grid-cols-2"]}
+    class={[
+      "gap-2",
+      "relative ",
+      appState.isPreviewPaneOpen && "grid grid-cols-2",
+    ]}
   >
-    {#if app.currentFilePath !== ""}
+    {#if appState.currentFilePath !== ""}
       <Editor />
     {:else}
       <NoSelectedFile />
     {/if}
-    <RightSidebar bind:open={app.isPreviewPaneOpen} />
+    <RightSidebar bind:open={appState.isPreviewPaneOpen} />
   </div>
 </main>

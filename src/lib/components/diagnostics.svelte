@@ -2,7 +2,7 @@
   import { onMount } from "svelte"
   import { listen } from "@tauri-apps/api/event"
   import type { DiagnosticResponse } from "../types"
-  import { app } from "@/states.svelte"
+  import { appState } from "@/states.svelte"
   import * as Sheet from "$lib/components/ui/sheet"
   import { Button } from "./ui/button"
   import { Badge } from "./ui/badge"
@@ -11,28 +11,29 @@
 
   onMount(() => {
     listen<DiagnosticResponse[]>("source-diagnostics", (event) => {
-      app.diagnostics = event.payload
+      appState.diagnostics = event.payload
 
-      app.newDiagnostics = app.diagnostics.length
+      appState.newDiagnostics = appState.diagnostics.length
     })
   })
 </script>
 
-<Sheet.Root bind:open={app.isDiagnosticsOpen}>
+<Sheet.Root bind:open={appState.isDiagnosticsOpen}>
   <Sheet.Trigger>
     {#snippet child(props)}
       <Button
-        onclick={() => (app.isDiagnosticsOpen = !app.isDiagnosticsOpen)}
+        onclick={() =>
+          (appState.isDiagnosticsOpen = !appState.isDiagnosticsOpen)}
         size="icon"
         class="size-7 relative"
         variant="ghost"
         {...props}
       >
-        {#if app.newDiagnostics > 0}
+        {#if appState.newDiagnostics > 0}
           <Badge
             variant="destructive"
             class="absolute top-0 right-0 h-3 w-3 rounded-full p-1.5"
-            >{app.newDiagnostics}</Badge
+            >{appState.newDiagnostics}</Badge
           >
         {/if}
         <LucidePanelBottom />
@@ -43,13 +44,13 @@
     <Sheet.Header>
       <Sheet.Title>Diagnostic</Sheet.Title>
       <Sheet.Description>
-        {#if app.diagnostics.length === 0}
+        {#if appState.diagnostics.length === 0}
           <div class="p-2">No issues found. Your document is clean!</div>
         {:else}
           <div class="p-2 border-t-1 border-black max-h-40 overflow-y-auto">
             <ScrollArea orientation="vertical">
               <ol class=" list-inside space-y-2">
-                {#each app.diagnostics as diag (diag.message)}
+                {#each appState.diagnostics as diag (diag.message)}
                   {@render diagnostic(diag)}
                 {/each}
               </ol>

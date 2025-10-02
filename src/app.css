@@ -170,6 +170,7 @@
   body {
     @apply bg-background text-foreground;
     @apply h-screen;
+    @apply max-h-svh max-w-svw overscroll-none overflow-hidden;
   }
 }
 

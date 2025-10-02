@@ -1,7 +1,8 @@
 use base64::engine::general_purpose;
 use base64::Engine;
+use typst::foundations::Datetime;
 use typst::layout::{Frame, PagedDocument, Point, Position};
-use typst::World;
+use typst::{pdf, World};
 use typst_ide::{jump_from_click, jump_from_cursor, Jump};
 
 use serde::Serialize;
@@ -9,9 +10,34 @@ use std::path::PathBuf;
 use std::vec;
 use typst::diag::{Severity, SourceDiagnostic};
 use typst::{compile, layout::Page, WorldExt};
+use typst_pdf::{PdfOptions, PdfStandards, Timestamp};
 use typst_render::render;
 
+use crate::utils::byte_position_to_char_position;
 use crate::world::Typstworld;
+use chrono::{Datelike, Timelike};
+
+#[derive(Serialize, Clone, Debug)]
+pub struct FileJump {
+    pub file: PathBuf,
+    pub position: usize,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct PositionJump {
+    pub page: usize,
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(tag = "type")]
+pub enum DocumentClickResponseType {
+    FileJump(FileJump), // move the editor cursor to the given byte position in the given file
+    PositionJump(PositionJump), // scroll the preview to the given page and point
+    UrlJump(String),    // open the given URL in the default browser
+    NoJump,
+}
 
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct Range<T> {
@@ -46,6 +72,11 @@ pub struct RenderResponse {
     image: String,
     width: u32,
     height: u32,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub enum ExportFormat {
+    Pdf,
 }
 
 pub struct WorkSpace {
@@ -133,6 +164,46 @@ impl WorkSpace {
         } else {
             Err(vec![])
         }
+    }
+
+    // export the file to a given path
+
+    pub fn export_file(
+        &mut self,
+        source_path: &PathBuf,
+        source: String,
+        export_path: &PathBuf,
+        format: ExportFormat,
+    ) -> Result<(), ()> {
+        let name = source_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("main.typ");
+        self.typst_world.reset();
+        self.typst_world.set_main_source(name, source);
+        let result = compile::<PagedDocument>(&self.typst_world);
+        dbg!("=== EXPORT_FILE CALLED ===");
+        dbg!(export_path);
+        dbg!(format.clone());
+
+        if let Ok(doc) = result.output {
+            match format {
+                ExportFormat::Pdf => {
+                    dbg!("=== EXPORT_PDF CALLED ===");
+                    dbg!(export_path);
+                    dbg!(format.clone());
+
+                    export_pdf(&doc, export_path)?;
+                }
+            }
+        } else {
+            dbg!("=== EXPORT_FILE FAILED ===");
+
+            eprintln!("Failed to compile document: {:?}", result.output);
+            return Err(());
+        }
+
+        Ok(())
     }
 
     // compile the file at the given path with the given source code
@@ -333,40 +404,53 @@ impl WorkSpace {
     // currently only handles clicks that result in a jump to a file or position
     // returns the byte position
     // TODO: handle the other cases
+
     pub fn document_click(
         &self,
+        source_text: String,
         doc: &PagedDocument,
         frame: &Frame,
         click: &Point,
-    ) -> Option<usize> {
+    ) -> DocumentClickResponseType {
         let pos = jump_from_click(&self.typst_world, doc, frame, *click);
+
         match pos {
+            // move the editor cursor to the given byte position in the given file
             Some(Jump::File(file_id, position)) => {
                 if let Some(file_path) = self.typst_world.get_file_path(file_id) {
-                    println!(
-                        "Jump to file: {} at byte position: {}",
-                        file_path.display(),
-                        position
-                    );
+                    DocumentClickResponseType::FileJump(FileJump {
+                        file: file_path,
+                        position: byte_position_to_char_position(&source_text, position),
+                    })
+                } else {
+                    DocumentClickResponseType::NoJump
                 }
-                Some(position)
             }
+            // scroll the preview to the given page and point
             Some(Jump::Position(position)) => {
                 println!(
                     "Jump to page: {} at point: ({}, {})",
                     position.page,
-                    position.point.x.to_raw(),
-                    position.point.y.to_raw()
+                    position.point.x.to_pt(),
+                    position.point.y.to_pt()
                 );
-                None
+
+                DocumentClickResponseType::PositionJump(PositionJump {
+                    page: position.page.into(),
+                    x: position.point.x.to_pt(),
+                    y: position.point.y.to_pt(),
+                })
             }
+            // open the given URL in the default browser
             Some(Jump::Url(url)) => {
                 println!("Jump to URL: {}", url.as_str());
-                None
+
+                DocumentClickResponseType::NoJump
             }
+
             None => {
                 println!("No jump target found at the clicked position.");
-                None
+                DocumentClickResponseType::NoJump
             }
         }
     }
@@ -376,4 +460,66 @@ impl WorkSpace {
     //         self.current_file = Some(path);
     //     }
     // }
+}
+
+fn export_pdf(document: &PagedDocument, export_path: &PathBuf) -> Result<(), ()> {
+    eprintln!("=== EXPORT_PDF CALLED ===");
+    eprintln!("Export path: {:?}", export_path);
+    eprintln!(
+        "Export path (absolute): {:?}",
+        std::fs::canonicalize(export_path.parent().unwrap_or(export_path))
+    );
+
+    let local_datetime = chrono::Local::now();
+
+    let timestamp = Timestamp::new_local(
+        convert_datetime(local_datetime).ok_or(())?,
+        local_datetime.offset().local_minus_utc() / 60,
+    );
+
+    let standards = PdfStandards::default();
+
+    let options = PdfOptions {
+        ident: typst::foundations::Smart::Auto,
+        timestamp,
+        page_ranges: None,
+        standards,
+    };
+
+    eprintln!("Generating PDF buffer...");
+
+    let buffer = typst_pdf::pdf(document, &options).map_err(|e| {
+        e.iter().for_each(|err| {
+            println!(
+                "Failed to generate PDF: {} - {}",
+                err.message.to_string(),
+                err.hints.join(", ")
+            )
+        });
+        ()
+    })?;
+
+    eprintln!("Buffer size: {} bytes", buffer.len());
+    eprintln!("Writing to disk...");
+
+    std::fs::write(export_path, buffer).map_err(|e| {
+        println!("Failed to write PDF to file: {}", e);
+        ()
+    })?;
+    eprintln!("PDF written successfully!");
+    eprintln!("Verifying file exists: {}", export_path.exists());
+
+    Ok(())
+}
+
+/// Convert [`chrono::DateTime`] to [`Datetime`]
+fn convert_datetime<Tz: chrono::TimeZone>(date_time: chrono::DateTime<Tz>) -> Option<Datetime> {
+    Datetime::from_ymd_hms(
+        date_time.year(),
+        date_time.month().try_into().ok()?,
+        date_time.day().try_into().ok()?,
+        date_time.hour().try_into().ok()?,
+        date_time.minute().try_into().ok()?,
+        date_time.second().try_into().ok()?,
+    )
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { app } from "@/states.svelte"
+  import { appState } from "@/states.svelte"
   import { saveTextToFile, compile } from "@/utils"
   import { EditorState } from "@codemirror/state"
   import { EditorView } from "@codemirror/view"
@@ -19,13 +19,13 @@
     let view = $state<EditorView>(
       new EditorView({
         state: EditorState.create({
-          doc: app.text,
+          doc: appState.text,
           extensions: [
-            app.editorExtensions.of([]),
+            appState.editorExtensions.of([]),
             EditorView.updateListener.of(async (v) => {
               if (v.docChanged) {
                 const text = v.state.doc.toString()
-                if (app.canCompileFile) {
+                if (appState.canCompileFile) {
                   await debouncedCompile(text)
                 }
                 await debouncedSave(text)
@@ -36,7 +36,7 @@
         parent: editor,
       })
     )
-    app.loadEditor(view)
+    appState.loadEditor(view)
   })
 </script>
 

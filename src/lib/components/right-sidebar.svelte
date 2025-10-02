@@ -4,9 +4,11 @@
   import Preview from "./preview.svelte"
   import { PressedKeys } from "runed"
   import { onMount, onDestroy } from "svelte"
-  import { listen, type UnlistenFn } from "@tauri-apps/api/event"
+  import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event"
   import type { RenderResponse } from "@/types"
-  import { app } from "@/states.svelte"
+  import { appState } from "@/states.svelte"
+  import { page_click } from "@/ipc"
+  import { openUrl } from "@tauri-apps/plugin-opener"
 
   let { open = $bindable(false) }: { open?: boolean } = $props()
 
@@ -59,22 +61,39 @@
 
 <!-- Animate when the sidebar opens -->
 {#if open}
-  <div>
+  <div class="border-l-2">
     <Preview
       pages={preview_images || []}
       onclick={async (event, index, x, y) => {
-        try {
-          let result = await invoke("page_click", {
-            page_number: index,
-            x: x,
-            y: y,
-            source_text: app.text,
-          })
-          console.log("Result from page_click:", result)
-          app.moveEditorCursor(result as number)
-        } catch (error) {
-          console.error("Error invoking page_click:", error)
+        let result = await page_click(index, appState.text, x, y)
+
+        if (result.isErr()) {
+          console.error(result.error)
+          return
         }
+
+        switch (result.value.type) {
+          case "FileJump":
+            appState.moveEditorCursor(result.value.position)
+            console.log(result.value)
+            break
+          case "PositionJump":
+            emit("preview-position", {
+              page: result.value.page,
+              x: result.value.x,
+              y: result.value.y,
+            })
+            console.log(result.value)
+            break
+          case "UrlJump":
+            openUrl(result.value.url)
+            break
+          case "NoJump":
+            console.log("no jump")
+            break
+        }
+
+        console.log("Result from page_click:", result)
       }}
     />
   </div>
