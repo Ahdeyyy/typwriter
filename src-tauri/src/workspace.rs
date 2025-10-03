@@ -3,9 +3,11 @@ use base64::Engine;
 use typst::foundations::Datetime;
 use typst::layout::{Frame, PagedDocument, Point, Position};
 use typst::{pdf, World};
-use typst_ide::{jump_from_click, jump_from_cursor, Jump};
+use typst_ide::{
+    autocomplete, jump_from_click, jump_from_cursor, tooltip, Completion, Jump, Tooltip,
+};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::vec;
 use typst::diag::{Severity, SourceDiagnostic};
@@ -13,7 +15,7 @@ use typst::{compile, layout::Page, WorldExt};
 use typst_pdf::{PdfOptions, PdfStandards, Timestamp};
 use typst_render::render;
 
-use crate::utils::byte_position_to_char_position;
+use crate::utils::{byte_position_to_char_position, char_to_byte_position};
 use crate::world::Typstworld;
 use chrono::{Datelike, Timelike};
 
@@ -77,6 +79,26 @@ pub struct RenderResponse {
 #[derive(Serialize, Clone, Debug)]
 pub enum ExportFormat {
     Pdf,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct CompletionResponse {
+    /// character position at which the completion is apply
+    pub char_position: usize,
+    pub completions: Vec<Completion>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum TooltipKind {
+    Code,
+    Text,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+#[serde(tag = "type")]
+pub struct TooltipResponse {
+    pub kind: TooltipKind,
+    pub text: String,
 }
 
 pub struct WorkSpace {
@@ -455,6 +477,52 @@ impl WorkSpace {
         }
     }
 
+    pub fn get_completion(
+        &self,
+        source_text: String,
+        doc: &PagedDocument,
+        cursor: usize,
+        explicit: bool,
+    ) -> Option<CompletionResponse> {
+        let id = self.typst_world.main();
+        let source = self.typst_world.source(id).ok()?;
+        let completions = autocomplete(&self.typst_world, Some(doc), &source, cursor, explicit);
+        if let Some((position, completions)) = completions {
+            Some(CompletionResponse {
+                completions,
+                char_position: byte_position_to_char_position(&source_text, position),
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn tooltip_info(
+        &self,
+        source_text: String,
+        char_position: usize,
+    ) -> Option<TooltipResponse> {
+        let id = self.typst_world.main();
+        let source = self.typst_world.source(id).ok()?;
+        let cursor = char_to_byte_position(&source_text, char_position);
+        let document = self.get_compilation_cache();
+        let side = typst_syntax::Side::Before;
+        let info = tooltip(&self.typst_world, document, &source, cursor, side);
+        if let Some(tool) = info {
+            match tool {
+                Tooltip::Text(text) => Some(TooltipResponse {
+                    kind: TooltipKind::Text,
+                    text: text.as_str().to_string(),
+                }),
+                Tooltip::Code(text) => Some(TooltipResponse {
+                    kind: TooltipKind::Code,
+                    text: text.as_str().to_string(),
+                }),
+            }
+        } else {
+            None
+        }
+    }
     // pub fn set_active_file(&mut self, path: PathBuf) {
     //     if self.active_files.contains(&path) {
     //         self.current_file = Some(path);

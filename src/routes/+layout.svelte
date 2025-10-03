@@ -46,30 +46,32 @@
 >
   <LeftSidebar />
   <Sidebar.Inset>
-    <header class="flex shrink-0 items-center justify-between gap-2 px-2">
-      <img src="./icon.png" alt="App Icon" class="size-5" />
-      <h1 class=" font-medium">{appTitle} {openedFilePath}</h1>
-      <div class="flex">
-        <Button
-          size="icon"
-          class="size-7"
-          variant="ghost"
-          onclick={() => window.minimize()}
-        >
-          <LucideMinimize2 />
-        </Button>
-        <Button
-          size="icon"
-          class="size-7"
-          variant="ghost"
-          onclick={() => window.close()}
-        >
-          <LucideX />
-        </Button>
-      </div>
-    </header>
-    <section class="100-svw h-100vh">
-      <div class="flex gap-2">
+    <section>
+      <header
+        class="flex shrink-0 items-center justify-between gap-2 border-b-1"
+      >
+        <img src="./icon.png" alt="App Icon" class="size-7" />
+        <h1 class=" font-medium">{appTitle} {openedFilePath}</h1>
+        <div class="flex">
+          <Button
+            size="icon"
+            class="size-7"
+            variant="ghost"
+            onclick={() => window.minimize()}
+          >
+            <LucideMinimize2 />
+          </Button>
+          <Button
+            size="icon"
+            class="size-7"
+            variant="ghost"
+            onclick={() => window.close()}
+          >
+            <LucideX />
+          </Button>
+        </div>
+      </header>
+      <div class="flex gap-2 border-b-1 p-1">
         <Sidebar.Trigger />
         <Diagnostics />
         <Button
@@ -87,9 +89,9 @@
         </Button>
 
         <Button
-          size="icon"
-          class="size-7"
+          size="sm"
           variant="ghost"
+          class="h-7"
           onclick={async () => {
             if (!appState.currentFilePath) {
               alert("Please open a file to export.")
@@ -112,7 +114,7 @@
             }
           }}
         >
-          export
+          Export PDF
         </Button>
       </div>
       {@render children?.()}

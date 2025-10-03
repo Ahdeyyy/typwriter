@@ -121,3 +121,56 @@ export type DocumentClickResponseType =
     | DocumentClickResponseUrlJump
     | DocumentClickResponseNoJump;
 
+/**
+ * Typst completion kind - represents the type of completion item
+ */
+export type CompletionKind =
+    | "Syntax"
+    | "Func"
+    | "Type"
+    | "Param"
+    | "Constant"
+    | "Symbol"
+    | "Module"
+    | "File"
+    | "Folder";
+
+/**
+ * A single completion item from typst-ide
+ */
+export interface Completion {
+    /** The completion kind */
+    kind: CompletionKind;
+    /** The label to show in the completion menu */
+    label: string;
+    /** How to apply the completion (label with additional template syntax) */
+    apply: string | null;
+    /** Additional detail text to show */
+    detail: string | null;
+}
+
+/**
+ * Response from the autocomplete IPC command
+ */
+export interface CompletionResponse {
+    /** Character position at which the completions should be applied */
+    char_position: number;
+    /** Array of completion items */
+    completions: Completion[];
+}
+
+/**
+ * Tooltip kind - either code or text
+ */
+export type TooltipKind = "Code" | "Text";
+
+/**
+ * Response from the tooltip IPC command
+ */
+export interface TooltipResponse {
+    /** The kind of tooltip content */
+    kind: TooltipKind;
+    /** The tooltip text content */
+    text: string;
+}
+

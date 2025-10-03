@@ -197,3 +197,54 @@ pub fn export_to(
     }
     Ok(())
 }
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn autocomplete(
+    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+    source_text: String,
+    cursor_position: usize,
+    explicit: bool,
+) -> Result<Option<workspace::CompletionResponse>, ()> {
+    let workspace = state.lock().unwrap();
+
+    match workspace.as_ref() {
+        Some(ws) => {
+            let byte_position = char_to_byte_position(&source_text, cursor_position);
+
+            match ws.get_compilation_cache() {
+                Some(doc) => {
+                    let completions = ws.get_completion(source_text, doc, byte_position, explicit);
+                    Ok(completions)
+                }
+                None => {
+                    // No compilation cache available
+                    Ok(None)
+                }
+            }
+        }
+        None => {
+            // No active workspace
+            Err(())
+        }
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn tooltip(
+    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+    source_text: String,
+    cursor_position: usize,
+) -> Result<Option<workspace::TooltipResponse>, ()> {
+    let workspace = state.lock().unwrap();
+
+    match workspace.as_ref() {
+        Some(ws) => {
+            let tooltip_info = ws.tooltip_info(source_text, cursor_position);
+            Ok(tooltip_info)
+        }
+        None => {
+            // No active workspace
+            Err(())
+        }
+    }
+}

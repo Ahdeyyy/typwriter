@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Err, Result, ResultAsync } from "neverthrow";
-import type { DocumentClickResponseType } from "./types"
+import type { DocumentClickResponseType, CompletionResponse, TooltipResponse } from "./types"
 
 
 type InvokeError = { message: string }
@@ -56,6 +56,44 @@ export async function export_to(file_path: string, export_path: string, source: 
         file_path,
         export_path,
         source
+    });
+    return result;
+}
+
+/**
+ * Get autocomplete suggestions at the cursor position
+ * @param source_text The full source text of the document
+ * @param cursor_position The character position of the cursor
+ * @param explicit Whether the completion was explicitly requested (e.g., Ctrl+Space)
+ * @returns A Result containing the completion response or an error
+ */
+export async function autocomplete(source_text: string, cursor_position: number, explicit: boolean) {
+    const inv = ResultAsync.fromThrowable(
+        invoke<CompletionResponse | null>,
+        (): InvokeError => ({ message: `failed to get autocomplete at position ${cursor_position}` })
+    );
+    const result = await inv("autocomplete", {
+        source_text,
+        cursor_position,
+        explicit
+    });
+    return result;
+}
+
+/**
+ * Get tooltip information at the cursor position
+ * @param source_text The full source text of the document
+ * @param cursor_position The character position of the cursor
+ * @returns A Result containing the tooltip response or an error
+ */
+export async function tooltip(source_text: string, cursor_position: number) {
+    const inv = ResultAsync.fromThrowable(
+        invoke<TooltipResponse | null>,
+        (): InvokeError => ({ message: `failed to get tooltip at position ${cursor_position}` })
+    );
+    const result = await inv("tooltip", {
+        source_text,
+        cursor_position
     });
     return result;
 }
