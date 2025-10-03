@@ -1,11 +1,14 @@
 use std::path::PathBuf;
 
+use base64::engine::general_purpose;
+use base64::Engine;
 use typst::{
     diag::{FileResult, Severity},
     foundations::Bytes,
     layout::{Page, PagedDocument},
     WorldExt,
 };
+use typst_render::render;
 use typst_syntax::{FileId, VirtualPath};
 
 use crate::world::Typstworld;
@@ -30,6 +33,13 @@ pub struct TypstSourceDiagnostic {
     pub severity: TypstSeverity,
     pub message: String,
     pub hints: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct RenderResponse {
+    image: String,
+    width: u32,
+    height: u32,
 }
 
 pub struct TypstCompiler {
@@ -147,9 +157,6 @@ impl TypstCompiler {
         (pages, warnings)
     }
 
-    /// Returns the rendered images of the file
-    pub async fn render_file() -> Result<()> {}
-
     /// Returns the hover information of the location in the document
     pub async fn tooltip_hover_information() -> Result<()> {}
 
@@ -167,6 +174,26 @@ impl TypstCompiler {
 
     // Returns the completions of the file
     pub async fn get_completion() -> Result<()> {}
+}
+
+/// Returns the rendered images of the file
+pub async fn render_file(pages: Vec<Page>, scale: f32) -> Vec<RenderResponse> {
+    let mut rendered_pages = Vec::new();
+    pages.iter().enumerate().for_each(|idx, page| {
+        let frame_size = page.frame.size();
+        let bmp = render(&page, scale);
+        if let Ok(image) = bmp.encode_png() {
+            let image_base64 = general_purpose::STANDARD.encode(image);
+
+            rendered_pages.push(RenderResponse {
+                image: image_base64,
+                width: bmp.width(),
+                height: bmp.height(),
+            });
+        }
+    });
+
+    rendered_pages
 }
 
 fn diagnostic_position_from_source(
