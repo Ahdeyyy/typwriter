@@ -8,6 +8,9 @@ use typst::{
     layout::{Page, PagedDocument},
     WorldExt,
 };
+use typst_ide::{
+    autocomplete, jump_from_click, jump_from_cursor, tooltip, Completion, Jump, Tooltip,
+};
 use typst_render::render;
 use typst_syntax::{FileId, VirtualPath};
 
@@ -58,6 +61,13 @@ pub struct TypstCompiler {
 pub enum FileExportError {
     UnsupportedFormat,
     Failed,
+}
+
+#[derive(Serialize, Clone, Debug)]
+struct PreviewPosition {
+    page: usize,
+    x: f64,
+    y: f64,
 }
 
 impl TypstCompiler {
@@ -176,7 +186,26 @@ impl TypstCompiler {
 
     /// Returns the page and location of the preview / rendered images
     /// from the cursor position in the text
-    pub async fn get_preview_page_from_cursor() -> Result<()> {}
+    pub async fn get_preview_page_from_cursor(
+        self,
+        doc: &PagedDocument,
+        cursor: usize,
+    ) -> Result<PreviewPosition> {
+        let id = self.world.main();
+        let source = self.world.source(id).ok()?;
+        let pos = jump_from_cursor(doc, &source, cursor)
+            .get(0)
+            .unwrap_or_default();
+
+        let x = position.point.x.to_pt() * scale as f64;
+        let y = position.point.y.to_pt() * scale as f64;
+        let pos = PreviewPosition {
+            page: position.page.into(),
+            x,
+            y,
+        };
+        pos
+    }
 
     /// Exports the file to a supported format (Pdf, SVG, PNG)
     /// TODO: SVG, PNG
