@@ -52,6 +52,15 @@ pub enum ExportFormat {
     Png,
 }
 
+#[derive(Serialize, Clone, Debug)]
+#[serde(tag = "type")]
+pub enum DocumentClickResponse {
+    FileJump(FileJump), // move the editor cursor to the given byte position in the given file
+    PositionJump(PositionJump), // scroll the preview to the given page and point
+    UrlJump(String),    // open the given URL in the default browser
+    NoJump,
+}
+
 pub struct TypstCompiler {
     world: Typstworld,
     compilation_cache: Option<PagedDocument>,
@@ -237,10 +246,57 @@ impl TypstCompiler {
 
     /// Returns appropriate response for a click in the document
     /// it either returns a file jump, position jump, url or no jump
-    pub async fn handle_preview_page_click() -> Result<()> {}
+    pub async fn handle_preview_page_click(
+        self,
+        source_text: String,
+        doc: &PagedDocument,
+        frame: &Frame,
+        click: Point,
+    ) -> DocumentClickResponse {
+        let pos = jump_from_click(&self.typst_world, doc, frame, click);
+        match pos {
+            // move the editor cursor to the given byte position in the given file
+            Some(Jump::File(file_id, position)) => {
+                if let Some(file_path) = self.typst_world.get_file_path(file_id) {
+                    DocumentClickResponse::FileJump(FileJump {
+                        file: file_path,
+                        position: byte_position_to_char_position(&source_text, position),
+                    })
+                } else {
+                    DocumentClickResponse::NoJump
+                }
+            }
+            // scroll the preview to the given page and point
+            Some(Jump::Position(position)) => {
+                // println!(
+                //     "Jump to page: {} at point: ({}, {})",
+                //     position.page,
+                //     position.point.x.to_pt(),
+                //     position.point.y.to_pt()
+                // );
+
+                DocumentClickResponse::PositionJump(PositionJump {
+                    page: position.page.into(),
+                    x: position.point.x.to_pt(),
+                    y: position.point.y.to_pt(),
+                })
+            }
+            // open the given URL in the default browser
+            Some(Jump::Url(url)) => {
+                // println!("Jump to URL: {}", url.as_str());
+
+                DocumentClickResponse::UrlJump(url)
+            }
+
+            None => {
+                // println!("No jump target found at the clicked position.");
+                DocumentClickResponse::NoJump
+            }
+        }
+    }
 
     // Returns the completions of the file
-    pub async fn get_completion() -> Result<()> {}
+    pub async fn get_completions() -> Result<()> {}
 }
 
 /// Returns the rendered images of the file
