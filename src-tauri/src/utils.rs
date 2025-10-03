@@ -1,4 +1,6 @@
+use chrono::{Datelike, Timelike};
 use std::path::PathBuf;
+use typst::foundations::Datetime;
 
 pub fn pixel_to_point(x: f64, scale: f32) -> f64 {
     // Convert image pixels back to document points
@@ -39,4 +41,16 @@ pub fn get_all_files_in_path(root: &PathBuf) -> Vec<PathBuf> {
         files.push(root.clone());
     }
     files
+}
+/// Convert [`chrono::DateTime`] to [`Datetime`]
+/// gotten from typst cli source code
+pub fn convert_datetime<Tz: chrono::TimeZone>(date_time: chrono::DateTime<Tz>) -> Option<Datetime> {
+    Datetime::from_ymd_hms(
+        date_time.year(),
+        date_time.month().try_into().ok()?,
+        date_time.day().try_into().ok()?,
+        date_time.hour().try_into().ok()?,
+        date_time.minute().try_into().ok()?,
+        date_time.second().try_into().ok()?,
+    )
 }

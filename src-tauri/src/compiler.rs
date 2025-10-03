@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{f32::consts::E, path::PathBuf};
 
 use base64::engine::general_purpose;
 use base64::Engine;
@@ -42,9 +42,22 @@ pub struct RenderResponse {
     height: u32,
 }
 
+#[derive(Serialize, Clone, Debug)]
+pub enum ExportFormat {
+    Pdf,
+    Svg,
+    Png,
+}
+
 pub struct TypstCompiler {
     world: Typstworld,
     compilation_cache: Option<PagedDocument>,
+}
+
+#[derive(Serialize, Debug, Deserialize)]
+pub enum FileExportError {
+    UnsupportedFormat,
+    Failed,
 }
 
 impl TypstCompiler {
@@ -151,6 +164,7 @@ impl TypstCompiler {
                     };
                     warnings.push(diagnostic);
                 });
+                self.clear_cache();
             }
         }
 
@@ -166,11 +180,35 @@ impl TypstCompiler {
 
     /// Exports the file to a supported format (Pdf, SVG, PNG)
     /// TODO: SVG, PNG
-    pub async fn export_file() -> Result<()> {}
+    /// TODO: Add better error support
+    pub async fn export_file(
+        &mut self,
+        source_path: &PathBuf,
+        source: String,
+        export_path: &PathBuf,
+        format: Option<ExportFormat>,
+    ) -> Result<(), FileExportError> {
+        let format = match format {
+            Some(format) => format,
+            None => ExportFormat::Pdf,
+        };
+        let _ = self.compile_file(source_path, source);
+        match self.get_cache() {
+            Some(doc) => {
+                // use match statement when implementing the other formats
+                if format == ExportFormat::Pdf {
+                    export_pdf(&doc, export_path)
+                } else {
+                    Err(FileExportError::UnsupportedFormat)
+                }
+            }
+            None => Err(FileExportError::Failed),
+        }
+    }
 
     /// Returns appropriate response for a click in the document
     /// it either returns a file jump, position jump, url or no jump
-    pub async fn handle_preview_click() -> Result<()> {}
+    pub async fn handle_preview_page_click() -> Result<()> {}
 
     // Returns the completions of the file
     pub async fn get_completion() -> Result<()> {}
@@ -215,4 +253,56 @@ fn diagnostic_position_from_source(
         }
         Err(_) => DiagnosticPosition::default(),
     };
+}
+
+#[derive(Serialize, Debug, Deserialize)]
+struct GenErrorStruct {
+    message: String,
+    hints: String,
+}
+
+#[derive(Serialize, Debug, Deserialize)]
+enum PdfExportError {
+    /// error generating the pdf
+    GenError(Vec<GenErrorStruct>),
+    /// error writing the pdf to file
+    WriteError,
+}
+
+fn export_pdf(document: &PagedDocument, export_path: &PathBuf) -> Result<(), PdfExportError> {
+    let local_datetime = chrono::Local::now();
+
+    let timestamp = Timestamp::new_local(
+        utils::convert_datetime(local_datetime).ok_or(())?,
+        local_datetime.offset().local_minus_utc() / 60,
+    );
+
+    let standards = PdfStandards::default();
+
+    let options = PdfOptions {
+        ident: typst::foundations::Smart::Auto,
+        timestamp,
+        page_ranges: None,
+        standards,
+    };
+
+    let mut gen_errors = Vec::new();
+    let buffer = typst_pdf::pdf(document, &options);
+    match buffer {
+        Ok(buffer) => match std::fs::write(export_path, buffer) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(PdfExportError::WriteError),
+        },
+        Err(e) => {
+            e.iter().for_each(|e| {
+                gen_errors.push(GenErrorStruct {
+                    message: e.to_string(),
+                    hints: e.hints.join(", "),
+                });
+            });
+            Err(gen_errors)
+        }
+    }
+
+    Ok(())
 }
