@@ -14,6 +14,7 @@ use typst_ide::{
 use typst_render::render;
 use typst_syntax::{FileId, VirtualPath};
 
+use crate::utils::{byte_position_to_char_position, char_to_byte_position, convert_datetime};
 use crate::world::Typstworld;
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -334,7 +335,25 @@ impl TypstCompiler {
     }
 
     // Returns the completions of the file
-    pub async fn get_completions() -> Result<()> {}
+    pub async fn get_completions(
+        self,
+        source_text: String,
+        doc: &PagedDocument,
+        cursor: usize,
+        explicit: bool,
+    ) -> Option<CompletionResponse> {
+        let id = self.typst_world.main();
+        let source = self.typst_world.source(id).ok()?;
+        let completions = autocomplete(&self.typst_world, Some(doc), &source, cursor, explicit);
+        if let Some((position, completions)) = completions {
+            Some(CompletionResponse {
+                completions,
+                char_position: byte_position_to_char_position(&source_text, position),
+            })
+        } else {
+            None
+        }
+    }
 }
 
 /// Returns the rendered images of the file
@@ -396,7 +415,7 @@ fn export_pdf(document: &PagedDocument, export_path: &PathBuf) -> Result<(), Pdf
     let local_datetime = chrono::Local::now();
 
     let timestamp = Timestamp::new_local(
-        utils::convert_datetime(local_datetime).ok_or(())?,
+        convert_datetime(local_datetime).ok_or(())?,
         local_datetime.offset().local_minus_utc() / 60,
     );
 
