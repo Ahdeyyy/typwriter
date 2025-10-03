@@ -61,6 +61,19 @@ pub enum DocumentClickResponse {
     NoJump,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum TooltipKind {
+    Code,
+    Text,
+}
+
+#[derive(Serialize, Clone, Debug, Deserialize)]
+#[serde(tag = "type")]
+pub struct TooltipResponse {
+    pub kind: TooltipKind,
+    pub text: String,
+}
+
 pub struct TypstCompiler {
     world: Typstworld,
     compilation_cache: Option<PagedDocument>,
@@ -191,7 +204,32 @@ impl TypstCompiler {
     }
 
     /// Returns the hover information of the location in the document
-    pub async fn tooltip_hover_information() -> Result<()> {}
+    pub async fn tooltip_hover_information(
+        self,
+        source_text: String,
+        char_position: usize,
+    ) -> Option<TooltipResponse> {
+        let id = self.typst_world.main();
+        let source = self.typst_world.source(id).ok()?;
+        let cursor = char_to_byte_position(&source_text, char_position);
+        let document = self.get_compilation_cache();
+        let side = typst_syntax::Side::Before;
+        let info = tooltip(&self.typst_world, document, &source, cursor, side);
+        if let Some(tool) = info {
+            match tool {
+                Tooltip::Text(text) => Some(TooltipResponse {
+                    kind: TooltipKind::Text,
+                    text: text.as_str().to_string(),
+                }),
+                Tooltip::Code(text) => Some(TooltipResponse {
+                    kind: TooltipKind::Code,
+                    text: text.as_str().to_string(),
+                }),
+            }
+        } else {
+            None
+        }
+    }
 
     /// Returns the page and location of the preview / rendered images
     /// from the cursor position in the text
