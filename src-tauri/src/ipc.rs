@@ -1,76 +1,47 @@
-use crate::utils::{byte_position_to_char_position, char_to_byte_position, pixel_to_point};
-use crate::workspace::{self, DocumentClickResponseType, WorkSpace};
+use crate::app_state::AppState;
+use crate::compiler::{render_file, DocumentClickResponse, TypstCompiler};
+use crate::manager::ProjectManager;
+use crate::utils::{char_to_byte_position, pixel_to_point};
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, sync::Mutex};
-use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
+use std::path::PathBuf;
+use tauri::Emitter;
+use tauri::{path::BaseDirectory, AppHandle, Manager};
+// use tokio::sync::RwLock;
 use typst::layout::{Abs, Point};
-
-#[derive(Serialize, Clone, Debug)]
-struct PreviewPosition {
-    page: usize,
-    x: f64,
-    y: f64,
-}
 
 /// IPC command to compile a file with its source text
 /// Emits the compilation diagnostics and rendered pages back to the frontend
 /// Emits the position of the cursor in the compiled output
+/// TODO: Better errors
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn compile_file(
+pub async fn compile_file(
     app: AppHandle,
-    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+    state: tauri::State<'_, AppState>,
     source: String,
     file_path: String,
-    scale: f32,
     cursor_position: usize,
 ) -> Result<(), ()> {
-    let mut ws = state.lock().unwrap();
+    let mut compiler = state.compiler.write().await;
+    let path = PathBuf::from(file_path);
+    let byte_position = char_to_byte_position(&source, cursor_position);
 
-    match ws.as_mut() {
-        Some(workspace) => {
-            let path = PathBuf::from(file_path);
-            let byte_position = char_to_byte_position(&source, cursor_position);
-            match workspace.compile_file(&path, source.clone()) {
-                Ok((pages, diagnostics)) => {
-                    let _ = app.emit("source-diagnostics", diagnostics);
-                    let rendered_pages = workspace.render_current_pages(pages, scale);
-                    let _ = app.emit("rendered-pages", rendered_pages);
-                    if let Some(compilation_cache) = workspace.get_compilation_cache() {
-                        if let Some(position) = workspace.move_document_to_cursor(
-                            compilation_cache,
-                            source,
-                            byte_position,
-                        ) {
-                            let x = position.point.x.to_pt() * scale as f64;
-                            let y = position.point.y.to_pt() * scale as f64;
-                            let pos = PreviewPosition {
-                                page: position.page.into(),
-                                x,
-                                y,
-                            };
-                            let _ = app.emit("preview-position", pos);
-                        }
-                    }
-                }
-                Err(diagnostics) => {
-                    let _ = app.emit("source-diagnostics", diagnostics);
-                }
-            }
-            Ok(())
-        }
-        None => {
-            // No active workspace
-            return Err(());
+    let (pages, diagnostics) = compiler.compile_file(&path, source).await;
+
+    let rendered_pages = render_file(pages, state.render_scale).await;
+    let _ = app.emit("rendered-pages", rendered_pages);
+
+    if let Some(cache) = compiler.get_cache() {
+        let position = compiler
+            .get_preview_page_from_cursor(cache, byte_position, state.render_scale)
+            .await;
+        if let Some(position) = position {
+            let _ = app.emit("preview-position", position);
         }
     }
-}
 
-#[derive(Serialize, Clone, Debug)]
-struct DocumentPosition {
-    page: usize,
-    x: f64,
-    y: f64,
+    let _ = app.emit("source-diagnostics", diagnostics);
+    Ok(())
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -81,61 +52,42 @@ pub enum ClickError {
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn page_click(
-    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+pub async fn page_click(
+    state: tauri::State<'_, AppState>,
     page_number: usize,
     source_text: String,
     x: f64,
     y: f64,
-) -> Result<DocumentClickResponseType, ClickError> {
-    let workspace = state.lock().unwrap();
+) -> Result<DocumentClickResponse, ClickError> {
+    let compiler = state.compiler.read().await;
+    let page = compiler.get_cached_page(page_number);
 
-    println!("=== Page Click Debug ===");
-    println!("Page: {}, Raw coords: ({:.1}, {:.1})", page_number, x, y);
-    match workspace.as_ref() {
-        Some(ws) => {
-            let scale = ws.get_render_scale();
-            let page = ws.get_page_from_cache(page_number);
-            match page {
-                Some(doc) => {
-                    let frame = doc.frame.clone();
-                    let point = Point::new(
-                        Abs::pt(pixel_to_point(x, scale)),
-                        Abs::pt(pixel_to_point(y, scale)),
-                    );
-                    println!(
-                        "click point: ({}, {}) scale: {}",
-                        point.x.to_raw(),
-                        point.y.to_raw(),
-                        scale
-                    );
-                    match ws.get_compilation_cache() {
-                        Some(cache) => {
-                            return Ok(ws.document_click(source_text, cache, &frame, &point))
-                        }
-                        None => {
-                            println!("No compilation cache available");
-                            return Err(ClickError::NoCompilationCache);
-                        }
-                    }
-                }
-                None => {
-                    println!("No page found in cache for page number: {}", page_number);
-                    return Err(ClickError::NoPage);
-                }
+    match page {
+        Some(page) => {
+            let frame = page.frame.clone();
+            let point = Point::new(
+                Abs::pt(pixel_to_point(x, state.render_scale)),
+                Abs::pt(pixel_to_point(y, state.render_scale)),
+            );
+
+            if let Some(doc) = compiler.get_cache() {
+                let response = compiler
+                    .handle_preview_page_click(source_text, doc, &frame, point)
+                    .await;
+                Ok(response)
+            } else {
+                Err(ClickError::NoCompilationCache)
             }
         }
-        None => {
-            return Err(ClickError::NoWorkspace);
-        }
+        None => Err(ClickError::NoPage),
     }
 }
 
 // Open a workspace at the given path
 #[tauri::command(rename_all = "snake_case")]
-pub fn open_workspace(
+pub async fn open_workspace(
     app: AppHandle,
-    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+    state: tauri::State<'_, AppState>,
     path: String,
 ) -> Result<(), ()> {
     let resource_path = app
@@ -143,108 +95,79 @@ pub fn open_workspace(
         .resolve("fonts/", BaseDirectory::Resource)
         .unwrap_or_default();
 
-    let mut ws = state.lock().unwrap();
-    *ws = Some(WorkSpace::new(PathBuf::from(path), resource_path));
+    let root = PathBuf::from(path);
+    let mut project_manager = state.project.write().await;
+    let mut compiler = state.compiler.write().await;
+    *project_manager = ProjectManager::new(root.clone());
+    *compiler = TypstCompiler::new(root, resource_path);
     Ok(())
 }
 
 // Open a file in the currently active workspace
 #[tauri::command(rename_all = "snake_case")]
-pub fn open_file(
-    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
-    file_path: String,
-) -> Result<(), ()> {
-    let mut workspace = state.lock().unwrap();
-    match workspace.as_mut() {
-        Some(ws) => {
-            ws.set_active_file(PathBuf::from(file_path));
-            return Ok(());
-        }
-        None => {
-            return Err(());
-        }
-    }
+pub async fn open_file(state: tauri::State<'_, AppState>, file_path: String) -> Result<(), ()> {
+    let mut project_manager = state.project.write().await;
+
+    project_manager.set_active_file(PathBuf::from(file_path));
+
+    Ok(())
 }
 
-// TODO: add additional formats for the export function
+/// TODO: add additional formats for the export function
+/// TODO: error status for frontend
 #[tauri::command(rename_all = "snake_case")]
-pub fn export_to(
-    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+pub async fn export_to(
+    state: tauri::State<'_, AppState>,
     file_path: String,
     export_path: String,
     source: String,
 ) -> Result<(), ()> {
-    let mut workspace = state.lock().unwrap();
-    dbg!("=== EXPORT_FILE CALLED ===");
-    dbg!(export_path.clone());
-    match workspace.as_mut() {
-        Some(ws) => {
-            let _ = ws.export_file(
-                &PathBuf::from(file_path),
-                source,
-                &PathBuf::from(export_path.clone()),
-                crate::workspace::ExportFormat::Pdf,
-            );
-            dbg!("=== EXPORT_FILE SUCCEEDED ===");
-            dbg!(export_path.clone());
-        }
-        None => {
-            dbg!("=== EXPORT_FILE FAILED ===");
-            dbg!(export_path);
+    let mut compiler = state.compiler.write().await;
 
-            return Err(());
-        }
-    }
+    let _ = compiler.export_file(
+        &PathBuf::from(file_path),
+        source,
+        &PathBuf::from(export_path),
+        None,
+    );
+
     Ok(())
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn autocomplete(
-    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+pub async fn autocomplete(
+    state: tauri::State<'_, AppState>,
     source_text: String,
     cursor_position: usize,
     explicit: bool,
-) -> Result<Option<workspace::CompletionResponse>, ()> {
-    let workspace = state.lock().unwrap();
+) -> Result<Option<crate::compiler::CompletionResponse>, ()> {
+    let compiler = state.compiler.read().await;
+    let byte_position = char_to_byte_position(&source_text, cursor_position);
 
-    match workspace.as_ref() {
-        Some(ws) => {
-            let byte_position = char_to_byte_position(&source_text, cursor_position);
-
-            match ws.get_compilation_cache() {
-                Some(doc) => {
-                    let completions = ws.get_completion(source_text, doc, byte_position, explicit);
-                    Ok(completions)
-                }
-                None => {
-                    // No compilation cache available
-                    Ok(None)
-                }
-            }
+    match compiler.get_cache() {
+        Some(doc) => {
+            let completions = compiler
+                .get_completions(source_text, doc, byte_position, explicit)
+                .await;
+            Ok(completions)
         }
         None => {
-            // No active workspace
-            Err(())
+            // No compilation cache available
+            Ok(None)
         }
     }
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn tooltip(
-    state: tauri::State<'_, Mutex<Option<WorkSpace>>>,
+pub async fn tooltip(
+    state: tauri::State<'_, AppState>,
     source_text: String,
     cursor_position: usize,
-) -> Result<Option<workspace::TooltipResponse>, ()> {
-    let workspace = state.lock().unwrap();
+) -> Result<Option<crate::compiler::TooltipResponse>, ()> {
+    let compiler = state.compiler.read().await;
 
-    match workspace.as_ref() {
-        Some(ws) => {
-            let tooltip_info = ws.tooltip_info(source_text, cursor_position);
-            Ok(tooltip_info)
-        }
-        None => {
-            // No active workspace
-            Err(())
-        }
-    }
+    let tooltip_info = compiler
+        .tooltip_hover_information(source_text, cursor_position)
+        .await;
+    Ok(tooltip_info)
 }
