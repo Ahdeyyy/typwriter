@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { clsx, type ClassValue } from "clsx";
 import { useDebounce } from "runed";
 import { twMerge } from "tailwind-merge";
-import { app } from "./states.svelte";
+import { appState } from "./states.svelte";
 import { writeTextFile, readDir } from "@tauri-apps/plugin-fs";
 import { compile_file } from "./ipc";
 
@@ -109,17 +109,17 @@ export function joinFsPath(...parts: Array<string | undefined | null>): string {
 
 
 
-export const compile = async (text: string) => {
-	let res = await compile_file(text, app.currentFilePath, 1, app.view?.state.selection.ranges[0].from || 0);
+export const compile = async (file_path: string, text: string) => {
+	let res = await compile_file(text, file_path, 1, appState.view?.state.selection.ranges[0].from || 0);
 	if (res) {
 		console.error("[ERROR] - compiling file: ", res);
 	}
 }
 
-export const saveTextToFile = async (text: string) => {
+export const saveTextToFile = async (file_path: string, text: string) => {
 
 	try {
-		await writeTextFile(app.currentFilePath, text)
+		await writeTextFile(file_path, text)
 	} catch (e) {
 		console.error("[ERROR] - saving file: ", e)
 	}

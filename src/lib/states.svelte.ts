@@ -1,20 +1,20 @@
-import { readTextFile, readDir, lstat } from "@tauri-apps/plugin-fs";
+import { readTextFile, create } from "@tauri-apps/plugin-fs";
 import { buildFileTreeRel, getFileType, getFolderName, joinFsPath } from "./utils";
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from "@tauri-apps/api/core";
-import { EditorView, lineNumbers, type ViewUpdate } from "@codemirror/view";
+import { EditorView, lineNumbers, type ViewUpdate, hoverTooltip } from "@codemirror/view";
 import { yaml } from "@codemirror/lang-yaml"
 import { basicSetup } from "codemirror";
 import { Compartment, type Extension } from "@codemirror/state";
-import { espresso, tomorrow, dracula, boysAndGirls, coolGlow, amy, } from "thememirror";
-import { githubDark } from '@ddietr/codemirror-themes/github-dark'
-import { aura } from '@ddietr/codemirror-themes/aura'
-import { tokyoNight } from '@ddietr/codemirror-themes/tokyo-night'
-import { tokyoNightDay } from "@ddietr/codemirror-themes/tokyo-night-day"
+import { ayuLight, } from "thememirror";
+
 import { createScrollbarTheme } from "./utils"
 import type { DiagnosticResponse } from "./types"
 import { linter, type Diagnostic } from "@codemirror/lint";
-import { typst } from "codemirror-lang-typst"
+import { typst, TypstHighlightSytle } from "codemirror-lang-typst"
+import { CompletionContext, type CompletionResult, autocompletion } from "@codemirror/autocomplete"
+import { autocomplete, tooltip as getTooltip } from "./ipc"
+import { syntaxHighlighting } from "@codemirror/language";
 
 
 // const recent = new RuneStore('recent_workspaces', { workspaces: [] as { name: string, path: string }[] }, {
@@ -35,8 +35,8 @@ function flattenLineAndColumn(line: number, column: number): number {
     // Try to use the active EditorView's document (accurate and accounts for CRLF)
     try {
         // `app` is exported later in this module; accessing it here at call-time is fine
-        if (typeof app !== "undefined" && app.view && app.view.state) {
-            const doc = app.view.state.doc;
+        if (typeof appState !== "undefined" && appState.view && appState.view.state) {
+            const doc = appState.view.state.doc;
             const totalLines = doc.lines;
             const useLine = clamp(l, 1, totalLines);
             const lineObj = doc.line(useLine);
@@ -50,7 +50,7 @@ function flattenLineAndColumn(line: number, column: number): number {
     }
 
     // Fallback: compute offset from the plain text buffer (`app.text`).
-    const text = (typeof app !== "undefined" && app.text != null) ? String(app.text) : "";
+    const text = (typeof appState !== "undefined" && appState.text != null) ? String(appState.text) : "";
     const lines = text.split(/\r\n|\r|\n/);
     const useLine = clamp(l, 1, Math.max(1, lines.length));
     const lineStr = lines[useLine - 1] || "";
@@ -73,6 +73,9 @@ class App {
     workspacePath = $state("")
 
     workspaceName = $state("")
+
+    // Recently opened workspaces (most recent first)
+    recentWorkspaces = $state([] as { name: string; path: string }[])
 
     // The entries (files and folders) in the directory
     entries = $state<string[] | any[] | string>([])
@@ -102,6 +105,8 @@ class App {
 
     diagnostics = $state([] as Array<DiagnosticResponse>)
 
+    completions = $state<null | Awaited<ReturnType<typeof typst_completion>>>(null)
+
     constructor() {
 
     }
@@ -113,7 +118,7 @@ class App {
                 diagnostics.push({
                     from: flattenLineAndColumn(diag.location.line, diag.location.column),
                     to: flattenLineAndColumn(diag.location.end_line, diag.location.end_column),
-                    message: diag.message,
+                    message: ` ${diag.message} \n hint: ${diag.hints.join("\n")}`,
                     severity: diag.severity.toLocaleLowerCase() as Diagnostic["severity"],
                 })
             }
@@ -142,9 +147,41 @@ class App {
             const tree = await buildFileTreeRel(folder)
             this.entries = tree
 
+            // Maintain recent list (remove existing then unshift)
+            this.recentWorkspaces = [
+                { name, path: folder },
+                ...this.recentWorkspaces.filter(w => w.path !== folder)
+            ]
+
             return true
         }
         return false
+    }
+
+    /**
+     * Open a workspace from the recent list without prompting the dialog
+     */
+    async openRecentWorkspace(path: string) {
+        if (!path) return;
+        const name = getFolderName(path);
+        try {
+            await invoke('open_workspace', { path });
+        } catch (e) {
+            console.error('[ERROR] - opening recent workspace: ', e);
+        }
+        this.workspacePath = path;
+        this.workspaceName = name;
+        try {
+            const tree = await buildFileTreeRel(path);
+            this.entries = tree;
+        } catch (e) {
+            console.error('[ERROR] - building file tree for recent workspace: ', e);
+        }
+        // Reorder recent list
+        this.recentWorkspaces = [
+            { name, path },
+            ...this.recentWorkspaces.filter(w => w.path !== path)
+        ];
     }
 
 
@@ -169,7 +206,7 @@ class App {
         // console.log(this.currentFilePath)
         try {
             await invoke('open_file', {
-                filePath: path
+                file_path: path
             })
         } catch (e) {
             console.error("[ERROR] - opening file: ", e)
@@ -205,7 +242,7 @@ class App {
             this.view.dispatch(tr)
 
             const fixedHeight = EditorView.theme({
-                "&": { height: "94svh" },
+                "&": { height: "95svh" },
                 ".cm-scroller": { overflow: "auto" },
             })
 
@@ -217,7 +254,7 @@ class App {
             const extensions: Extension[] = []
 
             extensions.push(lineNumbers())
-            extensions.push(tokyoNight)
+            extensions.push(ayuLight)
             extensions.push(EditorView.lineWrapping)
             extensions.push(basicSetup)
             extensions.push(fixedHeight)
@@ -229,20 +266,166 @@ class App {
             }
 
             if (getFileType(file) === "typ") {
-                extensions.push(typst())
+                const typstExtension = typst()
+
+                extensions.push(
+                    typstExtension
+                )
                 extensions.push(this.typstLinter())
+                extensions.push(syntaxHighlighting(TypstHighlightSytle))
+                // Add custom autocomplete for Typst
+                extensions.push(autocompletion({
+                    override: [typst_completion],
+                    activateOnTyping: true,
+                }))
+                // Add hover tooltips for Typst
+                extensions.push(hoverTooltip(typst_hover_tooltip))
             }
 
             this.view.dispatch({
                 effects: this.editorExtensions.reconfigure(extensions)
             })
 
-
         }
 
 
         return false;
     }
+
+    // Create a new file in the current workspace
+    // TODO: add a dialog to enter the file name
+    async createNewFile() {
+        if (!this.workspacePath) return;
+        const adj = ['brave', 'cowardly', 'eager', 'fancy', 'gentle', 'happy', 'jolly', 'kind', 'lucky', 'merry', 'nice', 'proud', 'silly', 'witty', 'zealous']
+        const noun = ['apple', 'banana', 'carrot', 'date', 'eggplant', 'fig', 'grape', 'honeydew', 'kiwi', 'lemon', 'mango', 'nectarine', 'orange', 'papaya', 'quince']
+        const randAdj = adj[Math.floor(Math.random() * adj.length)]
+        const randNoun = noun[Math.floor(Math.random() * noun.length)]
+        const randNum = Math.floor(Math.random() * 1000)
+        const fileName = `${randAdj}_${randNoun}_${randNum}.typ`
+        const path = joinFsPath(this.workspacePath, fileName)
+        const file = await create(path);
+        if (file) {
+            // Refresh the file tree
+            const tree = await buildFileTreeRel(this.workspacePath)
+            this.entries = tree
+            // Open the newly created file
+            await this.openFile(fileName)
+        }
+    }
+
+}
+
+/**
+ * Hover tooltip function for Typst
+ * Shows documentation and type information when hovering over code
+ */
+async function typst_hover_tooltip(view: EditorView, pos: number, side: -1 | 1) {
+    const sourceText = view.state.doc.toString();
+
+    try {
+        const result = await getTooltip(sourceText, pos);
+
+        if (result.isErr()) {
+            console.error("Failed to get tooltip:", result.error);
+            return null;
+        }
+
+        const response = result.value;
+
+        // If no tooltip data returned, return null
+        if (!response) {
+            return null;
+        }
+
+        // Create the tooltip DOM element based on the tooltip kind
+        const dom = document.createElement("div");
+        dom.className = "cm-tooltip-typst";
+
+        if (response.kind === "Code") {
+            // For code tooltips, use a code block style
+            const pre = document.createElement("pre");
+            pre.textContent = response.text;
+            pre.style.margin = "0";
+            pre.style.padding = "4px 8px";
+            pre.style.fontFamily = "monospace";
+            dom.appendChild(pre);
+        } else {
+            // For text tooltips, use regular text
+            const p = document.createElement("p");
+            p.textContent = response.text;
+            p.style.margin = "0";
+            p.style.padding = "4px 8px";
+            dom.appendChild(p);
+        }
+
+        return {
+            pos,
+            end: pos,
+            above: true,
+            create: () => ({ dom })
+        };
+    } catch (error) {
+        console.error("Error in typst_hover_tooltip:", error);
+        return null;
+    }
+}
+
+
+async function typst_completion(context: CompletionContext): Promise<CompletionResult | null> {
+    // Get the document text and cursor position
+    const sourceText = context.state.doc.toString();
+    const cursorPosition = context.pos;
+
+    // Check if this is an explicit completion request (e.g., Ctrl+Space)
+    const explicit = context.explicit;
+    console.log("getting completion")
+
+    const result = await autocomplete(sourceText, cursorPosition, explicit)
+
+    if (result.isErr()) {
+        console.error("Failed to get completions:", result.error);
+        return null;
+    }
+
+    const response = result.value;
+    console.log(response);
+
+    // If no completions returned, return null
+    if (!response || response.completions.length === 0) {
+        return null;
+    }
+
+    // Map Typst completion kinds to CodeMirror completion types
+    const kindMap: Record<string, string> = {
+        "Syntax": "keyword",
+        "Func": "function",
+        "Type": "type",
+        "Param": "variable",
+        "Constant": "constant",
+        "Symbol": "text",
+        "Module": "namespace",
+        "File": "text",
+        "Folder": "text",
+    };
+
+    // Convert Typst completions to CodeMirror completion format
+    const options = response.completions.map(comp => ({
+
+        label: comp.label,
+        // Use apply if available, otherwise fall back to label
+        apply: comp.apply ?? comp.label,
+        type: kindMap[comp.kind] || "text",
+        detail: comp.detail ?? undefined,
+        // Boost score for more relevant completions
+        boost: comp.kind === "Func" ? 1 : 0,
+    }));
+
+    return {
+        from: response.char_position,
+        options: options,
+        // Optionally filter completions based on what user has typed
+        filter: true,
+    };
 
 }
 
@@ -253,4 +436,4 @@ class App {
 // when compilation is done the pages of the document is sent to the preview handler
 // when compilation is done the diagnostic are sent to the handler
 
-export const app = new App()
+export const appState = new App()

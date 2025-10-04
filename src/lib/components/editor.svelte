@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { app } from "@/states.svelte"
+  import { appState } from "@/states.svelte"
   import { saveTextToFile, compile } from "@/utils"
   import { EditorState } from "@codemirror/state"
   import { EditorView } from "@codemirror/view"
@@ -8,27 +8,27 @@
 
   let editor: HTMLElement
 
-  const debouncedCompile = useDebounce(async (text: string) => {
-    await compile(text)
+  const debouncedCompile = useDebounce(async (path: string, text: string) => {
+    await compile(path, text)
   }, 500)
-  const debouncedSave = useDebounce(async (text: string) => {
-    await saveTextToFile(text)
+  const debouncedSave = useDebounce(async (path: string, text: string) => {
+    await saveTextToFile(path, text)
   }, 1000)
 
   onMount(() => {
     let view = $state<EditorView>(
       new EditorView({
         state: EditorState.create({
-          doc: app.text,
+          doc: appState.text,
           extensions: [
-            app.editorExtensions.of([]),
+            appState.editorExtensions.of([]),
             EditorView.updateListener.of(async (v) => {
               if (v.docChanged) {
                 const text = v.state.doc.toString()
-                if (app.canCompileFile) {
-                  await debouncedCompile(text)
+                if (appState.canCompileFile) {
+                  await debouncedCompile(appState.currentFilePath, text)
                 }
-                await debouncedSave(text)
+                await debouncedSave(appState.currentFilePath, text)
               }
             }),
           ],
@@ -36,7 +36,7 @@
         parent: editor,
       })
     )
-    app.loadEditor(view)
+    appState.loadEditor(view)
   })
 </script>
 

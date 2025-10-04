@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ScrollArea } from "$lib/components/ui/scroll-area"
-  import { app } from "@/states.svelte"
+  import { appState } from "@/states.svelte"
   import { listen } from "@tauri-apps/api/event"
   import { onMount } from "svelte"
   type Props = {
@@ -137,8 +137,8 @@
   })
 </script>
 
-<ScrollArea orientation="both" class="h-95svh w-full" bind:ref={scrollAreaRef}>
-  {#if app.canCompileFile}
+<ScrollArea orientation="both" class="w-full h-svh" bind:ref={scrollAreaRef}>
+  {#if appState.canCompileFile}
     <div class="flex flex-col gap-6">
       {#each pages as page, index}
         <!-- svelte-ignore a11y_click_events_have_key_events -->

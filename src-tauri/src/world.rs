@@ -60,6 +60,9 @@ pub struct Typstworld {
     file_paths: Mutex<HashMap<FileId, PathBuf>>,
     /// Manages the storage of downloaded packages.
     package_storage: PackageStorage,
+
+    // map for files paths and their file_ids
+    id_path_map: Mutex<HashMap<PathBuf, FileId>>,
 }
 
 impl Typstworld {
@@ -89,12 +92,19 @@ impl Typstworld {
             files: Mutex::new(HashMap::new()),
             package_storage,
             file_paths: Mutex::new(HashMap::new()),
+            id_path_map: Mutex::new(HashMap::new()),
         }
     }
 
     /// Resets the world's cache.
     pub fn reset(&mut self) {
         self.files.lock().unwrap().clear();
+    }
+
+    pub fn update_source(&mut self, id: FileId, source: String) -> FileResult<()> {
+        let bytes = Bytes::new(source.into_bytes());
+        self.files.lock().unwrap().insert(id, Ok(bytes));
+        Ok(())
     }
 
     pub fn set_main_source(&mut self, name: &str, source: String) -> FileId {
@@ -108,12 +118,25 @@ impl Typstworld {
         self.main
     }
 
+    pub fn set_main_source_with_id(&mut self, id: FileId, source: String) {
+        self.main = id;
+        self.files
+            .lock()
+            .unwrap()
+            .insert(self.main, Ok(Bytes::new(source.into_bytes())));
+    }
+
     pub fn add_file(&mut self, name: &str, path: PathBuf, source: Bytes) -> FileId {
         let vpath = VirtualPath::new(name);
         let id = FileId::new(None, vpath);
         self.files.lock().unwrap().insert(id, Ok(source));
-        self.file_paths.lock().unwrap().insert(id, path);
+        self.file_paths.lock().unwrap().insert(id, path.clone());
+        self.id_path_map.lock().unwrap().insert(path, id);
         id
+    }
+
+    pub fn get_file_id(&self, path: &PathBuf) -> Option<FileId> {
+        self.id_path_map.lock().unwrap().get(path).cloned()
     }
 }
 
