@@ -18,49 +18,26 @@
   })
 </script>
 
-<Sheet.Root bind:open={appState.isDiagnosticsOpen}>
-  <Sheet.Trigger>
-    {#snippet child(props)}
-      <Button
-        onclick={() =>
-          (appState.isDiagnosticsOpen = !appState.isDiagnosticsOpen)}
-        size="icon"
-        class="size-7 relative"
-        variant="ghost"
-        {...props}
-      >
-        {#if appState.newDiagnostics > 0}
-          <Badge
-            variant="destructive"
-            class="absolute top-0 right-0 h-3 w-3 rounded-full p-1.5"
-            >{appState.newDiagnostics}</Badge
-          >
-        {/if}
-        <LucidePanelBottom />
-      </Button>
-    {/snippet}
-  </Sheet.Trigger>
-  <Sheet.Content class="h-1/2" side="bottom">
-    <Sheet.Header>
-      <Sheet.Title>Diagnostic</Sheet.Title>
-      <Sheet.Description>
-        {#if appState.diagnostics.length === 0}
-          <div class="p-2">No issues found. Your document is clean!</div>
-        {:else}
-          <div class="p-2 border-t-1 border-black max-h-40 overflow-y-auto">
-            <ScrollArea orientation="vertical">
-              <ol class=" list-inside space-y-2">
-                {#each appState.diagnostics as diag (diag.message)}
-                  {@render diagnostic(diag)}
-                {/each}
-              </ol>
-            </ScrollArea>
-          </div>
-        {/if}
-      </Sheet.Description>
-    </Sheet.Header>
-  </Sheet.Content>
-</Sheet.Root>
+<article class="h-1/2">
+  <div>
+    <h3>Diagnostic</h3>
+    <div>
+      {#if appState.diagnostics.length === 0}
+        <div class="p-2">No issues found. Your document is clean!</div>
+      {:else}
+        <div class="p-2 border-t-1 border-black max-h-40 overflow-y-auto">
+          <ScrollArea orientation="vertical">
+            <ol class=" list-inside space-y-2">
+              {#each appState.diagnostics as diag (diag.message)}
+                {@render diagnostic(diag)}
+              {/each}
+            </ol>
+          </ScrollArea>
+        </div>
+      {/if}
+    </div>
+  </div>
+</article>
 
 {#snippet diagnostic(diag: DiagnosticResponse)}
   <li>

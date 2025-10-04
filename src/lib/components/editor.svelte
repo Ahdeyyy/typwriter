@@ -8,11 +8,11 @@
 
   let editor: HTMLElement
 
-  const debouncedCompile = useDebounce(async (text: string) => {
-    await compile(text)
+  const debouncedCompile = useDebounce(async (path: string, text: string) => {
+    await compile(path, text)
   }, 500)
-  const debouncedSave = useDebounce(async (text: string) => {
-    await saveTextToFile(text)
+  const debouncedSave = useDebounce(async (path: string, text: string) => {
+    await saveTextToFile(path, text)
   }, 1000)
 
   onMount(() => {
@@ -26,9 +26,9 @@
               if (v.docChanged) {
                 const text = v.state.doc.toString()
                 if (appState.canCompileFile) {
-                  await debouncedCompile(text)
+                  await debouncedCompile(appState.currentFilePath, text)
                 }
-                await debouncedSave(text)
+                await debouncedSave(appState.currentFilePath, text)
               }
             }),
           ],

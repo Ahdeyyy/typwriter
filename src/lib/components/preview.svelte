@@ -137,7 +137,7 @@
   })
 </script>
 
-<ScrollArea orientation="both" class="w-full px-4" bind:ref={scrollAreaRef}>
+<ScrollArea orientation="both" class="w-full h-svh" bind:ref={scrollAreaRef}>
   {#if appState.canCompileFile}
     <div class="flex flex-col gap-6">
       {#each pages as page, index}

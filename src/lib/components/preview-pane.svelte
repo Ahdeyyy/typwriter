@@ -10,8 +10,6 @@
   import { page_click } from "@/ipc"
   import { openUrl } from "@tauri-apps/plugin-opener"
 
-  let { open = $bindable(false) }: { open?: boolean } = $props()
-
   function pxToPt(pixels: number): number {
     const DPI_ASSUMPTION = 96 // Standard DPI for CSS pixels
     const devicePixelRatio = window.devicePixelRatio || 1
@@ -26,7 +24,7 @@
 
   const keys = new PressedKeys()
   keys.onKeys(["Control", "k"], () => {
-    open = !open
+    appState.isPreviewPaneOpen = !appState.isPreviewPaneOpen
   })
 
   let preview_images = $state<HTMLImageElement[]>([])
@@ -59,42 +57,39 @@
   })
 </script>
 
-<!-- Animate when the sidebar opens -->
-{#if open}
-  <div class="border-l-2">
-    <Preview
-      pages={preview_images || []}
-      onclick={async (event, index, x, y) => {
-        let result = await page_click(index, appState.text, x, y)
+<div class="px-4">
+  <Preview
+    pages={preview_images || []}
+    onclick={async (event, index, x, y) => {
+      let result = await page_click(index, appState.text, x, y)
 
-        if (result.isErr()) {
-          console.error(result.error)
-          return
-        }
+      if (result.isErr()) {
+        console.error(result.error)
+        return
+      }
 
-        switch (result.value.type) {
-          case "FileJump":
-            appState.moveEditorCursor(result.value.position)
-            console.log(result.value)
-            break
-          case "PositionJump":
-            emit("preview-position", {
-              page: result.value.page,
-              x: result.value.x,
-              y: result.value.y,
-            })
-            console.log(result.value)
-            break
-          case "UrlJump":
-            openUrl(result.value.url)
-            break
-          case "NoJump":
-            console.log("no jump")
-            break
-        }
+      switch (result.value.type) {
+        case "FileJump":
+          appState.moveEditorCursor(result.value.position)
+          console.log(result.value)
+          break
+        case "PositionJump":
+          emit("preview-position", {
+            page: result.value.page,
+            x: result.value.x,
+            y: result.value.y,
+          })
+          console.log(result.value)
+          break
+        case "UrlJump":
+          openUrl(result.value.url)
+          break
+        case "NoJump":
+          console.log("no jump")
+          break
+      }
 
-        console.log("Result from page_click:", result)
-      }}
-    />
-  </div>
-{/if}
+      console.log("Result from page_click:", result)
+    }}
+  />
+</div>
