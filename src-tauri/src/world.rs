@@ -118,6 +118,14 @@ impl Typstworld {
         self.main
     }
 
+    pub fn set_main_source_with_id(&mut self, id: FileId, source: String) {
+        self.main = id;
+        self.files
+            .lock()
+            .unwrap()
+            .insert(self.main, Ok(Bytes::new(source.into_bytes())));
+    }
+
     pub fn add_file(&mut self, name: &str, path: PathBuf, source: Bytes) -> FileId {
         let vpath = VirtualPath::new(name);
         let id = FileId::new(None, vpath);

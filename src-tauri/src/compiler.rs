@@ -181,7 +181,8 @@ impl TypstCompiler {
 
         // NOTE: might error?
         let _ = self.world.update_source(id, source.clone());
-        self.world.set_main_source(name, source);
+        // self.world.reset();
+        self.world.set_main_source_with_id(id, source);
 
         let mut pages = Vec::new();
         let warned_compilation_result = typst::compile::<PagedDocument>(&self.world);

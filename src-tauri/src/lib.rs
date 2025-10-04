@@ -29,7 +29,7 @@ pub fn run() {
                 .unwrap_or_default();
             let default_root = app
                 .path()
-                .resolve("./", BaseDirectory::Home)
+                .resolve("./", BaseDirectory::AppData)
                 .unwrap_or_default();
             app.manage(AppState::new(default_root, resource_path));
 
