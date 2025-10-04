@@ -7,6 +7,7 @@ import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
+
   preprocess: vitePreprocess(),
   kit: {
     alias: {
@@ -17,6 +18,9 @@ const config = {
       fallback: "index.html",
     }),
   },
+  vitePlugin: {
+    inspector: true
+  }
 };
 
 export default config;

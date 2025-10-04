@@ -109,17 +109,17 @@ export function joinFsPath(...parts: Array<string | undefined | null>): string {
 
 
 
-export const compile = async (text: string) => {
-	let res = await compile_file(text, appState.currentFilePath, 1, appState.view?.state.selection.ranges[0].from || 0);
+export const compile = async (file_path: string, text: string) => {
+	let res = await compile_file(text, file_path, 1, appState.view?.state.selection.ranges[0].from || 0);
 	if (res) {
 		console.error("[ERROR] - compiling file: ", res);
 	}
 }
 
-export const saveTextToFile = async (text: string) => {
+export const saveTextToFile = async (file_path: string, text: string) => {
 
 	try {
-		await writeTextFile(appState.currentFilePath, text)
+		await writeTextFile(file_path, text)
 	} catch (e) {
 		console.error("[ERROR] - saving file: ", e)
 	}
