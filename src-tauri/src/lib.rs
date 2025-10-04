@@ -1,11 +1,14 @@
+pub mod app_state;
+pub mod compiler;
 mod ipc;
+pub mod manager;
 pub mod utils;
-mod workspace;
+
 pub mod world;
+use app_state::AppState;
 use ipc::{autocomplete, compile_file, export_to, open_file, open_workspace, page_click, tooltip};
-use std::sync::Mutex;
-use tauri::Manager;
-use workspace::WorkSpace;
+
+use tauri::{path::BaseDirectory, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -20,7 +23,15 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_svelte::init())
         .setup(move |app| {
-            app.manage(Mutex::new(None::<WorkSpace>));
+            let resource_path = app
+                .path()
+                .resolve("fonts/", BaseDirectory::Resource)
+                .unwrap_or_default();
+            let default_root = app
+                .path()
+                .resolve("./", BaseDirectory::Home)
+                .unwrap_or_default();
+            app.manage(AppState::new(default_root, resource_path));
 
             Ok(())
         })

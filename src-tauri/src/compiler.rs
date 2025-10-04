@@ -1,21 +1,23 @@
-use std::{f32::consts::E, path::PathBuf};
+use std::path::PathBuf;
 
 use base64::engine::general_purpose;
 use base64::Engine;
 use typst::{
     diag::{FileResult, Severity},
     foundations::Bytes,
-    layout::{Page, PagedDocument},
-    WorldExt,
+    layout::{Abs, Frame, Page, PagedDocument, Point, Position},
+    World, WorldExt,
 };
-use typst_ide::{
-    autocomplete, jump_from_click, jump_from_cursor, tooltip, Completion, Jump, Tooltip,
-};
+use typst_ide::{autocomplete, jump_from_click, jump_from_cursor, tooltip, Jump, Tooltip};
+use typst_pdf::{PdfOptions, PdfStandards, Timestamp};
+
 use typst_render::render;
-use typst_syntax::{FileId, VirtualPath};
+use typst_syntax::{FileId, Source, VirtualPath};
 
 use crate::utils::{byte_position_to_char_position, char_to_byte_position, convert_datetime};
 use crate::world::Typstworld;
+use serde::{Deserialize, Serialize};
+use std::ops::Range;
 
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct DiagnosticPosition {
@@ -46,11 +48,24 @@ pub struct RenderResponse {
     height: u32,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, PartialEq)]
 pub enum ExportFormat {
     Pdf,
     Svg,
     Png,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct FileJump {
+    pub file: PathBuf,
+    pub position: usize,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct PositionJump {
+    pub page: usize,
+    pub x: f64,
+    pub y: f64,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -75,6 +90,12 @@ pub struct TooltipResponse {
     pub text: String,
 }
 
+#[derive(Serialize, Clone, Debug)]
+pub struct CompletionResponse {
+    pub char_position: usize,
+    pub completions: Vec<typst_ide::Completion>,
+}
+
 pub struct TypstCompiler {
     world: Typstworld,
     compilation_cache: Option<PagedDocument>,
@@ -87,7 +108,7 @@ pub enum FileExportError {
 }
 
 #[derive(Serialize, Clone, Debug)]
-struct PreviewPosition {
+pub struct PreviewPosition {
     page: usize,
     x: f64,
     y: f64,
@@ -95,7 +116,7 @@ struct PreviewPosition {
 
 impl TypstCompiler {
     pub fn new(root: PathBuf, font_dir: PathBuf) -> Self {
-        let entries = get_all_files_in_path(root);
+        let entries = crate::utils::get_all_files_in_path(&root);
         let mut typst_world = Typstworld::new(root.clone(), font_dir);
 
         // load the files into typst world
@@ -118,12 +139,22 @@ impl TypstCompiler {
         self.compilation_cache = None;
     }
 
-    pub fn get_cache(self) -> Option<PagedDocument> {
-        self.compilation_cache
+    pub fn get_cache(&self) -> Option<&PagedDocument> {
+        self.compilation_cache.as_ref()
+    }
+
+    pub fn get_cached_page(&self, page_number: usize) -> Option<&Page> {
+        if let Some(ref doc) = self.compilation_cache {
+            if page_number < doc.pages.len() {
+                return Some(&doc.pages[page_number]);
+            }
+        }
+        None
     }
 
     pub fn add_file_to_world(&mut self, path: PathBuf, source: Bytes) {
-        let name = path
+        let binding = path.clone();
+        let name = binding
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("untitled");
@@ -147,17 +178,17 @@ impl TypstCompiler {
                 FileId::new(None, vpath)
             }
         };
-        self.world.update_source(id, source);
+
+        // NOTE: might error?
+        let _ = self.world.update_source(id, source.clone());
         self.world.set_main_source(name, source);
 
-        let pages = Vec::new();
+        let mut pages = Vec::new();
         let warned_compilation_result = typst::compile::<PagedDocument>(&self.world);
-        let warnings = Vec::new();
+        let mut warnings = Vec::new();
         warned_compilation_result.warnings.iter().for_each(|w| {
-            let diagnostic_range = self.world.range(w.span()).unwrap_or_default();
-            let diagnostic_source = self
-                .world
-                .source(w.span().id().unwrap_or(self.world.main()));
+            let diagnostic_range = self.world.range(w.span).unwrap_or_default();
+            let diagnostic_source = self.world.source(w.span.id().unwrap_or(self.world.main()));
             let position = diagnostic_position_from_source(diagnostic_source, diagnostic_range);
 
             let diagnostic = TypstSourceDiagnostic {
@@ -174,15 +205,14 @@ impl TypstCompiler {
 
         match warned_compilation_result.output {
             Ok(doc) => {
-                self.compilation_cache = Some(doc);
-                pages = doc.pages;
+                pages = doc.pages.clone();
+                self.compilation_cache = Some(doc.clone());
             }
             Err(diagnostic_errors) => {
                 diagnostic_errors.iter().for_each(|w| {
-                    let diagnostic_range = self.world.range(w.span()).unwrap_or_default();
-                    let diagnostic_source = self
-                        .world
-                        .source(w.span().id().unwrap_or(self.world.main()));
+                    let diagnostic_range = self.world.range(w.span).unwrap_or_default();
+                    let diagnostic_source =
+                        self.world.source(w.span.id().unwrap_or(self.world.main()));
                     let position =
                         diagnostic_position_from_source(diagnostic_source, diagnostic_range);
 
@@ -206,16 +236,16 @@ impl TypstCompiler {
 
     /// Returns the hover information of the location in the document
     pub async fn tooltip_hover_information(
-        self,
+        &self,
         source_text: String,
         char_position: usize,
     ) -> Option<TooltipResponse> {
-        let id = self.typst_world.main();
-        let source = self.typst_world.source(id).ok()?;
+        let id = self.world.main();
+        let source = self.world.source(id).ok()?;
         let cursor = char_to_byte_position(&source_text, char_position);
-        let document = self.get_compilation_cache();
+        let document = self.compilation_cache.clone();
         let side = typst_syntax::Side::Before;
-        let info = tooltip(&self.typst_world, document, &source, cursor, side);
+        let info = tooltip(&self.world, document.as_ref(), &source, cursor, side);
         if let Some(tool) = info {
             match tool {
                 Tooltip::Text(text) => Some(TooltipResponse {
@@ -235,15 +265,23 @@ impl TypstCompiler {
     /// Returns the page and location of the preview / rendered images
     /// from the cursor position in the text
     pub async fn get_preview_page_from_cursor(
-        self,
+        &self,
         doc: &PagedDocument,
         cursor: usize,
-    ) -> Result<PreviewPosition> {
+        scale: f32,
+    ) -> Option<PreviewPosition> {
         let id = self.world.main();
         let source = self.world.source(id).ok()?;
-        let pos = jump_from_cursor(doc, &source, cursor)
+        let position = jump_from_cursor(doc, &source, cursor)
             .get(0)
-            .unwrap_or_default();
+            .unwrap_or(&Position {
+                page: std::num::NonZero::new(1).unwrap(),
+                point: Point {
+                    x: Abs::raw(0.0),
+                    y: Abs::raw(0.0),
+                },
+            })
+            .clone();
 
         let x = position.point.x.to_pt() * scale as f64;
         let y = position.point.y.to_pt() * scale as f64;
@@ -252,7 +290,7 @@ impl TypstCompiler {
             x,
             y,
         };
-        pos
+        Some(pos)
     }
 
     /// Exports the file to a supported format (Pdf, SVG, PNG)
@@ -274,7 +312,7 @@ impl TypstCompiler {
             Some(doc) => {
                 // use match statement when implementing the other formats
                 if format == ExportFormat::Pdf {
-                    export_pdf(&doc, export_path)
+                    export_pdf(&doc, export_path).map_err(|_| FileExportError::Failed)
                 } else {
                     Err(FileExportError::UnsupportedFormat)
                 }
@@ -286,17 +324,17 @@ impl TypstCompiler {
     /// Returns appropriate response for a click in the document
     /// it either returns a file jump, position jump, url or no jump
     pub async fn handle_preview_page_click(
-        self,
+        &self,
         source_text: String,
         doc: &PagedDocument,
         frame: &Frame,
         click: Point,
     ) -> DocumentClickResponse {
-        let pos = jump_from_click(&self.typst_world, doc, frame, click);
+        let pos = jump_from_click(&self.world, doc, frame, click);
         match pos {
             // move the editor cursor to the given byte position in the given file
             Some(Jump::File(file_id, position)) => {
-                if let Some(file_path) = self.typst_world.get_file_path(file_id) {
+                if let Some(file_path) = self.world.get_file_path(file_id) {
                     DocumentClickResponse::FileJump(FileJump {
                         file: file_path,
                         position: byte_position_to_char_position(&source_text, position),
@@ -324,7 +362,7 @@ impl TypstCompiler {
             Some(Jump::Url(url)) => {
                 // println!("Jump to URL: {}", url.as_str());
 
-                DocumentClickResponse::UrlJump(url)
+                DocumentClickResponse::UrlJump(url.as_str().to_string())
             }
 
             None => {
@@ -336,15 +374,15 @@ impl TypstCompiler {
 
     // Returns the completions of the file
     pub async fn get_completions(
-        self,
+        &self,
         source_text: String,
         doc: &PagedDocument,
         cursor: usize,
         explicit: bool,
     ) -> Option<CompletionResponse> {
-        let id = self.typst_world.main();
-        let source = self.typst_world.source(id).ok()?;
-        let completions = autocomplete(&self.typst_world, Some(doc), &source, cursor, explicit);
+        let id = self.world.main();
+        let source = self.world.source(id).ok()?;
+        let completions = autocomplete(&self.world, Some(doc), &source, cursor, explicit);
         if let Some((position, completions)) = completions {
             Some(CompletionResponse {
                 completions,
@@ -359,8 +397,8 @@ impl TypstCompiler {
 /// Returns the rendered images of the file
 pub async fn render_file(pages: Vec<Page>, scale: f32) -> Vec<RenderResponse> {
     let mut rendered_pages = Vec::new();
-    pages.iter().enumerate().for_each(|idx, page| {
-        let frame_size = page.frame.size();
+    pages.iter().enumerate().for_each(|(_idx, page)| {
+        // let frame_size = page.frame.size();
         let bmp = render(&page, scale);
         if let Ok(image) = bmp.encode_png() {
             let image_base64 = general_purpose::STANDARD.encode(image);
@@ -377,7 +415,7 @@ pub async fn render_file(pages: Vec<Page>, scale: f32) -> Vec<RenderResponse> {
 }
 
 fn diagnostic_position_from_source(
-    source: FileResult<Bytes>,
+    source: FileResult<Source>,
     diagnostic_range: Range<usize>,
 ) -> DiagnosticPosition {
     match source {
@@ -394,7 +432,7 @@ fn diagnostic_position_from_source(
             }
         }
         Err(_) => DiagnosticPosition::default(),
-    };
+    }
 }
 
 #[derive(Serialize, Debug, Deserialize)]
@@ -411,7 +449,8 @@ enum PdfExportError {
     WriteError,
 }
 
-fn export_pdf(document: &PagedDocument, export_path: &PathBuf) -> Result<(), PdfExportError> {
+// TODO: add error types
+fn export_pdf(document: &PagedDocument, export_path: &PathBuf) -> Result<(), ()> {
     let local_datetime = chrono::Local::now();
 
     let timestamp = Timestamp::new_local(
@@ -428,23 +467,15 @@ fn export_pdf(document: &PagedDocument, export_path: &PathBuf) -> Result<(), Pdf
         standards,
     };
 
-    let mut gen_errors = Vec::new();
+    // let mut gen_errors = Vec::new();
     let buffer = typst_pdf::pdf(document, &options);
-    match buffer {
+    let _ = match buffer {
         Ok(buffer) => match std::fs::write(export_path, buffer) {
             Ok(_) => Ok(()),
-            Err(_) => Err(PdfExportError::WriteError),
+            Err(_) => Err(()),
         },
-        Err(e) => {
-            e.iter().for_each(|e| {
-                gen_errors.push(GenErrorStruct {
-                    message: e.to_string(),
-                    hints: e.hints.join(", "),
-                });
-            });
-            Err(gen_errors)
-        }
-    }
+        Err(_) => Err(()),
+    };
 
     Ok(())
 }

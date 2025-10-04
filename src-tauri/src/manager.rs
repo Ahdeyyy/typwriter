@@ -7,8 +7,8 @@ pub struct ProjectManager {
 }
 
 impl ProjectManager {
-    pub fn new(root: PathBuf, font_dir: PathBuf) -> Self {
-        let entries: Vec<PathBuf> = get_all_files_in_workspace(&root);
+    pub fn new(root: PathBuf) -> Self {
+        let entries: Vec<PathBuf> = crate::utils::get_all_files_in_path(&root);
 
         Self {
             root,
@@ -19,5 +19,11 @@ impl ProjectManager {
 
     pub fn add_file(&mut self, path: PathBuf) {
         self.entries.push(path);
+    }
+
+    pub fn set_active_file(&mut self, path: PathBuf) {
+        if path.exists() && path.is_file() {
+            self.current_file = Some(path.clone());
+        }
     }
 }

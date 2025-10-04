@@ -127,7 +127,7 @@ impl Typstworld {
         id
     }
 
-    pub fn get_file_id(self, path: &PathBuf) -> Option<FileId> {
+    pub fn get_file_id(&self, path: &PathBuf) -> Option<FileId> {
         self.id_path_map.lock().unwrap().get(path).cloned()
     }
 }
