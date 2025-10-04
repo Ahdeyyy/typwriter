@@ -5,7 +5,7 @@ use base64::Engine;
 use typst::{
     diag::{FileResult, Severity},
     foundations::Bytes,
-    layout::{Abs, Frame, Page, PagedDocument, Point, Position},
+    layout::{Frame, Page, PagedDocument, Point},
     World, WorldExt,
 };
 use typst_ide::{autocomplete, jump_from_click, jump_from_cursor, tooltip, Jump, Tooltip};
@@ -273,16 +273,7 @@ impl TypstCompiler {
     ) -> Option<PreviewPosition> {
         let id = self.world.main();
         let source = self.world.source(id).ok()?;
-        let position = jump_from_cursor(doc, &source, cursor)
-            .get(0)
-            .unwrap_or(&Position {
-                page: std::num::NonZero::new(1).unwrap(),
-                point: Point {
-                    x: Abs::raw(0.0),
-                    y: Abs::raw(0.0),
-                },
-            })
-            .clone();
+        let position = jump_from_cursor(doc, &source, cursor).get(0)?.clone();
 
         let x = position.point.x.to_pt() * scale as f64;
         let y = position.point.y.to_pt() * scale as f64;
