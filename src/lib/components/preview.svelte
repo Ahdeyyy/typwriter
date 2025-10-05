@@ -3,6 +3,7 @@
   import { appState } from "@/states.svelte"
   import { listen } from "@tauri-apps/api/event"
   import { onMount } from "svelte"
+  import * as Empty from "$lib/components/ui/empty/index"
   type Props = {
     pages: HTMLImageElement[]
     onclick: (event: MouseEvent, page: number, x: number, y: number) => void
@@ -168,17 +169,33 @@
           ></canvas>
         </div>
       {:else}
-        <div class="flex h-full w-full items-center justify-center">
-          <p class="text-center text-muted-foreground">No preview available.</p>
-        </div>
+        <Empty.Root
+          class="from-muted/50 to-background h-full bg-gradient-to-b from-30%"
+        >
+          <Empty.Header>
+            <Empty.Title>No Preview</Empty.Title>
+            <Empty.Description>No preview available.</Empty.Description>
+          </Empty.Header>
+          <Empty.Content>
+            Open a .typ file and compile to see a preview here.
+          </Empty.Content>
+        </Empty.Root>
       {/each}
     </div>
   {:else}
-    <div class="flex h-full w-full items-center justify-center">
-      <p class="text-center text-muted-foreground">
-        Preview is available only for .typ files.
-      </p>
-    </div>
+    <Empty.Root
+      class="from-muted/50 to-background h-full bg-gradient-to-b from-30%"
+    >
+      <Empty.Header>
+        <Empty.Title>No Preview</Empty.Title>
+        <Empty.Description
+          >Preview for file type is not supported.</Empty.Description
+        >
+      </Empty.Header>
+      <Empty.Content>
+        Open a .typ file and compile to see a preview here.
+      </Empty.Content>
+    </Empty.Root>
   {/if}
 </ScrollArea>
 
