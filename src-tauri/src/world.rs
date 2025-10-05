@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Mutex;
 
 use typst::diag::{FileError, FileResult};
 use typst::foundations::{Bytes, Datetime};
@@ -16,6 +15,8 @@ use typst_ide::IdeWorld;
 use typst_kit::download::Downloader;
 use typst_kit::fonts::{FontSlot, Fonts};
 use typst_kit::package::PackageStorage;
+
+use tokio::sync::RwLock;
 
 struct PrintDownload;
 
@@ -56,13 +57,13 @@ pub struct Typstworld {
     /// Slots for lazily loaded fonts.
     fonts: Vec<FontSlot>,
     /// A simple cache for files read during a single compilation.
-    files: Mutex<HashMap<FileId, FileResult<Bytes>>>,
-    file_paths: Mutex<HashMap<FileId, PathBuf>>,
+    files: RwLock<HashMap<FileId, FileResult<Bytes>>>,
+    file_paths: RwLock<HashMap<FileId, PathBuf>>,
     /// Manages the storage of downloaded packages.
     package_storage: PackageStorage,
 
     // map for files paths and their file_ids
-    id_path_map: Mutex<HashMap<PathBuf, FileId>>,
+    id_path_map: RwLock<HashMap<PathBuf, FileId>>,
 }
 
 impl Typstworld {
@@ -89,21 +90,21 @@ impl Typstworld {
             library: LazyHash::new(Library::default()),
             book: LazyHash::new(fonts.book),
             fonts: fonts.fonts,
-            files: Mutex::new(HashMap::new()),
+            files: RwLock::new(HashMap::new()),
             package_storage,
-            file_paths: Mutex::new(HashMap::new()),
-            id_path_map: Mutex::new(HashMap::new()),
+            file_paths: RwLock::new(HashMap::new()),
+            id_path_map: RwLock::new(HashMap::new()),
         }
     }
 
     /// Resets the world's cache.
     pub fn reset(&mut self) {
-        self.files.lock().unwrap().clear();
+        self.files.blocking_write().clear();
     }
 
     pub fn update_source(&mut self, id: FileId, source: String) -> FileResult<()> {
         let bytes = Bytes::new(source.into_bytes());
-        self.files.lock().unwrap().insert(id, Ok(bytes));
+        self.files.blocking_write().insert(id, Ok(bytes));
         Ok(())
     }
 
@@ -111,8 +112,7 @@ impl Typstworld {
         let vpath = VirtualPath::new(name);
         self.main = FileId::new(None, vpath);
         self.files
-            .lock()
-            .unwrap()
+            .blocking_write()
             .insert(self.main, Ok(Bytes::new(source.into_bytes())));
 
         self.main
@@ -121,22 +121,21 @@ impl Typstworld {
     pub fn set_main_source_with_id(&mut self, id: FileId, source: String) {
         self.main = id;
         self.files
-            .lock()
-            .unwrap()
+            .blocking_write()
             .insert(self.main, Ok(Bytes::new(source.into_bytes())));
     }
 
     pub fn add_file(&mut self, name: &str, path: PathBuf, source: Bytes) -> FileId {
         let vpath = VirtualPath::new(name);
         let id = FileId::new(None, vpath);
-        self.files.lock().unwrap().insert(id, Ok(source));
-        self.file_paths.lock().unwrap().insert(id, path.clone());
-        self.id_path_map.lock().unwrap().insert(path, id);
+        self.files.blocking_write().insert(id, Ok(source));
+        self.file_paths.blocking_write().insert(id, path.clone());
+        self.id_path_map.blocking_write().insert(path, id);
         id
     }
 
     pub fn get_file_id(&self, path: &PathBuf) -> Option<FileId> {
-        self.id_path_map.lock().unwrap().get(path).cloned()
+        self.id_path_map.blocking_read().get(path).cloned()
     }
 }
 
@@ -177,14 +176,14 @@ impl World for Typstworld {
     /// This now handles both local files and packages.
     fn file(&self, id: FileId) -> FileResult<Bytes> {
         // Check our in-memory cache first.
-        if let Some(result) = self.files.lock().unwrap().get(&id) {
+        if let Some(result) = self.files.blocking_read().get(&id) {
             return result.clone();
         }
 
         let result = self.resolve_file(id);
 
         // Cache the result for this compilation pass.
-        self.files.lock().unwrap().insert(id, result.clone());
+        self.files.blocking_write().insert(id, result.clone());
 
         result
     }
@@ -227,6 +226,6 @@ impl Typstworld {
     }
 
     pub fn get_file_path(&self, id: FileId) -> Option<PathBuf> {
-        self.file_paths.lock().unwrap().get(&id).cloned()
+        self.file_paths.blocking_read().get(&id).cloned()
     }
 }
