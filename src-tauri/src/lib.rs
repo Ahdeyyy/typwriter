@@ -6,7 +6,10 @@ pub mod utils;
 
 pub mod world;
 use app_state::AppState;
-use ipc::{autocomplete, compile_file, export_to, open_file, open_workspace, page_click, tooltip};
+use ipc::{
+    autocomplete, compile, compile_file, export_to, get_cursor_position, open_file, open_workspace,
+    page_click, render, tooltip,
+};
 
 use tauri::{path::BaseDirectory, Manager};
 
@@ -42,7 +45,10 @@ pub fn run() {
             page_click,
             export_to,
             autocomplete,
-            tooltip
+            tooltip,
+            render,
+            compile,
+            get_cursor_position
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
