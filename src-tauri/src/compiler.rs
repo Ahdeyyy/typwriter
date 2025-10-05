@@ -117,7 +117,7 @@ pub struct PreviewPosition {
 impl TypstCompiler {
     pub fn new(root: PathBuf, font_dir: PathBuf) -> Self {
         let entries = crate::utils::get_all_files_in_path(&root);
-        let mut typst_world = Typstworld::new(root.clone(), font_dir);
+        let typst_world = Typstworld::new(root.clone(), font_dir);
 
         // load the files into typst world
         for entry in &entries {
