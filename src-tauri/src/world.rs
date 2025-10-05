@@ -16,7 +16,7 @@ use typst_kit::download::Downloader;
 use typst_kit::fonts::{FontSlot, Fonts};
 use typst_kit::package::PackageStorage;
 
-use tokio::sync::RwLock;
+use std::sync::RwLock;
 
 struct PrintDownload;
 
@@ -49,7 +49,7 @@ pub struct Typstworld {
     /// The root directory for the project.
     root: PathBuf,
     /// The `FileId` of the main source file.
-    main: FileId,
+    main: RwLock<FileId>,
     /// Typst's standard library.
     library: LazyHash<Library>,
     /// Metadata about discovered fonts.
@@ -86,7 +86,7 @@ impl Typstworld {
 
         Self {
             root,
-            main: main_id,
+            main: RwLock::new(main_id),
             library: LazyHash::new(Library::default()),
             book: LazyHash::new(fonts.book),
             fonts: fonts.fonts,
@@ -98,44 +98,52 @@ impl Typstworld {
     }
 
     /// Resets the world's cache.
-    pub fn reset(&mut self) {
-        self.files.blocking_write().clear();
+    pub fn reset(&self) {
+        self.files.write().unwrap().clear();
     }
 
-    pub fn update_source(&mut self, id: FileId, source: String) -> FileResult<()> {
+    pub fn update_source(&self, id: FileId, source: String) -> FileResult<()> {
         let bytes = Bytes::new(source.into_bytes());
-        self.files.blocking_write().insert(id, Ok(bytes));
+        self.files.write().unwrap().insert(id, Ok(bytes));
         Ok(())
     }
 
-    pub fn set_main_source(&mut self, name: &str, source: String) -> FileId {
-        let vpath = VirtualPath::new(name);
-        self.main = FileId::new(None, vpath);
-        self.files
-            .blocking_write()
-            .insert(self.main, Ok(Bytes::new(source.into_bytes())));
-
-        self.main
-    }
-
-    pub fn set_main_source_with_id(&mut self, id: FileId, source: String) {
-        self.main = id;
-        self.files
-            .blocking_write()
-            .insert(self.main, Ok(Bytes::new(source.into_bytes())));
-    }
-
-    pub fn add_file(&mut self, name: &str, path: PathBuf, source: Bytes) -> FileId {
+    pub fn set_main_source(&self, name: &str, source: String) -> FileId {
         let vpath = VirtualPath::new(name);
         let id = FileId::new(None, vpath);
-        self.files.blocking_write().insert(id, Ok(source));
-        self.file_paths.blocking_write().insert(id, path.clone());
-        self.id_path_map.blocking_write().insert(path, id);
+        *self.main.write().unwrap() = id;
+        self.files
+            .write()
+            .unwrap()
+            .insert(id, Ok(Bytes::new(source.into_bytes())));
+
+        id
+    }
+
+    pub fn set_main_source_with_id(&self, id: FileId, source: String) {
+        *self.main.write().unwrap() = id;
+        self.files
+            .write()
+            .unwrap()
+            .insert(id, Ok(Bytes::new(source.into_bytes())));
+    }
+
+    pub fn add_file(&self, name: &str, path: PathBuf, source: Bytes) -> FileId {
+        let vpath = VirtualPath::new(name);
+        let id = FileId::new(None, vpath);
+        {
+            let mut files = self.files.write().unwrap();
+            let mut file_paths = self.file_paths.write().unwrap();
+            let mut id_path_map = self.id_path_map.write().unwrap();
+            files.insert(id, Ok(source));
+            file_paths.insert(id, path.clone());
+            id_path_map.insert(path, id);
+        }
         id
     }
 
     pub fn get_file_id(&self, path: &PathBuf) -> Option<FileId> {
-        self.id_path_map.blocking_read().get(path).cloned()
+        self.id_path_map.read().unwrap().get(path).cloned()
     }
 }
 
@@ -155,7 +163,7 @@ impl World for Typstworld {
     }
 
     fn main(&self) -> FileId {
-        self.main
+        *self.main.read().unwrap()
     }
 
     fn font(&self, index: usize) -> Option<Font> {
@@ -176,14 +184,17 @@ impl World for Typstworld {
     /// This now handles both local files and packages.
     fn file(&self, id: FileId) -> FileResult<Bytes> {
         // Check our in-memory cache first.
-        if let Some(result) = self.files.blocking_read().get(&id) {
-            return result.clone();
+        {
+            let guard = self.files.read().unwrap();
+            if let Some(result) = guard.get(&id) {
+                return result.clone();
+            }
         }
 
         let result = self.resolve_file(id);
 
         // Cache the result for this compilation pass.
-        self.files.blocking_write().insert(id, result.clone());
+        self.files.write().unwrap().insert(id, result.clone());
 
         result
     }
@@ -198,6 +209,8 @@ impl World for Typstworld {
 }
 
 impl Typstworld {
+    // Make package resolution and downloading work async.
+
     /// Resolves a file, handling local files and packages.
     fn resolve_file(&self, id: FileId) -> FileResult<Bytes> {
         let path = match id.package() {
@@ -226,6 +239,6 @@ impl Typstworld {
     }
 
     pub fn get_file_path(&self, id: FileId) -> Option<PathBuf> {
-        self.file_paths.blocking_read().get(&id).cloned()
+        self.file_paths.read().unwrap().get(&id).cloned()
     }
 }
