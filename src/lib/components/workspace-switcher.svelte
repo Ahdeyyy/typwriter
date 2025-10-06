@@ -2,18 +2,27 @@
   import * as DropdownMenu from "@/components/ui/dropdown-menu"
   import Button from "@/components/ui/button/button.svelte"
   import { ChevronDown, Check } from "@lucide/svelte"
-  import { appState } from "@/states.svelte"
+  import { openWorkspace } from "@/workspace/workspace.svelte"
+  import { appContext } from "@/app-context.svelte"
+  import { getFolderName } from "@/utils"
+  import { open_workspace } from "@/ipc"
+  // import { appState } from "@/states.svelte"
 
   let dropdownOpen = $state(false)
 
   async function handleSelectRecent(path: string) {
-    await appState.openRecentWorkspace(path)
+    // await appState.openRecentWorkspace(path)
+    appContext.addToRecentWorkspaces(path)
     dropdownOpen = false
   }
 
   async function handleOpenWorkspace() {
-    const opened = await appState.openWorkspace()
-    if (opened) dropdownOpen = false
+    const opened = await openWorkspace()
+    if (opened) {
+      appContext.workspace = opened
+      open_workspace(opened.rootPath)
+      dropdownOpen = false
+    }
   }
 </script>
 
@@ -27,7 +36,7 @@
           class="w-full flex items-center justify-between px-3 py-2 text-sm"
         >
           <span class="truncate"
-            >{appState.workspaceName || "Select Workspace"}</span
+            >{appContext.workspace?.name || "Select Workspace"}</span
           >
           <ChevronDown class="ml-2" />
         </Button>
@@ -35,18 +44,18 @@
     </DropdownMenu.Trigger>
 
     <DropdownMenu.Content class="w-(--bits-dropdown-menu-anchor-width)">
-      {#if appState.recentWorkspaces.length > 0}
-        {#each appState.recentWorkspaces as w}
+      {#if appContext.recent_workspaces.state.paths.length > 0}
+        {#each appContext.recent_workspaces.state.paths as w}
           <DropdownMenu.Item>
             {#snippet child({ props })}
               <Button
                 {...props}
                 variant="ghost"
                 class="w-full flex items-center justify-between px-2 py-1.5 text-sm"
-                onclick={() => handleSelectRecent(w.path)}
+                onclick={() => handleSelectRecent(w)}
               >
-                <span class="truncate">{w.name}</span>
-                {#if appState.workspacePath === w.path}
+                <span class="truncate">{getFolderName(w)}</span>
+                {#if appContext.workspace?.rootPath === w}
                   <Check class="size-4" />
                 {/if}
               </Button>

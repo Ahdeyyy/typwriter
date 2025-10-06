@@ -18,50 +18,48 @@
     LucideSquare,
     LucideX,
   } from "@lucide/svelte"
-  import { appState } from "@/states.svelte"
-  import Diagnostics from "@/components/diagnostics.svelte"
+  // import { appState } from "@/states.svelte"
+  import { appContext } from "@/app-context.svelte"
+  import Diagnostics from "@/components/diagnostics-panel.svelte"
   import { getCurrentWindow } from "@tauri-apps/api/window"
   import { app } from "@tauri-apps/api"
   import { save } from "@tauri-apps/plugin-dialog"
   import { export_to } from "@/ipc"
   import { Toaster } from "$lib/components/ui/sonner/index.js"
   import { Badge } from "@/components/ui/badge"
+  import { getFileName } from "@/utils"
 
   let { children } = $props()
 
   const window = getCurrentWindow()
 
-  let appTitle = $state("")
   let isMaximized = $state(true)
 
-  async function fetchAppTitle() {
-    const name = await app.getName()
-    const version = await app.getVersion()
-    appTitle = `${name}${version}`
-  }
-  fetchAppTitle()
-
-  const openedFilePath = $derived(
-    appState.currentFilePath
-      .replace(appState.workspacePath, "")
-      .replace(/^\/|\\/, "")
-  )
+  const openedFilePath = $derived.by(() => {
+    if (appContext.workspace && appContext.workspace.document) {
+      return ` - ${getFileName(appContext.workspace.document.path)}`
+    }
+    return ""
+  })
 
   const export_file_handler = async () => {
-    if (!appState.currentFilePath) {
+    if (!appContext.workspace || !appContext.workspace.document) {
       alert("Please open a file to export.")
       return
     }
     const export_path = await save({
-      defaultPath: appState.currentFilePath.replace(/\.[^/.]+$/, ".pdf"),
+      defaultPath: appContext.workspace.document.path.replace(
+        /\.[^/.]+$/,
+        ".pdf"
+      ),
       filters: [{ name: "PDF", extensions: ["pdf"] }],
     })
 
     if (export_path) {
       let res = await export_to(
-        appState.currentFilePath,
+        appContext.workspace.document.path,
         export_path,
-        appState.text
+        appContext.workspace.document.content
       )
     }
   }
@@ -77,7 +75,7 @@
         size="icon"
         class="w-10 h-8"
         variant="ghost"
-        onclick={() => (appState.isFileTreeOpen = !appState.isFileTreeOpen)}
+        onclick={() => (appContext.isFileTreeOpen = !appContext.isFileTreeOpen)}
       >
         <LucideMenu />
       </Button>
@@ -86,8 +84,7 @@
         size="icon"
         class="w-10 h-8"
         variant="ghost"
-        onclick={() =>
-          (appState.isPreviewPaneOpen = !appState.isPreviewPaneOpen)}
+        onclick={() => (appContext.isPreviewOpen = !appContext.isPreviewOpen)}
       >
         <LucideEye />
       </Button>
@@ -97,19 +94,19 @@
         class="h-8 w-10 relative"
         variant="ghost"
         onclick={() =>
-          (appState.isDiagnosticsOpen = !appState.isDiagnosticsOpen)}
+          (appContext.isDiagnosticsOpen = !appContext.isDiagnosticsOpen)}
       >
         <LucideOctagonAlert />
-        {#if appState.diagnostics.length > 0}
+        <!-- {#if appContext.diagnostics.length > 0}
           <Badge
             class="h-4 min-w-3 rounded-full px-1 absolute top-0 right-0 font-mono text-xs tabular-nums"
             variant="destructive"
           >
-            {appState.diagnostics.length > 99
+            {appContext.diagnostics.length > 99
               ? "99+"
-              : appState.diagnostics.length}
+              : appContext.diagnostics.length}
           </Badge>
-        {/if}
+        {/if} -->
       </Button>
 
       <Button
@@ -122,10 +119,9 @@
       </Button>
     </div>
 
-    <h1 class="font-semibold font-sans">
-      {appState.workspaceName}
+    <h1 class="font-medium">
+      {appContext.workspace?.name || ""}
       {openedFilePath}
-      {appTitle}
     </h1>
 
     <div class="flex gap-0">

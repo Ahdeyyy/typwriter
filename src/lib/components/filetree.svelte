@@ -1,6 +1,5 @@
 <!-- File Tree Component -->
 <script lang="ts">
-  import { appState } from "@/states.svelte"
   import WorkspaceSwitcher from "./workspace-switcher.svelte"
   import { Button } from "./ui/button/index"
   import {
@@ -13,6 +12,8 @@
   import * as Collapsible from "./ui/collapsible"
   import { getFileName } from "@/utils"
   import { ScrollArea } from "$lib/components/ui/scroll-area"
+  import { appContext } from "../app-context.svelte"
+  import type { FileTreeNode } from "@/workspace/workspace.svelte"
 
   // Track open state of folders (keyed by their full relative path to avoid collisions)
   const openFolders = $state<string[]>([])
@@ -31,7 +32,7 @@
       variant="ghost"
       class="size-7"
       size="icon"
-      onclick={() => appState.createNewFile()}
+      onclick={() => console.log("Add new file")}
     >
       <LucideFilePlus />
     </Button>
@@ -42,9 +43,15 @@
     class="overflow-hidden flex-1 min-h-0 max-h-[calc(100svh-7.5rem)]"
   >
     <ul class="py-2 text-sm select-none">
-      {#each appState.entries as item, index (index)}
-        {@render Tree({ item, depth: 0, parentPath: "" })}
-      {/each}
+      {#if appContext.workspace}
+        {#each appContext.workspace?.fileEntries ?? [] as item, index (index)}
+          {@render Tree({ item, depth: 0, parentPath: "" })}
+        {/each}
+      {:else}
+        <li class="p-4 text-xs text-muted-foreground">
+          No workspace loaded. Please open a workspace to view files.
+        </li>
+      {/if}
     </ul>
   </ScrollArea>
 
@@ -54,32 +61,25 @@
 </aside>
 
 <!-- Recursive Tree Snippet -->
-<!-- eslint-disable-next-line @typescript-eslint/no-explicit-any -->
 {#snippet Tree({
   item,
   depth,
   parentPath,
 }: {
-  item: string | any[]
+  item: FileTreeNode
   depth: number
   parentPath: string
 })}
-  {@const isFolder = Array.isArray(item)}
-  {@const [name, rawChildren] = isFolder
-    ? (item as [string, any[]])
-    : [item, []]}
-  {@const children = isFolder ? rawChildren : []}
-  {@const thisPath = isFolder
-    ? folderKey(parentPath, name as string)
-    : (name as string)}
+  {@const isFolder = item.type === "directory"}
+  {@const name = item.name}
+  {@const children = item.children ?? []}
+  {@const thisPath = isFolder ? folderKey(parentPath, name) : name}
   <!-- Derive relative current file path for active highlighting -->
-  {@const currentRel = appState.currentFilePath.startsWith(
-    appState.workspacePath
-  )
-    ? appState.currentFilePath
-        .slice(appState.workspacePath.length)
-        .replace(/^[\\/]/, "")
-    : appState.currentFilePath}
+  {@const currentFilePath = appContext.workspace?.document?.path ?? ""}
+  {@const workspacePath = appContext.workspace?.rootPath ?? ""}
+  {@const currentRel = currentFilePath.startsWith(workspacePath)
+    ? currentFilePath.slice(workspacePath.length).replace(/^[\\/]/, "")
+    : currentFilePath}
   {@const isActiveFile = !isFolder && name === currentRel}
 
   <li class="relative">
@@ -90,7 +90,13 @@
         data-active={isActiveFile}
         class="w-full justify-start h-7 pl-2 pr-2 gap-2 rounded-none font-normal tracking-tight text-left hover:bg-accent/60 data-[active=true]:bg-primary/10 data-[active=true]:text-primary focus-visible:ring-0 focus-visible:outline-none"
         style={`padding-left: calc(${depth} * 0.85rem + 0.5rem);`}
-        onclick={() => appState.openFile(name)}
+        onclick={() => {
+          if (!appContext.workspace) {
+            console.error("No workspace available")
+            return
+          }
+          appContext.workspace.openFile(item.path)
+        }}
       >
         <FileIcon />
         <span class="truncate">{getFileName(name)}</span>

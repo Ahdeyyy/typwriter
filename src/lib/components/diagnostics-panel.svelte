@@ -1,41 +1,36 @@
 <script lang="ts">
-  import { onMount } from "svelte"
-  import { listen } from "@tauri-apps/api/event"
   import type { DiagnosticResponse } from "../types"
-  import { appState } from "@/states.svelte"
-  import * as Sheet from "$lib/components/ui/sheet"
-  import { Button } from "./ui/button"
-  import { Badge } from "./ui/badge"
-  import { LucidePanelBottom } from "@lucide/svelte"
+
   import { ScrollArea } from "@/components/ui/scroll-area"
-
-  onMount(() => {
-    listen<DiagnosticResponse[]>("source-diagnostics", (event) => {
-      appState.diagnostics = event.payload
-
-      appState.newDiagnostics = appState.diagnostics.length
-    })
-  })
+  import { appContext } from "@/app-context.svelte"
 </script>
 
 <article class="h-1/2">
   <div>
-    <h3>Diagnostic</h3>
-    <div>
-      {#if appState.diagnostics.length === 0}
-        <div class="p-2">No issues found. Your document is clean!</div>
-      {:else}
-        <div class="p-2 border-t-1 border-black max-h-40 overflow-y-auto">
-          <ScrollArea orientation="vertical">
-            <ol class=" list-inside space-y-2">
-              {#each appState.diagnostics as diag (diag.message)}
-                {@render diagnostic(diag)}
-              {/each}
-            </ol>
-          </ScrollArea>
-        </div>
-      {/if}
-    </div>
+    {#if !appContext.workspace || !appContext.workspace.document}
+      <div class="p-4 text-sm text-muted-foreground">
+        Open a document to see diagnostics.
+      </div>
+    {:else}
+      <h3>Diagnostics</h3>
+      <div>
+        <!-- declare const for better readability -->
+        <!-- Change the order of the ifs, the each as an else for the case of the length being 0 -->
+        {#if appContext.workspace.document.diagnostics.length === 0}
+          <div class="p-2">No issues found. Your document is clean!</div>
+        {:else}
+          <div class="p-2 border-t-1 border-black max-h-40 overflow-y-auto">
+            <ScrollArea orientation="vertical">
+              <ol class=" list-inside space-y-2">
+                {#each appContext.workspace.document.diagnostics as diag (diag.message)}
+                  {@render diagnostic(diag)}
+                {/each}
+              </ol>
+            </ScrollArea>
+          </div>
+        {/if}
+      </div>
+    {/if}
   </div>
 </article>
 

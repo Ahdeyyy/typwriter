@@ -10,6 +10,19 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [tailwindcss(), sveltekit(), wasm(), topLevelAwait()],
+
+  optimizeDeps: {
+    exclude: [
+      "svelte-codemirror-editor",
+      "codemirror",
+      "@codemirror/language-javascript",
+      "codemirror-lang-typst",
+      "@codemirror/lang-yaml",
+      "@codemirror/view",
+      "thememirror"
+    ],
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

@@ -1,95 +1,55 @@
 <!-- This contains the preview -->
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core"
   import Preview from "./preview.svelte"
   import { PressedKeys } from "runed"
-  import { onMount, onDestroy } from "svelte"
-  import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event"
-  import type { RenderResponse } from "@/types"
-  import { appState } from "@/states.svelte"
-  import { page_click } from "@/ipc"
-  import { openUrl } from "@tauri-apps/plugin-opener"
-
-  function pxToPt(pixels: number): number {
-    const DPI_ASSUMPTION = 96 // Standard DPI for CSS pixels
-    const devicePixelRatio = window.devicePixelRatio || 1
-
-    // Calculate physical pixels
-    const physicalPixels = pixels * devicePixelRatio
-
-    // Convert physical pixels to points
-    const points = (physicalPixels / DPI_ASSUMPTION) * 72
-    return points
-  }
+  import { appContext } from "@/app-context.svelte"
+  import { app } from "@tauri-apps/api"
 
   const keys = new PressedKeys()
   keys.onKeys(["Control", "k"], () => {
-    appState.isPreviewPaneOpen = !appState.isPreviewPaneOpen
+    appContext.isPreviewOpen = !appContext.isPreviewOpen
   })
 
-  let preview_images = $state<HTMLImageElement[]>([])
-  let str = $state("")
+  let preview_images = $state([] as HTMLImageElement[])
 
-  let lastVersion = 0
+  $effect(() => {
+    if (
+      appContext.workspace &&
+      appContext.workspace.document &&
+      appContext.workspace.document.renderedContent &&
+      appContext.workspace.document.content
+    ) {
+      console.log(
+        "Preview images updated",
+        appContext.workspace.document.renderedContent
+      )
 
-  type RenderedPagesEvent = RenderResponse[]
-
-  let unlisten: UnlistenFn | undefined = undefined
-
-  onDestroy(() => {
-    if (unlisten) {
-      unlisten()
+      preview_images = appContext.workspace.document.renderedContent.map(
+        (page, _) => {
+          let img = new Image()
+          img.src = `data:image/png;base64,${page.image}`
+          img.width = page.width
+          img.height = page.height
+          return img
+        }
+      ) as HTMLImageElement[]
     }
-  })
-
-  onMount(async () => {
-    unlisten = await listen<RenderedPagesEvent>("rendered-pages", (event) => {
-      let imgs: HTMLImageElement[] = []
-      for (const page of event.payload) {
-        const img = new Image()
-        img.src = `data:image/png;base64,${page.image}`
-        img.width = page.width
-        img.height = page.height
-        imgs.push(img)
-      }
-      preview_images = imgs
-    })
   })
 </script>
 
 <div class="px-4">
   <Preview
-    pages={preview_images || []}
+    pages={appContext.workspace?.renderedContent || []}
     onclick={async (event, index, x, y) => {
-      let result = await page_click(index, appState.text, x, y)
-
-      if (result.isErr()) {
-        console.error(result.error)
+      if (!appContext.workspace) {
+        console.error("No workspace is open")
         return
       }
-
-      switch (result.value.type) {
-        case "FileJump":
-          appState.moveEditorCursor(result.value.position)
-          console.log(result.value)
-          break
-        case "PositionJump":
-          emit("preview-position", {
-            page: result.value.page,
-            x: result.value.x,
-            y: result.value.y,
-          })
-          console.log(result.value)
-          break
-        case "UrlJump":
-          openUrl(result.value.url)
-          break
-        case "NoJump":
-          console.log("no jump")
-          break
+      if (!appContext.workspace.document) {
+        console.error("No document is open")
+        return
       }
-
-      console.log("Result from page_click:", result)
+      await appContext.workspace.document.previewPageClick(x, y, index)
     }}
   />
 </div>

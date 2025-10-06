@@ -1,0 +1,1 @@
+/// bib support for the editor

@@ -36,6 +36,26 @@ export type RenderResponse = {
 
 export type Severity = "Warning" | "Error"
 
+export type DiagnosticPosition = {
+    line: number;
+    column: number;
+    end_line: number;
+    end_column: number;
+}
+
+export type TypstSourceDiagnostic = {
+    location: DiagnosticPosition;
+    severity: Severity;
+    message: string;
+    hints: string[];
+}
+
+export type PreviewPosition = {
+    page: number;
+    x: number;
+    y: number;
+}
+
 export type Location = {
     line: number;
     column: number;
