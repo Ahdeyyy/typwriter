@@ -228,7 +228,7 @@ impl TypstCompiler {
                     };
                     warnings.push(diagnostic);
                 });
-                self.clear_cache();
+                // self.clear_cache();
             }
         }
 
@@ -332,6 +332,7 @@ impl TypstCompiler {
                         position: byte_position_to_char_position(&source_text, position),
                     })
                 } else {
+                    dbg!("No file path found for the given file ID.");
                     DocumentClickResponse::NoJump
                 }
             }
@@ -352,13 +353,13 @@ impl TypstCompiler {
             }
             // open the given URL in the default browser
             Some(Jump::Url(url)) => {
-                // println!("Jump to URL: {}", url.as_str());
-
+                dbg!("Jump to URL: {}", url.as_str());
                 DocumentClickResponse::UrlJump(url.as_str().to_string())
             }
 
             None => {
                 // println!("No jump target found at the clicked position.");
+                dbg!("No jump target found at the clicked position.");
                 DocumentClickResponse::NoJump
             }
         }

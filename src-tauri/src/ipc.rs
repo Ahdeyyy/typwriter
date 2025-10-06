@@ -1,7 +1,7 @@
 use crate::app_state::AppState;
 use crate::compiler::{
-    render_file, DocumentClickResponse, PreviewPosition, RenderResponse, TypstCompiler,
-    TypstSourceDiagnostic,
+    render_file, DocumentClickResponse, FileExportError, PreviewPosition, RenderResponse,
+    TypstCompiler, TypstSourceDiagnostic,
 };
 use crate::manager::ProjectManager;
 use crate::utils::{char_to_byte_position, pixel_to_point};
@@ -179,15 +179,17 @@ pub async fn export_to(
     file_path: String,
     export_path: String,
     source: String,
-) -> Result<(), ()> {
+) -> Result<(), FileExportError> {
     let mut compiler = state.compiler.write().await;
 
-    let _ = compiler.export_file(
-        &PathBuf::from(file_path),
-        source,
-        &PathBuf::from(export_path),
-        None,
-    );
+    let _ = compiler
+        .export_file(
+            &PathBuf::from(file_path),
+            source,
+            &PathBuf::from(export_path),
+            None,
+        )
+        .await?;
 
     Ok(())
 }
