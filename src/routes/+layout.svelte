@@ -28,6 +28,7 @@
   import { Toaster } from "$lib/components/ui/sonner/index.js"
   import { Badge } from "@/components/ui/badge"
   import { getFileName } from "@/utils"
+  import { toast } from "svelte-sonner"
 
   let { children } = $props()
 
@@ -61,6 +62,13 @@
         export_path,
         appContext.workspace.document.content
       )
+      if (res) {
+        toast.error(res)
+      } else {
+        toast.success(
+          `${appContext.workspace.document.path} exported successfully!`
+        )
+      }
     }
   }
 
@@ -70,11 +78,11 @@
 <Toaster />
 <section class="h-screen flex flex-col">
   <header class="flex items-center justify-between">
-    <div class="flex gap-2">
+    <div class="flex gap-0.5">
       <Button
         size="icon"
-        class="w-10 h-8"
-        variant="ghost"
+        class="w-10 h-8 rounded-none"
+        variant={appContext.isFileTreeOpen ? "secondary" : "ghost"}
         onclick={() => (appContext.isFileTreeOpen = !appContext.isFileTreeOpen)}
       >
         <LucideMenu />
@@ -82,8 +90,8 @@
 
       <Button
         size="icon"
-        class="w-10 h-8"
-        variant="ghost"
+        class="w-10 h-8 rounded-none"
+        variant={appContext.isPreviewOpen ? "secondary" : "ghost"}
         onclick={() => (appContext.isPreviewOpen = !appContext.isPreviewOpen)}
       >
         <LucideEye />
@@ -91,28 +99,28 @@
 
       <Button
         size="icon"
-        class="h-8 w-10 relative"
-        variant="ghost"
+        class="h-8 w-10 relative rounded-none"
+        variant={appContext.isDiagnosticsOpen ? "secondary" : "ghost"}
         onclick={() =>
           (appContext.isDiagnosticsOpen = !appContext.isDiagnosticsOpen)}
       >
         <LucideOctagonAlert />
-        <!-- {#if appContext.diagnostics.length > 0}
+        {#if appContext.workspace && appContext.workspace.document && appContext.workspace.document.diagnostics.length > 0}
           <Badge
             class="h-4 min-w-3 rounded-full px-1 absolute top-0 right-0 font-mono text-xs tabular-nums"
             variant="destructive"
           >
-            {appContext.diagnostics.length > 99
+            {appContext.workspace.document.diagnostics.length > 99
               ? "99+"
-              : appContext.diagnostics.length}
+              : appContext.workspace.document.diagnostics.length}
           </Badge>
-        {/if} -->
+        {/if}
       </Button>
 
       <Button
         size="icon"
         variant="ghost"
-        class="w-10 h-8"
+        class="w-10 h-8 rounded-none"
         onclick={export_file_handler}
       >
         <LucideDownload />

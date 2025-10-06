@@ -44,9 +44,10 @@ export async function render() {
  * @returns A Result containing the preview position or an error
  */
 export async function get_cursor_position(cursor_position: number, source: string) {
+
     const inv = ResultAsync.fromThrowable(
         invoke<PreviewPosition>,
-        (): InvokeError => ({ message: `failed to get cursor position at ${cursor_position}` })
+        (e: unknown) => e
     );
     const result = await inv("get_cursor_position", {
         cursor_position,
@@ -71,7 +72,16 @@ export async function compile_file(source: string, file_path: string, scale: num
 }
 
 export async function page_click(page_number: number, source_text: string, x: number, y: number) {
-    const inv = ResultAsync.fromThrowable(invoke<DocumentClickResponseType>, (): InvokeError => ({ message: `failed to handle page click on page ${page_number}` }));
+    const inv = ResultAsync.fromThrowable(
+        invoke<DocumentClickResponseType>,
+        (e: unknown): InvokeError => {
+
+            if (e instanceof Error) {
+                return { message: e.message };
+            }
+            return { message: String(e) };
+        }
+    );
     const result = await inv("page_click", {
         page_number,
         source_text,
@@ -95,16 +105,29 @@ export async function open_workspace(path: string) {
     export_path: String,
     source: String,
  */
-export async function export_to(file_path: string, export_path: string, source: string) {
-    const inv = ResultAsync.fromThrowable(invoke<void>, (): InvokeError => ({ message: `failed to export file ${file_path}` }));
-    console.log("exporting to", { file_path, export_path, source });
-    const result = await inv("export_to", {
-        file_path,
-        export_path,
-        source
-    });
-    return result;
+
+export async function export_to(file_path: string, export_path: string, source: string): Promise<void | string> {
+    try {
+        invoke<void>("export_to", {
+            file_path,
+            export_path,
+            source
+        });
+    } catch (error) {
+        return error as string;
+    }
 }
+
+// export async function export_to(file_path: string, export_path: string, source: string) {
+//     const inv = ResultAsync.fromThrowable(invoke<void>, (): InvokeError => ({ message: `failed to export file ${file_path}` }));
+//     console.log("exporting to", { file_path, export_path, source });
+//     const result = await inv("export_to", {
+//         file_path,
+//         export_path,
+//         source
+//     });
+//     return result;
+// }
 
 /**
  * Get autocomplete suggestions at the cursor position

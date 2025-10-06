@@ -1,9 +1,11 @@
 <script lang="ts">
   import { ScrollArea } from "$lib/components/ui/scroll-area"
-  import { appState } from "@/states.svelte"
+  // import { appState } from "@/states.svelte"
   import { listen } from "@tauri-apps/api/event"
   import { onMount } from "svelte"
   import * as Empty from "$lib/components/ui/empty/index"
+  import { appContext } from "@/app-context.svelte"
+  import { getFileType } from "@/utils"
   type Props = {
     pages: HTMLImageElement[]
     onclick: (event: MouseEvent, page: number, x: number, y: number) => void
@@ -12,9 +14,9 @@
   let { onclick, pages }: Props = $props()
 
   // Hold references to per-page canvas elements
-  let canvasEls: HTMLCanvasElement[] = []
+  let canvasEls: HTMLCanvasElement[] = $state([])
   // Hold references to per-page wrapper divs (for scroll calculations)
-  let pageWrappers: HTMLDivElement[] = []
+  let pageWrappers: HTMLDivElement[] = $state([])
   // Reference to scroll area root element (bits-ui root). We'll query its viewport child.
   let scrollAreaRef: HTMLElement | null = $state<HTMLElement | null>(null)
   let dpr = $state(1)
@@ -46,67 +48,84 @@
     x: number
     y: number
   }
-  onMount(() => {
-    let unlisten = listen<PreviewPositionEventPayload>(
-      "preview-position",
-      (event) => {
-        const { page, x, y } = event.payload
-        // Convert 1-based page to 0-based index
-        const pageIndex = page - 1
+  // Extracted scroll-to logic so it can be reused/tested separately.
+  function scrollToPreviewPosition(payload: PreviewPositionEventPayload) {
+    const { page, x, y } = payload
+    // Convert 1-based page to 0-based index
+    const pageIndex = page - 1
 
-        if (
-          !scrollAreaRef ||
-          !pageWrappers[pageIndex] ||
-          pageIndex < 0 ||
-          pageIndex >= pageWrappers.length
-        )
-          return
-
-        const viewport = scrollAreaRef.querySelector(
-          "[data-slot=scroll-area-viewport]"
-        ) as HTMLElement
-        if (!viewport) return
-
-        const wrapper = pageWrappers[pageIndex]
-
-        // Get the container that holds all pages (the flex column)
-        const container = wrapper.parentElement
-        if (!container) return
-
-        // Calculate position relative to the container's top-left
-        const containerRect = container.getBoundingClientRect()
-        const wrapperRect = wrapper.getBoundingClientRect()
-
-        // Position within the page (scaled coordinates)
-        const scaledX = x * zoom
-        const scaledY = y * zoom
-
-        // Absolute position within the container
-        const absoluteX = wrapperRect.left - containerRect.left + scaledX
-        const absoluteY = wrapperRect.top - containerRect.top + scaledY
-
-        // Center the target position in the viewport
-        const targetScrollLeft = absoluteX - viewport.clientWidth / 2
-        const targetScrollTop = absoluteY - viewport.clientHeight / 2
-
-        viewport.scrollTo({
-          left: Math.max(0, targetScrollLeft),
-          top: Math.max(0, targetScrollTop),
-          behavior: "smooth",
-        })
-
-        console.log(
-          `Scrolling to page ${page} at (${x.toFixed(1)}, ${y.toFixed(1)}) => scroll to (${targetScrollLeft.toFixed(1)}, ${targetScrollTop.toFixed(1)})`
-        )
-      }
+    if (
+      !scrollAreaRef ||
+      !pageWrappers[pageIndex] ||
+      pageIndex < 0 ||
+      pageIndex >= pageWrappers.length
     )
+      return
 
-    // Clean up the event listener when component is destroyed
-    return () => {
-      unlisten.then((fn) => fn())
+    const viewport = scrollAreaRef.querySelector(
+      "[data-slot=scroll-area-viewport]"
+    ) as HTMLElement
+    if (!viewport) return
+
+    const wrapper = pageWrappers[pageIndex]
+
+    // Get the container that holds all pages (the flex column)
+    const container = wrapper.parentElement
+    if (!container) return
+
+    // Calculate position relative to the container's top-left
+    const containerRect = container.getBoundingClientRect()
+    const wrapperRect = wrapper.getBoundingClientRect()
+
+    // Position within the page (scaled coordinates)
+    const scaledX = x * zoom
+    const scaledY = y * zoom
+
+    // Absolute position within the container
+    const absoluteX = wrapperRect.left - containerRect.left + scaledX
+    const absoluteY = wrapperRect.top - containerRect.top + scaledY
+
+    // Center the target position in the viewport
+    const targetScrollLeft = absoluteX - viewport.clientWidth / 2
+    const targetScrollTop = absoluteY - viewport.clientHeight / 2
+
+    viewport.scrollTo({
+      left: Math.max(0, targetScrollLeft),
+      top: Math.max(0, targetScrollTop),
+      behavior: "smooth",
+    })
+
+    console.log(
+      `Scrolling to page ${page} at (${x.toFixed(1)}, ${y.toFixed(1)}) => scroll to (${targetScrollLeft.toFixed(1)}, ${targetScrollTop.toFixed(1)})`
+    )
+  }
+  // onMount(() => {
+  //   let unlisten = listen<PreviewPositionEventPayload>(
+  //     "preview-position",
+  //     (event) => {
+  //       // Delegate to the extracted function for clarity/testability
+  //       scrollToPreviewPosition(event.payload)
+  //     }
+  //   )
+
+  // Clean up the event listener when component is destroyed
+  //   return () => {
+  //     unlisten.then((fn) => fn())
+  //   }
+  // })
+
+  $effect(() => {
+    if (
+      appContext.workspace &&
+      appContext.workspace.document &&
+      appContext.workspace.document.previewPosition
+    ) {
+      const pos = appContext.workspace.document.previewPosition
+      if (pos) {
+        scrollToPreviewPosition(pos)
+      }
     }
   })
-
   // Redraw canvases whenever pages array changes or DPR updates.
   // Each entry in `pages` is still an HTMLImageElement produced elsewhere; we now
   // use it only as a bitmap source, drawing into a high-DPR canvas for sharper text.
@@ -139,7 +158,7 @@
 </script>
 
 <ScrollArea orientation="both" class="w-full h-svh" bind:ref={scrollAreaRef}>
-  {#if appState.canCompileFile}
+  {#if appContext.workspace && appContext.workspace.document && getFileType(appContext.workspace.document.path) === "typ"}
     <div class="flex flex-col gap-6">
       {#each pages as page, index}
         <!-- svelte-ignore a11y_click_events_have_key_events -->

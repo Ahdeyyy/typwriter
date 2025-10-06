@@ -15,13 +15,13 @@
 </script>
 
 <main class="flex-1 w-screen">
-  <Resizable.PaneGroup class="border h-full w-full" direction="horizontal">
+  <Resizable.PaneGroup class=" h-full w-full mt-1" direction="horizontal">
     <!-- {#if appContext.isFileTreeOpen} -->
     <Resizable.Pane hidden={!appContext.isFileTreeOpen} defaultSize={15}>
       <Filetree />
     </Resizable.Pane>
     <!-- {/if} -->
-    <Resizable.Handle hidden={!appContext.isFileTreeOpen} withHandle />
+    <Resizable.Handle hidden={!appContext.isFileTreeOpen} />
 
     <Resizable.Pane>
       <Resizable.PaneGroup direction="horizontal">
@@ -29,7 +29,7 @@
           {@render EditorAndDiagnosticGroup()}
         </Resizable.Pane>
 
-        <Resizable.Handle hidden={!appContext.isPreviewOpen} withHandle />
+        <Resizable.Handle hidden={!appContext.isPreviewOpen} />
         <Resizable.Pane hidden={!appContext.isPreviewOpen} defaultSize={45}>
           <PreviewPane />
         </Resizable.Pane>
@@ -50,7 +50,7 @@
       </div>
     </Resizable.Pane>
 
-    <Resizable.Handle hidden={!appContext.isDiagnosticsOpen} withHandle />
+    <Resizable.Handle hidden={!appContext.isDiagnosticsOpen} />
     <Resizable.Pane hidden={!appContext.isDiagnosticsOpen} defaultSize={30}>
       <Diagnostics />
     </Resizable.Pane>

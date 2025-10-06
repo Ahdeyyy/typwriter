@@ -10,10 +10,11 @@
     LucideFolderOpen,
   } from "@lucide/svelte"
   import * as Collapsible from "./ui/collapsible"
-  import { getFileName } from "@/utils"
+  import { getFileName, getFileType } from "@/utils"
   import { ScrollArea } from "$lib/components/ui/scroll-area"
   import { appContext } from "../app-context.svelte"
   import type { FileTreeNode } from "@/workspace/workspace.svelte"
+  import { Badge } from "./ui/badge"
 
   // Track open state of folders (keyed by their full relative path to avoid collisions)
   const openFolders = $state<string[]>([])
@@ -88,7 +89,7 @@
         variant="ghost"
         size="sm"
         data-active={isActiveFile}
-        class="w-full justify-start h-7 pl-2 pr-2 gap-2 rounded-none font-normal tracking-tight text-left hover:bg-accent/60 data-[active=true]:bg-primary/10 data-[active=true]:text-primary focus-visible:ring-0 focus-visible:outline-none"
+        class="w-full justify-start h-7 pl-2 pr-2 gap-2 rounded-none font-normal tracking-tight text-left hover:bg-accent/60 data-[active=true]:bg-primary/10 data-[active=true]:text-primary focus-visible:ring-0 focus-visible:outline-none relative"
         style={`padding-left: calc(${depth} * 0.85rem + 0.5rem);`}
         onclick={() => {
           if (!appContext.workspace) {
@@ -98,8 +99,16 @@
           appContext.workspace.openFile(item.path)
         }}
       >
-        <FileIcon />
-        <span class="truncate">{getFileName(name)}</span>
+        <span class="truncate"
+          >{getFileName(name).replace("." + getFileType(name), "")}</span
+        >
+        <Badge
+          class="absolute shadow right-2"
+          hidden={getFileType(name) === ""}
+          variant="secondary"
+        >
+          {getFileType(name)}
+        </Badge>
       </Button>
     {:else}
       <Collapsible.Root
@@ -125,11 +134,7 @@
               <ChevronRightIcon
                 class="size-4 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-90"
               />
-              {#if openFolders.includes(thisPath)}
-                <LucideFolderOpen />
-              {:else}
-                <FolderIcon />
-              {/if}
+
               <span class="truncate">{name}</span>
             </Button>
           {/snippet}

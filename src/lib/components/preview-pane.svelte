@@ -19,11 +19,6 @@
       appContext.workspace.document.renderedContent &&
       appContext.workspace.document.content
     ) {
-      console.log(
-        "Preview images updated",
-        appContext.workspace.document.renderedContent
-      )
-
       preview_images = appContext.workspace.document.renderedContent.map(
         (page, _) => {
           let img = new Image()

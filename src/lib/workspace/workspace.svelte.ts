@@ -1,6 +1,6 @@
 import { EditorDocument } from "./document.svelte"
 import { open_workspace } from "../ipc";
-import { getFolderName, joinFsPath } from "../utils";
+import { getFileType, getFolderName, joinFsPath } from "../utils";
 import { readDir, readTextFile } from "@tauri-apps/plugin-fs";
 import { open as OpenDialog, confirm } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -70,22 +70,25 @@ export class Workspace {
 
             const document = new EditorDocument(path);
             document.content = fileContentResult.value;
-            await document.compile();
+            if (getFileType(path) === "typ") {
+                await document.compile();
 
-            if (document.compilationStatus === "error") {
-                console.error("Failed to compile document");
+                if (document.compilationStatus === "error") {
+                    console.error("Failed to compile document");
+                }
+                if (document.compilationStatus === "success") {
+                    console.log("Document compiled successfully");
+                    this.renderedContent = (await document.render()).map(page => {
+                        const img = new Image();
+                        img.src = `data:image/png;base64,${page.image}`
+                        img.width = page.width
+                        img.height = page.height
+                        return img
+                    });
+                }
+                document.compilationStatus = "idle";
+                // document.getPreviewPosition(0);
             }
-            if (document.compilationStatus === "success") {
-                console.log("Document compiled successfully");
-                this.renderedContent = (await document.render()).map(page => {
-                    const img = new Image();
-                    img.src = `data:image/png;base64,${page.image}`
-                    img.width = page.width
-                    img.height = page.height
-                    return img
-                });
-            }
-            document.compilationStatus = "idle";
             this.document = document;
             return;
         }
@@ -119,15 +122,19 @@ export class Workspace {
         const document = new EditorDocument(path);
         document.content = fileContentResult.value;
         // $inspect("Document content", document.content);
-        await document.compile();
-        this.renderedContent = (await document.render()).map(page => {
-            const img = new Image();
-            img.src = `data:image/png;base64,${page.image}`
-            img.width = page.width
-            img.height = page.height
-            return img
-        });
-        document.compilationStatus = "idle";
+        if (getFileType(path) === "typ") {
+            // console.log("Compiling document...");
+            await document.compile();
+            this.renderedContent = (await document.render()).map(page => {
+                const img = new Image();
+                img.src = `data:image/png;base64,${page.image}`
+                img.width = page.width
+                img.height = page.height
+                return img
+            });
+            document.compilationStatus = "idle";
+            // document.getPreviewPosition(0);
+        }
         this.document = document;
     }
     closeFile(path: string) { }

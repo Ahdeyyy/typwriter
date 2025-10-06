@@ -11,8 +11,12 @@
   let dropdownOpen = $state(false)
 
   async function handleSelectRecent(path: string) {
-    // await appState.openRecentWorkspace(path)
-    appContext.addToRecentWorkspaces(path)
+    const opened = await openWorkspace(path)
+    if (opened) {
+      appContext.workspace = opened
+      await open_workspace(path)
+      appContext.addToRecentWorkspaces(path)
+    }
     dropdownOpen = false
   }
 
@@ -21,8 +25,10 @@
     if (opened) {
       appContext.workspace = opened
       open_workspace(opened.rootPath)
-      dropdownOpen = false
+      appContext.addToRecentWorkspaces(opened.rootPath)
     }
+
+    dropdownOpen = false
   }
 </script>
 
@@ -52,7 +58,7 @@
                 {...props}
                 variant="ghost"
                 class="w-full flex items-center justify-between px-2 py-1.5 text-sm"
-                onclick={() => handleSelectRecent(w)}
+                onclick={async () => await handleSelectRecent(w)}
               >
                 <span class="truncate">{getFolderName(w)}</span>
                 {#if appContext.workspace?.rootPath === w}

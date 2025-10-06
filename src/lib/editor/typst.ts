@@ -1,7 +1,9 @@
 /// typst support for the editor
 
 import { autocomplete, tooltip as getTooltipInfo } from "@/ipc";
+import type { DiagnosticResponse } from "@/types";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
+import { linter, type Diagnostic } from "@codemirror/lint";
 // import { getTooltip } from "@codemirror/view";
 import type { EditorView } from "codemirror";
 
@@ -119,3 +121,51 @@ export async function typst_completion(context: CompletionContext): Promise<Comp
     };
 
 }
+
+export function typstLinter(diags: DiagnosticResponse[]) {
+    return linter(view => {
+
+        const getHints = (hints: string[]) => {
+            if (hints.length === 0) return ""
+            return "\n\nHints:\n" + hints.map(h => ` - ${h}`).join("\n")
+        }
+
+        let diagnostics: Diagnostic[] = []
+        for (const diag of diags) {
+            diagnostics.push({
+                from: flattenLineAndColumn(diag.location.line, diag.location.column, view),
+                to: flattenLineAndColumn(diag.location.end_line, diag.location.end_column, view),
+                message: ` ${diag.message} ${getHints(diag.hints)}`,
+                severity: diag.severity.toLocaleLowerCase() as Diagnostic["severity"],
+            })
+        }
+        return diagnostics
+    })
+}
+
+
+function flattenLineAndColumn(line: number, column: number, view: EditorView): number {
+    // Diagnostics coming from the compiler use 1-based line/column.
+    // Prefer using the active CodeMirror document if available for exact offsets;
+    // otherwise fall back to the in-memory `app.text` string.
+    const l = Math.max(1, Math.floor(line));
+    const c = Math.max(1, Math.floor(column));
+
+    // Helper to clamp a value between min and max
+    const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
+    // Try to use the active EditorView's document (accurate and accounts for CRLF)
+
+    const doc = view.state.doc;
+    const totalLines = doc.lines;
+    const useLine = clamp(l, 1, totalLines);
+    const lineObj = doc.line(useLine);
+    // column is 1-based where 1 == first character; allow column to be one past line end
+    const maxCol = lineObj.length + 1;
+    const useCol = clamp(c, 1, maxCol);
+    return lineObj.from + (useCol - 1);
+}
+
+
+
+

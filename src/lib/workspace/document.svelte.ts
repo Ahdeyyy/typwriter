@@ -1,6 +1,6 @@
 import type { DiagnosticResponse, CompletionResponse, RenderResponse } from "../types";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { compile, page_click, render } from "../ipc";
+import { compile, get_cursor_position, page_click, render } from "../ipc";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -36,14 +36,12 @@ export class EditorDocument {
         if (!this.path) return;
         this.compilationStatus = "compiling";
 
-
-
         try {
             const result = await invoke<DiagnosticResponse[]>("compile", { file_path: this.path, source: this.content });
             if (result instanceof Array) {
                 this.compilationStatus = "success";
                 this.diagnostics = result;
-                console.log("Document compiled successfully", result);
+                // console.log("Document compiled successfully", result);
                 return;
             } else {
                 this.compilationStatus = "error";
@@ -83,7 +81,7 @@ export class EditorDocument {
         try {
             const result = await invoke<RenderResponse[]>("render", {});
             this.renderedContent = result;
-            console.log("Document rendered successfully", result);
+            // console.log("Document rendered successfully", result);
             return result;
         } catch (error) {
 
@@ -94,6 +92,17 @@ export class EditorDocument {
 
     }
 
+    async getPreviewPosition(cursor_position: number) {
+        if (!this.path) return;
+        const result = await get_cursor_position(cursor_position, this.content);
+        if (result.isErr()) {
+            console.error("Get cursor position error:", result.error);
+            return;
+        }
+        this.previewPosition = result.value;
+
+
+    }
 
     async previewPageClick(x: number, y: number, page: number) {
         let result = await page_click(page, this.content, x, y)
