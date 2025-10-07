@@ -6913,6 +6913,7 @@ dependencies = [
  "comemo 0.5.0",
  "fs",
  "mem",
+ "rayon",
  "serde",
  "serde_json",
  "tauri",

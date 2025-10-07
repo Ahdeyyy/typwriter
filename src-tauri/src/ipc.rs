@@ -27,7 +27,7 @@ pub async fn compile(
 ) -> Result<Vec<TypstSourceDiagnostic>, ()> {
     let mut compiler = state.compiler.write().await;
     let path = PathBuf::from(file_path);
-    let (_, diagnostics) = compiler.compile_file(&path, source).await;
+    let (_, diagnostics) = compiler.compile_file(&path, source);
     Ok(diagnostics)
 }
 
@@ -67,7 +67,7 @@ pub enum RenderError {
 pub async fn render(state: tauri::State<'_, AppState>) -> Result<Vec<RenderResponse>, RenderError> {
     let compiler = state.compiler.read().await;
     if let Some(cache) = compiler.get_cache() {
-        let rendered_pages = render_file(cache.pages.clone(), state.render_scale).await;
+        let rendered_pages = render_file(cache.pages.clone(), state.render_scale);
         return Ok(rendered_pages);
     } else {
         return Err(RenderError::NoCompilationCache);
@@ -106,9 +106,9 @@ pub async fn compile_file(
     let path = PathBuf::from(file_path);
     let byte_position = char_to_byte_position(&source, cursor_position);
 
-    let (pages, diagnostics) = compiler.compile_file(&path, source).await;
+    let (pages, diagnostics) = compiler.compile_file(&path, source);
 
-    let rendered_pages = render_file(pages, state.render_scale).await;
+    let rendered_pages = render_file(pages, state.render_scale);
     let _ = app.emit("rendered-pages", rendered_pages);
 
     if let Some(cache) = compiler.get_cache() {

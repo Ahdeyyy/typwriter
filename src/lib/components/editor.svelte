@@ -81,6 +81,8 @@
           await appContext.workspace.document.getPreviewPosition(cursor)
         }
         let page = appContext.workspace.document.previewPosition.page
+        if (page < 1) page = 1
+
         let render_response = await render_page(page)
         console.log("render response: ", render_response)
         if (render_response) {
@@ -96,7 +98,7 @@
 
   const debouncedCompileAndRender = useDebounce(async () => {
     await compileAndRender()
-  }, 0)
+  }, 10)
 
   const throttledSave = useDebounce(async () => {
     if (appContext.workspace && appContext.workspace.document) {

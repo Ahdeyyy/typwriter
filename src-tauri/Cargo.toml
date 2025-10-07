@@ -42,4 +42,5 @@ typst-syntax = "0.13.1"
 typst-timing = "0.13.1"
 fs = "0.0.5"
 mem = "0.5.0"
+rayon = "1.11.0"
 

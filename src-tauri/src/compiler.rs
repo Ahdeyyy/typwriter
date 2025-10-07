@@ -16,6 +16,7 @@ use typst_syntax::{FileId, Source, VirtualPath};
 
 use crate::utils::{byte_position_to_char_position, char_to_byte_position, convert_datetime};
 use crate::world::Typstworld;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
@@ -162,7 +163,7 @@ impl TypstCompiler {
         self.world.add_file(name, path, source);
     }
 
-    pub async fn compile_file(
+    pub fn compile_file(
         &mut self,
         path: &PathBuf,
         source: String,
@@ -187,22 +188,27 @@ impl TypstCompiler {
         let mut pages = Vec::new();
         let warned_compilation_result = typst::compile::<PagedDocument>(&self.world);
         let mut warnings = Vec::new();
-        warned_compilation_result.warnings.iter().for_each(|w| {
-            let diagnostic_range = self.world.range(w.span).unwrap_or_default();
-            let diagnostic_source = self.world.source(w.span.id().unwrap_or(self.world.main()));
-            let position = diagnostic_position_from_source(diagnostic_source, diagnostic_range);
+        let diagnostics: Vec<TypstSourceDiagnostic> = warned_compilation_result
+            .warnings
+            .iter()
+            .map(|w| {
+                let diagnostic_range = self.world.range(w.span).unwrap_or_default();
+                let diagnostic_source = self.world.source(w.span.id().unwrap_or(self.world.main()));
+                let position = diagnostic_position_from_source(diagnostic_source, diagnostic_range);
 
-            let diagnostic = TypstSourceDiagnostic {
-                hints: w.hints.iter().map(|s| s.to_string()).collect(),
-                location: position,
-                severity: match w.severity {
-                    Severity::Error => TypstSeverity::Error,
-                    Severity::Warning => TypstSeverity::Warning,
-                },
-                message: w.message.to_string(),
-            };
-            warnings.push(diagnostic);
-        });
+                let diagnostic = TypstSourceDiagnostic {
+                    hints: w.hints.par_iter().map(|s| s.to_string()).collect(),
+                    location: position,
+                    severity: match w.severity {
+                        Severity::Error => TypstSeverity::Error,
+                        Severity::Warning => TypstSeverity::Warning,
+                    },
+                    message: w.message.to_string(),
+                };
+                diagnostic
+            })
+            .collect();
+        warnings.extend(diagnostics);
 
         match warned_compilation_result.output {
             Ok(doc) => {
@@ -210,24 +216,28 @@ impl TypstCompiler {
                 self.compilation_cache = Some(doc.clone());
             }
             Err(diagnostic_errors) => {
-                diagnostic_errors.iter().for_each(|w| {
-                    let diagnostic_range = self.world.range(w.span).unwrap_or_default();
-                    let diagnostic_source =
-                        self.world.source(w.span.id().unwrap_or(self.world.main()));
-                    let position =
-                        diagnostic_position_from_source(diagnostic_source, diagnostic_range);
+                let diagnostics: Vec<TypstSourceDiagnostic> = diagnostic_errors
+                    .iter()
+                    .map(move |w| {
+                        let diagnostic_range = self.world.range(w.span).unwrap_or_default();
+                        let diagnostic_source =
+                            self.world.source(w.span.id().unwrap_or(self.world.main()));
+                        let position =
+                            diagnostic_position_from_source(diagnostic_source, diagnostic_range);
 
-                    let diagnostic = TypstSourceDiagnostic {
-                        hints: w.hints.iter().map(|s| s.to_string()).collect(),
-                        location: position,
-                        severity: match w.severity {
-                            Severity::Error => TypstSeverity::Error,
-                            Severity::Warning => TypstSeverity::Warning,
-                        },
-                        message: w.message.to_string(),
-                    };
-                    warnings.push(diagnostic);
-                });
+                        let diagnostic = TypstSourceDiagnostic {
+                            hints: w.hints.par_iter().map(|s| s.to_string()).collect(),
+                            location: position,
+                            severity: match w.severity {
+                                Severity::Error => TypstSeverity::Error,
+                                Severity::Warning => TypstSeverity::Warning,
+                            },
+                            message: w.message.to_string(),
+                        };
+                        diagnostic
+                    })
+                    .collect();
+                warnings.extend(diagnostics);
                 // self.clear_cache();
             }
         }
@@ -388,22 +398,26 @@ impl TypstCompiler {
 }
 
 /// Returns the rendered images of the file
-pub async fn render_file(pages: Vec<Page>, scale: f32) -> Vec<RenderResponse> {
-    let mut rendered_pages = Vec::new();
-    pages.iter().enumerate().for_each(|(_idx, page)| {
-        // let frame_size = page.frame.size();
-        let bmp = render(&page, scale);
-        if let Ok(image) = bmp.encode_png() {
-            let image_base64 = general_purpose::STANDARD.encode(image);
+pub fn render_file(pages: Vec<Page>, scale: f32) -> Vec<RenderResponse> {
+    let rendered_pages = pages
+        .par_iter()
+        .enumerate()
+        .filter_map(|(_idx, page)| {
+            // let frame_size = page.frame.size();
+            let bmp = render(&page, scale);
+            if let Ok(image) = bmp.encode_png() {
+                let image_base64 = general_purpose::STANDARD.encode(image);
 
-            rendered_pages.push(RenderResponse {
-                image: image_base64,
-                width: bmp.width(),
-                height: bmp.height(),
-            });
-        }
-    });
-
+                Some(RenderResponse {
+                    image: image_base64,
+                    width: bmp.width(),
+                    height: bmp.height(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
     rendered_pages
 }
 
