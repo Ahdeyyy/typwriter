@@ -37,7 +37,11 @@ export class EditorDocument {
         this.compilationStatus = "compiling";
 
         try {
+            performance.mark("compile-call")
             const result = await invoke<DiagnosticResponse[]>("compile", { file_path: this.path, source: this.content });
+            performance.mark("compile-returned")
+            performance.measure("compile-perf", "compile-call", "compile-returned")
+            // console.log("compile ipc perf:", performance.getEntriesByName("compile-perf"))
             if (result instanceof Array) {
                 this.compilationStatus = "success";
                 this.diagnostics = result;
@@ -79,7 +83,11 @@ export class EditorDocument {
         // }
 
         try {
+            performance.mark("calling-render")
             const result = await invoke<RenderResponse[]>("render", {});
+            performance.mark("render-returned")
+            performance.measure("render-perf", "calling-render", "render-returned")
+            console.log("render ipc perf: ", performance.getEntriesByName("render-perf"))
             this.renderedContent = result;
             // console.log("Document rendered successfully", result);
             return result;

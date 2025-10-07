@@ -1,4 +1,5 @@
 use crate::app_state::AppState;
+use crate::compiler;
 use crate::compiler::{
     render_file, DocumentClickResponse, FileExportError, PreviewPosition, RenderResponse,
     TypstCompiler, TypstSourceDiagnostic,
@@ -60,6 +61,7 @@ pub async fn get_cursor_position(
 #[derive(Debug, Serialize, Deserialize)]
 pub enum RenderError {
     NoCompilationCache,
+    NoPage,
 }
 #[tauri::command(rename_all = "snake_case")]
 pub async fn render(state: tauri::State<'_, AppState>) -> Result<Vec<RenderResponse>, RenderError> {
@@ -67,6 +69,26 @@ pub async fn render(state: tauri::State<'_, AppState>) -> Result<Vec<RenderRespo
     if let Some(cache) = compiler.get_cache() {
         let rendered_pages = render_file(cache.pages.clone(), state.render_scale).await;
         return Ok(rendered_pages);
+    } else {
+        return Err(RenderError::NoCompilationCache);
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn render_page(
+    state: tauri::State<'_, AppState>,
+    page: usize,
+) -> Result<RenderResponse, RenderError> {
+    let compiler = state.compiler.read().await;
+    if let Some(cache) = compiler.get_cache() {
+        let page = cache.pages.get(page);
+        match page {
+            Some(page) => {
+                let rendered_page = compiler::render_page(page, state.render_scale);
+                return Ok(rendered_page);
+            }
+            None => return Err(RenderError::NoPage),
+        }
     } else {
         return Err(RenderError::NoCompilationCache);
     }

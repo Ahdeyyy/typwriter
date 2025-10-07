@@ -166,3 +166,18 @@ export async function tooltip(source_text: string, cursor_position: number) {
     });
     return result;
 }
+
+export async function render_page(page: number): Promise<RenderResponse | undefined> {
+    console.log("getting render at page: ", page - 1)
+    try {
+        let result = await invoke<RenderResponse>("render_page", {
+            page: page - 1
+        })
+        return result
+    }
+    catch (e) {
+        console.error(e)
+        return undefined
+    }
+
+}

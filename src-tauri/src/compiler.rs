@@ -407,6 +407,24 @@ pub async fn render_file(pages: Vec<Page>, scale: f32) -> Vec<RenderResponse> {
     rendered_pages
 }
 
+pub fn render_page(page: &Page, scale: f32) -> RenderResponse {
+    let bmp = render(page, scale);
+    if let Ok(image) = bmp.encode_png() {
+        let image_base64 = general_purpose::STANDARD.encode(image);
+        return RenderResponse {
+            image: image_base64,
+            width: bmp.width(),
+            height: bmp.height(),
+        };
+    } else {
+        return RenderResponse {
+            image: String::new(),
+            width: 0,
+            height: 0,
+        };
+    }
+}
+
 fn diagnostic_position_from_source(
     source: FileResult<Source>,
     diagnostic_range: Range<usize>,

@@ -71,7 +71,7 @@ export async function typst_completion(context: CompletionContext): Promise<Comp
 
     // Check if this is an explicit completion request (e.g., Ctrl+Space)
     const explicit = context.explicit;
-    console.log("getting completion")
+    // console.log("getting completion")
 
     const result = await autocomplete(sourceText, cursorPosition, explicit)
 
@@ -81,7 +81,7 @@ export async function typst_completion(context: CompletionContext): Promise<Comp
     }
 
     const response = result.value;
-    console.log(response);
+    // console.log(response);
 
     // If no completions returned, return null
     if (!response || response.completions.length === 0) {

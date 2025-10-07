@@ -5,6 +5,7 @@
     typst_hover_tooltip,
     typstLinter,
   } from "@/editor/typst"
+  import { render_page } from "@/ipc"
   import { saveTextToFile, compile, getFileType } from "@/utils"
   import { yaml } from "@codemirror/lang-yaml"
   import { Compartment, EditorState } from "@codemirror/state"
@@ -70,30 +71,32 @@
     }
   })
 
-  $inspect(lang)
-  $inspect(completion)
-
-  onMount(() => {
-    console.log("Editor mounted")
-  })
-
   const compileAndRender = async () => {
     if (appContext.workspace && appContext.workspace.document) {
       if (documentExtension.ext === "typ") {
-        console.log("Document changed, recompiling...")
         await appContext.workspace.document.compile()
-        appContext.workspace.renderedContent = (
-          await appContext.workspace.document.render()
-        ).map((p) => {
-          let img = new Image()
-          img.src = `data:image/png;base64,${p.image}`
-          img.width = p.width
-          img.height = p.height
-          return img
-        })
+        const view = appContext.editorView
+        if (view) {
+          const cursor = view.state.selection.main.head
+          await appContext.workspace.document.getPreviewPosition(cursor)
+        }
+        let page = appContext.workspace.document.previewPosition.page
+        let render_response = await render_page(page)
+        console.log("render response: ", render_response)
+        if (render_response) {
+          let img = new Image(render_response.width, render_response.height)
+          img.src = `data:image/png;base64,${render_response.image}`
+          appContext.workspace.renderedContent.set(page - 1, img)
+
+          // console.log($state.snapshot(appContext.workspace.renderedContent))
+        }
       }
     }
   }
+
+  const debouncedCompileAndRender = useDebounce(async () => {
+    await compileAndRender()
+  }, 0)
 
   const throttledSave = useDebounce(async () => {
     if (appContext.workspace && appContext.workspace.document) {
@@ -124,11 +127,8 @@
       appContext.editorView = e
     }}
     onchange={async () => {
-      const res = await Promise.allSettled([
-        compileAndRender(),
-        throttledSave(),
-        throttledPos(),
-      ])
+      await debouncedCompileAndRender()
+      const res = await Promise.allSettled([throttledSave()])
       // console.log("promise result:", res)
     }}
     extensions={languageSpecificExtensions}
