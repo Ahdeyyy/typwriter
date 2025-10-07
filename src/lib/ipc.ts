@@ -1,11 +1,60 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Err, Result, ResultAsync } from "neverthrow";
-import type { DocumentClickResponseType, CompletionResponse, TooltipResponse } from "./types"
+import type { DocumentClickResponseType, CompletionResponse, TooltipResponse, TypstSourceDiagnostic, RenderResponse, PreviewPosition } from "./types"
 
 
 type InvokeError = { message: string }
 const toInvokeError = (): InvokeError => ({ message: "Invoke failed" })
 
+/**
+ * Compile a file with its source text
+ * @param file_path The path to the file to compile
+ * @param source The source text of the file
+ * @returns A Result containing an array of diagnostics or an error
+ */
+export async function compile(file_path: string, source: string) {
+    const inv = ResultAsync.fromThrowable(
+        invoke<TypstSourceDiagnostic[]>,
+        (): InvokeError => ({ message: `failed to compile file ${file_path}` })
+    );
+    const result = await inv("compile", {
+        file_path,
+        source
+    });
+    return result;
+}
+
+/**
+ * Render the currently cached compilation result
+ * @returns A Result containing an array of rendered pages or an error
+ */
+export async function render() {
+    const inv = ResultAsync.fromThrowable(
+        invoke<RenderResponse[]>,
+        (e: any): InvokeError => ({ message: `failed to render pages ${e}` })
+    );
+    const result = await inv("render", {});
+    return result;
+}
+
+/**
+ * Get the preview position for a cursor position in the source
+ * @param cursor_position The character position of the cursor in the source
+ * @param source The source text of the file
+ * @returns A Result containing the preview position or an error
+ */
+export async function get_cursor_position(cursor_position: number, source: string) {
+
+    const inv = ResultAsync.fromThrowable(
+        invoke<PreviewPosition>,
+        (e: unknown) => e
+    );
+    const result = await inv("get_cursor_position", {
+        cursor_position,
+        source
+    });
+    return result;
+}
 
 export async function compile_file(source: string, file_path: string, scale: number, cursor_position: number): Promise<InvokeError | undefined> {
     const inv = ResultAsync.fromThrowable(invoke<void>, (): InvokeError => ({ message: `failed to compile file ${file_path}` }));
@@ -22,10 +71,17 @@ export async function compile_file(source: string, file_path: string, scale: num
 
 }
 
-
-
 export async function page_click(page_number: number, source_text: string, x: number, y: number) {
-    const inv = ResultAsync.fromThrowable(invoke<DocumentClickResponseType>, (): InvokeError => ({ message: `failed to handle page click on page ${page_number}` }));
+    const inv = ResultAsync.fromThrowable(
+        invoke<DocumentClickResponseType>,
+        (e: unknown): InvokeError => {
+
+            if (e instanceof Error) {
+                return { message: e.message };
+            }
+            return { message: String(e) };
+        }
+    );
     const result = await inv("page_click", {
         page_number,
         source_text,
@@ -49,16 +105,29 @@ export async function open_workspace(path: string) {
     export_path: String,
     source: String,
  */
-export async function export_to(file_path: string, export_path: string, source: string) {
-    const inv = ResultAsync.fromThrowable(invoke<void>, (): InvokeError => ({ message: `failed to export file ${file_path}` }));
-    console.log("exporting to", { file_path, export_path, source });
-    const result = await inv("export_to", {
-        file_path,
-        export_path,
-        source
-    });
-    return result;
+
+export async function export_to(file_path: string, export_path: string, source: string): Promise<void | string> {
+    try {
+        invoke<void>("export_to", {
+            file_path,
+            export_path,
+            source
+        });
+    } catch (error) {
+        return error as string;
+    }
 }
+
+// export async function export_to(file_path: string, export_path: string, source: string) {
+//     const inv = ResultAsync.fromThrowable(invoke<void>, (): InvokeError => ({ message: `failed to export file ${file_path}` }));
+//     console.log("exporting to", { file_path, export_path, source });
+//     const result = await inv("export_to", {
+//         file_path,
+//         export_path,
+//         source
+//     });
+//     return result;
+// }
 
 /**
  * Get autocomplete suggestions at the cursor position

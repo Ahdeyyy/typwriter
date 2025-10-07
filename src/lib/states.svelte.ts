@@ -113,6 +113,7 @@ class App {
 
     typstLinter() {
         return linter(view => {
+
             let diagnostics: Diagnostic[] = []
             for (const diag of this.diagnostics) {
                 diagnostics.push({
