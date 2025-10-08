@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use base64::engine::general_purpose;
 use base64::Engine;
 use typst::{
-    diag::{FileResult, Severity},
+    diag::{FileResult, Severity, SourceDiagnostic},
     foundations::Bytes,
     layout::{Frame, Page, PagedDocument, Point},
     World, WorldExt,
@@ -185,64 +185,53 @@ impl TypstCompiler {
         };
 
         // NOTE: might error?
-        let _ = self.world.update_source(id, source.clone());
+        // let _ = self.world.update_source(id, source.clone());
         // self.world.reset();
         self.world.set_main_source_with_id(id, source);
 
         let mut pages = Vec::new();
+        let start = std::time::Instant::now();
         let warned_compilation_result = typst::compile::<PagedDocument>(&self.world);
-        let mut warnings = Vec::new();
-        let diagnostics: Vec<TypstSourceDiagnostic> = warned_compilation_result
-            .warnings
-            .iter()
-            .map(|w| {
-                let diagnostic_range = self.world.range(w.span).unwrap_or_default();
-                let diagnostic_source = self.world.source(w.span.id().unwrap_or(self.world.main()));
-                let position = diagnostic_position_from_source(diagnostic_source, diagnostic_range);
+        let duration = start.elapsed();
+        println!("compilation took {:?}", duration);
 
-                let diagnostic = TypstSourceDiagnostic {
-                    hints: w.hints.par_iter().map(|s| s.to_string()).collect(),
-                    location: position,
-                    severity: match w.severity {
-                        Severity::Error => TypstSeverity::Error,
-                        Severity::Warning => TypstSeverity::Warning,
-                    },
-                    message: w.message.to_string(),
-                };
-                diagnostic
-            })
-            .collect();
-        warnings.extend(diagnostics);
+        let process_diagnostics = |diagnostics: &[SourceDiagnostic]| -> Vec<TypstSourceDiagnostic> {
+            let start = std::time::Instant::now();
+            let diags = diagnostics
+                .par_iter()
+                .filter_map(|diagnostic| {
+                    let diagnostic_range = self.world.range(diagnostic.span).unwrap_or_default();
+                    let diagnostic_source = self
+                        .world
+                        .source(diagnostic.span.id().unwrap_or(self.world.main()));
+                    let position =
+                        diagnostic_position_from_source(diagnostic_source, diagnostic_range);
 
+                    let diagnostic = TypstSourceDiagnostic {
+                        hints: diagnostic.hints.iter().map(|s| s.to_string()).collect(),
+                        location: position,
+                        severity: match diagnostic.severity {
+                            Severity::Error => TypstSeverity::Error,
+                            Severity::Warning => TypstSeverity::Warning,
+                        },
+                        message: diagnostic.message.to_string(),
+                    };
+                    Some(diagnostic)
+                })
+                .collect();
+            let duration = start.elapsed();
+            println!("diagnostics proccessing took {:?}", duration);
+            diags
+        };
+
+        let mut warnings = process_diagnostics(&warned_compilation_result.warnings);
         match warned_compilation_result.output {
             Ok(doc) => {
                 pages = doc.pages.clone();
-                self.compilation_cache = Some(doc.clone());
+                self.compilation_cache = Some(doc);
             }
             Err(diagnostic_errors) => {
-                let diagnostics: Vec<TypstSourceDiagnostic> = diagnostic_errors
-                    .iter()
-                    .map(move |w| {
-                        let diagnostic_range = self.world.range(w.span).unwrap_or_default();
-                        let diagnostic_source =
-                            self.world.source(w.span.id().unwrap_or(self.world.main()));
-                        let position =
-                            diagnostic_position_from_source(diagnostic_source, diagnostic_range);
-
-                        let diagnostic = TypstSourceDiagnostic {
-                            hints: w.hints.par_iter().map(|s| s.to_string()).collect(),
-                            location: position,
-                            severity: match w.severity {
-                                Severity::Error => TypstSeverity::Error,
-                                Severity::Warning => TypstSeverity::Warning,
-                            },
-                            message: w.message.to_string(),
-                        };
-                        diagnostic
-                    })
-                    .collect();
-                warnings.extend(diagnostics);
-                // self.clear_cache();
+                warnings.extend(process_diagnostics(&diagnostic_errors));
             }
         }
 
@@ -288,7 +277,6 @@ impl TypstCompiler {
         let id = self.world.main();
         let source = self.world.source(id).ok()?;
         let positions = jump_from_cursor(doc, &source, cursor);
-        dbg!(positions.clone());
         let position = positions.get(0)?.clone();
 
         let x = position.point.x.to_pt() * scale as f64;

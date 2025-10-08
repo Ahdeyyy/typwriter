@@ -7,6 +7,7 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { compile, get_cursor_position, page_click, render } from "../ipc";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "@tauri-apps/api/core";
+import type { EditorView } from "codemirror";
 
 type PreviewPosition = {
   x: number;
@@ -115,9 +116,13 @@ export class EditorDocument {
     this.previewPosition = result.value;
   }
 
-  async previewPageClick(x: number, y: number, page: number) {
+  async previewPageClick(
+    x: number,
+    y: number,
+    page: number,
+    view?: EditorView,
+  ) {
     let result = await page_click(page, this.content, x, y);
-
     if (result.isErr()) {
       console.error(result.error);
       return;
@@ -125,7 +130,17 @@ export class EditorDocument {
     switch (result.value.type) {
       case "FileJump":
         //   appState.moveEditorCursor(result.value.position)
-        console.log(result.value);
+        if (view) {
+          const transaction = view.state.update({
+            selection: {
+              anchor: result.value.position,
+              head: result.value.position,
+            },
+            scrollIntoView: true,
+          });
+          view.dispatch(transaction);
+          view.focus();
+        }
         break;
       case "PositionJump":
         this.previewPosition = {
@@ -133,7 +148,6 @@ export class EditorDocument {
           x: result.value.x,
           y: result.value.y,
         };
-        console.log(result.value);
         break;
       case "UrlJump":
         openUrl(result.value.url);
@@ -142,7 +156,5 @@ export class EditorDocument {
         console.log("no jump");
         break;
     }
-
-    console.log("Result from page_click:", result);
   }
 }

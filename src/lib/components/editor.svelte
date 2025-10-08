@@ -6,24 +6,16 @@
         typstLinter,
     } from "@/editor/typst";
     import { render_page } from "@/ipc";
-    import { saveTextToFile, compile, getFileType } from "@/utils";
+    import { saveTextToFile, getFileType } from "@/utils";
     import { yaml } from "@codemirror/lang-yaml";
     import { Compartment, EditorState } from "@codemirror/state";
     import { EditorView, hoverTooltip } from "@codemirror/view";
     import { typst } from "codemirror-lang-typst";
-
     import { useDebounce, useInterval, useThrottle } from "runed";
-    import { onMount } from "svelte";
     import CodeMirror from "svelte-codemirror-editor";
-    import {
-        ayuLight,
-        espresso,
-        amy,
-        solarizedLight,
-        rosePineDawn,
-    } from "thememirror";
+    import { ayuLight } from "thememirror";
 
-    // let editor: HTMLElement
+    const editableDocs = ["typ", "yaml", "yml", "txt", "md", "json", "bib"];
 
     let extensions = $state(new Compartment());
 
@@ -158,15 +150,15 @@
             appContext.editorView = e;
         }}
         onchange={async (e) => {
-            await compileAndRender();
-            // console.log("promise result:", res)
+            await debouncedCompileAndRender();
         }}
         extensions={languageSpecificExtensions}
         lang={lang ? lang[0] : undefined}
-        theme={rosePineDawn}
+        theme={ayuLight}
         lineWrapping
         lineNumbers
         autocompletion={completion}
         foldGutter
+        editable={editableDocs.includes(documentExtension.ext)}
     />
 {/if}

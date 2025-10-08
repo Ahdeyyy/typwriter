@@ -5,11 +5,7 @@
     import { appContext } from "@/app-context.svelte";
     // import { app } from "@tauri-apps/api"
 
-    const keys = new PressedKeys();
-    keys.onKeys(["Control", "k"], () => {
-        appContext.isPreviewOpen = !appContext.isPreviewOpen;
-    });
-
+    
     // let preview_images = $state([] as HTMLImageElement[])
 
     // $effect(() => {
@@ -43,7 +39,12 @@
                 console.error("No document is open");
                 return;
             }
-            await appContext.workspace.document.previewPageClick(x, y, index);
+            await appContext.workspace.document.previewPageClick(
+                x,
+                y,
+                index,
+                appContext.editorView || undefined,
+            );
         }}
     />
 </div>

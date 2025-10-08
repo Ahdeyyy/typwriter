@@ -21,8 +21,6 @@
         return appContext.workspace.renderedContent;
     });
 
-    $inspect(pages);
-
     // Hold references to per-page canvas elements
     let canvasEls: HTMLCanvasElement[] = $state([]);
     // Hold references to per-page wrapper divs (for scroll calculations)
@@ -166,9 +164,6 @@
                             // convert back to natural coordinates by dividing by zoom
                             const x = displayX / zoom;
                             const y = displayY / zoom;
-                            console.log(
-                                `Click coordinates for page ${index} (canvas):\n  Display: ${displayX.toFixed(1)}, ${displayY.toFixed(1)} (size: ${rect.width.toFixed(1)}x${rect.height.toFixed(1)})\n  Natural: ${x.toFixed(1)}, ${y.toFixed(1)} (image size: ${page.naturalWidth}x${page.naturalHeight})\n  Zoom: ${(zoom * 100).toFixed(0)}%`,
-                            );
                             onclick(event, index, x, y);
                         }}
                         style="height: {page.height *

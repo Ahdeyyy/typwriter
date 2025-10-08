@@ -122,7 +122,6 @@ export class Workspace {
     document.content = fileContentResult.value;
     // $inspect("Document content", document.content);
     if (getFileType(path) === "typ") {
-      // console.log("Compiling document...");
       await document.compile();
       this.renderedContent = (await document.render()).map((page, index) => {
         const img = new Image();
