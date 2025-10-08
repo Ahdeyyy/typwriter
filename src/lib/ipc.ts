@@ -10,7 +10,6 @@ import type {
 } from "./types";
 
 type InvokeError = { message: string };
-const toInvokeError = (): InvokeError => ({ message: "Invoke failed" });
 
 /**
  * Compile a file with its source text
@@ -21,7 +20,12 @@ const toInvokeError = (): InvokeError => ({ message: "Invoke failed" });
 export async function compile(file_path: string, source: string) {
   const inv = ResultAsync.fromThrowable(
     invoke<TypstSourceDiagnostic[]>,
-    (): InvokeError => ({ message: `failed to compile file ${file_path}` }),
+    (e: unknown): InvokeError => {
+      if (e instanceof Error) {
+        return { message: e.message };
+      }
+      return { message: String(e) };
+    },
   );
   const result = await inv("compile", {
     file_path,
@@ -45,7 +49,6 @@ export async function render() {
     },
   );
   const result = await inv("render", {});
-  console.log(result);
   return result;
 }
 
@@ -58,7 +61,12 @@ export async function render() {
 export async function get_cursor_position(cursor_position: number) {
   const inv = ResultAsync.fromThrowable(
     invoke<PreviewPosition>,
-    (e: unknown) => e,
+    (e: unknown) => {
+      if (e instanceof Error) {
+        return { message: e.message };
+      }
+      return { message: String(e) };
+    },
   );
   const result = await inv("get_cursor_position", {
     cursor_position,
@@ -71,10 +79,15 @@ export async function compile_file(
   file_path: string,
   scale: number,
   cursor_position: number,
-): Promise<InvokeError | undefined> {
+): Promise<Result<void, InvokeError>> {
   const inv = ResultAsync.fromThrowable(
     invoke<void>,
-    (): InvokeError => ({ message: `failed to compile file ${file_path}` }),
+    (e: unknown): InvokeError => {
+      if (e instanceof Error) {
+        return { message: e.message };
+      }
+      return { message: String(e) };
+    },
   );
   const result = await inv("compile_file", {
     source,
@@ -82,10 +95,7 @@ export async function compile_file(
     scale,
     cursor_position,
   });
-
-  if (result.isErr()) {
-    return result.error;
-  }
+  return result;
 }
 
 export async function page_click(
@@ -96,7 +106,7 @@ export async function page_click(
 ) {
   const inv = ResultAsync.fromThrowable(
     invoke<DocumentClickResponseType>,
-    (e: unknown): InvokeError => {
+    (e): InvokeError => {
       if (e instanceof Error) {
         return { message: e.message };
       }
@@ -113,10 +123,12 @@ export async function page_click(
 }
 
 export async function open_workspace(path: string) {
-  const inv = ResultAsync.fromThrowable(
-    invoke<void>,
-    (): InvokeError => ({ message: `failed to open workspace at ${path}` }),
-  );
+  const inv = ResultAsync.fromThrowable(invoke<void>, (e): InvokeError => {
+    if (e instanceof Error) {
+      return { message: e.message };
+    }
+    return { message: String(e) };
+  });
   const result = await inv("open_workspace", {
     path,
   });
@@ -142,20 +154,9 @@ export async function export_to(
       source,
     });
   } catch (error) {
-    return error as string;
+    return String(error);
   }
 }
-
-// export async function export_to(file_path: string, export_path: string, source: string) {
-//     const inv = ResultAsync.fromThrowable(invoke<void>, (): InvokeError => ({ message: `failed to export file ${file_path}` }));
-//     console.log("exporting to", { file_path, export_path, source });
-//     const result = await inv("export_to", {
-//         file_path,
-//         export_path,
-//         source
-//     });
-//     return result;
-// }
 
 /**
  * Get autocomplete suggestions at the cursor position
@@ -171,9 +172,15 @@ export async function autocomplete(
 ) {
   const inv = ResultAsync.fromThrowable(
     invoke<CompletionResponse | null>,
-    (): InvokeError => ({
-      message: `failed to get autocomplete at position ${cursor_position}`,
-    }),
+    (e) => {
+      if (e instanceof Error) {
+        return {
+          message: `failed to get autocomplete at position ${cursor_position}`,
+        };
+      } else {
+        return { message: String(e) };
+      }
+    },
   );
   const result = await inv("autocomplete", {
     source_text,
@@ -192,9 +199,15 @@ export async function autocomplete(
 export async function tooltip(source_text: string, cursor_position: number) {
   const inv = ResultAsync.fromThrowable(
     invoke<TooltipResponse | null>,
-    (): InvokeError => ({
-      message: `failed to get tooltip at position ${cursor_position}`,
-    }),
+    (e): InvokeError => {
+      if (e instanceof Error) {
+        return {
+          message: `failed to get tooltip at position ${cursor_position}`,
+        };
+      } else {
+        return { message: String(e) };
+      }
+    },
   );
   const result = await inv("tooltip", {
     source_text,
@@ -206,14 +219,12 @@ export async function tooltip(source_text: string, cursor_position: number) {
 export async function render_page(
   page: number,
 ): Promise<RenderResponse | undefined> {
-  console.log("getting render at page: ", page - 1);
   try {
     let result = await invoke<RenderResponse>("render_page", {
       page: page - 1,
     });
     return result;
   } catch (e) {
-    console.error(e);
     return undefined;
   }
 }
