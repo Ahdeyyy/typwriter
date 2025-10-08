@@ -35,18 +35,17 @@ pub async fn compile(
 pub enum CursorPositionError {
     NoCompilationCache,
     NoPosition,
+    OutOfBounds,
 }
 #[tauri::command(rename_all = "snake_case")]
 pub async fn get_cursor_position(
     state: tauri::State<'_, AppState>,
     cursor_position: usize,
-    source: String,
 ) -> Result<PreviewPosition, CursorPositionError> {
     let compiler = state.compiler.read().await;
-    let byte_position = char_to_byte_position(&source, cursor_position);
     if let Some(cache) = compiler.get_cache() {
         let position = compiler
-            .get_preview_page_from_cursor(cache, byte_position, state.render_scale)
+            .get_preview_page_from_cursor(cache, cursor_position, state.render_scale)
             .await;
         if let Some(position) = position {
             Ok(position)
@@ -214,6 +213,13 @@ pub async fn export_to(
         .await?;
 
     Ok(())
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum AutocompleteError {
+    NoCompletion,
+    CursorOutOfBounds,
+    NoCompletions,
 }
 
 #[tauri::command(rename_all = "snake_case")]

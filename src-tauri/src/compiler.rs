@@ -70,11 +70,16 @@ pub struct PositionJump {
 }
 
 #[derive(Serialize, Clone, Debug)]
+pub struct UrlJump {
+    pub url: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
 #[serde(tag = "type")]
 pub enum DocumentClickResponse {
     FileJump(FileJump), // move the editor cursor to the given byte position in the given file
     PositionJump(PositionJump), // scroll the preview to the given page and point
-    UrlJump(String),    // open the given URL in the default browser
+    UrlJump(UrlJump),   // open the given URL in the default browser
     NoJump,
 }
 
@@ -83,7 +88,6 @@ pub enum TooltipKind {
     Code,
     Text,
 }
-
 #[derive(Serialize, Clone, Debug, Deserialize)]
 #[serde(tag = "type")]
 pub struct TooltipResponse {
@@ -283,7 +287,9 @@ impl TypstCompiler {
     ) -> Option<PreviewPosition> {
         let id = self.world.main();
         let source = self.world.source(id).ok()?;
-        let position = jump_from_cursor(doc, &source, cursor).get(0)?.clone();
+        let positions = jump_from_cursor(doc, &source, cursor);
+        dbg!(positions.clone());
+        let position = positions.get(0)?.clone();
 
         let x = position.point.x.to_pt() * scale as f64;
         let y = position.point.y.to_pt() * scale as f64;
@@ -364,7 +370,9 @@ impl TypstCompiler {
             // open the given URL in the default browser
             Some(Jump::Url(url)) => {
                 dbg!("Jump to URL: {}", url.as_str());
-                DocumentClickResponse::UrlJump(url.as_str().to_string())
+                DocumentClickResponse::UrlJump(UrlJump {
+                    url: url.as_str().to_string(),
+                })
             }
 
             None => {
