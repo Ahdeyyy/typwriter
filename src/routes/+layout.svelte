@@ -4,6 +4,7 @@
     import "../app.css";
     import Button from "@/components/ui/button/button.svelte";
     import {
+        FolderTreeIcon,
         LucideDownload,
         LucideEye,
         LucideHamburger,
@@ -15,6 +16,7 @@
         LucideOctagonAlert,
         LucidePanelRight,
         LucidePanelRightClose,
+        LucideSettings,
         LucideSquare,
         LucideX,
     } from "@lucide/svelte";
@@ -33,7 +35,7 @@
 
     let { children } = $props();
     const keys = new PressedKeys();
-    
+
     keys.onKeys(["Control", "k"], () => {
         appContext.isPreviewOpen = !appContext.isPreviewOpen;
     });
@@ -96,7 +98,7 @@
                 onclick={() =>
                     (appContext.isFileTreeOpen = !appContext.isFileTreeOpen)}
             >
-                <LucideMenu />
+                <FolderTreeIcon />
             </Button>
 
             <Button
@@ -137,6 +139,14 @@
                 onclick={export_file_handler}
             >
                 <LucideDownload />
+            </Button>
+            <Button
+                size="icon"
+                variant="ghost"
+                class="w-10 h-8 rounded-none"
+                onclick={() => console.log("Settings")}
+            >
+                <LucideSettings />
             </Button>
         </div>
 
