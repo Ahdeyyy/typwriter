@@ -2,6 +2,20 @@ import { EditorView } from "codemirror";
 import { Workspace } from "./workspace/workspace.svelte";
 import { RuneStore } from "@tauri-store/svelte";
 import { open_workspace } from "./ipc";
+import { toast } from "svelte-sonner";
+
+type AppState = {
+  active_tab: string;
+  tabs: string[];
+};
+const appState = new RuneStore<AppState>(
+  "app-state",
+  {
+    active_tab: "",
+    tabs: [],
+  },
+  { autoStart: true, saveOnChange: true },
+);
 
 class AppContext {
   isFileTreeOpen = $state<boolean>(false);
@@ -10,27 +24,26 @@ class AppContext {
   workspace = $state<Workspace | null>(null);
   editorView = $state<EditorView | null>(null);
   loaded = $state(false);
-  recent_workspaces: RuneStore<{ paths: string[] }>;
+  recent_workspaces: RuneStore<{ paths: string[]; opened: string }>;
 
   constructor() {
-    // Load the last opened workspace from the store
-    // (async () => {
-    //     await this.recent_workspaces.start()
-    //     this.loaded = true
-    // })()
     this.recent_workspaces = new RuneStore(
       "workspaces",
-      { paths: [] as string[] },
+      { paths: [] as string[], opened: "" },
       { autoStart: true, saveOnChange: true },
     );
-    const path = this.recent_workspaces.state.paths[0];
-    // console.log($state.snapshot(this.recent_workspaces.state));
-    if (path) {
-      console.log(path);
-
+    const path = this.recent_workspaces.state.opened;
+    if (path !== "") {
       (async () => {
         this.workspace = new Workspace(path);
-        await open_workspace(path);
+        const result = await open_workspace(path);
+        if (result.isErr()) {
+          console.error("Failed to open workspace:", result.error);
+          toast.error("Failed to open workspace", {
+            description: result.error.message,
+          });
+        }
+
         this.addToRecentWorkspaces(path);
       })();
     }
