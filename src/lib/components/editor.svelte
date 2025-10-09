@@ -6,6 +6,7 @@
         typstLinter,
     } from "@/editor/typst";
     import { render_page } from "@/ipc";
+
     import { saveTextToFile, getFileType } from "@/utils";
     import { yaml } from "@codemirror/lang-yaml";
     import { Compartment, EditorState } from "@codemirror/state";
@@ -13,7 +14,16 @@
     import { typst } from "codemirror-lang-typst";
     import { useDebounce, useInterval, useThrottle } from "runed";
     import CodeMirror from "svelte-codemirror-editor";
-    import { ayuLight } from "thememirror";
+    import { ayuLight, dracula } from "thememirror";
+    import { syntaxHighlighting } from "@codemirror/language";
+    import {
+        typstBlueprintHighlightStyle,
+        typstMidnightHighlightStyle,
+    } from "@/editor/style";
+    import {
+        alucardHighlightStyle,
+        alucardTheme,
+    } from "@/editor/themes/dracula/light";
 
     const editableDocs = ["typ", "yaml", "yml", "txt", "md", "json", "bib"];
 
@@ -39,6 +49,13 @@
         }
     });
 
+    let syntaxHighlight = $derived.by(() => {
+        if (documentExtension.ext === "typ") {
+            return typstBlueprintHighlightStyle;
+        }
+        return undefined;
+    });
+
     let completion = $derived.by(() => {
         if (documentExtension.ext === "typ") {
             return {
@@ -57,6 +74,7 @@
                     typstLinter(
                         appContext.workspace?.document?.diagnostics || [],
                     ),
+                    typst(),
                 ];
             case "yaml":
                 return [];
@@ -153,12 +171,15 @@
             await debouncedCompileAndRender();
         }}
         extensions={languageSpecificExtensions}
-        lang={lang ? lang[0] : undefined}
-        theme={ayuLight}
+        theme={alucardTheme}
         lineWrapping
         lineNumbers
         autocompletion={completion}
         foldGutter
+        syntaxHighlighting={{
+            highlighter: alucardHighlightStyle,
+            fallback: false,
+        }}
         editable={editableDocs.includes(documentExtension.ext)}
     />
 {/if}
