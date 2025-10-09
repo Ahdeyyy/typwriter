@@ -8,18 +8,16 @@ pub fn pixel_to_point(x: f64, scale: f32) -> f64 {
     x / scale as f64
 }
 
-pub fn byte_position_to_char_position(str: &str, byte_position: usize) -> usize {
-    str.char_indices()
-        .map(|(i, _)| i)
-        .take_while(|&i| i < byte_position)
+pub fn byte_position_to_char_position(text: &str, byte_position: usize) -> usize {
+    text.char_indices()
+        .take_while(|(byte_idx, _)| *byte_idx < byte_position)
         .count()
 }
 
-pub fn char_to_byte_position(str: &str, char_position: usize) -> usize {
-    str.char_indices()
-        .map(|(i, _)| i)
+pub fn char_to_byte_position(text: &str, char_position: usize) -> usize {
+    text.char_indices()
         .nth(char_position)
-        .unwrap_or(str.len())
+        .map_or(text.len(), |(byte_idx, _)| byte_idx)
 }
 
 /// Returns all files in the workspace directory.

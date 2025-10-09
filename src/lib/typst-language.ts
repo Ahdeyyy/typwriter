@@ -1,1 +1,0 @@
-import { TypstHighlightSytle } from "codemirror-lang-typst";

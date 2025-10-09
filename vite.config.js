@@ -19,7 +19,8 @@ export default defineConfig(async () => ({
       "codemirror-lang-typst",
       "@codemirror/lang-yaml",
       "@codemirror/view",
-      "thememirror"
+      "@lezer/highlight",
+      "thememirror",
     ],
   },
 
@@ -33,8 +34,9 @@ export default defineConfig(async () => ({
     strictPort: true,
     host: host || false,
     hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
-    watch: { // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"]
-    }
-  }
+    watch: {
+      // 3. tell Vite to ignore watching `src-tauri`
+      ignored: ["**/src-tauri/**"],
+    },
+  },
 }));

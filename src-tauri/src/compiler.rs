@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use base64::engine::general_purpose;
 use base64::Engine;
 use typst::{
-    diag::{FileResult, Severity},
+    diag::{FileResult, Severity, SourceDiagnostic},
     foundations::Bytes,
     layout::{Frame, Page, PagedDocument, Point},
     World, WorldExt,
@@ -16,6 +16,7 @@ use typst_syntax::{FileId, Source, VirtualPath};
 
 use crate::utils::{byte_position_to_char_position, char_to_byte_position, convert_datetime};
 use crate::world::Typstworld;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
@@ -69,11 +70,16 @@ pub struct PositionJump {
 }
 
 #[derive(Serialize, Clone, Debug)]
+pub struct UrlJump {
+    pub url: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
 #[serde(tag = "type")]
 pub enum DocumentClickResponse {
     FileJump(FileJump), // move the editor cursor to the given byte position in the given file
     PositionJump(PositionJump), // scroll the preview to the given page and point
-    UrlJump(String),    // open the given URL in the default browser
+    UrlJump(UrlJump),   // open the given URL in the default browser
     NoJump,
 }
 
@@ -82,7 +88,6 @@ pub enum TooltipKind {
     Code,
     Text,
 }
-
 #[derive(Serialize, Clone, Debug, Deserialize)]
 #[serde(tag = "type")]
 pub struct TooltipResponse {
@@ -162,7 +167,7 @@ impl TypstCompiler {
         self.world.add_file(name, path, source);
     }
 
-    pub async fn compile_file(
+    pub fn compile_file(
         &mut self,
         path: &PathBuf,
         source: String,
@@ -180,55 +185,53 @@ impl TypstCompiler {
         };
 
         // NOTE: might error?
-        let _ = self.world.update_source(id, source.clone());
+        // let _ = self.world.update_source(id, source.clone());
         // self.world.reset();
         self.world.set_main_source_with_id(id, source);
 
         let mut pages = Vec::new();
+        let start = std::time::Instant::now();
         let warned_compilation_result = typst::compile::<PagedDocument>(&self.world);
-        let mut warnings = Vec::new();
-        warned_compilation_result.warnings.iter().for_each(|w| {
-            let diagnostic_range = self.world.range(w.span).unwrap_or_default();
-            let diagnostic_source = self.world.source(w.span.id().unwrap_or(self.world.main()));
-            let position = diagnostic_position_from_source(diagnostic_source, diagnostic_range);
+        let duration = start.elapsed();
+        println!("compilation took {:?}", duration);
 
-            let diagnostic = TypstSourceDiagnostic {
-                hints: w.hints.iter().map(|s| s.to_string()).collect(),
-                location: position,
-                severity: match w.severity {
-                    Severity::Error => TypstSeverity::Error,
-                    Severity::Warning => TypstSeverity::Warning,
-                },
-                message: w.message.to_string(),
-            };
-            warnings.push(diagnostic);
-        });
-
-        match warned_compilation_result.output {
-            Ok(doc) => {
-                pages = doc.pages.clone();
-                self.compilation_cache = Some(doc.clone());
-            }
-            Err(diagnostic_errors) => {
-                diagnostic_errors.iter().for_each(|w| {
-                    let diagnostic_range = self.world.range(w.span).unwrap_or_default();
-                    let diagnostic_source =
-                        self.world.source(w.span.id().unwrap_or(self.world.main()));
+        let process_diagnostics = |diagnostics: &[SourceDiagnostic]| -> Vec<TypstSourceDiagnostic> {
+            let start = std::time::Instant::now();
+            let diags = diagnostics
+                .par_iter()
+                .filter_map(|diagnostic| {
+                    let diagnostic_range = self.world.range(diagnostic.span).unwrap_or_default();
+                    let diagnostic_source = self
+                        .world
+                        .source(diagnostic.span.id().unwrap_or(self.world.main()));
                     let position =
                         diagnostic_position_from_source(diagnostic_source, diagnostic_range);
 
                     let diagnostic = TypstSourceDiagnostic {
-                        hints: w.hints.iter().map(|s| s.to_string()).collect(),
+                        hints: diagnostic.hints.iter().map(|s| s.to_string()).collect(),
                         location: position,
-                        severity: match w.severity {
+                        severity: match diagnostic.severity {
                             Severity::Error => TypstSeverity::Error,
                             Severity::Warning => TypstSeverity::Warning,
                         },
-                        message: w.message.to_string(),
+                        message: diagnostic.message.to_string(),
                     };
-                    warnings.push(diagnostic);
-                });
-                // self.clear_cache();
+                    Some(diagnostic)
+                })
+                .collect();
+            let duration = start.elapsed();
+            println!("diagnostics proccessing took {:?}", duration);
+            diags
+        };
+
+        let mut warnings = process_diagnostics(&warned_compilation_result.warnings);
+        match warned_compilation_result.output {
+            Ok(doc) => {
+                pages = doc.pages.clone();
+                self.compilation_cache = Some(doc);
+            }
+            Err(diagnostic_errors) => {
+                warnings.extend(process_diagnostics(&diagnostic_errors));
             }
         }
 
@@ -273,7 +276,8 @@ impl TypstCompiler {
     ) -> Option<PreviewPosition> {
         let id = self.world.main();
         let source = self.world.source(id).ok()?;
-        let position = jump_from_cursor(doc, &source, cursor).get(0)?.clone();
+        let positions = jump_from_cursor(doc, &source, cursor);
+        let position = positions.get(0)?.clone();
 
         let x = position.point.x.to_pt() * scale as f64;
         let y = position.point.y.to_pt() * scale as f64;
@@ -354,7 +358,9 @@ impl TypstCompiler {
             // open the given URL in the default browser
             Some(Jump::Url(url)) => {
                 dbg!("Jump to URL: {}", url.as_str());
-                DocumentClickResponse::UrlJump(url.as_str().to_string())
+                DocumentClickResponse::UrlJump(UrlJump {
+                    url: url.as_str().to_string(),
+                })
             }
 
             None => {
@@ -388,23 +394,45 @@ impl TypstCompiler {
 }
 
 /// Returns the rendered images of the file
-pub async fn render_file(pages: Vec<Page>, scale: f32) -> Vec<RenderResponse> {
-    let mut rendered_pages = Vec::new();
-    pages.iter().enumerate().for_each(|(_idx, page)| {
-        // let frame_size = page.frame.size();
-        let bmp = render(&page, scale);
-        if let Ok(image) = bmp.encode_png() {
-            let image_base64 = general_purpose::STANDARD.encode(image);
+pub fn render_file(pages: Vec<Page>, scale: f32) -> Vec<RenderResponse> {
+    let rendered_pages = pages
+        .par_iter()
+        .enumerate()
+        .filter_map(|(_idx, page)| {
+            // let frame_size = page.frame.size();
+            let bmp = render(&page, scale);
+            if let Ok(image) = bmp.encode_png() {
+                let image_base64 = general_purpose::STANDARD.encode(image);
 
-            rendered_pages.push(RenderResponse {
-                image: image_base64,
-                width: bmp.width(),
-                height: bmp.height(),
-            });
-        }
-    });
-
+                Some(RenderResponse {
+                    image: image_base64,
+                    width: bmp.width(),
+                    height: bmp.height(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
     rendered_pages
+}
+
+pub fn render_page(page: &Page, scale: f32) -> RenderResponse {
+    let bmp = render(page, scale);
+    if let Ok(image) = bmp.encode_png() {
+        let image_base64 = general_purpose::STANDARD.encode(image);
+        return RenderResponse {
+            image: image_base64,
+            width: bmp.width(),
+            height: bmp.height(),
+        };
+    } else {
+        return RenderResponse {
+            image: String::new(),
+            width: 0,
+            height: 0,
+        };
+    }
 }
 
 fn diagnostic_position_from_source(

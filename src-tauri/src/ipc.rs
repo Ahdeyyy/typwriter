@@ -1,4 +1,5 @@
 use crate::app_state::AppState;
+use crate::compiler;
 use crate::compiler::{
     render_file, DocumentClickResponse, FileExportError, PreviewPosition, RenderResponse,
     TypstCompiler, TypstSourceDiagnostic,
@@ -26,7 +27,7 @@ pub async fn compile(
 ) -> Result<Vec<TypstSourceDiagnostic>, ()> {
     let mut compiler = state.compiler.write().await;
     let path = PathBuf::from(file_path);
-    let (_, diagnostics) = compiler.compile_file(&path, source).await;
+    let (_, diagnostics) = compiler.compile_file(&path, source);
     Ok(diagnostics)
 }
 
@@ -34,18 +35,17 @@ pub async fn compile(
 pub enum CursorPositionError {
     NoCompilationCache,
     NoPosition,
+    OutOfBounds,
 }
 #[tauri::command(rename_all = "snake_case")]
 pub async fn get_cursor_position(
     state: tauri::State<'_, AppState>,
     cursor_position: usize,
-    source: String,
 ) -> Result<PreviewPosition, CursorPositionError> {
     let compiler = state.compiler.read().await;
-    let byte_position = char_to_byte_position(&source, cursor_position);
     if let Some(cache) = compiler.get_cache() {
         let position = compiler
-            .get_preview_page_from_cursor(cache, byte_position, state.render_scale)
+            .get_preview_page_from_cursor(cache, cursor_position, state.render_scale)
             .await;
         if let Some(position) = position {
             Ok(position)
@@ -60,13 +60,34 @@ pub async fn get_cursor_position(
 #[derive(Debug, Serialize, Deserialize)]
 pub enum RenderError {
     NoCompilationCache,
+    NoPage,
 }
 #[tauri::command(rename_all = "snake_case")]
 pub async fn render(state: tauri::State<'_, AppState>) -> Result<Vec<RenderResponse>, RenderError> {
     let compiler = state.compiler.read().await;
     if let Some(cache) = compiler.get_cache() {
-        let rendered_pages = render_file(cache.pages.clone(), state.render_scale).await;
+        let rendered_pages = render_file(cache.pages.clone(), state.render_scale);
         return Ok(rendered_pages);
+    } else {
+        return Err(RenderError::NoCompilationCache);
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn render_page(
+    state: tauri::State<'_, AppState>,
+    page: usize,
+) -> Result<RenderResponse, RenderError> {
+    let compiler = state.compiler.read().await;
+    if let Some(cache) = compiler.get_cache() {
+        let page = cache.pages.get(page);
+        match page {
+            Some(page) => {
+                let rendered_page = compiler::render_page(page, state.render_scale);
+                return Ok(rendered_page);
+            }
+            None => return Err(RenderError::NoPage),
+        }
     } else {
         return Err(RenderError::NoCompilationCache);
     }
@@ -84,9 +105,9 @@ pub async fn compile_file(
     let path = PathBuf::from(file_path);
     let byte_position = char_to_byte_position(&source, cursor_position);
 
-    let (pages, diagnostics) = compiler.compile_file(&path, source).await;
+    let (pages, diagnostics) = compiler.compile_file(&path, source);
 
-    let rendered_pages = render_file(pages, state.render_scale).await;
+    let rendered_pages = render_file(pages, state.render_scale);
     let _ = app.emit("rendered-pages", rendered_pages);
 
     if let Some(cache) = compiler.get_cache() {
@@ -192,6 +213,13 @@ pub async fn export_to(
         .await?;
 
     Ok(())
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum AutocompleteError {
+    NoCompletion,
+    CursorOutOfBounds,
+    NoCompletions,
 }
 
 #[tauri::command(rename_all = "snake_case")]

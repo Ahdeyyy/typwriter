@@ -22,19 +22,19 @@ Export your documents to PDF.
 - [x] autocomplete
 - [x] hover and get tooltip info
 - [x] move preview to cursor position in source when typing
-- [ ] click on preview
+- [x] click on preview
   - [x] move cursor to click position in source
   - [x] move to preview position / page position in preview
-  - [ ] open file / url
+  - [x] open file / url
 - [ ] click on diagnostic and move to source position
 
 ### WORKSPACE
 
 - [ ] recently opened workspaces
   - [ ] load the recently opened workspace
-  - [ ] view recently opened workspaces
+  - [x] view recently opened workspaces
 - [ ] file management
-  - [ ] create file (typ, bib, yaml, yml)
+  - [x] create file (typ, bib, yaml, yml)
   - [ ] rename file (no extension change)
   - [ ] move file (late inclusion)
   - [ ] delete file
