@@ -7,6 +7,7 @@
         FileIcon,
         FolderIcon,
         LucideChevronsDownUp,
+        LucideChevronsUpDown,
         LucideFilePlus,
         LucideFilePlus2,
         LucideFolderOpen,
@@ -20,10 +21,14 @@
     import { appContext } from "../app-context.svelte";
     import type { FileTreeNode } from "@/workspace/workspace.svelte";
     import { Badge } from "./ui/badge";
+    import CreateFile from "./create-file.svelte";
+    import CreateFolder from "./create-folder.svelte";
+    import { toast } from "svelte-sonner";
 
     // Track open state of folders (keyed by their full relative path to avoid collisions)
     const openFolders = $state<string[]>([]);
 
+    $inspect(openFolders);
     // Helper to derive a unique key for a folder based on its path in the tree
     function folderKey(parentPath: string, name: string) {
         return parentPath ? parentPath + "/" + name : name;
@@ -36,26 +41,13 @@
     <header
         class="px-2 py-1 flex align-center space-x-2 border-b border-border/60"
     >
+        <CreateFile iconTrigger />
+        <CreateFolder iconTrigger />
         <Button
             variant="ghost"
             class="size-7"
             size="icon"
-            onclick={() => console.log("Add new file")}
-        >
-            <LucideFilePlus />
-        </Button>
-        <Button
-            variant="ghost"
-            class="size-7"
-            size="icon"
-            onclick={() => console.log("Add new folder")}
-        >
-            <LucideFolderPlus />
-        </Button>
-        <Button
-            variant="ghost"
-            class="size-7"
-            size="icon"
+            disabled
             onclick={() => console.log("Search")}
         >
             <LucideSearch />
@@ -64,9 +56,45 @@
             variant="ghost"
             class="size-7"
             size="icon"
-            onclick={() => console.log("Expand all")}
+            onclick={() => {
+                if (!appContext.workspace) {
+                    toast.error("No workspace available");
+                    return;
+                }
+
+                const chilrenName = (
+                    f: FileTreeNode,
+                    parentName?: string,
+                ): string[] => {
+                    let name = parentName ? parentName + "/" + f.name : f.name;
+                    return [
+                        name,
+                        ...(f.children
+                            ? f.children.flatMap((c) => chilrenName(c, name))
+                            : []),
+                    ];
+                };
+                const folders = appContext.workspace.fileEntries
+                    .filter((f) => f.type === "directory")
+                    .flatMap((f) => chilrenName(f))
+                    .map((name) => name);
+
+                if (openFolders.length === 0) {
+                    // Expand all folders
+                    openFolders.push(...folders);
+                } else {
+                    // Collapse all folders
+                    openFolders.splice(0, openFolders.length);
+                }
+            }}
         >
-            <LucideChevronsDownUp />
+            {#if openFolders.length === 0}
+                <!-- expand all -->
+                <LucideChevronsUpDown />
+            {:else}
+                <!-- collapse all -->
+                <LucideChevronsDownUp />
+            {/if}
         </Button>
     </header>
 
@@ -151,6 +179,9 @@
                 open={openFolders.includes(thisPath)}
                 onOpenChange={(isOpen) => {
                     if (isOpen) {
+                        if (thisPath.includes("sub sub")) {
+                            console.log("is open");
+                        }
                         openFolders.push(thisPath);
                     } else {
                         openFolders.splice(openFolders.indexOf(thisPath), 1);

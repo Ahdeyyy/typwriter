@@ -145,6 +145,7 @@
                 variant="ghost"
                 class="w-10 h-8 rounded-none"
                 onclick={() => console.log("Settings")}
+                disabled
             >
                 <LucideSettings />
             </Button>

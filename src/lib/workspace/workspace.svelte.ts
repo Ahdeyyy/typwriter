@@ -1,12 +1,13 @@
 import { EditorDocument } from "./document.svelte";
 import { open_workspace } from "../ipc";
 import { getFileType, getFolderName, joinFsPath } from "../utils";
-import { readDir, readTextFile } from "@tauri-apps/plugin-fs";
+import { readDir, readTextFile, create, mkdir } from "@tauri-apps/plugin-fs";
 import { open as OpenDialog, confirm } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { ResultAsync } from "neverthrow";
 import type { RenderResponse } from "@/types";
 import { SvelteMap } from "svelte/reactivity";
+import { toast } from "svelte-sonner";
 
 const toInvokeError = (): { message: string } => ({ message: "Invoke failed" });
 const invoke_open_file = ResultAsync.fromThrowable(invoke<void>, toInvokeError);
@@ -137,10 +138,30 @@ export class Workspace {
   }
   closeFile(path: string) {}
   // creates an empty file at the given path
-  createFile(path: string) {}
+  async createFile(path: string) {
+    // Check if file already exists in the file tree
+    if (this.fileEntries.find((entry) => entry.path === path)) {
+      toast.error("File already exists");
+      return;
+    }
+    let file_path = joinFsPath(this.rootPath, path);
+    let file = await create(file_path);
+
+    this.refresh();
+    await file.close();
+  }
   deleteFile(path: string) {}
   renameFile(oldPath: string, newPath: string) {}
-  createFolder(path: string) {}
+  async createFolder(path: string) {
+    // Check if folder already exists in the file tree
+    if (this.fileEntries.find((entry) => entry.path === path)) {
+      toast.error("Folder already exists");
+      return;
+    }
+    const fullPath = joinFsPath(this.rootPath, path);
+    await mkdir(fullPath);
+    this.refresh();
+  }
   deleteFolder(path: string) {}
   renameFolder(oldPath: string, newPath: string) {}
 
