@@ -32,9 +32,9 @@ Export your documents to PDF.
 
 - [ ] recently opened workspaces
   - [ ] load the recently opened workspace
-  - [ ] view recently opened workspaces
+  - [x] view recently opened workspaces
 - [ ] file management
-  - [ ] create file (typ, bib, yaml, yml)
+  - [x] create file (typ, bib, yaml, yml)
   - [ ] rename file (no extension change)
   - [ ] move file (late inclusion)
   - [ ] delete file
