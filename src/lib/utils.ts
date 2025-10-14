@@ -29,7 +29,7 @@ export type WithElementRef<T, U extends HTMLElement = HTMLElement> = T & {
  * - Returns an empty string when no extension is present.
  */
 export function getFileType(path: string): string {
-  if (!path) return "";
+  if (!path || path === "") return "";
   // Remove query string / hash
   const cleaned = path.split(/[?#]/, 1)[0];
   // Normalize backslashes to forward slashes and get basename
@@ -120,66 +120,6 @@ export const saveTextToFile = async (file_path: string, text: string) => {
   } catch (e) {
     console.error("[ERROR] - saving file: ", e);
   }
-};
-
-/**
- *
- * @param path - The root path to build the file tree from.
- * @returns A hierarchical representation of the file tree.
- * e.g: tree: [
-	  ["lib", ["components", "button.svelte", "card.svelte"], "utils.ts"],
-	  [
-		"routes",
-		["hello", "+page.svelte", "+page.ts"],
-		"+page.svelte",
-		"+page.server.ts",
-		"+layout.svelte",
-	  ],
-	  ["static", "favicon.ico", "svelte.svg"],
-	  "eslint.config.js",
-	  ".gitignore",
-	  "svelte.config.js",
-	  "tailwind.config.js",
-	  "package.json",
-	  "README.md",
-	],
- */
-export const buildFileTree = async (path: string) => {
-  const tree: any[] = [];
-  const entries = await readDir(path);
-  for (const entry of entries) {
-    if (entry.isDirectory) {
-      const subTree = await buildFileTree(`${path}/${entry.name}`);
-      tree.push([entry.name, subTree]);
-    } else {
-      tree.push(entry.name);
-    }
-  }
-  return tree;
-};
-
-/**
- * Build a file tree where file leaves are relative paths from the provided root.
- * Directories remain as [dirname, subtree].
- */
-export const buildFileTreeRel = async (
-  absRoot: string,
-  relBase = "",
-): Promise<any[]> => {
-  const tree: any[] = [];
-  const entries = await readDir(absRoot);
-  for (const entry of entries) {
-    if (entry.isDirectory) {
-      const nextAbs = `${absRoot}\\${entry.name}`;
-      const nextRel = relBase ? `${relBase}\\${entry.name}` : entry.name;
-      const subTree = await buildFileTreeRel(nextAbs, nextRel);
-      tree.push([entry.name, subTree]);
-    } else {
-      const relPath = relBase ? `${relBase}\\${entry.name}` : entry.name;
-      tree.push(relPath);
-    }
-  }
-  return tree;
 };
 
 import type { Extension } from "@codemirror/state";

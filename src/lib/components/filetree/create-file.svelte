@@ -8,6 +8,7 @@
     import { toast } from "svelte-sonner";
     import { cn } from "tailwind-variants";
     import { twMerge } from "tailwind-merge";
+    import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 
     let { iconTrigger }: { iconTrigger: boolean } = $props();
     let open = $state(false);
@@ -22,11 +23,20 @@
 
 <Dialog.Root bind:open>
     <Dialog.Trigger class={twMerge(variant, size)}>
-        {#if iconTrigger}
-            <LucideFilePlus />
-        {:else}
-            Create New File
-        {/if}
+        <Tooltip.Provider>
+            <Tooltip.Root>
+                <Tooltip.Trigger>
+                    {#if iconTrigger}
+                        <LucideFilePlus />
+                    {:else}
+                        Create New File
+                    {/if}
+                </Tooltip.Trigger>
+                <Tooltip.Content>
+                    <p>Create a new file</p>
+                </Tooltip.Content>
+            </Tooltip.Root>
+        </Tooltip.Provider>
     </Dialog.Trigger>
     <Dialog.Content>
         <Dialog.Header>

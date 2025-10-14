@@ -6,6 +6,7 @@
     import { appContext } from "@/app-context.svelte";
     import { toast } from "svelte-sonner";
     import { twMerge } from "tailwind-merge";
+    import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 
     let { iconTrigger }: { iconTrigger: boolean } = $props();
     let open = $state(false);
@@ -20,11 +21,20 @@
 
 <Dialog.Root bind:open>
     <Dialog.Trigger class={twMerge(variant, size)}>
-        {#if iconTrigger}
-            <LucideFolderPlus />
-        {:else}
-            Create New Folder
-        {/if}
+        <Tooltip.Provider>
+            <Tooltip.Root>
+                <Tooltip.Trigger>
+                    {#if iconTrigger}
+                        <LucideFolderPlus />
+                    {:else}
+                        Create New Folder
+                    {/if}
+                </Tooltip.Trigger>
+                <Tooltip.Content>
+                    <p>Create a new folder</p>
+                </Tooltip.Content>
+            </Tooltip.Root>
+        </Tooltip.Provider>
     </Dialog.Trigger>
     <Dialog.Content>
         <Dialog.Header>

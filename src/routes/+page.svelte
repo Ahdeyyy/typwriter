@@ -7,7 +7,7 @@
     import Editor from "@/components/editor.svelte";
     import NoSelectedFile from "@/components/no-selected-file.svelte";
     import * as Resizable from "$lib/components/ui/resizable/index.js";
-    import Filetree from "@/components/filetree.svelte";
+    import FileTreePane from "@/components/filetree/pane.svelte";
     import Diagnostics from "@/components/diagnostics-panel.svelte";
     import { appContext } from "@/app-context.svelte";
 
@@ -17,8 +17,12 @@
 <main class="flex-1 w-screen">
     <Resizable.PaneGroup class=" h-full w-full mt-0.5" direction="horizontal">
         <!-- {#if appContext.isFileTreeOpen} -->
-        <Resizable.Pane hidden={!appContext.isFileTreeOpen} defaultSize={15}>
-            <Filetree />
+        <Resizable.Pane
+            minSize={15}
+            hidden={!appContext.isFileTreeOpen}
+            defaultSize={15}
+        >
+            <FileTreePane />
         </Resizable.Pane>
         <!-- {/if} -->
         <Resizable.Handle hidden={!appContext.isFileTreeOpen} />

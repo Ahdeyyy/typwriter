@@ -5,7 +5,6 @@
     import { appContext } from "@/app-context.svelte";
     // import { app } from "@tauri-apps/api"
 
-    
     // let preview_images = $state([] as HTMLImageElement[])
 
     // $effect(() => {
@@ -28,7 +27,7 @@
     // })
 </script>
 
-<div class="px-4">
+<div class="">
     <Preview
         onclick={async (event, index, x, y) => {
             if (!appContext.workspace) {
