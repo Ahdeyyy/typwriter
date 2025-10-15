@@ -4,13 +4,13 @@ A flexible editor for Typst.
 Write Typst documents and see a live preview of the compiled output.
 Export your documents to PDF.
 
-![editor with tooltip hover functionality](showcase1.png)
+![editor with tooltip hover functionality](showcase/showcase1.png)
 
-![editor with preview functionality](showcase2.png)
+![editor with preview functionality](showcase/showcase2.png)
 
-![editor with autocomplete functionality](showcase3.png)
+![editor with autocomplete functionality](showcase/showcase3.png)
 
-![editor with error diagnostic functionality](showcase4.png)
+![editor with error diagnostic functionality](showcase/showcase4.png)
 
 ## Roadmap
 
@@ -24,7 +24,7 @@ Export your documents to PDF.
 - [x] move preview to cursor position in source when typing
 - [x] click on preview
   - [x] move cursor to click position in source
-  - [x] move to preview position / page position in preview
+  - [ ] move to preview position / page position in preview
   - [x] open file / url
 - [ ] click on diagnostic and move to source position
 
@@ -45,7 +45,7 @@ Export your documents to PDF.
       - [ ] current page
       - [ ] custom range
     - [ ] svg
-- [ ] tabs (late inclusion)
+- [ ] tabs (maybe)
 
   - [ ] open
   - [ ] close
