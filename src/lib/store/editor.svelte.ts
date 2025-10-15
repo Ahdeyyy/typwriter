@@ -1,8 +1,13 @@
+import { compile, render } from "@/ipc";
 import type { DiagnosticResponse } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
-import { readTextFile } from "@tauri-apps/plugin-fs";
+import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import type { EditorView } from "codemirror";
 import { ResultAsync } from "neverthrow";
 import { toast } from "svelte-sonner";
+import { previewStore } from "./index.svelte";
+import { murmurHash3 } from "@/utils";
+import { SvelteMap } from "svelte/reactivity";
 
 const safeReadTextFile = ResultAsync.fromThrowable(
   readTextFile,
@@ -43,9 +48,12 @@ class EditorStore {
   config: EditorConfig = $state(defaultEditorConfig);
   save_interval_id?: number = $state(undefined); // ID for the auto-save interval
   diagnostics: DiagnosticResponse[] = $state([]);
+  saving: boolean = $state(false);
+  editor_view: EditorView | null = $state(null);
 
   /** opens a file and loads the text content of the file */
   async openFile(path: string) {
+    console.log("open file with path:", path);
     const open_file_res = await invoke_open_file("open_file", {
       file_path: path,
     });
@@ -69,6 +77,93 @@ class EditorStore {
     }
     this.file_path = path;
     this.content = read_res.value;
+    if (this.save_interval_id) {
+      clearInterval(this.save_interval_id);
+      if (this.config.auto_save) {
+        this.save_interval_id = setInterval(() => {
+          if (this.saving || !this.is_dirty) return; // prevent overlapping saves
+          this.saving = true;
+          this.saveFile();
+          this.saving = false;
+          this.is_dirty = false;
+          this.last_saved = Date.now();
+          toast.success("Auto saved file", {
+            description: `Saved to ${this.file_path}`,
+          });
+        }, this.config.auto_save_interval);
+      }
+    }
+    previewStore.render_cache = new SvelteMap();
+    previewStore.items = [];
+    await Promise.all([this.compile_document(), this.render()]);
+
+    toast.success("File opened", {
+      description: `Opened ${path}`,
+    });
+  }
+
+  /** saves the current content to the file */
+  async saveFile() {
+    this.saving = true;
+    if (!this.file_path) {
+      toast.error("No file path specified");
+      return;
+    }
+    if (!this.is_dirty) {
+      // No changes to save
+      return;
+    }
+    await writeTextFile(this.file_path, this.content);
+    this.is_dirty = false;
+    this.last_saved = Date.now();
+    toast.success("File saved", {
+      description: `Saved to ${this.file_path}`,
+    });
+    this.saving = false;
+  }
+
+  /** compiles the source of the file */
+  async compile_document() {
+    if (!this.file_path) return;
+    const result = await compile(this.file_path, this.content);
+    if (result.isErr()) {
+      toast.error("Failed to compile the document.");
+    } else {
+      console.log(result.value);
+      const render_diagnostics = result.value;
+      this.diagnostics = render_diagnostics;
+    }
+  }
+
+  /** gets the rendered images of the document */
+  async render() {
+    const render_result = await render();
+    if (render_result.isErr()) {
+      toast.error("Failed to render the document.", {
+        description: render_result.error.message,
+      });
+    } else {
+      const pages = render_result.value;
+
+      for (let idx = 0; idx < pages.length; idx++) {
+        const page = pages[idx];
+        const page_hash = `${murmurHash3(page.image)}${idx}`;
+        const existing_page = previewStore.render_cache.get(page_hash);
+        if (existing_page) {
+          // page already exists in cache
+          previewStore.items.splice(idx, 1, existing_page);
+          continue;
+        } else {
+          // add page to cache
+          const img = new Image();
+          img.src = `data:image/png;base64,${page.image}`;
+          img.width = page.width;
+          img.height = page.height;
+          previewStore.render_cache.set(page_hash, img);
+          previewStore.items.splice(idx, 1, img);
+        }
+      }
+    }
   }
 }
 

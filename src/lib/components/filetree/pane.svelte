@@ -57,6 +57,8 @@
                 .forEach((f) => (f.open = false));
         }
     };
+
+    // $inspect(editorStore.content);
 </script>
 
 <aside

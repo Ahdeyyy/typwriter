@@ -3,6 +3,7 @@ import { readDir } from "@tauri-apps/plugin-fs";
 import { open as OpenDialog, confirm } from "@tauri-apps/plugin-dialog";
 import { toast } from "svelte-sonner";
 import { RuneStore } from "@tauri-store/svelte";
+import { open_workspace } from "@/ipc";
 
 export class WorkspaceStore {
   files: FileTreeNode[] = $state([]);
@@ -34,6 +35,7 @@ export class WorkspaceStore {
     this.path = path;
     this.name = getFolderName(path);
     this.files = await buildFileTree(path);
+    await open_workspace(path);
     toast.success("Workspace opened", {
       description: `opened workspace at ${this.path}`,
     });
