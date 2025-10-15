@@ -7,9 +7,16 @@ import { WorkspaceStore } from "./workspace.svelte";
 import { toast } from "svelte-sonner";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
+class PaneStore {
+  isPreviewPaneOpen = $state(true);
+  isDiagnosticsPaneOpen = $state(false);
+  isFileTreePaneOpen = $state(true);
+}
+
 export const editorStore = new EditorStore();
 export const previewStore = new PreviewStore();
 export const workspaceStore = new WorkspaceStore();
+export const paneStore = new PaneStore();
 
 export async function previewPageClick(x: number, y: number, page: number) {
   let result = await page_click(page, editorStore.content, x, y);

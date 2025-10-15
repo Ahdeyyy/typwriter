@@ -35,53 +35,53 @@
     import MoonIcon from "@lucide/svelte/icons/moon";
 
     import { toggleMode } from "mode-watcher";
+    import { editorStore, paneStore } from "@/store/index.svelte";
+    import { WorkspaceStore } from "@/store/workspace.svelte";
 
     let { children } = $props();
     const keys = new PressedKeys();
 
-    keys.onKeys(["Control", "k"], () => {
-        appContext.isPreviewOpen = !appContext.isPreviewOpen;
-    });
+    // keys.onKeys(["Control", "k"], () => {
+    //     appContext.isPreviewOpen = !appContext.isPreviewOpen;
+    // });
 
-    keys.onKeys(["Control", "b"], () => {
-        appContext.isFileTreeOpen = !appContext.isFileTreeOpen;
-    });
+    // keys.onKeys(["Control", "b"], () => {
+    //     appContext.isFileTreeOpen = !appContext.isFileTreeOpen;
+    // });
 
     const window = getCurrentWindow();
 
     let isMaximized = $state(true);
 
     const openedFilePath = $derived.by(() => {
-        if (appContext.workspace && appContext.workspace.document) {
-            return ` - ${getFileName(appContext.workspace.document.path)}`;
+        if (editorStore.file_path) {
+            return ` - ${getFileName(editorStore.file_path)}`;
         }
         return "";
     });
 
     const export_file_handler = async () => {
-        if (!appContext.workspace || !appContext.workspace.document) {
+        if (!editorStore.file_path) {
             alert("Please open a file to export.");
             return;
         }
+        const fileName = getFileName(editorStore.file_path);
         const export_path = await save({
-            defaultPath: appContext.workspace.document.path.replace(
-                /\.[^/.]+$/,
-                ".pdf",
-            ),
+            defaultPath: `${fileName}.pdf`,
             filters: [{ name: "PDF", extensions: ["pdf"] }],
         });
 
         if (export_path) {
             let res = await export_to(
-                appContext.workspace.document.path,
+                editorStore.file_path,
                 export_path,
-                appContext.workspace.document.content,
+                editorStore.content,
             );
             if (res) {
                 toast.error(res);
             } else {
                 toast.success(
-                    `${appContext.workspace.document.path} exported successfully!`,
+                    `${editorStore.file_path} exported successfully!`,
                 );
             }
         }
@@ -101,12 +101,12 @@
                         <Button
                             size="icon"
                             class="w-10 h-8 rounded-none"
-                            variant={appContext.isFileTreeOpen
+                            variant={paneStore.isFileTreePaneOpen
                                 ? "secondary"
                                 : "ghost"}
                             onclick={() =>
-                                (appContext.isFileTreeOpen =
-                                    !appContext.isFileTreeOpen)}
+                                (paneStore.isFileTreePaneOpen =
+                                    !paneStore.isFileTreePaneOpen)}
                         >
                             <FolderTreeIcon />
                         </Button>
@@ -123,12 +123,12 @@
                         <Button
                             size="icon"
                             class="w-10 h-8 rounded-none"
-                            variant={appContext.isPreviewOpen
+                            variant={paneStore.isPreviewPaneOpen
                                 ? "secondary"
                                 : "ghost"}
                             onclick={() =>
-                                (appContext.isPreviewOpen =
-                                    !appContext.isPreviewOpen)}
+                                (paneStore.isPreviewPaneOpen =
+                                    !paneStore.isPreviewPaneOpen)}
                         >
                             <LucideEye />
                         </Button>
@@ -145,24 +145,22 @@
                         <Button
                             size="icon"
                             class="h-8 w-10 relative rounded-none"
-                            variant={appContext.isDiagnosticsOpen
+                            variant={paneStore.isDiagnosticsPaneOpen
                                 ? "secondary"
                                 : "ghost"}
                             onclick={() =>
-                                (appContext.isDiagnosticsOpen =
-                                    !appContext.isDiagnosticsOpen)}
+                                (paneStore.isDiagnosticsPaneOpen =
+                                    !paneStore.isDiagnosticsPaneOpen)}
                         >
                             <LucideOctagonAlert />
-                            {#if appContext.workspace && appContext.workspace.document && appContext.workspace.document.diagnostics.length > 0}
+                            {#if editorStore.file_path && editorStore.diagnostics.length > 0}
                                 <Badge
                                     class="h-4 min-w-3 rounded-full px-1 absolute top-0 right-0 font-mono text-xs tabular-nums"
                                     variant="destructive"
                                 >
-                                    {appContext.workspace.document.diagnostics
-                                        .length > 99
+                                    {editorStore.diagnostics.length > 99
                                         ? "99+"
-                                        : appContext.workspace.document
-                                              .diagnostics.length}
+                                        : editorStore.diagnostics.length}
                                 </Badge>
                             {/if}
                         </Button>
@@ -217,7 +215,7 @@
         </div>
 
         <h1 class="font-medium">
-            {appContext.workspace?.name || ""}
+            {WorkspaceStore.name}
             {openedFilePath}
         </h1>
 

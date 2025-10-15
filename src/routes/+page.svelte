@@ -10,7 +10,7 @@
     import FileTreePane from "@/components/filetree/pane.svelte";
     import Diagnostics from "@/components/diagnostics-panel.svelte";
     import { appContext } from "@/app-context.svelte";
-    import { editorStore } from "@/store/index.svelte";
+    import { editorStore, paneStore } from "@/store/index.svelte";
 
     let { data }: { data: LayoutData } = $props();
 </script>
@@ -20,13 +20,13 @@
         <!-- {#if appContext.isFileTreeOpen} -->
         <Resizable.Pane
             minSize={15}
-            hidden={!appContext.isFileTreeOpen}
+            hidden={!paneStore.isFileTreePaneOpen}
             defaultSize={15}
         >
             <FileTreePane />
         </Resizable.Pane>
         <!-- {/if} -->
-        <Resizable.Handle hidden={!appContext.isFileTreeOpen} />
+        <Resizable.Handle hidden={!paneStore.isFileTreePaneOpen} />
 
         <Resizable.Pane>
             <Resizable.PaneGroup direction="horizontal">
@@ -34,9 +34,9 @@
                     {@render EditorAndDiagnosticGroup()}
                 </Resizable.Pane>
 
-                <Resizable.Handle hidden={!appContext.isPreviewOpen} />
+                <Resizable.Handle hidden={!paneStore.isPreviewPaneOpen} />
                 <Resizable.Pane
-                    hidden={!appContext.isPreviewOpen}
+                    hidden={!paneStore.isPreviewPaneOpen}
                     defaultSize={45}
                 >
                     <PreviewPane />
@@ -58,8 +58,11 @@
             </div>
         </Resizable.Pane>
 
-        <Resizable.Handle hidden={!appContext.isDiagnosticsOpen} />
-        <Resizable.Pane hidden={!appContext.isDiagnosticsOpen} defaultSize={30}>
+        <Resizable.Handle hidden={!paneStore.isDiagnosticsPaneOpen} />
+        <Resizable.Pane
+            hidden={!paneStore.isDiagnosticsPaneOpen}
+            defaultSize={30}
+        >
             <Diagnostics />
         </Resizable.Pane>
     </Resizable.PaneGroup>
