@@ -7,7 +7,7 @@ pub mod utils;
 pub mod world;
 use app_state::AppState;
 
-use commands::compiler::{compile, compile_file, export_to, render, render_page};
+use commands::compiler::{compile, compile_file, create_file, export_to, render, render_page};
 use commands::editor::{autocomplete, get_cursor_position, page_click, tooltip};
 use commands::workspace::{open_file, open_workspace};
 
@@ -50,6 +50,7 @@ pub fn run() {
             compile,
             get_cursor_position,
             render_page,
+            create_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

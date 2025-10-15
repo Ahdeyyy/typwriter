@@ -2,12 +2,23 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
+use typst::foundations::Bytes;
 
 use crate::{
     app_state::AppState,
     compiler::{render_file, FileExportError, RenderResponse, TypstSourceDiagnostic},
     utils::char_to_byte_position,
 };
+
+/// adds a file to the compiler's virtual file system
+///
+#[tauri::command(rename_all = "snake_case")]
+pub async fn create_file(state: tauri::State<'_, AppState>, file_path: String) -> Result<(), ()> {
+    let mut compiler = state.compiler.write().await;
+    let path = PathBuf::from(file_path);
+    compiler.add_file_to_world(path, Bytes::new([]));
+    Ok(())
+}
 
 /// compiles the typst source code at a given file path
 /// gets the file_path and source text

@@ -228,3 +228,21 @@ export async function render_page(
     return undefined;
   }
 }
+
+/**
+ * Create a new file at the given path
+ * @param file_path The path to the new file
+ * @returns A Result indicating success or an error
+ */
+export async function create_file(file_path: string) {
+  const inv = ResultAsync.fromThrowable(invoke<void>, (e): InvokeError => {
+    if (e instanceof Error) {
+      return { message: e.message };
+    }
+    return { message: String(e) };
+  });
+  const result = await inv("create_file", {
+    file_path,
+  });
+  return result;
+}

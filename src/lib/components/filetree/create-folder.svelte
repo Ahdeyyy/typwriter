@@ -3,10 +3,10 @@
     import { Button, buttonVariants } from "$lib/components/ui/button";
     import { LucideFolderPlus } from "@lucide/svelte";
     import { Input } from "$lib/components/ui/input";
-    import { appContext } from "@/app-context.svelte";
     import { toast } from "svelte-sonner";
     import { twMerge } from "tailwind-merge";
     import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+    import { workspaceStore } from "@/store/index.svelte";
 
     let { iconTrigger }: { iconTrigger: boolean } = $props();
     let open = $state(false);
@@ -49,8 +49,7 @@
             <Button
                 type="submit"
                 onclick={async () => {
-                    if (!appContext.workspace) {
-                        console.error("No workspace available");
+                    if (!workspaceStore.name) {
                         toast.error("No workspace available");
                         return;
                     }
@@ -59,7 +58,7 @@
                         toast.error("Please enter a folder name");
                         return;
                     }
-                    await appContext.workspace.createFolder(name);
+                    await workspaceStore.createFile(name, true);
                     open = false;
                     folderName = "";
                 }}

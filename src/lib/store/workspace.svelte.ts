@@ -1,9 +1,9 @@
 import { getFolderName, joinFsPath } from "@/utils";
-import { readDir } from "@tauri-apps/plugin-fs";
+import { create, mkdir, readDir } from "@tauri-apps/plugin-fs";
 import { open as OpenDialog, confirm } from "@tauri-apps/plugin-dialog";
 import { toast } from "svelte-sonner";
 import { RuneStore } from "@tauri-store/svelte";
-import { open_workspace } from "@/ipc";
+import { create_file, open_workspace } from "@/ipc";
 
 export class WorkspaceStore {
   files: FileTreeNode[] = $state([]);
@@ -18,6 +18,61 @@ export class WorkspaceStore {
     { autoStart: true, saveOnChange: true },
   );
 
+  async refresh() {
+    if (!this.path) {
+      toast.error("No workspace opened");
+      return;
+    }
+    this.files = await buildFileTree(this.path);
+    // toast.success("Workspace refreshed");
+  }
+
+  async createFile(path: string, isDirectory: boolean) {
+    if (!this.path) {
+      toast.error("No workspace opened");
+      return;
+    }
+    const fullPath = joinFsPath(this.path, path);
+    if (!isDirectory) {
+      const res = await create_file(fullPath);
+      if (res.isErr()) {
+        toast.error("Error creating file", { description: res.error.message });
+        return;
+      }
+      let file = await create(fullPath);
+
+      this.refresh();
+      await file.close();
+      toast.success("File created", {
+        description: `Created file at ${fullPath}`,
+      });
+      return;
+    } else {
+      const dir = await confirm(
+        `Are you sure you want to create directory at ${fullPath}?`,
+        {
+          title: "Create Directory",
+          kind: "info",
+          okLabel: "Create",
+          cancelLabel: "Cancel",
+        },
+      );
+      if (!dir) {
+        toast.error("Directory creation cancelled");
+        return;
+      }
+      try {
+        await mkdir(fullPath);
+      } catch (e) {
+        toast.error("Error creating directory", { description: String(e) });
+        return;
+      }
+      this.refresh();
+      toast.success("Directory created", {
+        description: `Created directory at ${fullPath}`,
+      });
+    }
+  }
   async openWorkspace(path?: string) {
     if (!path) {
       const selected_path = await OpenDialog({
