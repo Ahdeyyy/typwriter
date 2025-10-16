@@ -4,6 +4,7 @@
     import { Button } from "@/components/ui/button";
     import {
         FolderTreeIcon,
+        LucideCloudDownload,
         LucideDownload,
         LucideEye,
         LucideHamburger,
@@ -40,6 +41,7 @@
         paneStore,
         workspaceStore,
     } from "@/store/index.svelte";
+    import { updateApp } from "./updater";
     // import { WorkspaceStore } from "@/store/workspace.svelte";
 
     let { children } = $props();
@@ -203,6 +205,17 @@
                 disabled
             >
                 <LucideSettings />
+            </Button>
+
+            <Button
+                onclick={async () => {
+                    await updateApp();
+                }}
+                class="w-10 h-8 rounded-none"
+                variant="ghost"
+                size="icon"
+            >
+                <LucideCloudDownload />
             </Button>
 
             <Button

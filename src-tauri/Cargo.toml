@@ -43,6 +43,7 @@ typst-timing = "0.13.1"
 fs = "0.0.5"
 mem = "0.5.0"
 rayon = "1.11.0"
+tauri-plugin-process = "2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
