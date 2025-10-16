@@ -35,7 +35,7 @@
     import SunIcon from "@lucide/svelte/icons/sun";
     import MoonIcon from "@lucide/svelte/icons/moon";
 
-    import { toggleMode } from "mode-watcher";
+    import { toggleMode, theme } from "mode-watcher";
     import {
         editorStore,
         paneStore,
@@ -47,6 +47,7 @@
     let { children } = $props();
     const keys = new PressedKeys();
 
+    $inspect(theme);
     // keys.onKeys(["Control", "k"], () => {
     //     appContext.isPreviewOpen = !appContext.isPreviewOpen;
     // });
@@ -207,16 +208,25 @@
                 <LucideSettings />
             </Button>
 
-            <Button
-                onclick={async () => {
-                    await updateApp();
-                }}
-                class="w-10 h-8 rounded-none"
-                variant="ghost"
-                size="icon"
-            >
-                <LucideCloudDownload />
-            </Button>
+            <Tooltip.Provider>
+                <Tooltip.Root>
+                    <Tooltip.Trigger>
+                        <Button
+                            onclick={async () => {
+                                await updateApp();
+                            }}
+                            class="w-10 h-8 rounded-none"
+                            variant="ghost"
+                            size="icon"
+                        >
+                            <LucideCloudDownload />
+                        </Button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Content>
+                        <p>Check for updates</p>
+                    </Tooltip.Content>
+                </Tooltip.Root>
+            </Tooltip.Provider>
 
             <Button
                 onclick={toggleMode}
