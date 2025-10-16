@@ -6,7 +6,7 @@ import type { EditorView } from "codemirror";
 import { ResultAsync } from "neverthrow";
 import { toast } from "svelte-sonner";
 import { previewStore } from "./index.svelte";
-import { murmurHash3 } from "@/utils";
+import { getFileType, murmurHash3 } from "@/utils";
 import { SvelteMap } from "svelte/reactivity";
 
 const safeReadTextFile = ResultAsync.fromThrowable(
@@ -97,7 +97,10 @@ class EditorStore {
     }
     previewStore.render_cache = new SvelteMap();
     previewStore.items = [];
-    await Promise.all([this.compile_document(), this.render()]);
+    const extension = getFileType(path);
+    if (extension === "typ") {
+      await Promise.all([this.compile_document(), this.render()]);
+    }
     previewStore.current_position = {
       page: 0,
       x: 0,

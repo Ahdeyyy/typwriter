@@ -143,7 +143,7 @@
 
 <ScrollArea orientation="both" class="w-full h-svh">
     <div bind:this={scrollViewport} style="overflow: auto; height: 100%;">
-        <div class="flex flex-col gap-6">
+        <div class="flex flex-col gap-4">
             {#each previewStore.items as page, index}
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
