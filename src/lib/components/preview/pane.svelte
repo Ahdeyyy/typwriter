@@ -10,6 +10,7 @@
     import ImgRenderer from "./renderer/image.svelte";
     import { ScrollArea } from "@/components/ui/scroll-area";
     import { ScrollState, watch } from "runed";
+    import TypPreview from "./typ-preview.svelte";
 
     const file_type = $derived(getFileType(editorStore.file_path || ""));
 
@@ -88,26 +89,11 @@
 </script>
 
 {#if file_type === "typ"}
-    <ScrollArea orientation="both" class="h-svh w-full">
-        <div bind:this={scrollViewport} class="overflow-auto h-full">
-            <div class="flex flex-col gap-2">
-                {#each previewStore.items as image, index (index)}
-                    <TypRenderer
-                        {image}
-                        {index}
-                        mount={(c, w) => {
-                            canvases[index] = c;
-                            pageWrappers[index] = w;
-                        }}
-                        onclick={(e, page, x, y) => {
-                            // console.log(page, x, y);
-                            previewPageClick(x, y, page);
-                        }}
-                    />
-                {/each}
-            </div>
-        </div>
-    </ScrollArea>
+    <TypPreview
+        onclick={async (event, index, x, y) => {
+            await previewPageClick(x, y, index);
+        }}
+    />
 {:else if file_type === "svg"}
     <SvgRenderer />
 {:else if file_type === "png" || file_type === "jpg" || file_type === "jpeg" || file_type === "gif" || file_type === "bmp" || file_type === "webp"}

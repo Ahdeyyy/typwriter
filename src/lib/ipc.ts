@@ -221,10 +221,11 @@ export async function render_page(
 ): Promise<RenderResponse | undefined> {
   try {
     let result = await invoke<RenderResponse>("render_page", {
-      page: page - 1,
+      page: page,
     });
     return result;
   } catch (e) {
+    console.error(e);
     return undefined;
   }
 }

@@ -2,6 +2,7 @@
     import { editorStore, previewStore } from "@/store/index.svelte";
     import { watch, IsInViewport, ElementRect } from "runed";
     import { onMount } from "svelte";
+    import { draw } from "svelte/transition";
     type Props = {
         image: HTMLImageElement;
         index: number;
@@ -19,44 +20,51 @@
 
     let canvas: HTMLCanvasElement = $state()!;
     let wrapper: HTMLDivElement = $state()!;
-    //
+
+    $inspect(previewStore.items);
+
     onMount(() => {
         mount(canvas, wrapper);
     });
     let rect = new ElementRect(() => canvas);
     const inViewport = new IsInViewport(() => canvas);
 
-    watch(
-        () => [editorStore.file_path],
-        () => {
-            if (!canvas) return;
-            dpr = window.devicePixelRatio || 1;
+    function drawCanvas() {
+        console.log("Drawing canvas", index);
+        dpr = window.devicePixelRatio || 1;
 
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-                const naturalWidth = image.naturalWidth;
-                const naturalHeight = image.naturalHeight;
-                const displayWidth =
-                    (image.width || naturalWidth) * previewStore.zoom;
-                const displayHeight =
-                    (image.height || naturalHeight) * previewStore.zoom;
-                // internal canvas resolution considers zoom & dpr for sharpness
-                const cw = displayWidth * dpr;
-                const ch = displayHeight * dpr;
-                if (canvas.width !== cw || canvas.height !== ch) {
-                    canvas.width = cw;
-                    canvas.height = ch;
-                }
-                ctx.save();
-                ctx.setTransform(1, 0, 0, 1, 0, 0);
-                ctx.scale(dpr * previewStore.zoom, dpr * previewStore.zoom);
-                ctx.clearRect(0, 0, naturalWidth, naturalHeight);
-                ctx.drawImage(image, 0, 0);
-                ctx.restore();
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+            const naturalWidth = image.naturalWidth;
+            const naturalHeight = image.naturalHeight;
+            const displayWidth =
+                (image.width || naturalWidth) * previewStore.zoom;
+            const displayHeight =
+                (image.height || naturalHeight) * previewStore.zoom;
+            // internal canvas resolution considers zoom & dpr for sharpness
+            const cw = displayWidth * dpr;
+            const ch = displayHeight * dpr;
+            if (canvas.width !== cw || canvas.height !== ch) {
+                canvas.width = cw;
+                canvas.height = ch;
             }
-            // previewStore.current_index = index;
-        },
-    );
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.scale(dpr * previewStore.zoom, dpr * previewStore.zoom);
+            ctx.clearRect(0, 0, naturalWidth, naturalHeight);
+            ctx.drawImage(image, 0, 0);
+            ctx.restore();
+        }
+    }
+
+    watch([() => previewStore.items, () => editorStore.content], () => {
+        // if (!inViewport.current) return;
+        // console.log("changes: ", curr, prev);
+
+        console.log("re rendering: ", editorStore.content);
+        drawCanvas();
+    });
+    watch(() => [editorStore.file_path], drawCanvas);
 
     function handleClick(event: MouseEvent) {
         const c = event.target! as HTMLCanvasElement;

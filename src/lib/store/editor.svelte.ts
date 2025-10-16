@@ -1,4 +1,4 @@
-import { compile, render } from "@/ipc";
+import { compile, render, render_page } from "@/ipc";
 import type { DiagnosticResponse } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
@@ -62,6 +62,7 @@ class EditorStore {
       console.error("Failed to open file:", open_file_res.error);
       toast.error("Failed to open file", {
         description: open_file_res.error.message,
+        closeButton: true,
       });
       return;
     }
@@ -72,6 +73,7 @@ class EditorStore {
       console.error("Failed to read file:", read_res.error);
       toast.error("Failed to read file", {
         description: read_res.error.message,
+        closeButton: true,
       });
       return;
     }
@@ -79,26 +81,31 @@ class EditorStore {
     this.content = read_res.value;
     if (this.save_interval_id) {
       clearInterval(this.save_interval_id);
-      if (this.config.auto_save) {
-        this.save_interval_id = setInterval(() => {
-          if (this.saving || !this.is_dirty) return; // prevent overlapping saves
-          this.saving = true;
-          this.saveFile();
-          this.saving = false;
-          this.is_dirty = false;
-          this.last_saved = Date.now();
-          toast.success("Auto saved file", {
-            description: `Saved to ${this.file_path}`,
-          });
-        }, this.config.auto_save_interval);
-      }
+    }
+    if (this.config.auto_save) {
+      const save_callback = () => {
+        // console.log("auto saving file...");
+        if (this.saving) return; // prevent overlapping saves
+        this.saving = true;
+        this.saveFile();
+      };
+      this.save_interval_id = setInterval(
+        save_callback,
+        this.config.auto_save_interval,
+      );
     }
     previewStore.render_cache = new SvelteMap();
     previewStore.items = [];
     await Promise.all([this.compile_document(), this.render()]);
+    previewStore.current_position = {
+      page: 0,
+      x: 0,
+      y: 0,
+    };
 
     toast.success("File opened", {
       description: `Opened ${path}`,
+      closeButton: true,
     });
   }
 
@@ -106,11 +113,23 @@ class EditorStore {
   async saveFile() {
     this.saving = true;
     if (!this.file_path) {
-      toast.error("No file path specified");
+      this.saving = false;
+      toast.error("No file path specified", {
+        description: "Cannot save file without a valid file path",
+        duration: 400,
+        closeButton: true,
+      });
       return;
     }
     if (!this.is_dirty) {
       // No changes to save
+      this.saving = false;
+      toast.info("No changes to save", {
+        description: `No changes to save for ${this.file_path}`,
+        duration: 400,
+        closeButton: true,
+      });
+
       return;
     }
     await writeTextFile(this.file_path, this.content);
@@ -118,6 +137,7 @@ class EditorStore {
     this.last_saved = Date.now();
     toast.success("File saved", {
       description: `Saved to ${this.file_path}`,
+      duration: 400,
     });
     this.saving = false;
   }
@@ -129,7 +149,6 @@ class EditorStore {
     if (result.isErr()) {
       toast.error("Failed to compile the document.");
     } else {
-      console.log(result.value);
       const render_diagnostics = result.value;
       this.diagnostics = render_diagnostics;
     }
@@ -141,6 +160,7 @@ class EditorStore {
     if (render_result.isErr()) {
       toast.error("Failed to render the document.", {
         description: render_result.error.message,
+        duration: 400,
       });
     } else {
       const pages = render_result.value;
@@ -165,11 +185,23 @@ class EditorStore {
       }
     }
   }
+  async render_page(page: number) {
+    const res = await render_page(page);
+    // console.log("rendering page:", page, res);
+    if (res) {
+      console.log("new page render");
+      const img = new Image();
+      img.src = `data:image/png;base64,${res.image}`;
+      img.width = res.width;
+      img.height = res.height;
+      previewStore.items.splice(page, 1, img);
+    }
+  }
 }
 
 const defaultEditorConfig: EditorConfig = {
   auto_save: true,
-  auto_save_interval: 30000, // 30 seconds
+  auto_save_interval: 2250, // 1.75 seconds
   theme: "light",
   font_size: 14,
   show_line_numbers: true,

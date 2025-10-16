@@ -35,8 +35,12 @@
     import MoonIcon from "@lucide/svelte/icons/moon";
 
     import { toggleMode } from "mode-watcher";
-    import { editorStore, paneStore } from "@/store/index.svelte";
-    import { WorkspaceStore } from "@/store/workspace.svelte";
+    import {
+        editorStore,
+        paneStore,
+        workspaceStore,
+    } from "@/store/index.svelte";
+    // import { WorkspaceStore } from "@/store/workspace.svelte";
 
     let { children } = $props();
     const keys = new PressedKeys();
@@ -65,7 +69,10 @@
             alert("Please open a file to export.");
             return;
         }
-        const fileName = getFileName(editorStore.file_path);
+        const fileName = getFileName(editorStore.file_path).replace(
+            /\.[^/.]+$/,
+            "",
+        );
         const export_path = await save({
             defaultPath: `${fileName}.pdf`,
             filters: [{ name: "PDF", extensions: ["pdf"] }],
@@ -215,7 +222,7 @@
         </div>
 
         <h1 class="font-medium">
-            {WorkspaceStore.name}
+            {workspaceStore.name}
             {openedFilePath}
         </h1>
 

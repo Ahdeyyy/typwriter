@@ -84,7 +84,6 @@
     const compileAndRender = async () => {
         if (editorStore.file_path && documentExtension.ext === "typ") {
             await editorStore.compile_document();
-
             const view = editorStore.editor_view;
             if (view) {
                 const cursor = view.state.selection.main.head;
@@ -92,15 +91,18 @@
                 const position = await get_cursor_position(cursor);
                 if (position.isOk()) {
                     // use the current page to the render the exact page
+                    previewStore.current_position = position.value;
+                    await editorStore.render_page(position.value.page - 1);
+                } else {
+                    await editorStore.render();
                 }
-                editorStore.render();
             }
         }
     };
 
     const debouncedCompileAndRender = useDebounce(async () => {
         await compileAndRender();
-    }, 40);
+    }, 50);
 </script>
 
 {#if editorStore.file_path}
@@ -118,13 +120,13 @@
             await debouncedCompileAndRender();
         }}
         extensions={languageSpecificExtensions}
-        theme={alucardTheme}
+        theme={ayuLight}
         lineWrapping
         lineNumbers
         autocompletion={completion}
         foldGutter
         syntaxHighlighting={{
-            highlighter: alucardHighlightStyle,
+            highlighter: typstBlueprintHighlightStyle,
             fallback: false,
         }}
         editable={editableDocs.includes(documentExtension.ext)}

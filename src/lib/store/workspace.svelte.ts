@@ -36,7 +36,11 @@ export class WorkspaceStore {
     if (!isDirectory) {
       const res = await create_file(fullPath);
       if (res.isErr()) {
-        toast.error("Error creating file", { description: res.error.message });
+        toast.error("Error creating file", {
+          description: res.error.message,
+          closeButton: true,
+          duration: 400,
+        });
         return;
       }
       let file = await create(fullPath);
