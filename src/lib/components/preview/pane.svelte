@@ -1,6 +1,7 @@
 <script lang="ts">
     import {
         editorStore,
+        paneStore,
         previewPageClick,
         previewStore,
     } from "@/store/index.svelte";
@@ -9,8 +10,13 @@
     import SvgRenderer from "./renderer/svg.svelte";
     import ImgRenderer from "./renderer/image.svelte";
     import { ScrollArea } from "@/components/ui/scroll-area";
-    import { ScrollState, watch } from "runed";
+    import { PressedKeys, ScrollState, watch } from "runed";
     import TypPreview from "./typ-preview.svelte";
+
+    const keys = new PressedKeys();
+    keys.onKeys(["Control", "k"], () => {
+        paneStore.isPreviewPaneOpen = !paneStore.isPreviewPaneOpen;
+    });
 
     const file_type = $derived(getFileType(editorStore.file_path || ""));
 
@@ -103,8 +109,6 @@
         <p class="text-muted-foreground">
             No preview available for this file type.
         </p>
-        <p class="text-sm text-muted-foreground">
-            Supported types: .typ, .svg, .png, .jpg, .jpeg, .gif, .bmp, .webp
-        </p>
+        <p class="text-sm text-muted-foreground">Supported types: .typ, .svg</p>
     </div>
 {/if}

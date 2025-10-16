@@ -62,13 +62,13 @@
         return true;
     });
 
-    let languageSpecificExtensions = $derived.by(async () => {
+    let languageSpecificExtensions = $derived.by(() => {
         const path = documentExtension.path;
-        console.log("Language Extensions for:", path);
+        // console.log("Language Extensions for:", path);
 
         switch (documentExtension.ext) {
             case "typ": {
-                const { typst } = await import("codemirror-lang-typst"); // dynamic import
+                // const { typst } = await import("codemirror-lang-typst"); // dynamic import
                 return [
                     hoverTooltip(typst_hover_tooltip),
                     typstLinter(editorStore.diagnostics),
@@ -80,15 +80,6 @@
             default:
                 return [];
         }
-    });
-
-    let resolvedLanguageExtensions: Awaited<typeof languageSpecificExtensions> =
-        $state([]);
-
-    $effect(() => {
-        languageSpecificExtensions.then((extensions) => {
-            resolvedLanguageExtensions = extensions;
-        });
     });
 
     const compileAndRender = async () => {
@@ -124,14 +115,14 @@
                 ".cm-scroller": { overflow: "auto" },
             }}
             onready={async (e) => {
-                console.log("Editor ready");
+                // console.log("Editor ready");
                 editorStore.editor_view = e;
             }}
             onchange={async (e) => {
                 editorStore.is_dirty = true;
                 await debouncedCompileAndRender();
             }}
-            extensions={resolvedLanguageExtensions}
+            extensions={languageSpecificExtensions}
             lineWrapping
             lineNumbers
             foldGutter

@@ -7,22 +7,13 @@
         LucideCloudDownload,
         LucideDownload,
         LucideEye,
-        LucideHamburger,
-        LucideMaximize,
-        LucideMenu,
-        LucideMinimize,
         LucideMinimize2,
         LucideMinus,
         LucideOctagonAlert,
-        LucidePanelRight,
-        LucidePanelRightClose,
         LucideSettings,
         LucideSquare,
         LucideX,
     } from "@lucide/svelte";
-    // import { appState } from "@/states.svelte"
-    import { appContext } from "@/app-context.svelte";
-    import Diagnostics from "@/components/diagnostics-panel.svelte";
     import { getCurrentWindow } from "@tauri-apps/api/window";
     import { save } from "@tauri-apps/plugin-dialog";
     import { export_to } from "@/ipc";
@@ -30,7 +21,6 @@
     import { Badge } from "@/components/ui/badge";
     import { getFileName } from "@/utils";
     import { toast } from "svelte-sonner";
-    import { PressedKeys } from "runed";
     import * as Tooltip from "$lib/components/ui/tooltip/index.js";
     import SunIcon from "@lucide/svelte/icons/sun";
     import MoonIcon from "@lucide/svelte/icons/moon";
@@ -45,16 +35,6 @@
     // import { WorkspaceStore } from "@/store/workspace.svelte";
 
     let { children } = $props();
-    const keys = new PressedKeys();
-
-    $inspect(theme);
-    // keys.onKeys(["Control", "k"], () => {
-    //     appContext.isPreviewOpen = !appContext.isPreviewOpen;
-    // });
-
-    // keys.onKeys(["Control", "b"], () => {
-    //     appContext.isFileTreeOpen = !appContext.isFileTreeOpen;
-    // });
 
     const window = getCurrentWindow();
 
@@ -122,7 +102,7 @@
                         </Button>
                     </Tooltip.Trigger>
                     <Tooltip.Content>
-                        <p>Open file tree</p>
+                        <p>Open file tree (Ctrl + b)</p>
                     </Tooltip.Content>
                 </Tooltip.Root>
             </Tooltip.Provider>
@@ -144,7 +124,7 @@
                         </Button>
                     </Tooltip.Trigger>
                     <Tooltip.Content>
-                        <p>Toggle preview panel (Ctrl + K)</p>
+                        <p>Toggle preview panel (Ctrl + k)</p>
                     </Tooltip.Content>
                 </Tooltip.Root>
             </Tooltip.Provider>
@@ -176,7 +156,7 @@
                         </Button>
                     </Tooltip.Trigger>
                     <Tooltip.Content>
-                        <p>Toggle diagnostics panel</p>
+                        <p>Toggle diagnostics panel (Ctrl + o)</p>
                     </Tooltip.Content>
                 </Tooltip.Root>
             </Tooltip.Provider>

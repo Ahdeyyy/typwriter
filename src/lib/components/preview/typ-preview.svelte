@@ -117,26 +117,47 @@
         if (!previewStore.items) return;
         previewStore.items.forEach((img, index) => {
             const canvas = canvasEls[index];
-            if (!canvas || !img || !img.complete) return;
-            const naturalWidth = img.naturalWidth;
-            const naturalHeight = img.naturalHeight;
-            const displayWidth = (img.width || naturalWidth) * zoom;
-            const displayHeight = (img.height || naturalHeight) * zoom;
-            // internal canvas resolution considers zoom & dpr for sharpness
-            const cw = displayWidth * dpr;
-            const ch = displayHeight * dpr;
-            if (canvas.width !== cw || canvas.height !== ch) {
-                canvas.width = cw;
-                canvas.height = ch;
+            if (!canvas || !img) {
+                console.warn("No canvas or image for page", index);
+                return;
             }
-            const ctx = canvas.getContext("2d");
-            if (!ctx) return;
-            ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.scale(dpr * zoom, dpr * zoom);
-            ctx.clearRect(0, 0, naturalWidth, naturalHeight);
-            ctx.drawImage(img, 0, 0, naturalWidth, naturalHeight);
-            ctx.restore();
+
+            if (!img.complete) {
+                // Image not loaded yet
+                console.warn("Image not loaded yet for page", index);
+                img.onload = () => {
+                    // Redraw when image loads
+                    draw();
+                };
+            }
+            draw();
+
+            function draw() {
+                const naturalWidth = img.naturalWidth;
+                const naturalHeight = img.naturalHeight;
+                const displayWidth = (img.width || naturalWidth) * zoom;
+                const displayHeight = (img.height || naturalHeight) * zoom;
+                // internal canvas resolution considers zoom & dpr for sharpness
+                const cw = displayWidth * dpr;
+                const ch = displayHeight * dpr;
+                if (canvas.width !== cw || canvas.height !== ch) {
+                    canvas.width = cw;
+                    canvas.height = ch;
+                }
+                const ctx = canvas.getContext("2d");
+                if (!ctx) {
+                    console.warn("No 2D context for canvas");
+                    return;
+                }
+                ctx.save();
+                // console.log("drawing");
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.scale(dpr * zoom, dpr * zoom);
+                ctx.clearRect(0, 0, naturalWidth, naturalHeight);
+                ctx.drawImage(img, 0, 0, naturalWidth, naturalHeight);
+                // console.log("drawn");
+                ctx.restore();
+            }
         });
     });
 </script>
@@ -166,7 +187,9 @@
                         bind:this={canvasEls[index]}
                         width={page.width * zoom * dpr}
                         height={page.height * zoom * dpr}
-                        style={"width: {page.width * zoom}px; height: {page.height * zoom}px; display: block; margin: 0 auto;"}
+                        style="width: {page.width *
+                            zoom}px; height: {page.height *
+                            zoom}px;  margin: 0 auto;"
                     ></canvas>
                 </div>
             {:else}

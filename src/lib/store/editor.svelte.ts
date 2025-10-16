@@ -53,7 +53,7 @@ class EditorStore {
 
   /** opens a file and loads the text content of the file */
   async openFile(path: string) {
-    console.log("open file with path:", path);
+    // console.log("open file with path:", path);
     const open_file_res = await invoke_open_file("open_file", {
       file_path: path,
     });
@@ -80,7 +80,7 @@ class EditorStore {
     this.file_path = path;
     this.content = read_res.value;
     if (this.save_interval_id) {
-      console.log("clearing interval: ", this.save_interval_id);
+      // console.log("clearing interval: ", this.save_interval_id);
       clearInterval(this.save_interval_id);
     }
     if (this.config.auto_save) {
@@ -110,6 +110,7 @@ class EditorStore {
     toast.success("File opened", {
       description: `Opened ${path}`,
       closeButton: true,
+      duration: 800,
     });
   }
 

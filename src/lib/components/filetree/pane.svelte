@@ -15,8 +15,19 @@
     import { toast } from "svelte-sonner";
     import * as TreeView from "$lib/components/ui/tree-view";
     import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-    import { editorStore, workspaceStore } from "@/store/index.svelte";
+    import {
+        editorStore,
+        paneStore,
+        workspaceStore,
+    } from "@/store/index.svelte";
     import type { FileTreeNode } from "@/store/workspace.svelte";
+    import { PressedKeys } from "runed";
+
+    const keys = new PressedKeys();
+
+    keys.onKeys(["Control", "b"], () => {
+        paneStore.isFileTreePaneOpen = !paneStore.isFileTreePaneOpen;
+    });
 
     const shouldExpandFolders = $derived(
         workspaceStore.files
@@ -152,7 +163,7 @@
             disabled={isActiveFile}
             name={getFileName(name)}
             onclick={() => {
-                console.log("Clicked file", $state.snapshot(item));
+                // console.log("Clicked file", $state.snapshot(item));
                 editorStore.openFile(item.path);
             }}
         />
