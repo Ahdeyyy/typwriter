@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "typwriter",
-  "version": "0.2.3",
+  "version": "0.3.3",
   "identifier": "com.ahdey.typwriter",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -23,6 +23,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "resources": {
       "./assets/fonts/": "fonts/"
@@ -34,5 +35,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDExOEQ4M0QwNUQ2NzE5N0IKUldSN0dXZGQwSU9ORVFDaGd0ZUEweTlDMUtRZDZsNVk1dlVqYm5DMmhXaEl0dGNKUTgxVklua08K",
+      "endpoints": [
+        "https://github.com/ahdeyyy/typwriter/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

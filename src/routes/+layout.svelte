@@ -1,10 +1,10 @@
 <script lang="ts">
-    import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-
     import "../app.css";
-    import Button from "@/components/ui/button/button.svelte";
+    import { ModeWatcher } from "mode-watcher";
+    import { Button } from "@/components/ui/button";
     import {
         FolderTreeIcon,
+        LucideCloudDownload,
         LucideDownload,
         LucideEye,
         LucideHamburger,
@@ -24,7 +24,6 @@
     import { appContext } from "@/app-context.svelte";
     import Diagnostics from "@/components/diagnostics-panel.svelte";
     import { getCurrentWindow } from "@tauri-apps/api/window";
-    import { app } from "@tauri-apps/api";
     import { save } from "@tauri-apps/plugin-dialog";
     import { export_to } from "@/ipc";
     import { Toaster } from "$lib/components/ui/sonner/index.js";
@@ -32,53 +31,66 @@
     import { getFileName } from "@/utils";
     import { toast } from "svelte-sonner";
     import { PressedKeys } from "runed";
+    import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+    import SunIcon from "@lucide/svelte/icons/sun";
+    import MoonIcon from "@lucide/svelte/icons/moon";
+
+    import { toggleMode } from "mode-watcher";
+    import {
+        editorStore,
+        paneStore,
+        workspaceStore,
+    } from "@/store/index.svelte";
+    import { updateApp } from "./updater";
+    // import { WorkspaceStore } from "@/store/workspace.svelte";
 
     let { children } = $props();
     const keys = new PressedKeys();
 
-    keys.onKeys(["Control", "k"], () => {
-        appContext.isPreviewOpen = !appContext.isPreviewOpen;
-    });
+    // keys.onKeys(["Control", "k"], () => {
+    //     appContext.isPreviewOpen = !appContext.isPreviewOpen;
+    // });
 
-    keys.onKeys(["Control", "b"], () => {
-        appContext.isFileTreeOpen = !appContext.isFileTreeOpen;
-    });
+    // keys.onKeys(["Control", "b"], () => {
+    //     appContext.isFileTreeOpen = !appContext.isFileTreeOpen;
+    // });
 
     const window = getCurrentWindow();
 
     let isMaximized = $state(true);
 
     const openedFilePath = $derived.by(() => {
-        if (appContext.workspace && appContext.workspace.document) {
-            return ` - ${getFileName(appContext.workspace.document.path)}`;
+        if (editorStore.file_path) {
+            return ` - ${getFileName(editorStore.file_path)}`;
         }
         return "";
     });
 
     const export_file_handler = async () => {
-        if (!appContext.workspace || !appContext.workspace.document) {
+        if (!editorStore.file_path) {
             alert("Please open a file to export.");
             return;
         }
+        const fileName = getFileName(editorStore.file_path).replace(
+            /\.[^/.]+$/,
+            "",
+        );
         const export_path = await save({
-            defaultPath: appContext.workspace.document.path.replace(
-                /\.[^/.]+$/,
-                ".pdf",
-            ),
+            defaultPath: `${fileName}.pdf`,
             filters: [{ name: "PDF", extensions: ["pdf"] }],
         });
 
         if (export_path) {
             let res = await export_to(
-                appContext.workspace.document.path,
+                editorStore.file_path,
                 export_path,
-                appContext.workspace.document.content,
+                editorStore.content,
             );
             if (res) {
                 toast.error(res);
             } else {
                 toast.success(
-                    `${appContext.workspace.document.path} exported successfully!`,
+                    `${editorStore.file_path} exported successfully!`,
                 );
             }
         }
@@ -87,59 +99,104 @@
     // TODO: add a platform check for Windows, Linux, MacOS and use the appropriate icons for (minimize, maximize, close)
 </script>
 
+<ModeWatcher />
 <Toaster />
 <section class="h-screen flex flex-col">
     <header class="flex items-center justify-between">
         <div class="flex gap-0.5">
-            <Button
-                size="icon"
-                class="w-10 h-8 rounded-none"
-                variant={appContext.isFileTreeOpen ? "secondary" : "ghost"}
-                onclick={() =>
-                    (appContext.isFileTreeOpen = !appContext.isFileTreeOpen)}
-            >
-                <FolderTreeIcon />
-            </Button>
+            <Tooltip.Provider>
+                <Tooltip.Root>
+                    <Tooltip.Trigger>
+                        <Button
+                            size="icon"
+                            class="w-10 h-8 rounded-none"
+                            variant={paneStore.isFileTreePaneOpen
+                                ? "secondary"
+                                : "ghost"}
+                            onclick={() =>
+                                (paneStore.isFileTreePaneOpen =
+                                    !paneStore.isFileTreePaneOpen)}
+                        >
+                            <FolderTreeIcon />
+                        </Button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Content>
+                        <p>Open file tree</p>
+                    </Tooltip.Content>
+                </Tooltip.Root>
+            </Tooltip.Provider>
 
-            <Button
-                size="icon"
-                class="w-10 h-8 rounded-none"
-                variant={appContext.isPreviewOpen ? "secondary" : "ghost"}
-                onclick={() =>
-                    (appContext.isPreviewOpen = !appContext.isPreviewOpen)}
-            >
-                <LucideEye />
-            </Button>
+            <Tooltip.Provider>
+                <Tooltip.Root>
+                    <Tooltip.Trigger>
+                        <Button
+                            size="icon"
+                            class="w-10 h-8 rounded-none"
+                            variant={paneStore.isPreviewPaneOpen
+                                ? "secondary"
+                                : "ghost"}
+                            onclick={() =>
+                                (paneStore.isPreviewPaneOpen =
+                                    !paneStore.isPreviewPaneOpen)}
+                        >
+                            <LucideEye />
+                        </Button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Content>
+                        <p>Toggle preview panel (Ctrl + K)</p>
+                    </Tooltip.Content>
+                </Tooltip.Root>
+            </Tooltip.Provider>
 
-            <Button
-                size="icon"
-                class="h-8 w-10 relative rounded-none"
-                variant={appContext.isDiagnosticsOpen ? "secondary" : "ghost"}
-                onclick={() =>
-                    (appContext.isDiagnosticsOpen =
-                        !appContext.isDiagnosticsOpen)}
-            >
-                <LucideOctagonAlert />
-                {#if appContext.workspace && appContext.workspace.document && appContext.workspace.document.diagnostics.length > 0}
-                    <Badge
-                        class="h-4 min-w-3 rounded-full px-1 absolute top-0 right-0 font-mono text-xs tabular-nums"
-                        variant="destructive"
-                    >
-                        {appContext.workspace.document.diagnostics.length > 99
-                            ? "99+"
-                            : appContext.workspace.document.diagnostics.length}
-                    </Badge>
-                {/if}
-            </Button>
+            <Tooltip.Provider>
+                <Tooltip.Root>
+                    <Tooltip.Trigger>
+                        <Button
+                            size="icon"
+                            class="h-8 w-10 relative rounded-none"
+                            variant={paneStore.isDiagnosticsPaneOpen
+                                ? "secondary"
+                                : "ghost"}
+                            onclick={() =>
+                                (paneStore.isDiagnosticsPaneOpen =
+                                    !paneStore.isDiagnosticsPaneOpen)}
+                        >
+                            <LucideOctagonAlert />
+                            {#if editorStore.file_path && editorStore.diagnostics.length > 0}
+                                <Badge
+                                    class="h-4 min-w-3 rounded-full px-1 absolute top-0 right-0 font-mono text-xs tabular-nums"
+                                    variant="destructive"
+                                >
+                                    {editorStore.diagnostics.length > 99
+                                        ? "99+"
+                                        : editorStore.diagnostics.length}
+                                </Badge>
+                            {/if}
+                        </Button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Content>
+                        <p>Toggle diagnostics panel</p>
+                    </Tooltip.Content>
+                </Tooltip.Root>
+            </Tooltip.Provider>
 
-            <Button
-                size="icon"
-                variant="ghost"
-                class="w-10 h-8 rounded-none"
-                onclick={export_file_handler}
-            >
-                <LucideDownload />
-            </Button>
+            <Tooltip.Provider>
+                <Tooltip.Root>
+                    <Tooltip.Trigger>
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            class="w-10 h-8 rounded-none"
+                            onclick={export_file_handler}
+                        >
+                            <LucideDownload />
+                        </Button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Content>
+                        <p>Export to PDF</p>
+                    </Tooltip.Content>
+                </Tooltip.Root>
+            </Tooltip.Provider>
             <Button
                 size="icon"
                 variant="ghost"
@@ -149,10 +206,36 @@
             >
                 <LucideSettings />
             </Button>
+
+            <Button
+                onclick={async () => {
+                    await updateApp();
+                }}
+                class="w-10 h-8 rounded-none"
+                variant="ghost"
+                size="icon"
+            >
+                <LucideCloudDownload />
+            </Button>
+
+            <Button
+                onclick={toggleMode}
+                class="w-10 h-8 rounded-none"
+                variant="ghost"
+                size="icon"
+            >
+                <SunIcon
+                    class="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 !transition-all dark:-rotate-90 dark:scale-0"
+                />
+                <MoonIcon
+                    class="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 !transition-all dark:rotate-0 dark:scale-100"
+                />
+                <span class="sr-only">Toggle theme</span>
+            </Button>
         </div>
 
         <h1 class="font-medium">
-            {appContext.workspace?.name || ""}
+            {workspaceStore.name}
             {openedFilePath}
         </h1>
 
@@ -190,11 +273,11 @@
 
             <Button
                 size="icon"
-                class="w-10 h-8 rounded-none hover:bg-red-500"
+                class="w-10 h-8 rounded-none hover:bg-destructive group"
                 variant="ghost"
                 onclick={() => window.close()}
             >
-                <LucideX />
+                <LucideX class="group-hover:stroke-destructive-foreground" />
             </Button>
         </div>
     </header>

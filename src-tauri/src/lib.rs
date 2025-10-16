@@ -1,22 +1,25 @@
 pub mod app_state;
+mod commands;
 pub mod compiler;
-mod ipc;
 pub mod manager;
 pub mod utils;
 
 pub mod world;
 use app_state::AppState;
-use ipc::{
-    autocomplete, compile, compile_file, export_to, get_cursor_position, open_file, open_workspace,
-    page_click, render, render_page, tooltip,
-};
+
+use commands::compiler::{compile, compile_file, create_file, export_to, render, render_page};
+use commands::editor::{autocomplete, get_cursor_position, page_click, tooltip};
+use commands::workspace::{open_file, open_workspace};
 
 use tauri::{path::BaseDirectory, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(debug_assertions)]
-    let builder = tauri::Builder::default().plugin(tauri_plugin_devtools::init());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_devtools::init());
     #[cfg(not(debug_assertions))]
     let builder = tauri::Builder::default();
 
@@ -50,6 +53,7 @@ pub fn run() {
             compile,
             get_cursor_position,
             render_page,
+            create_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -29,7 +29,7 @@ export type WithElementRef<T, U extends HTMLElement = HTMLElement> = T & {
  * - Returns an empty string when no extension is present.
  */
 export function getFileType(path: string): string {
-  if (!path) return "";
+  if (!path || path === "") return "";
   // Remove query string / hash
   const cleaned = path.split(/[?#]/, 1)[0];
   // Normalize backslashes to forward slashes and get basename
@@ -122,66 +122,6 @@ export const saveTextToFile = async (file_path: string, text: string) => {
   }
 };
 
-/**
- *
- * @param path - The root path to build the file tree from.
- * @returns A hierarchical representation of the file tree.
- * e.g: tree: [
-	  ["lib", ["components", "button.svelte", "card.svelte"], "utils.ts"],
-	  [
-		"routes",
-		["hello", "+page.svelte", "+page.ts"],
-		"+page.svelte",
-		"+page.server.ts",
-		"+layout.svelte",
-	  ],
-	  ["static", "favicon.ico", "svelte.svg"],
-	  "eslint.config.js",
-	  ".gitignore",
-	  "svelte.config.js",
-	  "tailwind.config.js",
-	  "package.json",
-	  "README.md",
-	],
- */
-export const buildFileTree = async (path: string) => {
-  const tree: any[] = [];
-  const entries = await readDir(path);
-  for (const entry of entries) {
-    if (entry.isDirectory) {
-      const subTree = await buildFileTree(`${path}/${entry.name}`);
-      tree.push([entry.name, subTree]);
-    } else {
-      tree.push(entry.name);
-    }
-  }
-  return tree;
-};
-
-/**
- * Build a file tree where file leaves are relative paths from the provided root.
- * Directories remain as [dirname, subtree].
- */
-export const buildFileTreeRel = async (
-  absRoot: string,
-  relBase = "",
-): Promise<any[]> => {
-  const tree: any[] = [];
-  const entries = await readDir(absRoot);
-  for (const entry of entries) {
-    if (entry.isDirectory) {
-      const nextAbs = `${absRoot}\\${entry.name}`;
-      const nextRel = relBase ? `${relBase}\\${entry.name}` : entry.name;
-      const subTree = await buildFileTreeRel(nextAbs, nextRel);
-      tree.push([entry.name, subTree]);
-    } else {
-      const relPath = relBase ? `${relBase}\\${entry.name}` : entry.name;
-      tree.push(relPath);
-    }
-  }
-  return tree;
-};
-
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
@@ -251,3 +191,84 @@ export const darkScrollbar = createScrollbarTheme({
   scrollbarThumbHover: "#777777",
   scrollbarThumbActive: "#888888",
 });
+
+/**
+ * MurmurHash3's 32-bit hashing function.
+ * It provides excellent speed and distribution for non-cryptographic needs.
+ *
+ * @param  key The string to hash.
+ * @param seed An optional seed value.
+ * @returns A 32-bit integer hash.
+ */
+export function murmurHash3(key: string, seed = 0): number {
+  let remainder: number,
+    bytes: number,
+    h1: number,
+    h1b: number,
+    c1: number,
+    c2: number,
+    k1: number,
+    i: number;
+
+  remainder = key.length & 3; // key.length % 4
+  bytes = key.length - remainder;
+  h1 = seed;
+  c1 = 0xcc9e2d51;
+  c2 = 0x1b873593;
+  i = 0;
+
+  while (i < bytes) {
+    k1 =
+      (key.charCodeAt(i) & 0xff) |
+      ((key.charCodeAt(++i) & 0xff) << 8) |
+      ((key.charCodeAt(++i) & 0xff) << 16) |
+      ((key.charCodeAt(++i) & 0xff) << 24);
+    ++i;
+
+    k1 =
+      ((k1 & 0xffff) * c1 + ((((k1 >>> 16) * c1) & 0xffff) << 16)) & 0xffffffff;
+    k1 = (k1 << 15) | (k1 >>> 17);
+    k1 =
+      ((k1 & 0xffff) * c2 + ((((k1 >>> 16) * c2) & 0xffff) << 16)) & 0xffffffff;
+
+    h1 ^= k1;
+    h1 = (h1 << 13) | (h1 >>> 19);
+    h1b =
+      ((h1 & 0xffff) * 5 + ((((h1 >>> 16) * 5) & 0xffff) << 16)) & 0xffffffff;
+    h1 = (h1b & 0xffffffff) + 0x6b64e653;
+  }
+
+  k1 = 0;
+
+  switch (remainder) {
+    case 3:
+      k1 ^= (key.charCodeAt(i + 2) & 0xff) << 16;
+    case 2:
+      k1 ^= (key.charCodeAt(i + 1) & 0xff) << 8;
+    case 1:
+      k1 ^= key.charCodeAt(i) & 0xff;
+      k1 =
+        ((k1 & 0xffff) * c1 + ((((k1 >>> 16) * c1) & 0xffff) << 16)) &
+        0xffffffff;
+      k1 = (k1 << 15) | (k1 >>> 17);
+      k1 =
+        ((k1 & 0xffff) * c2 + ((((k1 >>> 16) * c2) & 0xffff) << 16)) &
+        0xffffffff;
+      h1 ^= k1;
+  }
+
+  h1 ^= key.length;
+  h1 ^= h1 >>> 16;
+  h1 =
+    ((h1 & 0xffff) * 0x85ebca6b +
+      ((((h1 >>> 16) * 0x85ebca6b) & 0xffff) << 16)) &
+    0xffffffff;
+  h1 ^= h1 >>> 13;
+  h1 =
+    ((h1 & 0xffff) * 0xc2b2ae35 +
+      ((((h1 >>> 16) * 0xc2b2ae35) & 0xffff) << 16)) &
+    0xffffffff;
+  h1 ^= h1 >>> 16;
+
+  return h1 >>> 0; // Convert to unsigned 32-bit integer
+}

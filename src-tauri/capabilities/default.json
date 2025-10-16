@@ -16,6 +16,7 @@
     "core:event:allow-listen",
     "core:event:allow-emit",
     "opener:default",
+    "process:default",
     "core:path:default",
     "dialog:default",
     "fs:default",
