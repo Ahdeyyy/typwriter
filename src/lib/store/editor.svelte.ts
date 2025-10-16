@@ -6,7 +6,7 @@ import type { EditorView } from "codemirror";
 import { ResultAsync } from "neverthrow";
 import { toast } from "svelte-sonner";
 import { previewStore } from "./index.svelte";
-import { murmurHash3 } from "@/utils";
+import { getFileType, murmurHash3 } from "@/utils";
 import { SvelteMap } from "svelte/reactivity";
 
 const safeReadTextFile = ResultAsync.fromThrowable(
@@ -53,7 +53,7 @@ class EditorStore {
 
   /** opens a file and loads the text content of the file */
   async openFile(path: string) {
-    console.log("open file with path:", path);
+    // console.log("open file with path:", path);
     const open_file_res = await invoke_open_file("open_file", {
       file_path: path,
     });
@@ -80,6 +80,7 @@ class EditorStore {
     this.file_path = path;
     this.content = read_res.value;
     if (this.save_interval_id) {
+      // console.log("clearing interval: ", this.save_interval_id);
       clearInterval(this.save_interval_id);
     }
     if (this.config.auto_save) {
@@ -96,7 +97,10 @@ class EditorStore {
     }
     previewStore.render_cache = new SvelteMap();
     previewStore.items = [];
-    await Promise.all([this.compile_document(), this.render()]);
+    const extension = getFileType(path);
+    if (extension === "typ") {
+      await Promise.all([this.compile_document(), this.render()]);
+    }
     previewStore.current_position = {
       page: 0,
       x: 0,
@@ -106,6 +110,7 @@ class EditorStore {
     toast.success("File opened", {
       description: `Opened ${path}`,
       closeButton: true,
+      duration: 800,
     });
   }
 
@@ -124,12 +129,6 @@ class EditorStore {
     if (!this.is_dirty) {
       // No changes to save
       this.saving = false;
-      toast.info("No changes to save", {
-        description: `No changes to save for ${this.file_path}`,
-        duration: 400,
-        closeButton: true,
-      });
-
       return;
     }
     await writeTextFile(this.file_path, this.content);
@@ -137,7 +136,7 @@ class EditorStore {
     this.last_saved = Date.now();
     toast.success("File saved", {
       description: `Saved to ${this.file_path}`,
-      duration: 400,
+      duration: 800,
     });
     this.saving = false;
   }
@@ -147,7 +146,10 @@ class EditorStore {
     if (!this.file_path) return;
     const result = await compile(this.file_path, this.content);
     if (result.isErr()) {
-      toast.error("Failed to compile the document.");
+      toast.error("Failed to compile the document.", {
+        description: result.error.message,
+        closeButton: true,
+      });
     } else {
       const render_diagnostics = result.value;
       this.diagnostics = render_diagnostics;

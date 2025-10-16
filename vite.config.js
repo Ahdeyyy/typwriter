@@ -11,8 +11,21 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [tailwindcss(), sveltekit(), wasm(), topLevelAwait()],
 
+  resolve: {
+    dedupe: [
+      "@codemirror/state",
+      "@codemirror/view",
+      "@codemirror/language",
+      "@codemirror/autocomplete",
+      "codemirror",
+    ],
+  },
+
   optimizeDeps: {
     exclude: [
+      "@codemirror/autocomplete",
+      "@codemirror/language",
+      "@codemirror/state",
       "svelte-codemirror-editor",
       "codemirror",
       "@codemirror/language-javascript",

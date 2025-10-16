@@ -1,62 +1,58 @@
 <script lang="ts">
-    import { appContext } from "@/app-context.svelte";
     import {
+        ayuLight,
+        CodeMirror,
+        coolGlow,
+        hoverTooltip,
         typst_completion,
         typst_hover_tooltip,
-        typstLinter,
-    } from "./typst";
-    import { compile, get_cursor_position, render, render_page } from "@/ipc";
-    import { theme } from "mode-watcher";
-
-    import { yaml } from "@codemirror/lang-yaml";
-    import { EditorView, hoverTooltip } from "@codemirror/view";
-    import { typst } from "codemirror-lang-typst";
-    import { useDebounce, useInterval, useThrottle, watch } from "runed";
-    import CodeMirror from "svelte-codemirror-editor";
-    import { ayuLight, dracula } from "thememirror";
-    import { syntaxHighlighting } from "@codemirror/language";
-    import {
         typstBlueprintHighlightStyle,
+        typstLinter,
         typstMidnightHighlightStyle,
-    } from "./style";
-    import {
-        alucardHighlightStyle,
-        alucardTheme,
-    } from "./themes/dracula/light";
+        yaml,
+    } from "./index";
+
+    import { get_cursor_position } from "@/ipc";
+    import { mode } from "mode-watcher";
+
+    import { useDebounce, useInterval, useThrottle, watch } from "runed";
+
+    // import { syntaxHighlighting } from "@codemirror/language";
+
     import { editorStore, previewStore } from "@/store/index.svelte";
-    import { getFileType, murmurHash3 } from "@/utils";
-    import { toast } from "svelte-sonner";
+    import { getFileType } from "@/utils";
+    // import { toast } from "svelte-sonner";
 
     const editableDocs = ["typ", "yaml", "yml", "txt", "md", "json", "bib"];
 
     let documentExtension = $derived.by(() => {
         if (editorStore.file_path) {
-            return { ext: getFileType(editorStore.file_path) };
+            return {
+                path: editorStore.file_path,
+                ext: getFileType(editorStore.file_path),
+            };
         }
         return { ext: "" };
     });
 
-    let lang = $derived.by(() => {
-        switch (documentExtension.ext) {
-            case "typ":
-                return [typst()];
-            case "yaml":
-                return [yaml()];
-            case "yml":
-                return [yaml()];
-            default:
-                return undefined;
-        }
+    let currentTheme = $derived.by(() => {
+        return mode.current === "dark"
+            ? { editor: coolGlow, syntax: typstMidnightHighlightStyle }
+            : { editor: ayuLight, syntax: typstBlueprintHighlightStyle };
     });
 
-    let syntaxHighlight = $derived.by(() => {
+    const syntaxHighlight = $derived.by(() => {
         if (documentExtension.ext === "typ") {
-            return typstBlueprintHighlightStyle;
+            return {
+                highlighter: currentTheme.syntax,
+                fallback: false,
+            };
         }
         return undefined;
     });
 
     let completion = $derived.by(() => {
+        const path = documentExtension.path;
         if (documentExtension.ext === "typ") {
             return {
                 override: [typst_completion],
@@ -67,15 +63,20 @@
     });
 
     let languageSpecificExtensions = $derived.by(() => {
+        const path = documentExtension.path;
+        // console.log("Language Extensions for:", path);
+
         switch (documentExtension.ext) {
-            case "typ":
+            case "typ": {
+                // const { typst } = await import("codemirror-lang-typst"); // dynamic import
                 return [
                     hoverTooltip(typst_hover_tooltip),
                     typstLinter(editorStore.diagnostics),
-                    typst(),
+                    // typst(),
                 ];
+            }
             case "yaml":
-                return [];
+                return [yaml()];
             default:
                 return [];
         }
@@ -106,29 +107,30 @@
 </script>
 
 {#if editorStore.file_path}
-    <CodeMirror
-        bind:value={editorStore.content}
-        styles={{
-            "&": { height: "95svh", width: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-        }}
-        onready={(e) => {
-            editorStore.editor_view = e;
-        }}
-        onchange={async (e) => {
-            editorStore.is_dirty = true;
-            await debouncedCompileAndRender();
-        }}
-        extensions={languageSpecificExtensions}
-        theme={ayuLight}
-        lineWrapping
-        lineNumbers
-        autocompletion={completion}
-        foldGutter
-        syntaxHighlighting={{
-            highlighter: typstBlueprintHighlightStyle,
-            fallback: false,
-        }}
-        editable={editableDocs.includes(documentExtension.ext)}
-    />
+    {#key editorStore.file_path}
+        <CodeMirror
+            bind:value={editorStore.content}
+            styles={{
+                "&": { height: "95svh", width: "100%" },
+                ".cm-scroller": { overflow: "auto" },
+            }}
+            onready={async (e) => {
+                // console.log("Editor ready");
+                editorStore.editor_view = e;
+            }}
+            onchange={async (e) => {
+                editorStore.is_dirty = true;
+                await debouncedCompileAndRender();
+            }}
+            extensions={languageSpecificExtensions}
+            lineWrapping
+            lineNumbers
+            foldGutter
+            editable={editableDocs.includes(documentExtension.ext)}
+            autocompletion={completion}
+            theme={currentTheme.editor}
+            syntaxHighlighting={syntaxHighlight}
+        />
+        <!-- {lang} -->
+    {/key}
 {/if}
