@@ -193,7 +193,7 @@ impl TypstCompiler {
         let start = std::time::Instant::now();
         let warned_compilation_result = typst::compile::<PagedDocument>(&self.world);
         let duration = start.elapsed();
-        println!("compilation took {:?}", duration);
+        // println!("compilation took {:?}", duration);
 
         let process_diagnostics = |diagnostics: &[SourceDiagnostic]| -> Vec<TypstSourceDiagnostic> {
             let start = std::time::Instant::now();
@@ -220,7 +220,7 @@ impl TypstCompiler {
                 })
                 .collect();
             let duration = start.elapsed();
-            println!("diagnostics proccessing took {:?}", duration);
+            // println!("diagnostics proccessing took {:?}", duration);
             diags
         };
 
@@ -336,7 +336,7 @@ impl TypstCompiler {
                         position: byte_position_to_char_position(&source_text, position),
                     })
                 } else {
-                    dbg!("No file path found for the given file ID.");
+                    // dbg!("No file path found for the given file ID.");
                     DocumentClickResponse::NoJump
                 }
             }
@@ -357,7 +357,7 @@ impl TypstCompiler {
             }
             // open the given URL in the default browser
             Some(Jump::Url(url)) => {
-                dbg!("Jump to URL: {}", url.as_str());
+                // dbg!("Jump to URL: {}", url.as_str());
                 DocumentClickResponse::UrlJump(UrlJump {
                     url: url.as_str().to_string(),
                 })
@@ -365,7 +365,7 @@ impl TypstCompiler {
 
             None => {
                 // println!("No jump target found at the clicked position.");
-                dbg!("No jump target found at the clicked position.");
+                // dbg!("No jump target found at the clicked position.");
                 DocumentClickResponse::NoJump
             }
         }

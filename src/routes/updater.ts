@@ -25,12 +25,15 @@ export async function updateApp() {
           break;
         case "Progress":
           downloaded += event.data.chunkLength;
-          // toast.info("downloading update", {
-          //   description: `downloaded ${downloaded} from ${contentLength}`,
-          // });
+
+          toast.loading("downloading update", {
+            description: `downloaded ${downloaded} from ${contentLength}`,
+            duration: 100,
+          });
           console.log(`downloaded ${downloaded} from ${contentLength}`);
           break;
         case "Finished":
+          toast.success("download finished");
           console.log("download finished");
           break;
       }

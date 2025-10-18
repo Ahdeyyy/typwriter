@@ -115,19 +115,26 @@ class EditorStore {
   }
 
   /** saves the current content to the file */
-  async saveFile() {
+  async saveFile(explicit: boolean = false) {
     this.saving = true;
     if (!this.file_path) {
       this.saving = false;
       toast.error("No file path specified", {
         description: "Cannot save file without a valid file path",
-        duration: 400,
+        duration: 500,
         closeButton: true,
       });
       return;
     }
     if (!this.is_dirty) {
       // No changes to save
+
+      if (explicit) {
+        toast.info("No changes to save", {
+          duration: 800,
+        });
+      }
+
       this.saving = false;
       return;
     }
@@ -162,7 +169,7 @@ class EditorStore {
     if (render_result.isErr()) {
       toast.error("Failed to render the document.", {
         description: render_result.error.message,
-        duration: 400,
+        duration: 800,
       });
     } else {
       const pages = render_result.value;
@@ -191,7 +198,6 @@ class EditorStore {
     const res = await render_page(page);
     // console.log("rendering page:", page, res);
     if (res) {
-      console.log("new page render");
       const img = new Image();
       img.src = `data:image/png;base64,${res.image}`;
       img.width = res.width;
@@ -203,7 +209,7 @@ class EditorStore {
 
 const defaultEditorConfig: EditorConfig = {
   auto_save: true,
-  auto_save_interval: 2250, // 1.75 seconds
+  auto_save_interval: 3500, // 1.75 seconds
   theme: "light",
   font_size: 14,
   show_line_numbers: true,

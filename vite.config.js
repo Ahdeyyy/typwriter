@@ -24,6 +24,7 @@ export default defineConfig(async () => ({
   optimizeDeps: {
     exclude: [
       "@codemirror/autocomplete",
+      "@codemirror/commands",
       "@codemirror/language",
       "@codemirror/state",
       "svelte-codemirror-editor",
