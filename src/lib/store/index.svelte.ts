@@ -31,6 +31,10 @@ export async function previewPageClick(x: number, y: number, page: number) {
     case "FileJump":
       //   appState.moveEditorCursor(result.value.position)
       // update the currently opened file according too
+      //
+      if (editorStore.file_path !== result.value.file) {
+        editorStore.openFile(result.value.file);
+      }
 
       if (view) {
         const transaction = view.state.update({

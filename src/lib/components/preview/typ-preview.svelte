@@ -118,13 +118,13 @@
         previewStore.items.forEach((img, index) => {
             const canvas = canvasEls[index];
             if (!canvas || !img) {
-                console.warn("No canvas or image for page", index);
+                // console.warn("No canvas or image for page", index);
                 return;
             }
 
             if (!img.complete) {
                 // Image not loaded yet
-                console.warn("Image not loaded yet for page", index);
+                // console.warn("Image not loaded yet for page", index);
                 img.onload = () => {
                     // Redraw when image loads
                     draw();

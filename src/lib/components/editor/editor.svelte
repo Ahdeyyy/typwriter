@@ -4,6 +4,7 @@
         CodeMirror,
         coolGlow,
         hoverTooltip,
+        typst,
         typst_completion,
         typst_hover_tooltip,
         typstBlueprintHighlightStyle,
@@ -17,10 +18,18 @@
 
     import { useDebounce, useInterval, useThrottle, watch } from "runed";
 
-    // import { syntaxHighlighting } from "@codemirror/language";
-
     import { editorStore, previewStore } from "@/store/index.svelte";
     import { getFileType } from "@/utils";
+    import {
+        barf,
+        birdsOfParadise,
+        boysAndGirls,
+        cobalt,
+        dracula,
+        noctisLilac,
+        solarizedLight,
+    } from "thememirror";
+    import { keymap } from "@codemirror/view";
     // import { toast } from "svelte-sonner";
 
     const editableDocs = ["typ", "yaml", "yml", "txt", "md", "json", "bib"];
@@ -35,20 +44,30 @@
         return { ext: "" };
     });
 
+    let saveKeybind = keymap.of([
+        {
+            key: "Mod-s",
+            preventDefault: true,
+            run: () => {
+                if (editorStore.file_path) {
+                    editorStore.saveFile(true);
+                }
+                return true;
+            },
+        },
+    ]);
+
     let currentTheme = $derived.by(() => {
         return mode.current === "dark"
-            ? { editor: coolGlow, syntax: typstMidnightHighlightStyle }
-            : { editor: ayuLight, syntax: typstBlueprintHighlightStyle };
+            ? { editor: noctisLilac, syntax: typstMidnightHighlightStyle }
+            : { editor: noctisLilac, syntax: typstBlueprintHighlightStyle };
     });
 
     const syntaxHighlight = $derived.by(() => {
-        if (documentExtension.ext === "typ") {
-            return {
-                highlighter: currentTheme.syntax,
-                fallback: false,
-            };
-        }
-        return undefined;
+        return {
+            highlighter: currentTheme.syntax,
+            fallback: false,
+        };
     });
 
     let completion = $derived.by(() => {
@@ -62,21 +81,33 @@
         return true;
     });
 
+    const editorLanguage = $derived.by(() => {
+        const path = documentExtension.path;
+        // console.log("Editor Language for:", path);
+        if (documentExtension.ext === "typ") {
+            return typst(); // typst();
+        } else if (
+            documentExtension.ext === "yaml" ||
+            documentExtension.ext === "yml"
+        ) {
+            return yaml();
+        }
+        return undefined;
+    });
+
     let languageSpecificExtensions = $derived.by(() => {
         const path = documentExtension.path;
         // console.log("Language Extensions for:", path);
 
         switch (documentExtension.ext) {
             case "typ": {
-                // const { typst } = await import("codemirror-lang-typst"); // dynamic import
                 return [
                     hoverTooltip(typst_hover_tooltip),
                     typstLinter(editorStore.diagnostics),
-                    // typst(),
                 ];
             }
             case "yaml":
-                return [yaml()];
+                return [];
             default:
                 return [];
         }
@@ -101,9 +132,9 @@
         }
     };
 
-    const debouncedCompileAndRender = useDebounce(async () => {
+    const debouncedCompileAndRender = useThrottle(async () => {
         await compileAndRender();
-    }, 50);
+    }, 90);
 </script>
 
 {#if editorStore.file_path}
@@ -117,20 +148,24 @@
             onready={async (e) => {
                 // console.log("Editor ready");
                 editorStore.editor_view = e;
+                // console.log(e);
             }}
             onchange={async (e) => {
                 editorStore.is_dirty = true;
                 await debouncedCompileAndRender();
             }}
-            extensions={languageSpecificExtensions}
+            extensions={[...languageSpecificExtensions, saveKeybind]}
             lineWrapping
             lineNumbers
             foldGutter
             editable={editableDocs.includes(documentExtension.ext)}
             autocompletion={completion}
             theme={currentTheme.editor}
+            nodebounce={true}
+            closeBrackets
+            bracketMatching
+            lang={editorLanguage}
             syntaxHighlighting={syntaxHighlight}
         />
-        <!-- {lang} -->
     {/key}
 {/if}
