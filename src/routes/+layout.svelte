@@ -16,10 +16,10 @@
     } from "@lucide/svelte";
     import { getCurrentWindow } from "@tauri-apps/api/window";
     import { save } from "@tauri-apps/plugin-dialog";
-    import { export_to } from "@/ipc";
+    import { compile, export_main } from "@/commands";
     import { Toaster } from "$lib/components/ui/sonner/index.js";
     import { Badge } from "@/components/ui/badge";
-    import { getFileName } from "@/utils";
+    import { getFileName, getFileType } from "@/utils";
     import { toast } from "svelte-sonner";
     import * as Tooltip from "$lib/components/ui/tooltip/index.js";
     import SunIcon from "@lucide/svelte/icons/sun";
@@ -28,7 +28,9 @@
     import { toggleMode, theme } from "mode-watcher";
     import {
         editorStore,
+        mainSourceStore,
         paneStore,
+        previewStore,
         workspaceStore,
     } from "@/store/index.svelte";
     import { updateApp } from "./updater";
@@ -48,6 +50,8 @@
     });
 
     const export_file_handler = async () => {
+        await compile();
+
         if (!editorStore.file_path) {
             alert("Please open a file to export.");
             return;
@@ -58,17 +62,23 @@
         );
         const export_path = await save({
             defaultPath: `${fileName}.pdf`,
-            filters: [{ name: "PDF", extensions: ["pdf"] }],
+            filters: [
+                { name: "PDF", extensions: ["pdf"] },
+                { name: "SVG", extensions: ["svg"] },
+                { name: "PNG", extensions: ["png"] },
+            ],
         });
 
         if (export_path) {
-            let res = await export_to(
-                editorStore.file_path,
-                export_path,
-                editorStore.content,
-            );
-            if (res) {
-                toast.error(res);
+            let res = await export_main(export_path, {
+                format: getFileType(export_path) as "png" | "svg" | "pdf",
+                merged: false,
+                start_page: 0,
+                end_page: 8,
+            });
+            if (res.isErr()) {
+                console.error("error exporting: ", res.error.message);
+                toast.error(res.error.message);
             } else {
                 toast.success(
                     `${editorStore.file_path} exported successfully!`,
@@ -221,6 +231,21 @@
                     class="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 !transition-all dark:rotate-0 dark:scale-100"
                 />
                 <span class="sr-only">Toggle theme</span>
+            </Button>
+
+            <Button
+                variant={mainSourceStore.file_path === editorStore.file_path
+                    ? "default"
+                    : "ghost"}
+                class="rounded-none h-8"
+                onclick={() => {
+                    mainSourceStore.setMainSource(
+                        editorStore.file_path || "",
+                        editorStore.content,
+                    );
+                }}
+            >
+                Set as main file
             </Button>
         </div>
 

@@ -13,23 +13,26 @@
         yaml,
     } from "./index";
 
-    import { get_cursor_position } from "@/ipc";
+    import {
+        compile,
+        get_cursor_position,
+        render_page,
+        render_pages,
+        update_file,
+    } from "@/commands";
     import { mode } from "mode-watcher";
 
     import { useDebounce, useInterval, useThrottle, watch } from "runed";
 
-    import { editorStore, previewStore } from "@/store/index.svelte";
-    import { getFileType } from "@/utils";
     import {
-        barf,
-        birdsOfParadise,
-        boysAndGirls,
-        cobalt,
-        dracula,
-        noctisLilac,
-        solarizedLight,
-    } from "thememirror";
+        editorStore,
+        mainSourceStore,
+        previewStore,
+    } from "@/store/index.svelte";
+    import { getFileType, murmurHash3 } from "@/utils";
+    import { noctisLilac } from "thememirror";
     import { keymap } from "@codemirror/view";
+    import { toast } from "svelte-sonner";
     // import { toast } from "svelte-sonner";
 
     const editableDocs = ["typ", "yaml", "yml", "txt", "md", "json", "bib"];
@@ -59,8 +62,8 @@
 
     let currentTheme = $derived.by(() => {
         return mode.current === "dark"
-            ? { editor: noctisLilac, syntax: typstMidnightHighlightStyle }
-            : { editor: noctisLilac, syntax: typstBlueprintHighlightStyle };
+            ? { editor: ayuLight, syntax: typstMidnightHighlightStyle }
+            : { editor: ayuLight, syntax: typstBlueprintHighlightStyle };
     });
 
     const syntaxHighlight = $derived.by(() => {
@@ -113,20 +116,97 @@
         }
     });
 
+    // update the current file source
+    // compile and render preview
+
     const compileAndRender = async () => {
-        if (editorStore.file_path && documentExtension.ext === "typ") {
-            await editorStore.compile_document();
-            const view = editorStore.editor_view;
-            if (view) {
-                const cursor = view.state.selection.main.head;
-                // get preview position
-                const position = await get_cursor_position(cursor);
-                if (position.isOk()) {
-                    // use the current page to the render the exact page
-                    previewStore.current_position = position.value;
-                    await editorStore.render_page(position.value.page - 1);
+        const res = await update_file(
+            editorStore.file_path || "",
+            editorStore.content,
+        );
+        if (res.isErr()) {
+            console.error(
+                "failed to update the file before rendering",
+                res.error.message,
+            );
+            toast.error("Failed to update the file before rendering");
+            return;
+        }
+
+        const compile_result = await compile();
+        if (compile_result.isErr()) {
+            console.error(
+                "failed to compile the document",
+                compile_result.error.message,
+            );
+            toast.error("Failed to compile the document");
+            return;
+        }
+        editorStore.diagnostics = compile_result.value;
+
+        const cursor = editorStore.editor_view
+            ? editorStore.editor_view.state.selection.main.head
+            : 0;
+        const position = await get_cursor_position(cursor, editorStore.content);
+
+        if (
+            position.isOk() &&
+            editorStore.file_path === mainSourceStore.file_path
+        ) {
+            // use the current page to the render the exact page
+            previewStore.current_position = position.value;
+            const render_result = await render_page(position.value.page - 1);
+            if (render_result.isErr()) {
+                console.error("failed to render the page");
+                toast.error("Failed to render the page");
+            } else {
+                const page = render_result.value;
+                const page_hash = `${murmurHash3(page.image)}${position.value.page - 1}`;
+                const existing_page = previewStore.render_cache.get(page_hash);
+                if (existing_page) {
+                    // page already exists in cache
+                    previewStore.items.splice(
+                        position.value.page - 1,
+                        1,
+                        existing_page,
+                    );
                 } else {
-                    await editorStore.render();
+                    // add page to cache
+
+                    const img = new Image();
+                    img.src = `data:image/png;base64,${page.image}`;
+                    img.width = page.width;
+                    img.height = page.height;
+                    previewStore.render_cache.set(page_hash, img);
+                    previewStore.items.splice(position.value.page - 1, 1, img);
+                }
+            }
+        } else {
+            const render_result = await render_pages();
+            //   console.log("Render result:", render_result)
+            if (render_result.isErr()) {
+                console.error("failed to render the pages");
+                toast.error("Failed to render the pages");
+            } else {
+                const pages = render_result.value;
+                for (let idx = 0; idx < pages.length; idx++) {
+                    const page = pages[idx];
+                    const page_hash = `${murmurHash3(page.image)}${idx}`;
+                    const existing_page =
+                        previewStore.render_cache.get(page_hash);
+                    if (existing_page) {
+                        // page already exists in cache
+                        previewStore.items.splice(idx, 1, existing_page);
+                        continue;
+                    } else {
+                        // add page to cache
+                        const img = new Image();
+                        img.src = `data:image/png;base64,${page.image}`;
+                        img.width = page.width;
+                        img.height = page.height;
+                        previewStore.render_cache.set(page_hash, img);
+                        previewStore.items.splice(idx, 1, img);
+                    }
                 }
             }
         }

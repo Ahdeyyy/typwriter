@@ -10,6 +10,15 @@ class PreviewStore {
   zoom = $state(1); // 0 to 1
   // add fullscreen mode, if true a new window will open with the preview
   fullscreen = $state(false);
+
+  async reset() {
+    this.preview_item_type = "typ";
+    this.items = [];
+    this.render_cache = new SvelteMap<string, HTMLImageElement>();
+    this.current_position = { page: 0, x: 0, y: 0 };
+    this.zoom = 1;
+    this.fullscreen = false;
+  }
 }
 
 // const defaultPreviewStore: PreviewStore = {

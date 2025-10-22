@@ -6,17 +6,11 @@
         LucideFileQuestionMark,
         LucideFolderX,
     } from "@lucide/svelte";
-    import { openWorkspace } from "@/workspace/workspace.svelte";
-    import { appContext } from "@/app-context.svelte";
-    import { open_workspace } from "@/ipc";
+    import { open_workspace } from "@/commands";
+    import { workspaceStore } from "@/store/index.svelte";
 
     async function handleOpenWorkspace() {
-        const opened = await openWorkspace();
-        if (opened) {
-            appContext.workspace = opened;
-            open_workspace(opened.rootPath);
-            appContext.addToRecentWorkspaces(opened.rootPath);
-        }
+        await workspaceStore.openWorkspace();
     }
 </script>
 
@@ -37,7 +31,7 @@
             <Button onclick={async () => await handleOpenWorkspace()}>
                 Open Workspace
             </Button>
-            {#if appContext.workspace}
+            {#if workspaceStore.path}
                 <Button disabled variant="outline">Open File</Button>
             {/if}
         </div>

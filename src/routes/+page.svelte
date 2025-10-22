@@ -9,7 +9,6 @@
     import * as Resizable from "$lib/components/ui/resizable/index.js";
     import FileTreePane from "@/components/filetree/pane.svelte";
     import Diagnostics from "@/components/diagnostics-panel.svelte";
-    import { appContext } from "@/app-context.svelte";
     import { editorStore, paneStore } from "@/store/index.svelte";
 
     let { data }: { data: LayoutData } = $props();

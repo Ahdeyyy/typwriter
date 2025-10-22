@@ -3,7 +3,8 @@ import { create, mkdir, readDir } from "@tauri-apps/plugin-fs";
 import { open as OpenDialog, confirm } from "@tauri-apps/plugin-dialog";
 import { toast } from "svelte-sonner";
 import { RuneStore } from "@tauri-store/svelte";
-import { create_file, open_workspace } from "@/ipc";
+// import { create_file, open_workspace } from "@/ipc";
+import { add_file, open_workspace } from "@/commands";
 
 export class WorkspaceStore {
   files: FileTreeNode[] = $state([]);
@@ -12,9 +13,9 @@ export class WorkspaceStore {
   name: string = $state("");
 
   /** recently opened workspaces */
-  recent_workspaces: RuneStore<{ paths: Set<string> }> = new RuneStore(
+  recent_workspaces: RuneStore<{ paths: Array<string> }> = new RuneStore(
     "recent_workspaces",
-    { paths: new Set<string>() },
+    { paths: new Array<string>() },
     { autoStart: true, saveOnChange: true },
   );
 
@@ -34,7 +35,7 @@ export class WorkspaceStore {
     }
     const fullPath = joinFsPath(this.path, path);
     if (!isDirectory) {
-      const res = await create_file(fullPath);
+      const res = await add_file(fullPath, "");
       if (res.isErr()) {
         toast.error("Error creating file", {
           description: res.error.message,
@@ -88,7 +89,14 @@ export class WorkspaceStore {
         return;
       }
       path = selected_path;
-      this.recent_workspaces.state.paths.add(path);
+
+      const prevIndex = this.recent_workspaces.state.paths.indexOf(path);
+      if (prevIndex === -1) {
+        this.recent_workspaces.state.paths.push(path);
+      } else {
+        this.recent_workspaces.state.paths.splice(prevIndex, 1);
+        this.recent_workspaces.state.paths.push(path);
+      }
     }
 
     this.path = path;

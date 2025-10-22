@@ -3,7 +3,12 @@
     import Button from "@/components/ui/button/button.svelte";
     import { ChevronDown, Check, ChevronsUpDown } from "@lucide/svelte";
     import { getFolderName } from "@/utils";
-    import { workspaceStore } from "@/store/index.svelte";
+    import {
+        editorStore,
+        mainSourceStore,
+        previewStore,
+        workspaceStore,
+    } from "@/store/index.svelte";
     import { toast } from "svelte-sonner";
 
     let dropdownOpen = $state(false);
@@ -14,11 +19,17 @@
             return;
         }
         workspaceStore.openWorkspace(path);
+        editorStore.reset();
+        previewStore.reset();
+        mainSourceStore.reset();
         dropdownOpen = false;
     }
 
     async function handleOpenWorkspace() {
         workspaceStore.openWorkspace();
+        editorStore.reset();
+        previewStore.reset();
+        mainSourceStore.reset();
         dropdownOpen = false;
     }
 </script>
