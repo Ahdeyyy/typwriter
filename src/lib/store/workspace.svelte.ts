@@ -5,7 +5,11 @@ import { toast } from "svelte-sonner";
 import { RuneStore } from "@tauri-store/svelte";
 // import { create_file, open_workspace } from "@/ipc";
 import { add_file, open_workspace } from "@/commands";
-import { mainSourceStore, persistentMainSourceStore } from "./index.svelte";
+import {
+  getMainSourcePath,
+  mainSourceStore,
+  persistentMainSourceStore,
+} from "./index.svelte";
 
 export class WorkspaceStore {
   files: FileTreeNode[] = $state([]);
@@ -104,8 +108,8 @@ export class WorkspaceStore {
     this.name = getFolderName(path);
     this.files = await buildFileTree(path);
     await open_workspace(path);
-    const last_main_source =
-      persistentMainSourceStore.state.main_sources.get(path);
+    const last_main_source = getMainSourcePath(path);
+    console.log(last_main_source);
     if (last_main_source) mainSourceStore.setMainSource(last_main_source);
     toast.success("Workspace opened", {
       description: `opened workspace at ${this.path}`,
