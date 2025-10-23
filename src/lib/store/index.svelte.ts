@@ -16,6 +16,7 @@ export const persistentMainSourceStore = new RuneStore(
   },
   {
     autoStart: true,
+    saveOnChange: true,
   },
 );
 
