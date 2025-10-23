@@ -76,7 +76,7 @@
 </script>
 
 <aside
-    class="h-full w-full flex flex-col bg-background/40 border-r border-border relative"
+    class="h-[99svh] w-full flex flex-col bg-background/40 border-r border-border relative"
 >
     <header
         class="px-2 py-1 flex align-center space-x-2 border-b border-border/60"
@@ -155,7 +155,7 @@
         </div>
     </ScrollArea>
 
-    <footer class="border-t-1 p-2 text-xs w-full">
+    <footer class="border-t-1 p-2 mb-8 text-xs w-full">
         <WorkspaceSwitcher />
     </footer>
 </aside>

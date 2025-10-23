@@ -8,11 +8,15 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { compile, render_pages, set_main_file, page_click } from "@/commands";
 import { getFileType, murmurHash3 } from "@/utils";
 import { RuneStore } from "@tauri-store/svelte";
+import { SvelteMap } from "svelte/reactivity";
 
+// store to persist the last opened main source file for each workspace
+// the key is the workspace path, the value is the main source file path
+// example: { "/path/to/workspace": "/path/to/workspace/main.typ" , ... }
 export const persistentMainSourceStore = new RuneStore(
   "last-main-source",
   {
-    main_sources: new Map<string, string>(),
+    main_sources: {} as Record<string, string>,
   },
   {
     autoStart: true,
@@ -20,13 +24,24 @@ export const persistentMainSourceStore = new RuneStore(
   },
 );
 
+export function getMainSourcePath(workspace_path: string): string | undefined {
+  const s = persistentMainSourceStore.state.main_sources[workspace_path];
+  return s;
+}
+
+export function setMainSourcePath(
+  workspace_path: string,
+  main_source_path: string,
+) {
+  persistentMainSourceStore.state.main_sources[workspace_path] =
+    main_source_path;
+}
+
 class MainSourceStore {
   file_path = $state("");
 
   constructor() {
-    const last_main_source = persistentMainSourceStore.state.main_sources.get(
-      workspaceStore.path,
-    );
+    const last_main_source = getMainSourcePath(workspaceStore.path);
     if (last_main_source) this.setMainSource(last_main_source);
   }
 
@@ -43,7 +58,7 @@ class MainSourceStore {
 
     this.file_path = path;
 
-    persistentMainSourceStore.state.main_sources.set(workspaceStore.path, path);
+    setMainSourcePath(workspaceStore.path, path);
 
     const res = await set_main_file(path);
     if (res.isErr()) {
@@ -59,12 +74,9 @@ class MainSourceStore {
     // compile and render the main source file
     const compile_result = await compile();
     if (compile_result.isErr()) {
-      console.error(
-        "failed to compile main file:",
-        compile_result.error.message,
-      );
+      editorStore.diagnostics = compile_result.error;
+
       toast.error("failed to compile main file", {
-        description: compile_result.error.message,
         closeButton: true,
       });
       return;
