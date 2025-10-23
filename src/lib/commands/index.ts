@@ -7,6 +7,7 @@ import type {
   PreviewPosition,
 } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
+import { TypstHighlightSytle } from "codemirror-lang-typst";
 import { type Result, ResultAsync } from "neverthrow";
 
 type InvokeError = { message: string };
@@ -40,11 +41,11 @@ export async function render_page(
 }
 
 export async function compile(): Promise<
-  Result<TypstSourceDiagnostic[], InvokeError>
+  Result<TypstSourceDiagnostic[], TypstSourceDiagnostic[]>
 > {
   const safeInvoke = ResultAsync.fromThrowable(
     invoke<TypstSourceDiagnostic[]>,
-    invokeError,
+    (e: unknown) => e as TypstSourceDiagnostic[],
   );
   const result = await safeInvoke("compile_main_file", {});
   return result;

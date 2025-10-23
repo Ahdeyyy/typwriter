@@ -4,7 +4,6 @@ import { useDebounce } from "runed";
 import { twMerge } from "tailwind-merge";
 import { writeTextFile, readDir } from "@tauri-apps/plugin-fs";
 // import { compile_file } from "./ipc";
-import { compile } from "@/commands";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

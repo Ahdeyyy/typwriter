@@ -135,10 +135,7 @@
 
         const compile_result = await compile();
         if (compile_result.isErr()) {
-            console.error(
-                "failed to compile the document",
-                compile_result.error.message,
-            );
+            editorStore.diagnostics = compile_result.error;
             toast.error("Failed to compile the document");
             return;
         }

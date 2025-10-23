@@ -59,12 +59,9 @@ class MainSourceStore {
     // compile and render the main source file
     const compile_result = await compile();
     if (compile_result.isErr()) {
-      console.error(
-        "failed to compile main file:",
-        compile_result.error.message,
-      );
+      editorStore.diagnostics = compile_result.error;
+
       toast.error("failed to compile main file", {
-        description: compile_result.error.message,
         closeButton: true,
       });
       return;
