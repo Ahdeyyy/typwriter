@@ -124,25 +124,30 @@ export async function update_file(
 
 type ExportOptions =
   | { format: "pdf" }
-  | { format: "svg"; start_page: number; end_page: number; merged: boolean }
+  | { format: "svg"; start_page: number; end_page: number; merged: false }
+  | { format: "svg"; merged: true }
   | { format: "png"; start_page: number; end_page: number };
 export async function export_main(
   export_path: string,
   options: ExportOptions,
 ): Promise<Result<void, InvokeError>> {
   const safeInvoke = ResultAsync.fromThrowable(invoke<void>, invokeError);
+  const start_page =
+    options.format === "png" ||
+    (options.format === "svg" && options.merged === false)
+      ? options.start_page
+      : undefined;
+  const end_page =
+    options.format === "png" ||
+    (options.format === "svg" && options.merged === false)
+      ? options.end_page
+      : undefined;
 
   const result = await safeInvoke("export_main_file", {
     export_path,
     format: options.format,
-    start_page:
-      options.format === "svg" || options.format === "png"
-        ? options.start_page
-        : undefined,
-    end_page:
-      options.format === "svg" || options.format === "png"
-        ? options.end_page
-        : undefined,
+    start_page: start_page,
+    end_page: end_page,
     merged: options.format === "svg" ? options.merged : false,
   });
   return result;

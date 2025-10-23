@@ -5,7 +5,6 @@
     import {
         FolderTreeIcon,
         LucideCloudDownload,
-        LucideDownload,
         LucideEye,
         LucideMinimize2,
         LucideMinus,
@@ -15,6 +14,7 @@
         LucideX,
     } from "@lucide/svelte";
     import { getCurrentWindow } from "@tauri-apps/api/window";
+    import ExporterDialog from "@/components/exporter/exporter-dialog.svelte";
     import { save } from "@tauri-apps/plugin-dialog";
     import { compile, export_main } from "@/commands";
     import { Toaster } from "$lib/components/ui/sonner/index.js";
@@ -48,45 +48,6 @@
         }
         return "";
     });
-
-    const export_file_handler = async () => {
-        await compile();
-
-        if (!editorStore.file_path) {
-            alert("Please open a file to export.");
-            return;
-        }
-        const fileName = getFileName(editorStore.file_path).replace(
-            /\.[^/.]+$/,
-            "",
-        );
-        const export_path = await save({
-            title: "export to",
-            defaultPath: `${fileName}.pdf`,
-            filters: [
-                { name: "PDF", extensions: ["pdf"] },
-                { name: "SVG", extensions: ["svg"] },
-                { name: "PNG", extensions: ["png"] },
-            ],
-        });
-
-        if (export_path) {
-            let res = await export_main(export_path, {
-                format: getFileType(export_path) as "png" | "svg" | "pdf",
-                merged: false,
-                start_page: 0,
-                end_page: 8,
-            });
-            if (res.isErr()) {
-                console.error("error exporting: ", res.error.message);
-                toast.error(res.error.message);
-            } else {
-                toast.success(
-                    `${editorStore.file_path} exported successfully!`,
-                );
-            }
-        }
-    };
 
     // TODO: add a platform check for Windows, Linux, MacOS and use the appropriate icons for (minimize, maximize, close)
 </script>
@@ -175,14 +136,7 @@
             <Tooltip.Provider>
                 <Tooltip.Root>
                     <Tooltip.Trigger>
-                        <Button
-                            size="icon"
-                            variant="ghost"
-                            class="w-10 h-8 rounded-none"
-                            onclick={export_file_handler}
-                        >
-                            <LucideDownload />
-                        </Button>
+                        <ExporterDialog />
                     </Tooltip.Trigger>
                     <Tooltip.Content>
                         <p>Export main source</p>
