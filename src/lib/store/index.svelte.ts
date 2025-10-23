@@ -7,17 +7,33 @@ import { toast } from "svelte-sonner";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { compile, render_pages, set_main_file, page_click } from "@/commands";
 import { getFileType, murmurHash3 } from "@/utils";
+import { RuneStore } from "@tauri-store/svelte";
+
+export const persistentMainSourceStore = new RuneStore(
+  "last-main-source",
+  {
+    main_sources: new Map<string, string>(),
+  },
+  {
+    autoStart: true,
+  },
+);
 
 class MainSourceStore {
   file_path = $state("");
-  content = $state("");
+
+  constructor() {
+    const last_main_source = persistentMainSourceStore.state.main_sources.get(
+      workspaceStore.path,
+    );
+    if (last_main_source) this.setMainSource(last_main_source);
+  }
 
   reset() {
     this.file_path = "";
-    this.content = "";
   }
 
-  async setMainSource(path: string, source: string) {
+  async setMainSource(path: string) {
     if (path === this.file_path) return;
     if (getFileType(path) !== "typ") {
       toast.info("can only set .typ files as the main source");
@@ -25,7 +41,8 @@ class MainSourceStore {
     }
 
     this.file_path = path;
-    this.content = source;
+
+    persistentMainSourceStore.state.main_sources.set(workspaceStore.path, path);
 
     const res = await set_main_file(path);
     if (res.isErr()) {

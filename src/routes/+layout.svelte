@@ -194,10 +194,7 @@
                     : "ghost"}
                 class="rounded-none h-8"
                 onclick={() => {
-                    mainSourceStore.setMainSource(
-                        editorStore.file_path || "",
-                        editorStore.content,
-                    );
+                    mainSourceStore.setMainSource(editorStore.file_path || "");
                 }}
             >
                 Set as main file
