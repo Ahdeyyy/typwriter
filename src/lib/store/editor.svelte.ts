@@ -3,7 +3,7 @@ import { compile, render_page, render_pages } from "@/commands";
 
 import type { DiagnosticResponse } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
-import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { readFile, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import type { EditorView } from "codemirror";
 import { ResultAsync } from "neverthrow";
 import { toast } from "svelte-sonner";
@@ -18,6 +18,8 @@ const toInvokeError = (e: unknown) => {
   return { message: String(e) };
 };
 const safeReadTextFile = ResultAsync.fromThrowable(readTextFile, toInvokeError);
+
+const safeReadFile = ResultAsync.fromThrowable(readFile, toInvokeError);
 
 const invoke_open_file = ResultAsync.fromThrowable(invoke<void>, toInvokeError);
 
@@ -44,6 +46,7 @@ class EditorStore {
   diagnostics: DiagnosticResponse[] = $state([]);
   saving: boolean = $state(false);
   editor_view: EditorView | null = $state(null);
+  binary_content = $state<Uint8Array | undefined>();
 
   async reset() {
     this.content = "";
@@ -74,6 +77,16 @@ class EditorStore {
         closeButton: true,
       });
       return;
+    }
+
+    const read_bin_res = await safeReadFile(path);
+
+    if (
+      read_bin_res.isOk() &&
+      !["typ", "yaml", "yml", "bib"].includes(getFileType(path))
+    ) {
+      const bin = read_bin_res.value as Uint8Array;
+      this.binary_content = bin;
     }
 
     this.file_path = path;

@@ -1,6 +1,8 @@
 <script lang="ts">
     // import { appState } from "@/states.svelte"
     import PreviewPane from "@/components/preview/pane.svelte";
+    import SVGRenderer from "@/components/preview/renderer/svg.svelte";
+    import IMGRenderer from "@/components/preview/renderer/image.svelte";
 
     import type { LayoutData } from "./$types";
 
@@ -10,6 +12,7 @@
     import FileTreePane from "@/components/filetree/pane.svelte";
     import Diagnostics from "@/components/diagnostics-panel.svelte";
     import { editorStore, paneStore } from "@/store/index.svelte";
+    import { getFileType } from "@/utils";
 
     let { data }: { data: LayoutData } = $props();
 </script>
@@ -48,9 +51,11 @@
 {#snippet EditorAndDiagnosticGroup()}
     <Resizable.PaneGroup direction="vertical">
         <Resizable.Pane>
-            <div class="h-full">
-                {#if editorStore.file_path}
+            <div class="h-[95svh]">
+                {#if editorStore.file_path && ["typ", "yaml", "yml", "bib"].includes(getFileType(editorStore.file_path))}
                     <Editor />
+                {:else if editorStore.file_path && ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg"].includes(getFileType(editorStore.file_path))}
+                    <IMGRenderer />
                 {:else}
                     <NoSelectedFile />
                 {/if}

@@ -30,7 +30,7 @@
         previewStore,
     } from "@/store/index.svelte";
     import { getFileType, murmurHash3 } from "@/utils";
-    import { noctisLilac } from "thememirror";
+    import { bespin, dracula, noctisLilac } from "thememirror";
     import { keymap } from "@codemirror/view";
     import { toast } from "svelte-sonner";
     // import { toast } from "svelte-sonner";
@@ -62,7 +62,7 @@
 
     let currentTheme = $derived.by(() => {
         return mode.current === "dark"
-            ? { editor: ayuLight, syntax: typstMidnightHighlightStyle }
+            ? { editor: dracula, syntax: typstMidnightHighlightStyle }
             : { editor: ayuLight, syntax: typstBlueprintHighlightStyle };
     });
 
@@ -245,7 +245,10 @@
             closeBrackets
             bracketMatching
             lang={editorLanguage}
-            syntaxHighlighting={syntaxHighlight}
+            syntaxHighlighting={{
+                highlighter: typstMidnightHighlightStyle,
+                fallback: true,
+            }}
         />
     {/key}
 {/if}

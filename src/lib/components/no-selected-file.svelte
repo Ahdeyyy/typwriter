@@ -28,11 +28,12 @@
     </Empty.Header>
     <Empty.Content>
         <div class="flex gap-2">
-            <Button onclick={async () => await handleOpenWorkspace()}>
-                Open Workspace
-            </Button>
             {#if workspaceStore.path}
                 <Button disabled variant="outline">Open File</Button>
+            {:else}
+                <Button onclick={async () => await handleOpenWorkspace()}>
+                    Open Workspace
+                </Button>
             {/if}
         </div>
     </Empty.Content>

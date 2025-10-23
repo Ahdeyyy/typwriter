@@ -61,6 +61,7 @@
             "",
         );
         const export_path = await save({
+            title: "export to",
             defaultPath: `${fileName}.pdf`,
             filters: [
                 { name: "PDF", extensions: ["pdf"] },
@@ -184,7 +185,7 @@
                         </Button>
                     </Tooltip.Trigger>
                     <Tooltip.Content>
-                        <p>Export to PDF</p>
+                        <p>Export main source</p>
                     </Tooltip.Content>
                 </Tooltip.Root>
             </Tooltip.Provider>

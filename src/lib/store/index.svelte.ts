@@ -36,6 +36,7 @@ class MainSourceStore {
       });
       return;
     }
+    toast.loading("compiling main source");
 
     // compile and render the main source file
     const compile_result = await compile();
