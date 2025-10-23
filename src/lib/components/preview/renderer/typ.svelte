@@ -1,8 +1,6 @@
 <script lang="ts">
     import { editorStore, previewStore } from "@/store/index.svelte";
     import { watch, IsInViewport, ElementRect } from "runed";
-    import { onMount } from "svelte";
-    import { draw } from "svelte/transition";
     type Props = {
         image: HTMLImageElement;
         index: number;
@@ -12,59 +10,42 @@
             x: number,
             y: number,
         ) => void;
-
-        mount: (canvas: HTMLCanvasElement, wrapper: HTMLDivElement) => void;
     };
-    let { image, index, onclick, mount }: Props = $props();
+    let { image, index, onclick }: Props = $props();
     let dpr = $state(1);
 
     let canvas: HTMLCanvasElement = $state()!;
-    let wrapper: HTMLDivElement = $state()!;
-
-    $inspect(previewStore.items);
-
-    onMount(() => {
-        mount(canvas, wrapper);
-    });
     let rect = new ElementRect(() => canvas);
     const inViewport = new IsInViewport(() => canvas);
 
-    function drawCanvas() {
-        console.log("Drawing canvas", index);
-        dpr = window.devicePixelRatio || 1;
-
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-            const naturalWidth = image.naturalWidth;
-            const naturalHeight = image.naturalHeight;
-            const displayWidth =
-                (image.width || naturalWidth) * previewStore.zoom;
-            const displayHeight =
-                (image.height || naturalHeight) * previewStore.zoom;
-            // internal canvas resolution considers zoom & dpr for sharpness
-            const cw = displayWidth * dpr;
-            const ch = displayHeight * dpr;
-            if (canvas.width !== cw || canvas.height !== ch) {
-                canvas.width = cw;
-                canvas.height = ch;
+    watch(
+        () => [editorStore.file_path],
+        () => {
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+                const naturalWidth = image.naturalWidth;
+                const naturalHeight = image.naturalHeight;
+                const displayWidth =
+                    (image.width || naturalWidth) * previewStore.zoom;
+                const displayHeight =
+                    (image.height || naturalHeight) * previewStore.zoom;
+                // internal canvas resolution considers zoom & dpr for sharpness
+                const cw = displayWidth * dpr;
+                const ch = displayHeight * dpr;
+                if (canvas.width !== cw || canvas.height !== ch) {
+                    canvas.width = cw;
+                    canvas.height = ch;
+                }
+                ctx.save();
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.scale(dpr * previewStore.zoom, dpr * previewStore.zoom);
+                ctx.clearRect(0, 0, naturalWidth, naturalHeight);
+                ctx.drawImage(image, 0, 0);
+                ctx.restore();
             }
-            ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.scale(dpr * previewStore.zoom, dpr * previewStore.zoom);
-            ctx.clearRect(0, 0, naturalWidth, naturalHeight);
-            ctx.drawImage(image, 0, 0);
-            ctx.restore();
-        }
-    }
-
-    watch([() => previewStore.items, () => editorStore.content], () => {
-        // if (!inViewport.current) return;
-        // console.log("changes: ", curr, prev);
-
-        console.log("re rendering: ", editorStore.content);
-        drawCanvas();
-    });
-    watch(() => [editorStore.file_path], drawCanvas);
+            // previewStore.current_index = index;
+        },
+    );
 
     function handleClick(event: MouseEvent) {
         const c = event.target! as HTMLCanvasElement;
@@ -82,26 +63,18 @@
         const x = mouseX / previewStore.zoom;
         const y = mouseY / previewStore.zoom;
 
-        // console.log(`Click coordinates on canvas: x=${x}, y=${y}`);
+        console.log(`Click coordinates on canvas: x=${x}, y=${y}`);
         if (onclick) {
             onclick(event, index, x, y);
         }
     }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-    bind:this={wrapper}
-    onclick={handleClick}
+<canvas
+    bind:this={canvas}
+    width={image.width}
+    height={image.height}
     style="height: {image.height}px; width: {image.width}px;"
+    onclick={handleClick}
 >
-    <canvas
-        bind:this={canvas}
-        width={image.width}
-        height={image.height}
-        style="height: {image.height}px; width: {image.width}px;"
-    >
-        <!-- onclick={handleClick} -->
-    </canvas>
-</div>
+</canvas>

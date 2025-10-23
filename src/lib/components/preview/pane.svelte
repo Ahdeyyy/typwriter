@@ -1,6 +1,7 @@
 <script lang="ts">
     import {
         editorStore,
+        mainSourceStore,
         paneStore,
         previewPageClick,
         previewStore,
@@ -17,8 +18,6 @@
     keys.onKeys(["Control", "k"], () => {
         paneStore.isPreviewPaneOpen = !paneStore.isPreviewPaneOpen;
     });
-
-    const file_type = $derived(getFileType(editorStore.file_path || ""));
 
     let scroll_area_root = $state<HTMLElement>();
     // let scroll = ScrollState(() => scroll_viewport)
@@ -94,21 +93,17 @@
     );
 </script>
 
-{#if file_type === "typ"}
+{#if mainSourceStore.file_path}
     <TypPreview
         onclick={async (event, index, x, y) => {
             await previewPageClick(x, y, index);
         }}
     />
-{:else if file_type === "svg"}
-    <SvgRenderer />
-{:else if file_type === "png" || file_type === "jpg" || file_type === "jpeg" || file_type === "gif" || file_type === "bmp" || file_type === "webp"}
-    <ImgRenderer />
 {:else}
     <div class="flex h-full w-full flex-col items-center justify-center gap-2">
-        <p class="text-muted-foreground">
-            No preview available for this file type.
+        <p class="text-muted-foreground">No main source selected</p>
+        <p class="text-sm text-muted-foreground">
+            Set a .typ file as your main source
         </p>
-        <p class="text-sm text-muted-foreground">Supported types: .typ, .svg</p>
     </div>
 {/if}

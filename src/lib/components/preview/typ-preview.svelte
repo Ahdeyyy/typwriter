@@ -114,6 +114,7 @@
     // Each entry in `pages` is still an HTMLImageElement produced elsewhere; we now
     // use it only as a bitmap source, drawing into a high-DPR canvas for sharper text.
     $effect(() => {
+        // console.log("Redrawing canvases at zoom", zoom, "and dpr", dpr)
         if (!previewStore.items) return;
         previewStore.items.forEach((img, index) => {
             const canvas = canvasEls[index];

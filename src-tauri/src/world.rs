@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+use rayon::prelude::*;
+
 use typst::diag::{FileError, FileResult};
 use typst::foundations::{Bytes, Datetime};
 use typst::syntax::{FileId, Source, VirtualPath};
@@ -17,6 +19,8 @@ use typst_kit::fonts::{FontSlot, Fonts};
 use typst_kit::package::PackageStorage;
 
 use std::sync::RwLock;
+
+use crate::utils;
 
 struct PrintDownload;
 
@@ -77,10 +81,33 @@ impl Typstworld {
         let fonts = Fonts::searcher()
             .include_system_fonts(true)
             .search_with([font_dir]);
+        let file_paths = utils::get_all_files_in_path(&root)
+            .par_iter()
+            .filter_map(|path| {
+                let name = path.strip_prefix(&root).ok()?.to_string_lossy().to_string();
+                let vpath = VirtualPath::within_root(&path, &root)
+                    .unwrap_or_else(|| VirtualPath::new(&name));
+                let id = FileId::new(None, vpath);
+                Some((id, path.clone()))
+            })
+            .collect::<HashMap<_, _>>();
+
+        let files = file_paths
+            .par_iter()
+            .filter_map(|(id, path)| match fs::read(path) {
+                Ok(bytes) => Some((*id, Ok(Bytes::new(bytes)))),
+                Err(err) => Some((*id, Err(FileError::from_io(err, path)))),
+            })
+            .collect::<HashMap<_, _>>();
+
+        let id_path_map = file_paths
+            .iter()
+            .map(|(id, path)| (path.clone(), *id))
+            .collect::<HashMap<_, _>>();
 
         // Setup package storage. This will use the default cache directories
         // for Typst packages on the respective operating system.
-        let downloader = Downloader::new("typwriter-app/0.1.0");
+        let downloader = Downloader::new("typwriter-app/0.3.4");
 
         let package_storage = PackageStorage::new(None, None, downloader);
 
@@ -90,10 +117,10 @@ impl Typstworld {
             library: LazyHash::new(Library::default()),
             book: LazyHash::new(fonts.book),
             fonts: fonts.fonts,
-            files: RwLock::new(HashMap::new()),
+            files: RwLock::new(files),
             package_storage,
-            file_paths: RwLock::new(HashMap::new()),
-            id_path_map: RwLock::new(HashMap::new()),
+            file_paths: RwLock::new(file_paths),
+            id_path_map: RwLock::new(id_path_map),
         }
     }
 
@@ -120,16 +147,14 @@ impl Typstworld {
         id
     }
 
-    pub fn set_main_source_with_id(&self, id: FileId, source: String) {
+    pub fn set_main_source_with_id(&self, id: FileId) {
         *self.main.write().unwrap() = id;
-        self.files
-            .write()
-            .unwrap()
-            .insert(id, Ok(Bytes::new(source.into_bytes())));
     }
 
+    // TODO: should error out if the path isn't within root
     pub fn add_file(&self, name: &str, path: PathBuf, source: Bytes) -> FileId {
-        let vpath = VirtualPath::new(name);
+        let vpath =
+            VirtualPath::within_root(&self.root, &path).unwrap_or_else(|| VirtualPath::new(name));
         let id = FileId::new(None, vpath);
         {
             let mut files = self.files.write().unwrap();

@@ -1,15 +1,22 @@
-pub mod app_state;
-mod commands;
-pub mod compiler;
-pub mod manager;
+mod typst_compiler;
 pub mod utils;
 
 pub mod world;
-use app_state::AppState;
+// use app_state::AppState;
 
-use commands::compiler::{compile, compile_file, create_file, export_to, render, render_page};
-use commands::editor::{autocomplete, get_cursor_position, page_click, tooltip};
-use commands::workspace::{open_file, open_workspace};
+// use commands::compiler::{
+//     compile, compile_file, create_file, export_to, render, render_page, update_file,
+// };
+// use commands::editor::{autocomplete, get_cursor_position, page_click, tooltip};
+// use commands::workspace::{open_file, open_workspace};
+
+// use tauri::AppHandle;
+use typst_compiler::app_state::AppState;
+use typst_compiler::commands::{
+    add_new_file, autocomplete_at_position, compile_main_file, document_click_at_point,
+    export_main_file, get_cursor_position_info, open_workspace, provide_hover_info, render_page,
+    render_pages, set_main_file, update_file_source,
+};
 
 use tauri::{path::BaseDirectory, Manager};
 
@@ -42,18 +49,18 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            open_workspace,
-            open_file,
-            compile_file,
-            page_click,
-            export_to,
-            autocomplete,
-            tooltip,
-            render,
-            compile,
-            get_cursor_position,
+            add_new_file,
+            autocomplete_at_position,
+            compile_main_file,
+            export_main_file,
+            set_main_file,
+            update_file_source,
             render_page,
-            create_file,
+            render_pages,
+            provide_hover_info,
+            document_click_at_point,
+            open_workspace,
+            get_cursor_position_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

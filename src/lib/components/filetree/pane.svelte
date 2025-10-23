@@ -5,7 +5,9 @@
     import {
         LucideChevronsDownUp,
         LucideChevronsUpDown,
+        LucideImport,
         LucideSearch,
+        LucideUpload,
     } from "@lucide/svelte";
     import { getFileName, getFileType } from "@/utils";
     import { ScrollArea } from "$lib/components/ui/scroll-area";
@@ -17,6 +19,7 @@
     import * as Tooltip from "$lib/components/ui/tooltip/index.js";
     import {
         editorStore,
+        mainSourceStore,
         paneStore,
         workspaceStore,
     } from "@/store/index.svelte";
@@ -80,6 +83,24 @@
     >
         <CreateFile iconTrigger />
         <CreateFolder iconTrigger />
+        <Tooltip.Provider>
+            <Tooltip.Root>
+                <Tooltip.Trigger>
+                    <Button
+                        variant="ghost"
+                        class="size-7"
+                        size="icon"
+                        onclick={() => console.log("upload file")}
+                        disabled
+                    >
+                        <LucideImport />
+                    </Button>
+                </Tooltip.Trigger>
+                <Tooltip.Content>
+                    <p>Import file</p>
+                </Tooltip.Content>
+            </Tooltip.Root>
+        </Tooltip.Provider>
         <Button
             variant="ghost"
             class="size-7"
@@ -159,6 +180,8 @@
             class={[
                 "truncate px-3 py-1 rounded w-full hover:bg-accent",
                 isActiveFile && "bg-accent text-accent-foreground",
+                mainSourceStore.file_path === item.path &&
+                    "border-l-4 border-l-emerald-600",
             ]}
             disabled={isActiveFile}
             name={getFileName(name)}

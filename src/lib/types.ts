@@ -127,13 +127,6 @@ export interface DocumentClickResponseNoJump {
  * The final union of all possible response types.
  * This allows for **type narrowing** in TypeScript based on the 'type' field.
  *
- * Example usage:
- * function handleResponse(response: DocumentClickResponseType) {
- * if (response.type === "PositionJump") {
- * // TypeScript knows 'response' has 'page', 'x', and 'y' fields here.
- * console.log(`Jumping to page ${response.page}`);
- * }
- * }
  */
 export type DocumentClickResponseType =
     | DocumentClickResponseFileJump

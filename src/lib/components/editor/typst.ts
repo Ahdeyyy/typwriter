@@ -1,6 +1,7 @@
 /// typst support for the editor
 
-import { autocomplete, tooltip as getTooltipInfo } from "@/ipc";
+// import { autocomplete, tooltip as getTooltipInfo } from "@/ipc";
+import { autocomplete, tooltip_info } from "@/commands";
 import type { DiagnosticResponse } from "@/types";
 import type {
   CompletionContext,
@@ -9,6 +10,7 @@ import type {
 import { linter, type Diagnostic } from "@codemirror/lint";
 // import { getTooltip } from "@codemirror/view";
 import type { EditorView } from "codemirror";
+import { toast } from "svelte-sonner";
 
 /**
  * Hover tooltip function for Typst
@@ -22,10 +24,13 @@ export async function typst_hover_tooltip(
   const sourceText = view.state.doc.toString();
 
   try {
-    const result = await getTooltipInfo(sourceText, pos);
+    const result = await tooltip_info(sourceText, pos);
 
     if (result.isErr()) {
       console.error("Failed to get tooltip:", result.error);
+      toast.error("Failed to get tooltip", {
+        description: result.error.message,
+      });
       return null;
     }
 
@@ -65,6 +70,7 @@ export async function typst_hover_tooltip(
     };
   } catch (error) {
     console.error("Error in typst_hover_tooltip:", error);
+    toast.error("Error fetching tooltip information");
     return null;
   }
 }
@@ -84,6 +90,9 @@ export async function typst_completion(
 
   if (result.isErr()) {
     console.error("Failed to get completions:", result.error);
+    toast.error("Failed to get completions", {
+      description: result.error.message,
+    });
     return null;
   }
 

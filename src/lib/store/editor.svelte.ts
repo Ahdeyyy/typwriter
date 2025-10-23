@@ -1,23 +1,15 @@
-import { compile, render, render_page } from "@/ipc";
+// import { compile, render, render_page } from "@/ipc";
+import { compile, render_page, render_pages } from "@/commands";
+
 import type { DiagnosticResponse } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
-import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { readFile, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import type { EditorView } from "codemirror";
 import { ResultAsync } from "neverthrow";
 import { toast } from "svelte-sonner";
-import { previewStore } from "./index.svelte";
+import { mainSourceStore, previewStore } from "./index.svelte";
 import { getFileType, murmurHash3 } from "@/utils";
 import { SvelteMap } from "svelte/reactivity";
-
-const safeReadTextFile = ResultAsync.fromThrowable(
-  readTextFile,
-  (e: unknown) => {
-    if (e instanceof Error) {
-      return { message: e.message };
-    }
-    return { message: String(e) };
-  },
-);
 
 const toInvokeError = (e: unknown) => {
   if (e instanceof Error) {
@@ -25,6 +17,10 @@ const toInvokeError = (e: unknown) => {
   }
   return { message: String(e) };
 };
+const safeReadTextFile = ResultAsync.fromThrowable(readTextFile, toInvokeError);
+
+const safeReadFile = ResultAsync.fromThrowable(readFile, toInvokeError);
+
 const invoke_open_file = ResultAsync.fromThrowable(invoke<void>, toInvokeError);
 
 type EditorConfig = {
@@ -50,22 +46,27 @@ class EditorStore {
   diagnostics: DiagnosticResponse[] = $state([]);
   saving: boolean = $state(false);
   editor_view: EditorView | null = $state(null);
+  binary_content = $state<Uint8Array | undefined>();
+
+  async reset() {
+    this.content = "";
+    this.file_path = null;
+    this.cursor_position = 0;
+    this.selection_range = null;
+    this.is_dirty = false;
+    this.last_saved = null;
+    if (this.save_interval_id) {
+      clearInterval(this.save_interval_id);
+      this.save_interval_id = undefined;
+    }
+    this.diagnostics = [];
+    this.saving = false;
+    this.editor_view = null;
+  }
 
   /** opens a file and loads the text content of the file */
   async openFile(path: string) {
     // console.log("open file with path:", path);
-    const open_file_res = await invoke_open_file("open_file", {
-      file_path: path,
-    });
-
-    if (open_file_res.isErr()) {
-      console.error("Failed to open file:", open_file_res.error);
-      toast.error("Failed to open file", {
-        description: open_file_res.error.message,
-        closeButton: true,
-      });
-      return;
-    }
 
     const read_res = await safeReadTextFile(path);
 
@@ -77,6 +78,17 @@ class EditorStore {
       });
       return;
     }
+
+    const read_bin_res = await safeReadFile(path);
+
+    if (
+      read_bin_res.isOk() &&
+      !["typ", "yaml", "yml", "bib"].includes(getFileType(path))
+    ) {
+      const bin = read_bin_res.value as Uint8Array;
+      this.binary_content = bin;
+    }
+
     this.file_path = path;
     this.content = read_res.value;
     if (this.save_interval_id) {
@@ -95,17 +107,6 @@ class EditorStore {
         this.config.auto_save_interval,
       );
     }
-    previewStore.render_cache = new SvelteMap();
-    previewStore.items = [];
-    const extension = getFileType(path);
-    if (extension === "typ") {
-      await Promise.all([this.compile_document(), this.render()]);
-    }
-    previewStore.current_position = {
-      page: 0,
-      x: 0,
-      y: 0,
-    };
 
     toast.success("File opened", {
       description: `Opened ${path}`,
@@ -146,64 +147,6 @@ class EditorStore {
       duration: 800,
     });
     this.saving = false;
-  }
-
-  /** compiles the source of the file */
-  async compile_document() {
-    if (!this.file_path) return;
-    const result = await compile(this.file_path, this.content);
-    if (result.isErr()) {
-      toast.error("Failed to compile the document.", {
-        description: result.error.message,
-        closeButton: true,
-      });
-    } else {
-      const render_diagnostics = result.value;
-      this.diagnostics = render_diagnostics;
-    }
-  }
-
-  /** gets the rendered images of the document */
-  async render() {
-    const render_result = await render();
-    if (render_result.isErr()) {
-      toast.error("Failed to render the document.", {
-        description: render_result.error.message,
-        duration: 800,
-      });
-    } else {
-      const pages = render_result.value;
-
-      for (let idx = 0; idx < pages.length; idx++) {
-        const page = pages[idx];
-        const page_hash = `${murmurHash3(page.image)}${idx}`;
-        const existing_page = previewStore.render_cache.get(page_hash);
-        if (existing_page) {
-          // page already exists in cache
-          previewStore.items.splice(idx, 1, existing_page);
-          continue;
-        } else {
-          // add page to cache
-          const img = new Image();
-          img.src = `data:image/png;base64,${page.image}`;
-          img.width = page.width;
-          img.height = page.height;
-          previewStore.render_cache.set(page_hash, img);
-          previewStore.items.splice(idx, 1, img);
-        }
-      }
-    }
-  }
-  async render_page(page: number) {
-    const res = await render_page(page);
-    // console.log("rendering page:", page, res);
-    if (res) {
-      const img = new Image();
-      img.src = `data:image/png;base64,${res.image}`;
-      img.width = res.width;
-      img.height = res.height;
-      previewStore.items.splice(page, 1, img);
-    }
   }
 }
 
