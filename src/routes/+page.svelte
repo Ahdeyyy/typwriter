@@ -17,7 +17,7 @@
     let { data }: { data: LayoutData } = $props();
 </script>
 
-<main class="flex-1 w-screen">
+<main class=" w-[100svw] h-[94svh]">
     <Resizable.PaneGroup class=" h-full w-full mt-0.5" direction="horizontal">
         <!-- {#if appContext.isFileTreeOpen} -->
         <Resizable.Pane
@@ -50,8 +50,8 @@
 
 {#snippet EditorAndDiagnosticGroup()}
     <Resizable.PaneGroup direction="vertical">
-        <Resizable.Pane>
-            <div class="h-[95svh]">
+        <Resizable.Pane defaultSize={70}>
+            <div class="h-full w-full overflow-hidden flex grow">
                 {#if editorStore.file_path && ["typ", "yaml", "yml", "bib"].includes(getFileType(editorStore.file_path))}
                     <Editor />
                 {:else if editorStore.file_path && ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg"].includes(getFileType(editorStore.file_path))}
