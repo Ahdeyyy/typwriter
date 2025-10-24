@@ -219,8 +219,8 @@
         <CodeMirror
             bind:value={editorStore.content}
             styles={{
-                "&": { height: "95svh", width: "100%" },
-                ".cm-scroller": { overflow: "auto" },
+                "&": { height: "100%", width: "100%" },
+                ".cm-scroller": { overflow: "scroll" },
             }}
             onready={async (e) => {
                 // console.log("Editor ready");
