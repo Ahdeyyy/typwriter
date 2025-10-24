@@ -35,6 +35,9 @@ export default defineConfig(async () => ({
       "@codemirror/view",
       "@lezer/highlight",
       "thememirror",
+      "@replit/codemirror-indentation-markers",
+      "@citedrive/codemirror-lang-bibtex",
+      "@replit/codemirror-vscode-keymap",
     ],
   },
 

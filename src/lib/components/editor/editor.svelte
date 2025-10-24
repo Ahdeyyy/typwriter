@@ -34,6 +34,11 @@
     import { keymap } from "@codemirror/view";
     import { toast } from "svelte-sonner";
     // import { toast } from "svelte-sonner";
+    //
+    import { bibtex } from "@citedrive/codemirror-lang-bibtex";
+    import { indentationMarkers } from "@replit/codemirror-indentation-markers";
+    import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
+    // import { inlineSuggestion } from 'codemirror-extension-inline-suggestion';
 
     const editableDocs = ["typ", "yaml", "yml", "txt", "md", "json", "bib"];
 
@@ -94,6 +99,8 @@
             documentExtension.ext === "yml"
         ) {
             return yaml();
+        } else if (documentExtension.ext === "bib") {
+            return bibtex();
         }
         return undefined;
     });
@@ -101,19 +108,22 @@
     let languageSpecificExtensions = $derived.by(() => {
         const path = documentExtension.path;
         // console.log("Language Extensions for:", path);
-
+        const extensions = [keymap.of(vscodeKeymap), indentationMarkers()];
         switch (documentExtension.ext) {
             case "typ": {
-                return [
-                    hoverTooltip(typst_hover_tooltip),
-                    typstLinter(editorStore.diagnostics),
-                ];
+                extensions.push(
+                    ...[
+                        hoverTooltip(typst_hover_tooltip),
+                        typstLinter(editorStore.diagnostics),
+                    ],
+                );
+                break;
             }
             case "yaml":
-                return [];
+                break;
             default:
-                return [];
         }
+        return extensions;
     });
 
     // update the current file source
@@ -219,8 +229,11 @@
         <CodeMirror
             bind:value={editorStore.content}
             styles={{
-                "&": { height: "100%", width: "100%" },
-                ".cm-scroller": { overflow: "scroll" },
+                "&": {
+                    height: "100%",
+                    width: "100%",
+                },
+                ".cm-scroller": { overflow: "auto" },
             }}
             onready={async (e) => {
                 // console.log("Editor ready");
@@ -235,6 +248,7 @@
             lineWrapping
             lineNumbers
             foldGutter
+            indentOnInput
             editable={editableDocs.includes(documentExtension.ext)}
             autocompletion={completion}
             theme={currentTheme.editor}
@@ -249,3 +263,11 @@
         />
     {/key}
 {/if}
+
+<style>
+    :global {
+        .codemirror-wrapper {
+            width: 100%;
+        }
+    }
+</style>
