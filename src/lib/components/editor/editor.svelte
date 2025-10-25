@@ -14,6 +14,7 @@
     } from "./index";
 
     import {
+        autocomplete,
         compile,
         get_cursor_position,
         render_page,
@@ -38,7 +39,8 @@
     import { bibtex } from "@citedrive/codemirror-lang-bibtex";
     import { indentationMarkers } from "@replit/codemirror-indentation-markers";
     import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
-    // import { inlineSuggestion } from 'codemirror-extension-inline-suggestion';
+    import { inlineSuggestion } from "codemirror-extension-inline-suggestion";
+    import type { EditorState } from "@codemirror/state";
 
     const editableDocs = ["typ", "yaml", "yml", "txt", "md", "json", "bib"];
 
@@ -105,10 +107,27 @@
         return undefined;
     });
 
+    async function fetchSuggestion(state: EditorState) {
+        const str = state.doc.toString();
+        const cursor = state.selection.main.head;
+        const completion = await autocomplete(str, cursor, false);
+        if (completion.isOk()) {
+            return completion.value?.completions[0].label || "";
+        }
+        return "";
+    }
+
     let languageSpecificExtensions = $derived.by(() => {
         const path = documentExtension.path;
         // console.log("Language Extensions for:", path);
-        const extensions = [keymap.of(vscodeKeymap), indentationMarkers()];
+        const extensions = [
+            keymap.of(vscodeKeymap),
+            indentationMarkers(),
+            inlineSuggestion({
+                fetchFn: fetchSuggestion,
+                delay: 1000,
+            }),
+        ];
         switch (documentExtension.ext) {
             case "typ": {
                 extensions.push(
