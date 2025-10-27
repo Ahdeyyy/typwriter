@@ -38,6 +38,7 @@ export default defineConfig(async () => ({
       "@replit/codemirror-indentation-markers",
       "@citedrive/codemirror-lang-bibtex",
       "@replit/codemirror-vscode-keymap",
+      "@/components/editor/style.ts",
     ],
   },
 
