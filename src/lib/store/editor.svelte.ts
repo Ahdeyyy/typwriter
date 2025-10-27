@@ -68,6 +68,10 @@ class EditorStore {
   async openFile(path: string) {
     // console.log("open file with path:", path);
 
+    if (this.file_path) {
+      this.saveFile();
+    }
+
     const read_res = await safeReadTextFile(path);
 
     if (read_res.isErr()) {
@@ -107,12 +111,6 @@ class EditorStore {
         this.config.auto_save_interval,
       );
     }
-
-    toast.success("File opened", {
-      description: `Opened ${path}`,
-      closeButton: true,
-      duration: 800,
-    });
   }
 
   /** saves the current content to the file */
@@ -144,7 +142,7 @@ class EditorStore {
     this.last_saved = Date.now();
     toast.success("File saved", {
       description: `Saved to ${this.file_path}`,
-      duration: 800,
+      duration: 500,
     });
     this.saving = false;
   }

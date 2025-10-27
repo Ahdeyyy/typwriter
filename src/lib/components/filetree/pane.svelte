@@ -90,8 +90,9 @@
                         variant="ghost"
                         class="size-7"
                         size="icon"
-                        onclick={() => console.log("upload file")}
-                        disabled
+                        onclick={async () => {
+                            await workspaceStore.importFile();
+                        }}
                     >
                         <LucideImport />
                     </Button>

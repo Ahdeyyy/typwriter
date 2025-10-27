@@ -1,6 +1,6 @@
-import { getFolderName, joinFsPath } from "@/utils";
-import { create, mkdir, readDir } from "@tauri-apps/plugin-fs";
-import { open as OpenDialog, confirm } from "@tauri-apps/plugin-dialog";
+import { getFileName, getFolderName, joinFsPath } from "@/utils";
+import { create, mkdir, readDir, copyFile } from "@tauri-apps/plugin-fs";
+import { open as OpenDialog, confirm, open } from "@tauri-apps/plugin-dialog";
 import { toast } from "svelte-sonner";
 import { RuneStore } from "@tauri-store/svelte";
 // import { create_file, open_workspace } from "@/ipc";
@@ -10,6 +10,14 @@ import {
   mainSourceStore,
   persistentMainSourceStore,
 } from "./index.svelte";
+import { ResultAsync } from "neverthrow";
+
+const safeCopyFile = ResultAsync.fromThrowable(copyFile, (e: unknown) => {
+  if (e instanceof Error) {
+    return { message: e.message };
+  }
+  return { message: String(e) };
+});
 
 export class WorkspaceStore {
   files: FileTreeNode[] = $state([]);
@@ -114,6 +122,23 @@ export class WorkspaceStore {
     toast.success("Workspace opened", {
       description: `opened workspace at ${this.path}`,
     });
+  }
+
+  async importFile() {
+    const files = await open({
+      multiple: true,
+      title: "import file(s) into your workspace",
+    });
+
+    if (files) {
+      for (const file of files) {
+        const name = getFileName(file);
+        await safeCopyFile(file, joinFsPath(this.path, name));
+        toast.success(`imported ${file}`);
+      }
+    }
+
+    this.refresh();
   }
 }
 

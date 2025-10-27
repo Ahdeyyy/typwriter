@@ -81,6 +81,7 @@ impl Typstworld {
         let fonts = Fonts::searcher()
             .include_system_fonts(true)
             .search_with([font_dir]);
+
         let file_paths = utils::get_all_files_in_path(&root)
             .par_iter()
             .filter_map(|path| {

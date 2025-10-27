@@ -24,6 +24,7 @@
     import * as Tooltip from "$lib/components/ui/tooltip/index.js";
     import SunIcon from "@lucide/svelte/icons/sun";
     import MoonIcon from "@lucide/svelte/icons/moon";
+    import * as Popover from "$lib/components/ui/popover";
 
     import { toggleMode, theme } from "mode-watcher";
     import {
@@ -33,7 +34,7 @@
         previewStore,
         workspaceStore,
     } from "@/store/index.svelte";
-    import { updateApp } from "./updater";
+    import { updateApp, downloadProgress } from "./updater.svelte";
     // import { WorkspaceStore } from "@/store/workspace.svelte";
 
     let { children } = $props();
@@ -158,7 +159,13 @@
                     <Tooltip.Trigger>
                         <Button
                             onclick={async () => {
-                                await updateApp();
+                                if (!(downloadProgress.downloaded > 0)) {
+                                    await updateApp();
+                                } else {
+                                    toast.info(
+                                        `download in progress ${downloadProgress.downloaded} / ${downloadProgress.totalLength}`,
+                                    );
+                                }
                             }}
                             class="w-10 h-8 rounded-none"
                             variant="ghost"

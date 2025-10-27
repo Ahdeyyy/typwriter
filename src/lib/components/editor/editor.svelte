@@ -31,7 +31,7 @@
         previewStore,
     } from "@/store/index.svelte";
     import { getFileType, murmurHash3 } from "@/utils";
-    import { bespin, dracula, noctisLilac } from "thememirror";
+    import { amy, bespin, cobalt, dracula, noctisLilac } from "thememirror";
     import { keymap } from "@codemirror/view";
     import { toast } from "svelte-sonner";
     // import { toast } from "svelte-sonner";
@@ -39,8 +39,8 @@
     import { bibtex } from "@citedrive/codemirror-lang-bibtex";
     import { indentationMarkers } from "@replit/codemirror-indentation-markers";
     import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
-    import { inlineSuggestion } from "codemirror-extension-inline-suggestion";
-    import type { EditorState } from "@codemirror/state";
+    import type { Extension } from "@codemirror/state";
+    import { defaultKeymap } from "@codemirror/commands";
 
     const editableDocs = ["typ", "yaml", "yml", "txt", "md", "json", "bib"];
 
@@ -69,7 +69,7 @@
 
     let currentTheme = $derived.by(() => {
         return mode.current === "dark"
-            ? { editor: dracula, syntax: typstMidnightHighlightStyle }
+            ? { editor: cobalt, syntax: typstMidnightHighlightStyle }
             : { editor: ayuLight, syntax: typstBlueprintHighlightStyle };
     });
 
@@ -80,12 +80,16 @@
         };
     });
 
+    $inspect(syntaxHighlight);
+
     let completion = $derived.by(() => {
         const path = documentExtension.path;
         if (documentExtension.ext === "typ") {
             return {
                 override: [typst_completion],
                 activateOnTyping: true,
+                replaceOnAccept: true,
+                defaultKeymap: false,
             };
         }
         return true;
@@ -107,35 +111,17 @@
         return undefined;
     });
 
-    async function fetchSuggestion(state: EditorState) {
-        const str = state.doc.toString();
-        const cursor = state.selection.main.head;
-        const completion = await autocomplete(str, cursor, false);
-        if (completion.isOk()) {
-            return completion.value?.completions[0].label || "";
-        }
-        return "";
-    }
-
     let languageSpecificExtensions = $derived.by(() => {
         const path = documentExtension.path;
         // console.log("Language Extensions for:", path);
-        const extensions = [
-            keymap.of(vscodeKeymap),
-            indentationMarkers(),
-            inlineSuggestion({
-                fetchFn: fetchSuggestion,
-                delay: 1000,
-            }),
-        ];
+        const extensions: Extension[] = [indentationMarkers()];
         switch (documentExtension.ext) {
             case "typ": {
-                extensions.push(
-                    ...[
-                        hoverTooltip(typst_hover_tooltip),
-                        typstLinter(editorStore.diagnostics),
-                    ],
-                );
+                extensions.push(...[hoverTooltip(typst_hover_tooltip)]);
+
+                if (editorStore.file_path === mainSourceStore.file_path) {
+                    extensions.push(typstLinter(editorStore.diagnostics));
+                }
                 break;
             }
             case "yaml":
@@ -246,6 +232,7 @@
 {#if editorStore.file_path}
     {#key editorStore.file_path}
         <CodeMirror
+            keybindings={[...vscodeKeymap]}
             bind:value={editorStore.content}
             styles={{
                 "&": {
@@ -275,10 +262,7 @@
             closeBrackets
             bracketMatching
             lang={editorLanguage}
-            syntaxHighlighting={{
-                highlighter: typstMidnightHighlightStyle,
-                fallback: true,
-            }}
+            syntaxHighlighting={syntaxHighlight}
         />
     {/key}
 {/if}

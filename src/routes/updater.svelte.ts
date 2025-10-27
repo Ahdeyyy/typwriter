@@ -2,6 +2,11 @@ import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { toast } from "svelte-sonner";
 
+export const downloadProgress = $state({
+  downloaded: 0,
+  totalLength: 0,
+});
+
 export async function updateApp() {
   try {
     const update = await check();
@@ -19,20 +24,15 @@ export async function updateApp() {
         switch (event.event) {
           case "Started":
             contentLength = event.data.contentLength || 0;
-            toast.info("started downloading update", {
-              description: `downloading ${contentLength} bytes`,
-            });
+            downloadProgress.totalLength = contentLength;
             console.log(
               `started downloading ${event.data.contentLength} bytes`,
             );
             break;
           case "Progress":
             downloaded += event.data.chunkLength;
+            downloadProgress.downloaded = downloaded;
 
-            toast.loading("downloading update", {
-              description: `downloaded ${downloaded} from ${contentLength}`,
-              duration: 100,
-            });
             console.log(`downloaded ${downloaded} from ${contentLength}`);
             break;
           case "Finished":
