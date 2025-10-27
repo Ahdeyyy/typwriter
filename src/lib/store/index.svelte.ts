@@ -167,8 +167,6 @@ export async function previewPageClick(x: number, y: number, page: number) {
       openUrl(result.value.url);
       break;
     case "NoJump":
-      toast.info("no jump target from click");
-      console.log("no jump");
       break;
   }
 }

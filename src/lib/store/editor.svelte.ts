@@ -111,12 +111,6 @@ class EditorStore {
         this.config.auto_save_interval,
       );
     }
-
-    toast.success("File opened", {
-      description: `Opened ${path}`,
-      closeButton: true,
-      duration: 800,
-    });
   }
 
   /** saves the current content to the file */

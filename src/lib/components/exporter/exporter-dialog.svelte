@@ -7,6 +7,7 @@
     import { export_main_source } from "./export";
     import { Checkbox } from "../ui/checkbox";
     import { LucideDownload } from "@lucide/svelte";
+    import { workspaceStore } from "@/store/index.svelte";
 
     // Svelte 5 runes for local reactive state
     let format = $state<"pdf" | "svg" | "png">("pdf");
@@ -74,6 +75,7 @@
         try {
             await export_main_source(options);
             // leave dialog open so user can verify or close manually; can auto-close on success if desired
+            workspaceStore.refresh();
         } catch (err: unknown) {
             errorMessage =
                 err && typeof err === "object" && "message" in err
