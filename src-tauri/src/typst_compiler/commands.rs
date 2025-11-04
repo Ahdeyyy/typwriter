@@ -54,6 +54,21 @@ pub async fn compile_main_file(
     compiler.compile_main()
 }
 
+#[tauri::command(rename_all = "snake_case")]
+pub async fn get_cursor_position_info_extern(
+    state: tauri::State<'_, AppState>,
+    cursor: usize,
+    source_text: String,
+    source_path: String,
+) -> Result<PreviewPosition, ()> {
+    let compiler = state.compiler.write().await;
+    let path = PathBuf::from(source_path);
+    match compiler.get_position_info_extern(cursor, source_text, path) {
+        Some(position) => Ok(position),
+        None => Err(()),
+    }
+}
+
 /// command to autocomplete at a given position
 #[tauri::command(rename_all = "snake_case")]
 pub async fn autocomplete_at_position(
@@ -126,6 +141,12 @@ pub async fn update_file_source(
     let file_path = PathBuf::from(path);
     compiler.update_file_in_world(&file_path, source);
     Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn get_pages_len(state: tauri::State<'_, AppState>) -> Result<usize, ()> {
+    let compiler = state.compiler.read().await;
+    Ok(compiler.get_pages_len())
 }
 
 /// command to export the main file

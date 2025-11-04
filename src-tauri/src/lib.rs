@@ -14,8 +14,9 @@ pub mod world;
 use typst_compiler::app_state::AppState;
 use typst_compiler::commands::{
     add_new_file, autocomplete_at_position, compile_main_file, document_click_at_point,
-    export_main_file, get_cursor_position_info, open_workspace, provide_hover_info, render_page,
-    render_pages, set_main_file, update_file_source,
+    export_main_file, get_cursor_position_info, get_cursor_position_info_extern, get_pages_len,
+    open_workspace, provide_hover_info, render_page, render_pages, set_main_file,
+    update_file_source,
 };
 
 use tauri::{path::BaseDirectory, Manager};
@@ -60,6 +61,8 @@ pub fn run() {
             document_click_at_point,
             open_workspace,
             get_cursor_position_info,
+            get_cursor_position_info_extern,
+            get_pages_len,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
