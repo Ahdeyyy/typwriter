@@ -87,7 +87,9 @@ class EditorStore {
 
     if (
       read_bin_res.isOk() &&
-      !["typ", "yaml", "yml", "bib"].includes(getFileType(path))
+      ["png", "webp", "gif", "avif", "jpg", "jpeg", "bmp"].includes(
+        getFileType(path),
+      )
     ) {
       const bin = read_bin_res.value as Uint8Array;
       this.binary_content = bin;

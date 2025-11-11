@@ -190,3 +190,26 @@ export async function get_cursor_position(
   });
   return result;
 }
+
+export async function get_pages_len() {
+  const safeInvoke = ResultAsync.fromThrowable(invoke<number>, invokeError);
+  const result = await safeInvoke("get_pages_len", {});
+  return result;
+}
+
+export async function get_cursor_position_extern(
+  cursor: number,
+  source_text: string,
+  source_path: string,
+): Promise<Result<PreviewPosition, InvokeError>> {
+  const safeInvoke = ResultAsync.fromThrowable(
+    invoke<PreviewPosition>,
+    invokeError,
+  );
+  const result = await safeInvoke("get_cursor_position_info_extern", {
+    cursor,
+    source_text,
+    source_path,
+  });
+  return result;
+}

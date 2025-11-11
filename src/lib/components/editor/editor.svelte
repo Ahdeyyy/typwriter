@@ -1,9 +1,10 @@
 <script lang="ts">
+    import CodeMirror from "svelte-codemirror-editor";
+
     import {
         ayuLight,
-        CodeMirror,
-        coolGlow,
         hoverTooltip,
+        throttledCompileAndRender,
         typst,
         typst_completion,
         typst_hover_tooltip,
@@ -14,16 +15,16 @@
     } from "./index";
 
     import {
-        autocomplete,
         compile,
-        get_cursor_position,
+        get_cursor_position_extern,
+        get_pages_len,
         render_page,
         render_pages,
         update_file,
     } from "@/commands";
     import { mode } from "mode-watcher";
 
-    import { useDebounce, useInterval, useThrottle, watch } from "runed";
+    import { useThrottle } from "runed";
 
     import {
         editorStore,
@@ -31,16 +32,22 @@
         previewStore,
     } from "@/store/index.svelte";
     import { getFileType, murmurHash3 } from "@/utils";
-    import { amy, bespin, cobalt, dracula, noctisLilac } from "thememirror";
-    import { keymap } from "@codemirror/view";
+    import { cobalt } from "thememirror";
+    import { keymap, lineNumbers, EditorView } from "@codemirror/view";
     import { toast } from "svelte-sonner";
-    // import { toast } from "svelte-sonner";
-    //
     import { bibtex } from "@citedrive/codemirror-lang-bibtex";
     import { indentationMarkers } from "@replit/codemirror-indentation-markers";
     import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
     import type { Extension } from "@codemirror/state";
-    import { defaultKeymap } from "@codemirror/commands";
+    import {
+        syntaxHighlighting,
+        defaultHighlightStyle,
+        bracketMatching,
+        foldGutter,
+        indentOnInput,
+    } from "@codemirror/language";
+    import { closeBrackets } from "@codemirror/autocomplete";
+    import { autocompletion } from "@codemirror/autocomplete";
 
     const editableDocs = ["typ", "yaml", "yml", "txt", "md", "json", "bib"];
 
@@ -67,32 +74,52 @@
         },
     ]);
 
+    const remountEditor = $derived.by(() => {
+        // remount the editor when the file path changes, the mode changes, or the file type changes
+
+        if (
+            editorStore.file_path &&
+            (editorStore.file_path !== mainSourceStore.file_path ||
+                documentExtension.ext !== getFileType(editorStore.file_path) ||
+                mode.current)
+        ) {
+            return true;
+        }
+        // console.log("Not remounting editor for file:", editorStore.file_path);
+        // console.log("Current mode:", mode.current, "Previous mode:", mode.previous);
+        // console.log("Current file path:", editorStore.file_path);
+        // console.log("Current file type:", documentExtension.ext);
+        // console.log("Main source file path:", mainSourceStore.file_path);
+        // console.log("Document extension:", documentExtension);
+        // console.log("Editable docs:", editableDocs);
+        // console.log("Editor view:", editorStore.editor_view);
+        // console.log("Editor content:", editorStore.content);
+        // console.log("Editor diagnostics:", editorStore.diagnostics);
+        // console.log("Editor is dirty:", editorStore.is_dirty);
+        // console.log("Editor file path:", editorStore.file_path);
+        // console.log("Editor file type:", getFileType(editorStore.file_path));
+        return "";
+    });
+
     let currentTheme = $derived.by(() => {
         return mode.current === "dark"
             ? { editor: cobalt, syntax: typstMidnightHighlightStyle }
             : { editor: ayuLight, syntax: typstBlueprintHighlightStyle };
     });
 
-    const syntaxHighlight = $derived.by(() => {
-        return {
-            highlighter: currentTheme.syntax,
-            fallback: false,
-        };
+    const syntaxHighlightExtension = $derived.by(() => {
+        return syntaxHighlighting(currentTheme.syntax, { fallback: false });
     });
 
-    $inspect(syntaxHighlight);
-
-    let completion = $derived.by(() => {
+    let completionExtension = $derived.by(() => {
         const path = documentExtension.path;
         if (documentExtension.ext === "typ") {
-            return {
+            return autocompletion({
                 override: [typst_completion],
                 activateOnTyping: true,
-                replaceOnAccept: true,
-                defaultKeymap: false,
-            };
+            });
         }
-        return true;
+        return autocompletion();
     });
 
     const editorLanguage = $derived.by(() => {
@@ -111,13 +138,26 @@
         return undefined;
     });
 
-    let languageSpecificExtensions = $derived.by(() => {
+    let allExtensions = $derived.by(() => {
         const path = documentExtension.path;
-        // console.log("Language Extensions for:", path);
-        const extensions: Extension[] = [indentationMarkers()];
+        const extensions: Extension[] = [
+            lineNumbers(),
+            foldGutter(),
+            EditorView.lineWrapping,
+            indentOnInput(),
+            bracketMatching(),
+            closeBrackets(),
+            indentationMarkers(),
+            syntaxHighlightExtension,
+            completionExtension,
+            saveKeybind,
+            keymap.of(vscodeKeymap),
+        ];
+
+        // Add language-specific extensions
         switch (documentExtension.ext) {
             case "typ": {
-                extensions.push(...[hoverTooltip(typst_hover_tooltip)]);
+                extensions.push(hoverTooltip(typst_hover_tooltip));
 
                 if (editorStore.file_path === mainSourceStore.file_path) {
                     extensions.push(typstLinter(editorStore.diagnostics));
@@ -128,6 +168,12 @@
                 break;
             default:
         }
+
+        // Add readonly if not editable
+        if (!editableDocs.includes(documentExtension.ext)) {
+            extensions.push(EditorView.editable.of(false));
+        }
+
         return extensions;
     });
 
@@ -156,17 +202,65 @@
         }
         editorStore.diagnostics = compile_result.value;
 
+        await render();
+    };
+
+    async function render() {
         const cursor = editorStore.editor_view
             ? editorStore.editor_view.state.selection.main.head
             : 0;
-        const position = await get_cursor_position(cursor, editorStore.content);
+        const position = await get_cursor_position_extern(
+            cursor,
+            editorStore.content,
+            editorStore.file_path || "",
+        );
+        const pages = await get_pages_len();
 
-        if (
-            position.isOk() &&
-            editorStore.file_path === mainSourceStore.file_path
-        ) {
-            // use the current page to the render the exact page
+        if (pages.isOk()) {
+            console.log(
+                "Pages length:",
+                pages.value,
+                "Current preview items:",
+                previewStore.items.length,
+            );
+            if (pages.value !== previewStore.items.length) {
+                // rerender all the pages and return
+                const render_result = await render_pages();
+                //   console.log("Render result:", render_result)
+                if (render_result.isErr()) {
+                    console.error("failed to render the pages");
+                    toast.error("Failed to render the pages");
+                } else {
+                    const pages = render_result.value;
+                    for (let idx = 0; idx < pages.length; idx++) {
+                        const page = pages[idx];
+                        const page_hash = `${murmurHash3(page.image)}${idx}`;
+                        const existing_page =
+                            previewStore.render_cache.get(page_hash);
+                        if (existing_page) {
+                            previewStore.items.splice(idx, 1, existing_page);
+                            continue;
+                        } else {
+                            const img = new Image();
+                            img.src = `data:image/png;base64,${page.image}`;
+                            img.width = page.width;
+                            img.height = page.height;
+                            previewStore.render_cache.set(page_hash, img);
+                            previewStore.items.splice(idx, 1, img);
+                        }
+                    }
+                }
+                return;
+            }
+        }
+
+        if (position.isOk()) {
+            // render single page
+            //
+            //
+            //    // use the current page to the render the exact page
             previewStore.current_position = position.value;
+            console.log(position.value);
             const render_result = await render_page(position.value.page - 1);
             if (render_result.isErr()) {
                 console.error("failed to render the page");
@@ -194,6 +288,12 @@
                 }
             }
         } else {
+            if (position.isErr()) {
+                console.error(
+                    "failed to get cursor position:",
+                    position.error.message,
+                );
+            }
             const render_result = await render_pages();
             //   console.log("Render result:", render_result)
             if (render_result.isErr()) {
@@ -207,11 +307,9 @@
                     const existing_page =
                         previewStore.render_cache.get(page_hash);
                     if (existing_page) {
-                        // page already exists in cache
                         previewStore.items.splice(idx, 1, existing_page);
                         continue;
                     } else {
-                        // add page to cache
                         const img = new Image();
                         img.src = `data:image/png;base64,${page.image}`;
                         img.width = page.width;
@@ -222,50 +320,39 @@
                 }
             }
         }
-    };
+    }
 
     const debouncedCompileAndRender = useThrottle(async () => {
         await compileAndRender();
     }, 90);
 </script>
 
-{#if editorStore.file_path}
-    {#key editorStore.file_path}
-        <CodeMirror
-            keybindings={[...vscodeKeymap]}
-            bind:value={editorStore.content}
-            styles={{
-                "&": {
-                    height: "100%",
-                    width: "100%",
-                },
-                ".cm-scroller": { overflow: "auto" },
-            }}
-            onready={async (e) => {
-                // console.log("Editor ready");
-                editorStore.editor_view = e;
-                // console.log(e);
-            }}
-            onchange={async (e) => {
-                editorStore.is_dirty = true;
-                await debouncedCompileAndRender();
-            }}
-            extensions={[...languageSpecificExtensions, saveKeybind]}
-            lineWrapping
-            lineNumbers
-            foldGutter
-            indentOnInput
-            editable={editableDocs.includes(documentExtension.ext)}
-            autocompletion={completion}
-            theme={currentTheme.editor}
-            nodebounce={true}
-            closeBrackets
-            bracketMatching
-            lang={editorLanguage}
-            syntaxHighlighting={syntaxHighlight}
-        />
-    {/key}
-{/if}
+{#key remountEditor}
+    <CodeMirror
+        styles={{
+            "&": {
+                height: "95vh",
+                width: "100%",
+            },
+            ".cm-scroller": { overflow: "auto" },
+        }}
+        bind:value={editorStore.content}
+        lang={editorLanguage}
+        extensions={allExtensions}
+        onready={(view) => {
+            editorStore.editor_view = view;
+        }}
+        onchange={async (text) => {
+            editorStore.is_dirty = true;
+            await throttledCompileAndRender();
+        }}
+        syntaxHighlighting={{
+            highlighter: currentTheme.syntax,
+            fallback: false,
+        }}
+        theme={currentTheme.editor}
+    />
+{/key}
 
 <style>
     :global {

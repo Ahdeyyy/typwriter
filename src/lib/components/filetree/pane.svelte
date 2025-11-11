@@ -25,6 +25,24 @@
     } from "@/store/index.svelte";
     import type { FileTreeNode } from "@/store/workspace.svelte";
     import { PressedKeys } from "runed";
+    import TreeViewFile from "./treeview-file.svelte";
+    import TreeViewFolder from "./treeview-folder.svelte";
+    import { MediaQuery } from "svelte/reactivity";
+    import { get } from "svelte/store";
+    const isPaneLarge = new MediaQuery("(min-width: 640px)");
+    function trimFileName(name: string): string {
+        const type = getFileType(name);
+        const fileName = getFileName(name);
+
+        const trimmedName =
+            isPaneLarge && fileName.length > 50
+                ? fileName.split(".")[0].slice(0, 6) + "..."
+                : fileName;
+        if (type !== "") {
+            return `${trimmedName}`;
+        }
+        return `${trimmedName}.${type}`;
+    }
 
     const keys = new PressedKeys();
 
@@ -175,27 +193,30 @@
     {@const thisPath = isFolder ? folderKey(parentPath, name) : name}
 
     {@const isActiveFile = !isFolder && item.path === editorStore.file_path}
+    <!-- {@const trimmedFileName = trimFileName(name)} -->
 
     {#if !isFolder}
-        <TreeView.File
+        <TreeViewFile
             class={[
-                "truncate px-3 py-1 rounded w-full hover:bg-accent",
+                "truncate px-3 py-1 rounded w-full hover:bg-accent mb-0.5",
                 isActiveFile && "bg-accent text-accent-foreground",
                 mainSourceStore.file_path === item.path &&
                     "border-l-4 border-l-emerald-600",
             ]}
             disabled={isActiveFile}
             name={getFileName(name)}
+            path={item.path}
             onclick={() => {
                 // console.log("Clicked file", $state.snapshot(item));
                 editorStore.openFile(item.path);
             }}
         />
     {:else}
-        <TreeView.Folder
-            class="truncate px-3 py-1 w-full hover:bg-accent"
+        <TreeViewFolder
+            class="truncate px-3 py-1 w-full hover:bg-accent mb-0.5"
             bind:open={item.open}
             {name}
+            path={item.path}
         >
             {#each children as subItem, index (index)}
                 {@render Tree({
@@ -203,6 +224,6 @@
                     parentPath: thisPath,
                 })}
             {/each}
-        </TreeView.Folder>
+        </TreeViewFolder>
     {/if}
 {/snippet}

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use rayon::prelude::*;
 
 use typst::diag::{FileError, FileResult};
+use typst::ecow::EcoString;
 use typst::foundations::{Bytes, Datetime};
 use typst::syntax::{FileId, Source, VirtualPath};
 use typst::text::{Font, FontBook};
@@ -105,6 +106,10 @@ impl Typstworld {
             .iter()
             .map(|(id, path)| (path.clone(), *id))
             .collect::<HashMap<_, _>>();
+        dbg!(file_paths
+            .iter()
+            .map(|(id, path)| (path.clone(), *id))
+            .collect::<HashMap<_, _>>());
 
         // Setup package storage. This will use the default cache directories
         // for Typst packages on the respective operating system.
@@ -176,6 +181,34 @@ impl Typstworld {
 impl IdeWorld for Typstworld {
     fn upcast(&self) -> &dyn World {
         self
+    }
+
+    /// A list of all available packages and optionally descriptions for them.
+    ///
+    /// This function is **optional** to implement. It enhances the user
+    /// experience by enabling autocompletion for packages. Details about
+    /// packages from the `@preview` namespace are available from
+    /// `https://packages.typst.org/preview/index.json`.
+    // fn packages(&self) -> &[(PackageSpec, Option<EcoString>)] {
+    //     let packages_path = self.package_storage.;
+    //     let pkgs = packages_path
+    //         .iter()
+    //         .map(|pkg| (PackageSpec::from(*pkg), None))
+    //         .collect();
+    //     pkgs
+    // }
+
+    /// Returns a list of all known files.
+    ///
+    /// This function is **optional** to implement. It enhances the user
+    /// experience by enabling autocompletion for file paths.
+    fn files(&self) -> Vec<FileId> {
+        let mut all_files = Vec::new();
+        let map = self.file_paths.read().unwrap();
+        map.iter().for_each(|(k, _)| {
+            all_files.push(*k);
+        });
+        all_files
     }
 }
 

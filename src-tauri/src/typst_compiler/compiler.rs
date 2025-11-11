@@ -241,6 +241,40 @@ impl TypstCompiler {
         }
     }
 
+    /// get the number of pages in the cached document
+    pub fn get_pages_len(&self) -> usize {
+        if let Some(doc) = &self.compilation_cache {
+            doc.pages.len()
+        } else {
+            0
+        }
+    }
+
+    pub fn get_position_info_extern(
+        &self,
+        cursor: usize,
+        source_text: String,
+        source_path: PathBuf,
+    ) -> Option<PreviewPosition> {
+        let doc = self.compilation_cache.as_ref()?;
+        let id = self.world.get_file_id(&source_path)?;
+        println!("file id {:?}", &source_path);
+        let source = self.world.source(id).ok()?;
+        println!("source {:?}", &source);
+        let byte_cursor = char_to_byte_position(&source_text, cursor);
+        let positions = jump_from_cursor(doc, &source, byte_cursor);
+        let position = positions.get(0)?;
+        println!("positions {:?}", positions.clone());
+        let x = position.point.x.to_pt() * self.render_scale as f64;
+        let y = position.point.y.to_pt() * self.render_scale as f64;
+        let pos = PreviewPosition {
+            page: position.page.into(),
+            x,
+            y,
+        };
+        Some(pos)
+    }
+
     /// renders the main file in the world
     /// returns an array of rendered pages
     pub fn render_main(&self) -> Vec<RenderResponse> {

@@ -8,8 +8,14 @@
     import { cn } from "$lib/utils.js";
     let fileTypes = [
         { value: "typ", label: "typ" },
-        { value: "yaml", label: "yaml or yml" },
+        { value: "yml", label: "yaml or yml" },
         { value: "bib", label: "bib" },
+        { value: "json", label: "json" },
+        { value: "xml", label: "xml" },
+        { value: "csv", label: "csv" },
+        { value: "toml", label: "toml" },
+        { value: "cbor", label: "cbor" },
+        { value: "txt", label: "text file" },
     ];
 
     let { value = $bindable() }: { value: string } = $props();
