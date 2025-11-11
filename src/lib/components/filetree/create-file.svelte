@@ -8,6 +8,7 @@
     import { twMerge } from "tailwind-merge";
     import * as Tooltip from "$lib/components/ui/tooltip/index.js";
     import { workspaceStore } from "@/store/index.svelte";
+    import { getFileName, getFileType } from "@/utils";
 
     let { iconTrigger }: { iconTrigger: boolean } = $props();
     let open = $state(false);
@@ -17,7 +18,7 @@
     });
     let size = iconTrigger ? "size-7" : "";
 
-    let fileDetails = $state({ name: "", type: "typ" });
+    let fileDetails = $state({ filename: "" });
 </script>
 
 <Dialog.Root bind:open>
@@ -43,8 +44,11 @@
         </Dialog.Header>
         <div class="grid gap-4 py-4">
             <div class="flex gap-4 py-4">
-                <Input placeholder="File name" bind:value={fileDetails.name} />
-                <FileTypeCombobox bind:value={fileDetails.type} />
+                <Input
+                    placeholder="File name"
+                    bind:value={fileDetails.filename}
+                />
+                <!-- <FileTypeCombobox bind:value={fileDetails.type} /> -->
             </div>
         </div>
         <Dialog.Footer>
@@ -55,13 +59,19 @@
                         toast.error("No workspace available");
                         return;
                     }
-                    const name = fileDetails.name.trim();
-                    const type = fileDetails.type.trim();
+                    const type =
+                        getFileType(fileDetails.filename) === ""
+                            ? "typ"
+                            : getFileType(fileDetails.filename);
+                    const name = fileDetails.filename.replace(`.${type}`, "");
+
                     if (name && type) {
                         const fileName = name.endsWith(`.${type}`)
                             ? name
                             : `${name}.${type}`;
                         await workspaceStore.createFile(fileName, false);
+                        fileDetails.filename = "";
+                        // fileDetails.type = "typ";
                         open = false;
                     }
                 }}>Create file</Button

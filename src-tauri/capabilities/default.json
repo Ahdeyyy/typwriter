@@ -20,6 +20,7 @@
     "core:path:default",
     "dialog:default",
     "fs:default",
+    "fs:allow-open",
     "fs:allow-read",
     "fs:allow-write",
     "fs:allow-create",
@@ -30,6 +31,7 @@
     "fs:read-all",
     "fs:allow-app-read-recursive",
     "fs:allow-app-write-recursive",
+
     "fs:allow-read-text-file",
     {
       "identifier": "fs:scope",
