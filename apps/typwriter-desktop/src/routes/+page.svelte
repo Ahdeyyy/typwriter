@@ -35,7 +35,7 @@
   })
 </script>
 
-<div class="editor-container" bind:this={editorElement}></div>
+<div class="editor-container"   bind:this={editorElement}></div>
 
 <style>
   .editor-container {

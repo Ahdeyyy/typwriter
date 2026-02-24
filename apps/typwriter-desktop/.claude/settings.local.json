@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(# Check if there''s a FontSearcher in typst-kit grep -r \"\"FontSearcher\"\" /c/Users/ahdey/projects/typwriter/apps/typwriter-desktop/src-tauri/ || echo \"\"not found locally\"\" # Check Rust toolchain edition / version cat /c/Users/ahdey/projects/typwriter/apps/typwriter-desktop/src-tauri/Cargo.toml)",
+      "Bash(# Check the typst-kit source to understand PackageStorage API and FontSearcher # Find typst-kit in cargo registry cache find /c/Users/ahdey/.cargo/registry/src -name \"\"*.rs\"\" -path \"\"*/typst-kit-0.14.2/*\"\")",
+      "Bash(# Check typst-ide source for IdeWorld trait find /c/Users/ahdey/.cargo/registry/src -name \"\"*.rs\"\" -path \"\"*/typst-ide-0.14.2/*\"\")",
+      "Bash(# Check the Tauri emit API and AppHandle - what''s available in Tauri v2 find /c/Users/ahdey/.cargo/registry/src -name \"\"*.rs\"\" -path \"\"*/tauri-2.*/*\"\")",
+      "Bash(cargo build:*)",
+      "Bash(RUST_MIN_STACK=8388608 cargo build:*)",
+      "Bash(powershell -Command \"Get-PSDrive C | Select-Object Used,Free\")",
+      "Bash(RUST_MIN_STACK=8388608 cargo check:*)"
+    ]
+  }
+}

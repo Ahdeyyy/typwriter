@@ -22,3 +22,8 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+typst = "0.14.2"
+typst-ide = "0.14.2"
+chrono = "0.4.44"
+typst-kit = { version = "0.14.2", features = ["embed-fonts", "packages"] }
+ecow = { version = "0.2", features = ["serde"] }
