@@ -8,13 +8,7 @@
 // invalidated and the PreviewPipeline is asked to re-compile and emit updated
 // page events to the frontend.
 
-use std::{
-    path::PathBuf,
-    sync::mpsc,
-    sync::Arc,
-    thread,
-    time::Duration,
-};
+use std::{path::PathBuf, sync::mpsc, sync::Arc, thread, time::Duration};
 
 use notify::{
     event::{EventKind, ModifyKind},
@@ -111,7 +105,10 @@ fn dispatch_loop(
             }
             // Emit event to the frontend so the file tree can refresh.
             let path_str = path.to_string_lossy().to_string();
-            let _ = app_handle.emit("workspace:file-changed", FileChangedPayload { path: path_str });
+            let _ = app_handle.emit(
+                "workspace:file-changed",
+                FileChangedPayload { path: path_str },
+            );
         }
 
         // Trigger a recompile and stream updated pages.
@@ -133,4 +130,3 @@ fn is_relevant(event: &Event) -> bool {
             | EventKind::Modify(ModifyKind::Any)
     )
 }
-

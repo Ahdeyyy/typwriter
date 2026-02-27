@@ -3,6 +3,7 @@ import { ResultAsync } from 'neverthrow';
 
 import type {
     FileTreeEntry,
+    RecentWorkspaceEntry,
     CompletionsResponse,
     TooltipResponse,
     JumpResponse,
@@ -54,6 +55,13 @@ export function moveFile(src: string, dst: string) {
 
 export function moveFolder(src: string, dst: string) {
     return ResultAsync.fromPromise(invoke<void>('move_folder', { src, dst }), toErrString);
+}
+
+export function getRecentWorkspaces() {
+    return ResultAsync.fromPromise(
+        invoke<RecentWorkspaceEntry[]>('get_recent_workspaces'),
+        toErrString
+    );
 }
 
 // ─── Editor ───────────────────────────────────────────────────────────────────

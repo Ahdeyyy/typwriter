@@ -71,7 +71,9 @@ pub fn jump_from_cursor(
     pipeline: State<'_, Arc<PreviewPipeline>>,
 ) -> Result<Vec<PreviewPositionResponse>, String> {
     let abs = Path::new(&path);
-    let id = world.path_to_id(abs).ok_or("Could not resolve file path to a FileId")?;
+    let id = world
+        .path_to_id(abs)
+        .ok_or("Could not resolve file path to a FileId")?;
 
     let source = world.source(id).map_err(|e| e.to_string())?;
 

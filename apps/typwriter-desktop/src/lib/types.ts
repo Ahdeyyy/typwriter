@@ -7,6 +7,13 @@ export interface FileTreeEntry {
     children: FileTreeEntry[];
 }
 
+export interface RecentWorkspaceEntry {
+    path: string;
+    name: string;
+    /** Base64-encoded PNG thumbnail, if available. */
+    thumbnail: string | null;
+}
+
 // ─── Editor / IDE ─────────────────────────────────────────────────────────────
 
 export interface CompletionItem {

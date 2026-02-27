@@ -2,13 +2,10 @@ use std::{path::PathBuf, sync::Arc};
 
 use tauri::State;
 
-use crate::workspace::{FileTreeEntry, WorkspaceState};
+use crate::workspace::{FileTreeEntry, RecentWorkspaceEntry, WorkspaceState};
 
 #[tauri::command]
-pub fn open_folder(
-    path: String,
-    workspace: State<'_, Arc<WorkspaceState>>,
-) -> Result<(), String> {
+pub fn open_folder(path: String, workspace: State<'_, Arc<WorkspaceState>>) -> Result<(), String> {
     workspace.open_folder(PathBuf::from(path))
 }
 
@@ -28,10 +25,7 @@ pub fn get_file_tree(
 }
 
 #[tauri::command]
-pub fn create_file(
-    path: String,
-    workspace: State<'_, Arc<WorkspaceState>>,
-) -> Result<(), String> {
+pub fn create_file(path: String, workspace: State<'_, Arc<WorkspaceState>>) -> Result<(), String> {
     workspace.create_file(&path)
 }
 
@@ -44,10 +38,7 @@ pub fn create_folder(
 }
 
 #[tauri::command]
-pub fn delete_file(
-    path: String,
-    workspace: State<'_, Arc<WorkspaceState>>,
-) -> Result<(), String> {
+pub fn delete_file(path: String, workspace: State<'_, Arc<WorkspaceState>>) -> Result<(), String> {
     workspace.delete_file(&path)
 }
 
@@ -86,4 +77,11 @@ pub fn move_folder(
     workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Result<(), String> {
     workspace.move_folder(&src, &dst)
+}
+
+#[tauri::command]
+pub fn get_recent_workspaces(
+    workspace: State<'_, Arc<WorkspaceState>>,
+) -> Vec<RecentWorkspaceEntry> {
+    workspace.get_recent_workspaces_with_thumbnails()
 }

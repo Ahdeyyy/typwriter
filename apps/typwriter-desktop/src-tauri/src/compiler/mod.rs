@@ -142,9 +142,12 @@ impl PreviewPipeline {
         let (changed_indices, removed_count) = diff_pages(&old_fps, &new_fps);
 
         // Emit total page count.
-        let _ = self
-            .app_handle
-            .emit("preview:total-pages", TotalPagesPayload { count: new_fps.len() });
+        let _ = self.app_handle.emit(
+            "preview:total-pages",
+            TotalPagesPayload {
+                count: new_fps.len(),
+            },
+        );
 
         // Emit removals (high index first so frontend can splice cleanly).
         for i in (new_fps.len()..new_fps.len() + removed_count).rev() {
@@ -186,7 +189,10 @@ impl PreviewPipeline {
         for (idx, b64) in cache_hits {
             let _ = self.app_handle.emit(
                 "preview:page-updated",
-                PageUpdatedPayload { index: idx, data: b64 },
+                PageUpdatedPayload {
+                    index: idx,
+                    data: b64,
+                },
             );
         }
 
@@ -198,7 +204,10 @@ impl PreviewPipeline {
                 cache.insert(fp, b64.clone());
                 let _ = self.app_handle.emit(
                     "preview:page-updated",
-                    PageUpdatedPayload { index: idx, data: b64 },
+                    PageUpdatedPayload {
+                        index: idx,
+                        data: b64,
+                    },
                 );
             }
         }
@@ -211,7 +220,9 @@ impl PreviewPipeline {
     // ─── Export ────────────────────────────────────────────────────────────
 
     pub fn export_pdf(&self, config: PdfExportConfig) -> Result<(), String> {
-        let doc = self.last_document.lock()
+        let doc = self
+            .last_document
+            .lock()
             .as_ref()
             .ok_or("No compiled document available")?
             .clone();
@@ -224,18 +235,19 @@ impl PreviewPipeline {
             tagged: true,
         };
 
-        let bytes = typst_pdf::pdf(&doc, &options)
-            .map_err(|e| {
-                e.iter()
-                    .map(|d| d.message.to_string())
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            })?;
+        let bytes = typst_pdf::pdf(&doc, &options).map_err(|e| {
+            e.iter()
+                .map(|d| d.message.to_string())
+                .collect::<Vec<_>>()
+                .join("; ")
+        })?;
         std::fs::write(&config.path, bytes).map_err(|e| e.to_string())
     }
 
     pub fn export_png(&self, config: PngExportConfig) -> Result<(), String> {
-        let doc = self.last_document.lock()
+        let doc = self
+            .last_document
+            .lock()
             .as_ref()
             .ok_or("No compiled document available")?
             .clone();
@@ -254,7 +266,9 @@ impl PreviewPipeline {
     }
 
     pub fn export_svg(&self, config: SvgExportConfig) -> Result<(), String> {
-        let doc = self.last_document.lock()
+        let doc = self
+            .last_document
+            .lock()
             .as_ref()
             .ok_or("No compiled document available")?
             .clone();
@@ -271,4 +285,3 @@ impl PreviewPipeline {
         Ok(())
     }
 }
-

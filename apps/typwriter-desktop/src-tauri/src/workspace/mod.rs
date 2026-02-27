@@ -9,6 +9,7 @@
 // All file-system operations (create/delete/rename/move) funnel through here
 // so that the EditorWorld caches stay consistent.
 
+mod store;
 mod watcher;
 
 use parking_lot::{Mutex, RwLock};
@@ -17,12 +18,23 @@ use std::{
     sync::Arc,
 };
 
+use base64::Engine;
 use notify::RecommendedWatcher;
 use serde::Serialize;
 use tauri::AppHandle;
 use typst::syntax::{FileId, VirtualPath};
 
-use crate::{compiler::PreviewPipeline, world::EditorWorld};
+use crate::{compiler::render_page, compiler::PreviewPipeline, world::EditorWorld};
+
+// ─── Recent workspace entry (returned to the frontend) ────────────────────────
+
+#[derive(Serialize, Clone, Debug)]
+pub struct RecentWorkspaceEntry {
+    pub path: String,
+    pub name: String,
+    /// Base64-encoded PNG thumbnail, if available.
+    pub thumbnail: Option<String>,
+}
 
 // ─── File tree ────────────────────────────────────────────────────────────────
 
@@ -90,8 +102,23 @@ impl WorkspaceState {
         .map_err(|e| e.to_string())?;
 
         *self._watcher.lock() = Some(new_watcher);
-        *self.root.write() = Some(path);
+        *self.root.write() = Some(path.clone());
         *self.main_file.write() = None;
+
+        // ── Persistence ────────────────────────────────────────────────
+        // 1. Add to the recent-workspaces list.
+        store::add_recent_workspace(&self.app_handle, &path);
+
+        // 2. Ensure the .typwriter metadata directory exists.
+        let _ = store::ensure_typwriter_dir(&path);
+
+        // 3. Restore the previously-set main file (if it still exists).
+        if let Some(main) = store::get_workspace_main_file(&self.app_handle, &path) {
+            let main_path = PathBuf::from(&main);
+            if main_path.exists() {
+                let _ = self.set_main_file(main_path);
+            }
+        }
 
         Ok(())
     }
@@ -103,15 +130,21 @@ impl WorkspaceState {
         let id = {
             let guard = self.root.read();
             let root = guard.as_ref().ok_or("No workspace open")?;
-            let relative = path.strip_prefix(root).map_err(|_| {
-                format!("{} is not inside the workspace root", path.display())
-            })?;
+            let relative = path
+                .strip_prefix(root)
+                .map_err(|_| format!("{} is not inside the workspace root", path.display()))?;
             FileId::new(None, VirtualPath::new(relative))
         };
 
         self.world.set_main(id);
         self.pipeline.invalidate_cache();
-        *self.main_file.write() = Some(path);
+        *self.main_file.write() = Some(path.clone());
+
+        // Persist the choice so it can be restored on next open.
+        if let Some(root) = self.root.read().as_ref() {
+            store::set_workspace_main_file(&self.app_handle, root, &path);
+        }
+
         Ok(())
     }
 
@@ -124,6 +157,64 @@ impl WorkspaceState {
 
     pub fn get_zoom(&self) -> f32 {
         *self.zoom.lock()
+    }
+
+    // ─── Thumbnail ─────────────────────────────────────────────────────────
+
+    /// Generate a thumbnail from the first page of the last compiled document
+    /// and write it to `.typwriter/thumbnail.png` in the workspace root.
+    /// Silently does nothing if there is no compiled document or no workspace.
+    pub fn generate_thumbnail(&self) {
+        let root = match self.root.read().clone() {
+            Some(r) => r,
+            None => return,
+        };
+
+        let doc = match self.pipeline.last_document.lock().clone() {
+            Some(d) => d,
+            None => return,
+        };
+
+        if doc.pages.is_empty() {
+            return;
+        }
+
+        // Render page 0 at 1.0 scale (72 dpi) — small and fast.
+        match render_page(&doc.pages[0], 1.0) {
+            Ok(png) => {
+                if let Err(e) = store::save_thumbnail(&root, &png) {
+                    eprintln!("thumbnail: {e}");
+                }
+            }
+            Err(e) => eprintln!("thumbnail render failed: {e}"),
+        }
+    }
+
+    // ─── Recent workspaces ─────────────────────────────────────────────────
+
+    /// Return the recent workspaces list enriched with names and thumbnails.
+    pub fn get_recent_workspaces_with_thumbnails(&self) -> Vec<RecentWorkspaceEntry> {
+        let paths = store::get_recent_workspaces(&self.app_handle);
+
+        paths
+            .into_iter()
+            .map(|p| {
+                let path_buf = PathBuf::from(&p);
+                let name = path_buf
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| p.clone());
+
+                let thumbnail = store::read_thumbnail(&path_buf)
+                    .map(|bytes| base64::engine::general_purpose::STANDARD.encode(&bytes));
+
+                RecentWorkspaceEntry {
+                    path: p,
+                    name,
+                    thumbnail,
+                }
+            })
+            .collect()
     }
 
     // ─── File-system helpers ───────────────────────────────────────────────
@@ -227,7 +318,6 @@ impl WorkspaceState {
         };
         Ok(read_dir_recursive(&root, &root))
     }
-
 }
 
 // ─── Directory reading ────────────────────────────────────────────────────────
@@ -288,4 +378,3 @@ fn collect_files_recursive(dir: &Path) -> Vec<PathBuf> {
     }
     files
 }
-

@@ -13,3 +13,7 @@ export const pages = {
     }
 }
 export const page = $state(pages["home"])
+
+export function navigate(target: keyof typeof pages) {
+    Object.assign(page, pages[target]);
+}

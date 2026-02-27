@@ -9,6 +9,8 @@
     "core:default",
     "opener:default",
     "log:default",
-    "store:default"
+    "store:default",
+    "core:window:allow-set-title",
+    "dialog:default"
   ]
 }

@@ -10,13 +10,9 @@ use std::{path::Path, sync::Arc};
 
 use serde::Serialize;
 use tauri::State;
-use typst::{
-    layout::PagedDocument,
-    syntax::Side,
-    World,
-};
+use typst::{layout::PagedDocument, syntax::Side, World};
 
-use crate::{compiler::PreviewPipeline, world::EditorWorld};
+use crate::{compiler::PreviewPipeline, workspace::WorkspaceState, world::EditorWorld};
 
 // ─── Serialisable IDE response types ─────────────────────────────────────────
 
@@ -73,7 +69,9 @@ pub fn update_file_content(
     world: State<'_, Arc<EditorWorld>>,
 ) -> Result<(), String> {
     let abs = Path::new(&path);
-    let id = world.path_to_id(abs).ok_or("Could not resolve file path to a FileId")?;
+    let id = world
+        .path_to_id(abs)
+        .ok_or("Could not resolve file path to a FileId")?;
     world.shadow_write(id, content);
     Ok(())
 }
@@ -85,25 +83,31 @@ pub fn save_file(
     path: String,
     content: String,
     world: State<'_, Arc<EditorWorld>>,
+    workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Result<(), String> {
     let abs = Path::new(&path);
-    let id = world.path_to_id(abs).ok_or("Could not resolve file path to a FileId")?;
+    let id = world
+        .path_to_id(abs)
+        .ok_or("Could not resolve file path to a FileId")?;
 
     std::fs::write(abs, content.as_bytes()).map_err(|e| e.to_string())?;
 
     // Remove the shadow since disk now matches the editor content.
     world.shadow_remove(id);
+
+    // Best-effort: update the workspace thumbnail on save.
+    workspace.generate_thumbnail();
+
     Ok(())
 }
 
 /// Remove the shadow override for a file (e.g. after discarding unsaved edits).
 #[tauri::command]
-pub fn discard_shadow(
-    path: String,
-    world: State<'_, Arc<EditorWorld>>,
-) -> Result<(), String> {
+pub fn discard_shadow(path: String, world: State<'_, Arc<EditorWorld>>) -> Result<(), String> {
     let abs = Path::new(&path);
-    let id = world.path_to_id(abs).ok_or("Could not resolve file path to a FileId")?;
+    let id = world
+        .path_to_id(abs)
+        .ok_or("Could not resolve file path to a FileId")?;
     world.shadow_remove(id);
     Ok(())
 }
@@ -168,8 +172,12 @@ pub fn get_tooltip(
     let tooltip = typst_ide::tooltip(&**world, doc_ref, &source, cursor, Side::Before);
 
     Ok(tooltip.map(|t| match t {
-        typst_ide::Tooltip::Text(s) => TooltipResponse::Text { value: s.to_string() },
-        typst_ide::Tooltip::Code(code) => TooltipResponse::Code { text: code.to_string() },
+        typst_ide::Tooltip::Text(s) => TooltipResponse::Text {
+            value: s.to_string(),
+        },
+        typst_ide::Tooltip::Code(code) => TooltipResponse::Code {
+            text: code.to_string(),
+        },
     }))
 }
 
@@ -200,14 +208,21 @@ pub fn get_definitions(
 pub(crate) fn serialize_jump(jump: &typst_ide::Jump, _world: &dyn typst::World) -> JumpResponse {
     match jump {
         typst_ide::Jump::File(id, offset) => {
-            let path = id.vpath().as_rootless_path().to_str().map(String::from).unwrap_or_default();
+            let path = id
+                .vpath()
+                .as_rootless_path()
+                .to_str()
+                .map(String::from)
+                .unwrap_or_default();
             JumpResponse::File {
                 path,
                 start_byte: *offset,
                 end_byte: *offset,
             }
         }
-        typst_ide::Jump::Url(url) => JumpResponse::Url { url: url.to_string() },
+        typst_ide::Jump::Url(url) => JumpResponse::Url {
+            url: url.to_string(),
+        },
         typst_ide::Jump::Position(pos) => JumpResponse::Position {
             page: pos.page.get() - 1, // 1-based → 0-based
             x: pos.point.x.to_pt(),
@@ -227,7 +242,12 @@ pub(crate) fn serialize_definition(
             let id = span.id()?;
             let source = world.source(id).ok()?;
             let range = source.range(*span)?;
-            let path = id.vpath().as_rootless_path().to_str().map(String::from).unwrap_or_default();
+            let path = id
+                .vpath()
+                .as_rootless_path()
+                .to_str()
+                .map(String::from)
+                .unwrap_or_default();
             Some(JumpResponse::File {
                 path,
                 start_byte: range.start,
