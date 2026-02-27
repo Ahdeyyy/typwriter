@@ -27,7 +27,8 @@
     "@tauri-apps/plugin-log": "~2",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-store": "~2",
-    "codemirror": "^6.0.2"
+    "codemirror": "^6.0.2",
+    "neverthrow": "^8.2.0"
   },
   "devDependencies": {
     "@internationalized/date": "^3.10.0",
