@@ -24,6 +24,16 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 typst = "0.14.2"
 typst-ide = "0.14.2"
+typst-render = "0.14.2"
+typst-svg = "0.14.2"
+typst-pdf = "0.14.2"
 chrono = "0.4.44"
 typst-kit = { version = "0.14.2", features = ["embed-fonts", "packages"] }
 ecow = { version = "0.2", features = ["serde"] }
+tauri-plugin-log = "2"
+tauri-plugin-store = "2"
+notify = "7"
+rayon = "1"
+base64 = "0.22"
+lru = "0.12"
+parking_lot = "0.12"

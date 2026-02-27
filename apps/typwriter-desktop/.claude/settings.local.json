@@ -9,7 +9,8 @@
       "Bash(cargo build:*)",
       "Bash(RUST_MIN_STACK=8388608 cargo build:*)",
       "Bash(powershell -Command \"Get-PSDrive C | Select-Object Used,Free\")",
-      "Bash(RUST_MIN_STACK=8388608 cargo check:*)"
+      "Bash(RUST_MIN_STACK=8388608 cargo check:*)",
+      "WebFetch(domain:claude.ai)"
     ]
   }
 }

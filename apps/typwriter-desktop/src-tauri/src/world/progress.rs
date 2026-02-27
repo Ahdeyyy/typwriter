@@ -1,7 +1,5 @@
-// world/progress.rs
-
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter};
 use typst_kit::download::{DownloadState, Progress};
 
 /// Serializable payload sent with progress and finish events.
@@ -19,14 +17,14 @@ pub struct DownloadProgressPayload {
 /// - `"package:download:start"` — payload: package label string
 /// - `"package:download:progress"` — payload: [`DownloadProgressPayload`]
 /// - `"package:download:finish"` — payload: [`DownloadProgressPayload`]
-pub struct TauriProgress<R: Runtime> {
-    app_handle: AppHandle<R>,
+pub struct TauriProgress {
+    app_handle: AppHandle,
     /// Human-readable package label, e.g. `"@preview/cetz:0.3.5"`.
     package_label: String,
 }
 
-impl<R: Runtime> TauriProgress<R> {
-    pub fn new(app_handle: AppHandle<R>, package_label: impl Into<String>) -> Self {
+impl TauriProgress {
+    pub fn new(app_handle: AppHandle, package_label: impl Into<String>) -> Self {
         Self {
             app_handle,
             package_label: package_label.into(),
@@ -34,17 +32,16 @@ impl<R: Runtime> TauriProgress<R> {
     }
 }
 
-impl<R: Runtime> Progress for TauriProgress<R> {
+impl Progress for TauriProgress {
     fn print_start(&mut self) {
-        let _ = self.app_handle.emit("package:download:start", &self.package_label);
+        let _ = self
+            .app_handle
+            .emit("package:download:start", &self.package_label);
     }
 
     fn print_progress(&mut self, state: &DownloadState) {
-        let bps = state
-            .bytes_per_second
-            .iter()
-            .sum::<usize>()
-            / state.bytes_per_second.len().max(1);
+        let bps =
+            state.bytes_per_second.iter().sum::<usize>() / state.bytes_per_second.len().max(1);
         let _ = self.app_handle.emit(
             "package:download:progress",
             DownloadProgressPayload {

@@ -5,12 +5,13 @@ pub use progress::TauriProgress;
 
 use chrono::Datelike;
 use ecow::EcoString;
+use parking_lot::{Mutex, RwLock};
 use std::{
     collections::HashMap,
-    path::PathBuf,
-    sync::{Mutex, OnceLock, RwLock},
+    path::{Path, PathBuf},
+    sync::OnceLock,
 };
-use tauri::{AppHandle, Runtime};
+use tauri::AppHandle;
 use typst::{
     diag::{FileError, FileResult},
     foundations::{Bytes, Datetime},
@@ -26,9 +27,9 @@ use typst_kit::{
     package::{default_package_cache_path, default_package_path, PackageStorage},
 };
 
-pub struct EditorWorld<R: Runtime> {
-    /// Workspace root on disk
-    root: PathBuf,
+pub struct EditorWorld {
+    /// Workspace root on disk — updatable when the user opens a new folder.
+    root: RwLock<PathBuf>,
 
     /// The file currently set as "main" by the user
     main: RwLock<FileId>,
@@ -54,7 +55,7 @@ pub struct EditorWorld<R: Runtime> {
     shadow: RwLock<HashMap<FileId, String>>,
 
     /// Tauri app handle — used to emit download progress events
-    app_handle: AppHandle<R>,
+    app_handle: AppHandle,
 
     /// Package storage: resolves packages from disk cache and downloads
     /// missing packages from the Typst registry
@@ -69,10 +70,10 @@ pub struct EditorWorld<R: Runtime> {
     package_index: OnceLock<Vec<(PackageSpec, Option<EcoString>)>>,
 }
 
-impl<R: Runtime> EditorWorld<R> {
-    pub fn new(root: PathBuf, fonts: Vec<Font>, app_handle: AppHandle<R>) -> Self {
+impl EditorWorld {
+    pub fn new(root: PathBuf, fonts: Vec<Font>, app_handle: AppHandle) -> Self {
         let book = FontBook::from_fonts(&fonts);
-        let user_agent = format!("typwriter-app/0.1");
+        let user_agent = "typwriter-app/0.1".to_string();
         let downloader = Downloader::new(user_agent.clone());
         let package_storage = PackageStorage::new(
             default_package_cache_path(),
@@ -80,7 +81,7 @@ impl<R: Runtime> EditorWorld<R> {
             Downloader::new(user_agent),
         );
         Self {
-            root,
+            root: RwLock::new(root),
             main: RwLock::new(FileId::new(None, VirtualPath::new("main.typ"))), // placeholder
             library: LazyHash::new(
                 Library::builder()
@@ -101,27 +102,48 @@ impl<R: Runtime> EditorWorld<R> {
 
     /// Called by Tauri command when user sets main file
     pub fn set_main(&self, id: FileId) {
-        *self.main.write().unwrap() = id;
+        *self.main.write() = id;
+    }
+
+    /// Update the workspace root and flush all file caches.
+    pub fn set_root(&self, path: PathBuf) {
+        *self.root.write() = path;
+        self.source_cache.lock().clear();
+        self.file_cache.lock().clear();
+        self.shadow.write().clear();
+    }
+
+    /// Convert an absolute path on disk to a local `FileId`.
+    /// Returns `None` if the path is not inside the workspace root.
+    pub fn path_to_id(&self, path: &Path) -> Option<FileId> {
+        let root = self.root.read();
+        let rel = path.strip_prefix(&*root).ok()?;
+        Some(FileId::new(None, VirtualPath::new(rel)))
+    }
+
+    /// Check whether a file has an active shadow (unsaved editor buffer).
+    pub fn has_shadow(&self, id: FileId) -> bool {
+        self.shadow.read().contains_key(&id)
     }
 
     /// Called on every keystroke from the editor
     /// Invalidates the source cache for this file so next compile re-reads it
     pub fn shadow_write(&self, id: FileId, content: String) {
-        self.shadow.write().unwrap().insert(id, content);
+        self.shadow.write().insert(id, content);
         // Invalidate source cache for this file only
-        self.source_cache.lock().unwrap().remove(&id);
+        self.source_cache.lock().remove(&id);
     }
 
     /// Called after file is saved or when switching away
     pub fn shadow_remove(&self, id: FileId) {
-        self.shadow.write().unwrap().remove(&id);
-        self.source_cache.lock().unwrap().remove(&id);
+        self.shadow.write().remove(&id);
+        self.source_cache.lock().remove(&id);
     }
 
     /// Full cache reset – call this after file system events for non-open files
     pub fn invalidate_file(&self, id: FileId) {
-        self.source_cache.lock().unwrap().remove(&id);
-        self.file_cache.lock().unwrap().remove(&id);
+        self.source_cache.lock().remove(&id);
+        self.file_cache.lock().remove(&id);
     }
 
     /// Map a FileId back to an absolute path on disk.
@@ -141,12 +163,12 @@ impl<R: Runtime> EditorWorld<R> {
                 .map_err(FileError::Package)?;
             Ok(pkg_dir.join(vpath.as_rootless_path()))
         } else {
-            Ok(self.root.join(vpath.as_rootless_path()))
+            Ok(self.root.read().join(vpath.as_rootless_path()))
         }
     }
 }
 
-impl<R: Runtime> World for EditorWorld<R> {
+impl World for EditorWorld {
     fn library(&self) -> &LazyHash<Library> {
         &self.library
     }
@@ -156,17 +178,17 @@ impl<R: Runtime> World for EditorWorld<R> {
     }
 
     fn main(&self) -> FileId {
-        *self.main.read().unwrap()
+        *self.main.read()
     }
 
     fn source(&self, id: FileId) -> FileResult<Source> {
         // 1. Check source cache first
-        if let Some(src) = self.source_cache.lock().unwrap().get(&id) {
+        if let Some(src) = self.source_cache.lock().get(&id) {
             return Ok(src.clone());
         }
 
         // 2. Check shadow (in-memory editor buffer)
-        let text = if let Some(content) = self.shadow.read().unwrap().get(&id) {
+        let text = if let Some(content) = self.shadow.read().get(&id) {
             content.clone()
         } else {
             // 3. Fall back to disk (may trigger a package download)
@@ -181,18 +203,18 @@ impl<R: Runtime> World for EditorWorld<R> {
         };
 
         let source = Source::new(id, text);
-        self.source_cache.lock().unwrap().insert(id, source.clone());
+        self.source_cache.lock().insert(id, source.clone());
         Ok(source)
     }
 
     fn file(&self, id: FileId) -> FileResult<Bytes> {
-        if let Some(bytes) = self.file_cache.lock().unwrap().get(&id) {
+        if let Some(bytes) = self.file_cache.lock().get(&id) {
             return Ok(bytes.clone());
         }
         let path = self.id_to_path(id)?;
         let bytes = std::fs::read(&path).map_err(|_| FileError::NotFound(path))?;
         let bytes = Bytes::new(bytes);
-        self.file_cache.lock().unwrap().insert(id, bytes.clone());
+        self.file_cache.lock().insert(id, bytes.clone());
         Ok(bytes)
     }
 
@@ -215,7 +237,7 @@ impl<R: Runtime> World for EditorWorld<R> {
     }
 }
 
-impl<R: Runtime> IdeWorld for EditorWorld<R> {
+impl IdeWorld for EditorWorld {
     fn upcast(&self) -> &dyn World {
         self
     }
@@ -233,9 +255,9 @@ impl<R: Runtime> IdeWorld for EditorWorld<R> {
     /// Returns all file IDs currently known to the world (cached or shadowed).
     fn files(&self) -> Vec<FileId> {
         let mut ids = std::collections::HashSet::new();
-        ids.extend(self.source_cache.lock().unwrap().keys().copied());
-        ids.extend(self.file_cache.lock().unwrap().keys().copied());
-        ids.extend(self.shadow.read().unwrap().keys().copied());
+        ids.extend(self.source_cache.lock().keys().copied());
+        ids.extend(self.file_cache.lock().keys().copied());
+        ids.extend(self.shadow.read().keys().copied());
         ids.into_iter().collect()
     }
 }

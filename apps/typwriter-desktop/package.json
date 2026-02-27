@@ -23,12 +23,13 @@
     "@lezer/highlight": "^1.2.3",
     "@lezer/lr": "^1.4.8",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-log": "~2",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-store": "~2",
     "codemirror": "^6.0.2"
   },
   "devDependencies": {
     "@lezer/generator": "^1.8.0",
-    "@repo/codemirror-language-typst": "workspace:*",
     "@sveltejs/adapter-static": "^3.0.6",
     "@sveltejs/kit": "^2.9.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",

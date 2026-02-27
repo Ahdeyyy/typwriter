@@ -1,47 +1,100 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+// lib.rs — application entry point and Tauri state setup.
 
 mod commands;
 mod compiler;
 mod workspace;
 mod world;
 
+use std::sync::Arc;
+
 use tauri::Manager;
 use typst_kit::fonts::FontSearcher;
 use world::EditorWorld;
+use compiler::PreviewPipeline;
+use workspace::WorkspaceState;
 
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+use commands::{
+    click::{jump_from_click, jump_from_cursor},
+    editor::{discard_shadow, get_completions, get_definitions, get_tooltip, save_file, update_file_content},
+    export::{export_pdf, export_png, export_svg},
+    preview::{get_zoom, set_zoom, trigger_preview},
+    workspace::{
+        create_file, create_folder, delete_file, delete_folder, get_file_tree, move_file,
+        move_folder, open_folder, rename_file, set_main_file,
+    },
+};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(tauri_plugin_log::log::LevelFilter::Info)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // Discover system fonts and, with the `embed-fonts` feature active,
-            // also include Typst's bundled fonts (Libertinus, New CM, DejaVu).
+            // ── Font loading ───────────────────────────────────────────────
             let font_results = FontSearcher::new().search();
-
-            // Eagerly load all found fonts. FontSlot::get() returns None for
-            // any slot whose file cannot be read; filter_map silently skips those.
             let fonts: Vec<typst::text::Font> = font_results
                 .fonts
                 .iter()
                 .filter_map(|slot| slot.get())
                 .collect();
 
-            // Use the process working directory as the workspace root.
-            // Commands will update this when the user opens a project.
-            let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            // ── Initial workspace root (cwd; replaced when user opens a folder) ─
+            let root = std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."));
 
-            app.manage(EditorWorld::new(root, fonts, handle));
+            // ── Shared state ───────────────────────────────────────────────
+            let world = Arc::new(EditorWorld::new(root, fonts, handle.clone()));
+            let pipeline = Arc::new(PreviewPipeline::new(world.clone(), handle.clone()));
+            let workspace = Arc::new(WorkspaceState::new(
+                world.clone(),
+                pipeline.clone(),
+                handle.clone(),
+            ));
+
+            app.manage(world);
+            app.manage(pipeline);
+            app.manage(workspace);
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![
+            // workspace / file-system
+            open_folder,
+            set_main_file,
+            get_file_tree,
+            create_file,
+            create_folder,
+            delete_file,
+            delete_folder,
+            rename_file,
+            move_file,
+            move_folder,
+            // editor buffer + IDE features
+            update_file_content,
+            save_file,
+            discard_shadow,
+            get_completions,
+            get_tooltip,
+            get_definitions,
+            // preview control
+            trigger_preview,
+            set_zoom,
+            get_zoom,
+            // bidirectional jump
+            jump_from_click,
+            jump_from_cursor,
+            // export
+            export_pdf,
+            export_png,
+            export_svg,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
