@@ -1,5 +1,10 @@
 = AGENTS.md
 
+== Naming Conventions
+
+- Use camelCase for variable and function names. For example, `myVariable` and `myFunction()`.
+- Use PascalCase for class names. For example, `MyClass`.
+
 == package management
 
 - This project uses bun as the package manager. To install dependencies, run `bun install` in the project root.
