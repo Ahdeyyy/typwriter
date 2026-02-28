@@ -2,6 +2,8 @@
 import Home from "$lib/components/pages/home.svelte"
 import Workspace from "$lib/components/pages/workspace.svelte"
 
+export type Pages = keyof typeof pages
+
 export const pages = {
     "home": {
         name: "home",
@@ -12,8 +14,12 @@ export const pages = {
         component: Workspace,
     }
 }
-export const page = $state(pages["home"])
 
-export function navigate(target: keyof typeof pages) {
-    Object.assign(page, pages[target]);
+class Page {
+    current = $state(pages["home"])
+    navigate(target: Pages) {
+        this.current = pages[target] as typeof pages["home"]
+    }
 }
+
+export const page = new Page()

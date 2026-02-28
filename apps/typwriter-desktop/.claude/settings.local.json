@@ -10,7 +10,8 @@
       "Bash(RUST_MIN_STACK=8388608 cargo build:*)",
       "Bash(powershell -Command \"Get-PSDrive C | Select-Object Used,Free\")",
       "Bash(RUST_MIN_STACK=8388608 cargo check:*)",
-      "WebFetch(domain:claude.ai)"
+      "WebFetch(domain:claude.ai)",
+      "Bash(wc -l /c/Users/ahdey/projects/typwriter/apps/typwriter-desktop/src/lib/stores/*.svelte.ts)"
     ]
   }
 }

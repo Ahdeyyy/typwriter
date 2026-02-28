@@ -1,0 +1,202 @@
+import { ResultAsync } from 'neverthrow';
+import {
+    getFileTree, setMainFile, createFile, createFolder,
+    deleteFile, deleteFolder, renameFile, moveFile, moveFolder, openFolder
+} from '$lib/ipc/commands';
+import { onWorkspaceFileChanged } from '$lib/ipc/events';
+import type { FileTreeEntry } from '$lib/types';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface FileNode {
+    name: string;
+    path: string;
+    is_dir: boolean;
+    children: FileNode[];
+    expanded: boolean;
+    isEditing: boolean;
+    editName: string;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+export function normalize(path: string): string {
+    return path.replace(/\\/g, '/');
+}
+
+export function basename(path: string): string {
+    return normalize(path).split('/').pop() ?? path;
+}
+
+export function dirname(path: string): string {
+    const n = normalize(path);
+    const idx = n.lastIndexOf('/');
+    return idx >= 0 ? n.slice(0, idx) : '';
+}
+
+function entryToNode(entry: FileTreeEntry, expandedPaths: Set<string>): FileNode {
+    const path = normalize(entry.path);
+    return {
+        name: entry.name,
+        path,
+        is_dir: entry.is_dir,
+        expanded: expandedPaths.has(path),
+        isEditing: false,
+        editName: '',
+        children: entry.children.map(c => entryToNode(c, expandedPaths)),
+    };
+}
+
+function collectExpandedPaths(nodes: FileNode[], result: Set<string> = new Set()): Set<string> {
+    for (const node of nodes) {
+        if (node.is_dir && node.expanded) result.add(node.path);
+        collectExpandedPaths(node.children, result);
+    }
+    return result;
+}
+
+export function filterTree(nodes: FileNode[], query: string): FileNode[] {
+    if (!query.trim()) return nodes;
+    const q = query.toLowerCase();
+    return nodes.flatMap(node => {
+        if (node.is_dir) {
+            const filteredChildren = filterTree(node.children, query);
+            if (filteredChildren.length > 0) {
+                return [{ ...node, expanded: true, children: filteredChildren }];
+            }
+            if (node.name.toLowerCase().includes(q)) {
+                return [{ ...node, expanded: true }];
+            }
+            return [];
+        }
+        return node.name.toLowerCase().includes(q) ? [node] : [];
+    });
+}
+
+function walkAndSetExpanded(nodes: FileNode[], value: boolean): void {
+    for (const node of nodes) {
+        if (node.is_dir) {
+            node.expanded = value;
+            walkAndSetExpanded(node.children, value);
+        }
+    }
+}
+
+function findNode(nodes: FileNode[], path: string): FileNode | null {
+    for (const node of nodes) {
+        if (node.path === path) return node;
+        const found = findNode(node.children, path);
+        if (found) return found;
+    }
+    return null;
+}
+
+// ─── Store ────────────────────────────────────────────────────────────────────
+
+class WorkspaceStore {
+    tree           = $state<FileNode[]>([]);
+    rootPath       = $state<string | null>(null);
+    mainFile       = $state<string | null>(null);
+    activeFilePath = $state<string | null>(null);
+    searchQuery    = $state('');
+    dragSrcPath    = $state<string | null>(null);
+
+    filteredTree = $derived(filterTree(this.tree, this.searchQuery));
+
+    /** Convert a workspace-relative path to an absolute path. Already-absolute paths are returned as-is. */
+    toAbs(path: string): string {
+        if (!this.rootPath) return path;
+        const p = normalize(path);
+        if (/^([A-Za-z]:\/|\/)/.test(p)) return p;
+        return `${this.rootPath}/${p}`;
+    }
+
+    init(root: string): ResultAsync<void, string> {
+        this.rootPath = normalize(root);
+
+        // open the workspace in the backend
+
+        openFolder(root).mapErr(err => console.error('openWorkspace failed:', err));
+
+        // Register file-change listener; errors are only logged
+        onWorkspaceFileChanged(() => {
+            this.refreshTree().mapErr(err =>
+                console.error('refreshTree after file-change failed:', err)
+            );
+        }).mapErr(err => console.error('onWorkspaceFileChanged listener failed:', err));
+
+        return this.refreshTree();
+    }
+
+    refreshTree(): ResultAsync<void, string> {
+        return getFileTree().map(entries => {
+            const expandedPaths = collectExpandedPaths(this.tree);
+            this.tree = entries.map(e => entryToNode(e, expandedPaths));
+        });
+    }
+
+    openFile(path: string): void {
+        this.activeFilePath = path;
+    }
+
+    setMainFileAction(path: string): ResultAsync<void, string> {
+        return setMainFile(this.toAbs(path)).map(() => {
+            this.mainFile = path;
+        });
+    }
+
+    createFileAction(path: string): ResultAsync<void, string> {
+        return createFile(this.toAbs(path)).andThen(() => this.refreshTree());
+    }
+
+    createFolderAction(path: string): ResultAsync<void, string> {
+        return createFolder(this.toAbs(path)).andThen(() => this.refreshTree());
+    }
+
+    deleteFileAction(path: string): ResultAsync<void, string> {
+        return deleteFile(this.toAbs(path)).andThen(() => {
+            if (this.activeFilePath === path) this.activeFilePath = null;
+            return this.refreshTree();
+        });
+    }
+
+    deleteFolderAction(path: string): ResultAsync<void, string> {
+        return deleteFolder(this.toAbs(path)).andThen(() => {
+            if (this.activeFilePath?.startsWith(path + '/')) {
+                this.activeFilePath = null;
+            }
+            return this.refreshTree();
+        });
+    }
+
+    renameAction(src: string, newName: string): ResultAsync<void, string> {
+        const dir = dirname(src);
+        const dst = dir ? `${dir}/${newName}` : newName;
+      console.log("Renaming", src, "to", dst);
+        return renameFile(this.toAbs(src), this.toAbs(dst)).andThen(() => {
+            if (this.activeFilePath === src) this.activeFilePath = dst;
+            if (this.mainFile === src) this.mainFile = dst;
+            return this.refreshTree();
+        });
+    }
+
+    moveAction(src: string, dst: string, is_dir: boolean): ResultAsync<void, string> {
+        const op = is_dir ? moveFolder(this.toAbs(src), this.toAbs(dst)) : moveFile(this.toAbs(src), this.toAbs(dst));
+        return op.andThen(() => this.refreshTree());
+    }
+
+    toggleFolder(path: string): void {
+        const node = findNode(this.tree, path);
+        if (node?.is_dir) node.expanded = !node.expanded;
+    }
+
+    expandAll(): void {
+        walkAndSetExpanded(this.tree, true);
+    }
+
+    collapseAll(): void {
+        walkAndSetExpanded(this.tree, false);
+    }
+}
+
+export const workspace = new WorkspaceStore();

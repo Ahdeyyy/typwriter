@@ -29,7 +29,8 @@
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-store": "~2",
     "codemirror": "^6.0.2",
-    "neverthrow": "^8.2.0"
+    "neverthrow": "^8.2.0",
+    "runed": "^0.37.1"
   },
   "devDependencies": {
     "@internationalized/date": "^3.10.0",
@@ -43,6 +44,7 @@
     "bits-ui": "^2.14.4",
     "clsx": "^2.1.1",
     "mode-watcher": "^1.1.0",
+    "paneforge": "^1.0.2",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",

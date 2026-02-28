@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { navigate } from "@/stores/page.svelte";
+  import { page } from "@/stores/page.svelte";
   import { Window } from "@tauri-apps/api/window";
   import Button from "../ui/button/button.svelte";
   import { getRecentWorkspaces, openFolder } from "$lib/ipc/commands";
   import type { RecentWorkspaceEntry } from "$lib/types";
-
+  import { workspace } from "$lib/stores/workspace.svelte";
+  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { Folder, FolderOpen } from "@lucide/svelte";
 
@@ -31,8 +32,11 @@
   async function handleOpenRecent(path: string) {
     const result = await openFolder(path);
     result.match(
-      () => {
-        navigate("workspace");
+      async () => {
+        await workspace.init(path).mapErr(err =>
+          console.error("Failed to init workspace:", err)
+        );
+        page.navigate("workspace");
       },
       (err) => {
         console.error("Failed to open workspace:", err);
@@ -46,8 +50,11 @@
 
     const result = await openFolder(selected);
     result.match(
-      () => {
-        navigate("workspace");
+      async () => {
+        await workspace.init(selected).mapErr(err =>
+          console.error("Failed to init workspace:", err)
+        );
+        page.navigate("workspace");
       },
       (err) => {
         console.error("Failed to open workspace:", err);
@@ -81,6 +88,7 @@
         </p>
       </div>
     {:else}
+    <!-- <ScrollArea class="h-[200px] w-[350px] rounded-md border p-4"> -->
       <ul class="grid grid-cols-1 gap-2">
         {#each recentWorkspaces as entry (entry.path)}
           <li>
@@ -117,6 +125,7 @@
           </li>
         {/each}
       </ul>
+      <!-- </ScrollArea> -->
     {/if}
   </section>
 

@@ -16,7 +16,7 @@ use world::EditorWorld;
 use commands::{
     click::{jump_from_click, jump_from_cursor},
     editor::{
-        discard_shadow, get_completions, get_definitions, get_tooltip, save_file,
+        discard_shadow, get_completions, get_definitions, get_tooltip, read_file, save_file,
         update_file_content,
     },
     export::{export_pdf, export_png, export_svg},
@@ -81,6 +81,7 @@ pub fn run() {
             move_file,
             move_folder,
             // editor buffer + IDE features
+            read_file,
             update_file_content,
             save_file,
             discard_shadow,

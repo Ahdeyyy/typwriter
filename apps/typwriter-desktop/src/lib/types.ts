@@ -40,6 +40,12 @@ export type JumpResponse =
     | { type: 'url'; url: string }
     | { type: 'position'; page: number; x: number; y: number };
 
+/** Internally-tagged union (discriminant: `type`). */
+export type FileContentResponse =
+    | { type: 'text'; content: string }
+    | { type: 'image'; base64: string; mime: string }
+    | { type: 'unsupported' };
+
 // ─── Click / Jump ─────────────────────────────────────────────────────────────
 
 export interface PreviewPositionResponse {

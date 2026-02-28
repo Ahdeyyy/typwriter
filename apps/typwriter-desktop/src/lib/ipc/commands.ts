@@ -4,6 +4,7 @@ import { ResultAsync } from 'neverthrow';
 import type {
     FileTreeEntry,
     RecentWorkspaceEntry,
+    FileContentResponse,
     CompletionsResponse,
     TooltipResponse,
     JumpResponse,
@@ -65,6 +66,10 @@ export function getRecentWorkspaces() {
 }
 
 // ─── Editor ───────────────────────────────────────────────────────────────────
+
+export function readFile(path: string) {
+    return ResultAsync.fromPromise(invoke<FileContentResponse>('read_file', { path }), toErrString);
+}
 
 export function updateFileContent(path: string, content: string) {
     return ResultAsync.fromPromise(

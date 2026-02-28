@@ -10,8 +10,9 @@
 //   jump_from_cursor — convert the editor cursor offset to a list of
 //                      (page, point) positions in the preview.
 
-use std::{path::Path, sync::Arc};
+use std::{path::Path, sync::Arc, time::Instant};
 
+use log::{debug, error, info};
 use tauri::State;
 use typst::{
     layout::{Abs, Point},
@@ -29,7 +30,7 @@ use crate::{
 /// Convert a pixel click on a specific page of the preview to a source
 /// location.
 ///
-/// `page`  — 0-based page index  
+/// `page`  — 0-based page index
 /// `x`, `y` — pixel coordinates within that page
 #[tauri::command]
 pub fn jump_from_click(
@@ -39,18 +40,29 @@ pub fn jump_from_click(
     world: State<'_, Arc<EditorWorld>>,
     pipeline: State<'_, Arc<PreviewPipeline>>,
 ) -> Result<Option<JumpResponse>, String> {
+    let t = Instant::now();
+    debug!("jump_from_click: page={page} x={x:.1} y={y:.1}");
+
     let zoom = *pipeline.zoom.lock() as f64;
     let point = Point::new(Abs::pt(x / zoom), Abs::pt(y / zoom));
 
     let guard = pipeline.last_document.lock();
-    let doc = guard.as_deref().ok_or("No compiled document available")?;
+    let doc = guard.as_deref().ok_or_else(|| {
+        let e = "No compiled document available";
+        error!("jump_from_click: err=\"{e}\" ({:.1}ms) page={page}", t.elapsed().as_secs_f64() * 1000.0);
+        e.to_string()
+    })?;
 
     if page >= doc.pages.len() {
-        return Err(format!("page index {page} out of bounds"));
+        let e = format!("page index {page} out of bounds (doc has {} pages)", doc.pages.len());
+        error!("jump_from_click: err=\"{e}\" ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        return Err(e);
     }
 
     let frame = &doc.pages[page].frame;
     let jump = typst_ide::jump_from_click(&**world, doc, frame, point);
+    let found = jump.is_some();
+    debug!("jump_from_click: ok found={found} ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
 
     Ok(jump.map(|j| serialize_jump(&j, &**world)))
 }
@@ -61,7 +73,7 @@ pub fn jump_from_click(
 /// positions.  Returns all matching positions across all pages — typically one,
 /// but cross-references may yield multiple hits.
 ///
-/// `path`   — absolute or workspace-relative path to the source file  
+/// `path`   — absolute or workspace-relative path to the source file
 /// `cursor` — byte offset of the cursor within the source text
 #[tauri::command]
 pub fn jump_from_cursor(
@@ -70,17 +82,33 @@ pub fn jump_from_cursor(
     world: State<'_, Arc<EditorWorld>>,
     pipeline: State<'_, Arc<PreviewPipeline>>,
 ) -> Result<Vec<PreviewPositionResponse>, String> {
+    let t = Instant::now();
+    debug!("jump_from_cursor: path={path:?} cursor={cursor}");
+
     let abs = Path::new(&path);
     let id = world
         .path_to_id(abs)
-        .ok_or("Could not resolve file path to a FileId")?;
+        .ok_or_else(|| {
+            let e = "Could not resolve file path to a FileId";
+            error!("jump_from_cursor: err=\"{e}\" ({:.1}ms) path={path:?}", t.elapsed().as_secs_f64() * 1000.0);
+            e.to_string()
+        })?;
 
-    let source = world.source(id).map_err(|e| e.to_string())?;
+    let source = world.source(id).map_err(|e| {
+        error!("jump_from_cursor: source error path={path:?} err=\"{e}\" ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        e.to_string()
+    })?;
 
     let guard = pipeline.last_document.lock();
-    let doc = guard.as_deref().ok_or("No compiled document available")?;
+    let doc = guard.as_deref().ok_or_else(|| {
+        let e = "No compiled document available";
+        error!("jump_from_cursor: err=\"{e}\" ({:.1}ms) path={path:?}", t.elapsed().as_secs_f64() * 1000.0);
+        e.to_string()
+    })?;
 
     let positions = typst_ide::jump_from_cursor(doc, &source, cursor);
+    let count = positions.len();
+    info!("jump_from_cursor: ok — {count} position(s) ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
 
     Ok(positions
         .into_iter()

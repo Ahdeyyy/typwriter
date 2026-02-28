@@ -15,8 +15,9 @@ pub use compile::{compile_document, CompileOutput, SerializedDiagnostic};
 pub use diff::{diff_pages, fingerprint_pages, PageFingerprint};
 pub use render::render_page;
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
+use log::{error, info, warn};
 use parking_lot::Mutex;
 
 use base64::Engine;
@@ -119,27 +120,56 @@ impl PreviewPipeline {
     /// Run the full compile→diff→render pipeline and emit Tauri events for
     /// anything that changed.
     pub fn trigger_compile_and_emit(&self) {
+        let t = Instant::now();
+        info!("trigger_compile_and_emit: starting compile");
+
         let CompileOutput {
             document,
             errors,
             warnings,
         } = compile_document(&*self.world);
 
+        let compile_ms = t.elapsed().as_secs_f64() * 1000.0;
+
+        if !errors.is_empty() {
+            warn!(
+                "trigger_compile_and_emit: compile finished with {} error(s), {} warning(s) ({:.1}ms)",
+                errors.len(), warnings.len(), compile_ms
+            );
+            for e in &errors {
+                warn!("  compile error: [{}] {}", e.file_path.as_deref().unwrap_or("?"), e.message);
+            }
+        } else {
+            info!(
+                "trigger_compile_and_emit: compile ok — {} warning(s) ({:.1}ms)",
+                warnings.len(), compile_ms
+            );
+        }
+
         // Always emit diagnostics so the frontend can clear/show them.
-        let _ = self.app_handle.emit(
+        if let Err(e) = self.app_handle.emit(
             "compile:diagnostics",
             DiagnosticsPayload { errors, warnings },
-        );
+        ) {
+            error!("trigger_compile_and_emit: failed to emit compile:diagnostics err=\"{e}\"");
+        }
 
         let doc = match document {
             Some(d) => d,
-            None => return,
+            None => {
+                info!("trigger_compile_and_emit: no document produced, skipping render");
+                return;
+            }
         };
 
         let new_fps = fingerprint_pages(&doc);
         let old_fps = self.last_fingerprints.lock().clone();
 
         let (changed_indices, removed_count) = diff_pages(&old_fps, &new_fps);
+        info!(
+            "trigger_compile_and_emit: diff — {} page(s) changed, {} removed, {} total",
+            changed_indices.len(), removed_count, new_fps.len()
+        );
 
         // Emit total page count.
         let _ = self.app_handle.emit(
@@ -174,16 +204,34 @@ impl PreviewPipeline {
             }
         }
 
+        info!(
+            "trigger_compile_and_emit: render — {} cache hit(s), {} cache miss(es) zoom={zoom}",
+            cache_hits.len(), cache_misses.len()
+        );
+
         // Parallel pass: render only cache misses.
+        let render_t = Instant::now();
         let rendered: Vec<(usize, PageFingerprint, Vec<u8>)> = cache_misses
             .par_iter()
             .filter_map(|&idx| {
                 let fp = new_fps[idx];
                 let page = &doc.pages[idx];
-                let png = render_page(page, zoom).ok()?;
-                Some((idx, fp, png))
+                match render_page(page, zoom) {
+                    Ok(png) => Some((idx, fp, png)),
+                    Err(e) => {
+                        error!("trigger_compile_and_emit: render error page={idx} err=\"{e}\"");
+                        None
+                    }
+                }
             })
             .collect();
+
+        if !cache_misses.is_empty() {
+            info!(
+                "trigger_compile_and_emit: rendered {} page(s) ({:.1}ms)",
+                rendered.len(), render_t.elapsed().as_secs_f64() * 1000.0
+            );
+        }
 
         // Emit cache hits.
         for (idx, b64) in cache_hits {
@@ -215,16 +263,28 @@ impl PreviewPipeline {
         // Update stored state.
         *self.last_fingerprints.lock() = new_fps;
         *self.last_document.lock() = Some(Arc::new(doc));
+
+        info!(
+            "trigger_compile_and_emit: done — total {:.1}ms",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
     }
 
     // ─── Export ────────────────────────────────────────────────────────────
 
     pub fn export_pdf(&self, config: PdfExportConfig) -> Result<(), String> {
+        let t = Instant::now();
+        info!("export_pdf: path={:?}", config.path);
+
         let doc = self
             .last_document
             .lock()
             .as_ref()
-            .ok_or("No compiled document available")?
+            .ok_or_else(|| {
+                let e = "No compiled document available";
+                error!("export_pdf: err=\"{e}\"");
+                e.to_string()
+            })?
             .clone();
 
         let options = typst_pdf::PdfOptions {
@@ -236,52 +296,93 @@ impl PreviewPipeline {
         };
 
         let bytes = typst_pdf::pdf(&doc, &options).map_err(|e| {
-            e.iter()
-                .map(|d| d.message.to_string())
-                .collect::<Vec<_>>()
-                .join("; ")
+            let msg = e.iter().map(|d| d.message.to_string()).collect::<Vec<_>>().join("; ");
+            error!("export_pdf: pdf generation failed err=\"{msg}\" ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+            msg
         })?;
-        std::fs::write(&config.path, bytes).map_err(|e| e.to_string())
+
+        std::fs::write(&config.path, &bytes).map_err(|e| {
+            error!("export_pdf: write failed path={:?} err=\"{e}\" ({:.1}ms)", config.path, t.elapsed().as_secs_f64() * 1000.0);
+            e.to_string()
+        })?;
+
+        info!("export_pdf: ok — {} bytes ({:.1}ms)", bytes.len(), t.elapsed().as_secs_f64() * 1000.0);
+        Ok(())
     }
 
     pub fn export_png(&self, config: PngExportConfig) -> Result<(), String> {
+        let t = Instant::now();
+        info!("export_png: dir={:?} scale={:?} prefix={:?}", config.dir, config.scale, config.prefix);
+
         let doc = self
             .last_document
             .lock()
             .as_ref()
-            .ok_or("No compiled document available")?
+            .ok_or_else(|| {
+                let e = "No compiled document available";
+                error!("export_png: err=\"{e}\"");
+                e.to_string()
+            })?
             .clone();
 
         let scale = config.scale.unwrap_or(2.0);
         let prefix = config.prefix.as_deref().unwrap_or("page");
         let dir = std::path::Path::new(&config.dir);
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(dir).map_err(|e| {
+            error!("export_png: create_dir_all failed dir={:?} err=\"{e}\"", config.dir);
+            e.to_string()
+        })?;
 
+        let page_count = doc.pages.len();
         for (i, page) in doc.pages.iter().enumerate() {
-            let png = render_page(page, scale)?;
+            let png = render_page(page, scale).map_err(|e| {
+                error!("export_png: render failed page={i} err=\"{e}\"");
+                e
+            })?;
             let filename = format!("{}-{}.png", prefix, i + 1);
-            std::fs::write(dir.join(filename), png).map_err(|e| e.to_string())?;
+            std::fs::write(dir.join(&filename), png).map_err(|e| {
+                error!("export_png: write failed file={filename:?} err=\"{e}\"");
+                e.to_string()
+            })?;
         }
+
+        info!("export_png: ok — {page_count} page(s) ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
         Ok(())
     }
 
     pub fn export_svg(&self, config: SvgExportConfig) -> Result<(), String> {
+        let t = Instant::now();
+        info!("export_svg: dir={:?} prefix={:?}", config.dir, config.prefix);
+
         let doc = self
             .last_document
             .lock()
             .as_ref()
-            .ok_or("No compiled document available")?
+            .ok_or_else(|| {
+                let e = "No compiled document available";
+                error!("export_svg: err=\"{e}\"");
+                e.to_string()
+            })?
             .clone();
 
         let prefix = config.prefix.as_deref().unwrap_or("page");
         let dir = std::path::Path::new(&config.dir);
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(dir).map_err(|e| {
+            error!("export_svg: create_dir_all failed dir={:?} err=\"{e}\"", config.dir);
+            e.to_string()
+        })?;
 
+        let page_count = doc.pages.len();
         for (i, page) in doc.pages.iter().enumerate() {
             let svg = typst_svg::svg(page);
             let filename = format!("{}-{}.svg", prefix, i + 1);
-            std::fs::write(dir.join(filename), svg.as_str()).map_err(|e| e.to_string())?;
+            std::fs::write(dir.join(&filename), svg.as_str()).map_err(|e| {
+                error!("export_svg: write failed file={filename:?} err=\"{e}\"");
+                e.to_string()
+            })?;
         }
+
+        info!("export_svg: ok — {page_count} page(s) ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
         Ok(())
     }
 }
