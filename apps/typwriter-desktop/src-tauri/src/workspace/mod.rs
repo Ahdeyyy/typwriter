@@ -365,6 +365,49 @@ impl WorkspaceState {
         self.rename_file(src, dst)
     }
 
+    /// Import (copy) one or more external files into a workspace directory.
+    pub fn import_files(&self, sources: &[String], dest_dir: &str) -> Result<(), String> {
+        let t = Instant::now();
+        let dest = self.resolve(dest_dir)?;
+        info!("WorkspaceState::import_files: dest={dest:?} count={}", sources.len());
+
+        if !dest.is_dir() {
+            let e = format!("{} is not a directory", dest.display());
+            error!("WorkspaceState::import_files: err=\"{e}\"");
+            return Err(e);
+        }
+
+        for src_str in sources {
+            let src_path = PathBuf::from(src_str);
+            if !src_path.is_file() {
+                let e = format!("Source is not a file: {}", src_path.display());
+                error!("WorkspaceState::import_files: err=\"{e}\"");
+                return Err(e);
+            }
+            let file_name = src_path
+                .file_name()
+                .ok_or_else(|| {
+                    let e = format!("Cannot determine file name for {}", src_path.display());
+                    error!("WorkspaceState::import_files: err=\"{e}\"");
+                    e
+                })?;
+            let dst_path = dest.join(file_name);
+            if dst_path.exists() {
+                let e = format!("File already exists: {}", dst_path.display());
+                error!("WorkspaceState::import_files: err=\"{e}\"");
+                return Err(e);
+            }
+            std::fs::copy(&src_path, &dst_path).map_err(|e| {
+                error!("WorkspaceState::import_files: copy failed src={src_path:?} dst={dst_path:?} err=\"{e}\"");
+                e.to_string()
+            })?;
+            info!("WorkspaceState::import_files: copied {:?} -> {:?}", src_path, dst_path);
+        }
+
+        info!("WorkspaceState::import_files: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        Ok(())
+    }
+
     /// Move an entire directory to a new location.
     pub fn move_folder(&self, src: &str, dst: &str) -> Result<(), String> {
         let t = Instant::now();

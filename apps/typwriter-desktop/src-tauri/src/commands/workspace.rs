@@ -151,6 +151,22 @@ pub fn move_folder(
 }
 
 #[tauri::command]
+pub fn import_files(
+    sources: Vec<String>,
+    dest_dir: String,
+    workspace: State<'_, Arc<WorkspaceState>>,
+) -> Result<(), String> {
+    let t = Instant::now();
+    info!("import_files: dest_dir={dest_dir:?} count={}", sources.len());
+    let result = workspace.import_files(&sources, &dest_dir);
+    match &result {
+        Ok(_)  => info!("import_files: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0),
+        Err(e) => error!("import_files: err=\"{e}\" ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0),
+    }
+    result
+}
+
+#[tauri::command]
 pub fn get_recent_workspaces(
     workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Vec<RecentWorkspaceEntry> {

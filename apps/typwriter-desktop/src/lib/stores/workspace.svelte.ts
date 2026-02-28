@@ -1,8 +1,9 @@
 import { ResultAsync } from 'neverthrow';
 import {
     getFileTree, setMainFile, createFile, createFolder,
-    deleteFile, deleteFolder, renameFile, moveFile, moveFolder, openFolder
+    deleteFile, deleteFolder, renameFile, moveFile, moveFolder, openFolder, importFiles
 } from '$lib/ipc/commands';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { onWorkspaceFileChanged } from '$lib/ipc/events';
 import type { FileTreeEntry } from '$lib/types';
 
@@ -94,12 +95,12 @@ function findNode(nodes: FileNode[], path: string): FileNode | null {
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 class WorkspaceStore {
-    tree           = $state<FileNode[]>([]);
-    rootPath       = $state<string | null>(null);
-    mainFile       = $state<string | null>(null);
+    tree = $state<FileNode[]>([]);
+    rootPath = $state<string | null>(null);
+    mainFile = $state<string | null>(null);
     activeFilePath = $state<string | null>(null);
-    searchQuery    = $state('');
-    dragSrcPath    = $state<string | null>(null);
+    searchQuery = $state('');
+    dragSrcPath = $state<string | null>(null);
 
     filteredTree = $derived(filterTree(this.tree, this.searchQuery));
 
@@ -172,7 +173,7 @@ class WorkspaceStore {
     renameAction(src: string, newName: string): ResultAsync<void, string> {
         const dir = dirname(src);
         const dst = dir ? `${dir}/${newName}` : newName;
-      console.log("Renaming", src, "to", dst);
+        console.log("Renaming", src, "to", dst);
         return renameFile(this.toAbs(src), this.toAbs(dst)).andThen(() => {
             if (this.activeFilePath === src) this.activeFilePath = dst;
             if (this.mainFile === src) this.mainFile = dst;
@@ -183,6 +184,21 @@ class WorkspaceStore {
     moveAction(src: string, dst: string, is_dir: boolean): ResultAsync<void, string> {
         const op = is_dir ? moveFolder(this.toAbs(src), this.toAbs(dst)) : moveFile(this.toAbs(src), this.toAbs(dst));
         return op.andThen(() => this.refreshTree());
+    }
+
+    async importFilesAction(destDir: string): Promise<void> {
+        const selected = await openDialog({ multiple: true, directory: false });
+        if (!selected) return;
+        const paths = Array.isArray(selected) ? selected : [selected];
+        if (paths.length === 0) return;
+        const result = await importFiles(paths, this.toAbs(destDir));
+        if (result.isOk()) {
+            await this.refreshTree();
+        }
+        return result.match(
+            () => { },
+            (err) => { throw new Error(err); }
+        );
     }
 
     toggleFolder(path: string): void {

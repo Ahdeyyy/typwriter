@@ -58,6 +58,10 @@ export function moveFolder(src: string, dst: string) {
     return ResultAsync.fromPromise(invoke<void>('move_folder', { src, dst }), toErrString);
 }
 
+export function importFiles(sources: string[], destDir: string) {
+    return ResultAsync.fromPromise(invoke<void>('import_files', { sources, destDir }), toErrString);
+}
+
 export function getRecentWorkspaces() {
     return ResultAsync.fromPromise(
         invoke<RecentWorkspaceEntry[]>('get_recent_workspaces'),

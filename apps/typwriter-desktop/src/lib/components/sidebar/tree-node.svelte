@@ -107,6 +107,16 @@
     if (e.key === "Escape") { e.preventDefault(); cancelCreate(); }
   }
 
+  // ─── Import files ────────────────────────────────────────────────────────────
+
+  async function handleImportFiles() {
+    try {
+      await workspace.importFilesAction(node.path);
+    } catch (err) {
+      toast.error(`Import failed: ${err}`);
+    }
+  }
+
   // ─── Delete ──────────────────────────────────────────────────────────────────
 
   async function handleDelete() {
@@ -230,6 +240,9 @@
       </ContextMenu.Item>
       <ContextMenu.Item onclick={() => startCreate("folder")}>
         New Folder
+      </ContextMenu.Item>
+      <ContextMenu.Item onclick={handleImportFiles}>
+        Import Files…
       </ContextMenu.Item>
       <ContextMenu.Separator />
     {:else}

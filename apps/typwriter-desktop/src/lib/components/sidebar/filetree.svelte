@@ -57,6 +57,17 @@
     if (e.key === "Escape") { e.preventDefault(); cancelRootCreate(); }
   }
 
+  // ─── Import files ──────────────────────────────────────────────────────────
+
+  async function handleImportFiles() {
+    if (!workspace.rootPath) return;
+    try {
+      await workspace.importFilesAction(workspace.rootPath);
+    } catch (err) {
+      toast.error(`Import failed: ${err}`);
+    }
+  }
+
   // ─── Root drop target ─────────────────────────────────────────────────────
 
   let rootDropTarget = $state(false);
@@ -226,6 +237,9 @@
         </ContextMenu.Item>
         <ContextMenu.Item onclick={() => startRootCreate("folder")}>
           New Folder
+        </ContextMenu.Item>
+        <ContextMenu.Item onclick={handleImportFiles}>
+          Import Files…
         </ContextMenu.Item>
       </ContextMenu.Content>
     </ContextMenu.Root>
