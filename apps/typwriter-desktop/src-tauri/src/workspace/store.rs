@@ -11,7 +11,9 @@
 // Thumbnail PNGs are written directly to `<workspace_root>/.typwriter/thumbnail.png`.
 
 use std::path::Path;
+use std::time::Instant;
 
+use log::{info, warn};
 use serde_json::{json, Value as JsonValue};
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
@@ -24,8 +26,9 @@ const MAX_RECENT: usize = 10;
 /// Add `root` to the front of the recent-workspaces list, deduplicating
 /// and capping at [`MAX_RECENT`] entries.
 pub fn add_recent_workspace(handle: &AppHandle, root: &Path) {
+    let t = Instant::now();
     let Ok(store) = handle.store(STORE_FILE) else {
-        eprintln!("store: could not open {STORE_FILE}");
+        warn!("store: could not open {STORE_FILE}");
         return;
     };
 
@@ -40,13 +43,14 @@ pub fn add_recent_workspace(handle: &AppHandle, root: &Path) {
     list.retain(|p| p != &path_str);
 
     // Prepend.
-    list.insert(0, path_str);
+    list.insert(0, path_str.clone());
 
     // Cap at MAX_RECENT.
     list.truncate(MAX_RECENT);
 
     store.set("recent_workspaces", json!(list));
     let _ = store.save();
+    info!("store: added recent workspace ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
 }
 
 /// Return the recent workspaces list (newest first).
@@ -65,8 +69,9 @@ pub fn get_recent_workspaces(handle: &AppHandle) -> Vec<String> {
 
 /// Persist which `.typ` file is the main file for the workspace at `root`.
 pub fn set_workspace_main_file(handle: &AppHandle, root: &Path, main_file: &Path) {
+    let t = Instant::now();
     let Ok(store) = handle.store(STORE_FILE) else {
-        eprintln!("store: could not open {STORE_FILE}");
+        warn!("store: could not open {STORE_FILE}");
         return;
     };
 
@@ -88,6 +93,7 @@ pub fn set_workspace_main_file(handle: &AppHandle, root: &Path, main_file: &Path
 
     store.set("workspace_main_files", JsonValue::Object(map));
     let _ = store.save();
+    info!("store: set workspace main file ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
 }
 
 /// Look up the persisted main file for the workspace rooted at `root`.
@@ -123,10 +129,13 @@ pub fn ensure_typwriter_dir(root: &Path) -> Result<(), String> {
 
 /// Write a thumbnail PNG to `<root>/.typwriter/thumbnail.png`.
 pub fn save_thumbnail(root: &Path, png_bytes: &[u8]) -> Result<(), String> {
+    let t = Instant::now();
     let dir = root.join(TYPWRITER_DIR);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(THUMBNAIL_FILE);
-    std::fs::write(&path, png_bytes).map_err(|e| format!("Failed to write thumbnail: {e}"))
+    std::fs::write(&path, png_bytes).map_err(|e| format!("Failed to write thumbnail: {e}"))?;
+    info!("store: saved thumbnail {} bytes ({:.1}ms)", png_bytes.len(), t.elapsed().as_secs_f64() * 1000.0);
+    Ok(())
 }
 
 /// Read the thumbnail for a workspace (if it exists) and return raw PNG bytes.

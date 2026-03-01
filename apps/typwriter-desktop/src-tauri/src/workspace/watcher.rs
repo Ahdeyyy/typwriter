@@ -8,8 +8,9 @@
 // invalidated and the PreviewPipeline is asked to re-compile and emit updated
 // page events to the frontend.
 
-use std::{path::PathBuf, sync::mpsc, sync::Arc, thread, time::Duration};
+use std::{path::PathBuf, sync::mpsc, sync::Arc, thread, time::{Duration, Instant}};
 
+use log::info;
 use notify::{
     event::{EventKind, ModifyKind},
     Event, RecommendedWatcher, RecursiveMode, Watcher,
@@ -36,10 +37,13 @@ pub fn start_watcher(
     pipeline: Arc<PreviewPipeline>,
     app_handle: AppHandle,
 ) -> notify::Result<RecommendedWatcher> {
+    let t = Instant::now();
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
 
     let mut watcher = notify::recommended_watcher(tx)?;
     watcher.watch(&root, RecursiveMode::Recursive)?;
+
+    info!("watcher: initialized on {:?} ({:.1}ms)", root.file_name().unwrap_or_default(), t.elapsed().as_secs_f64() * 1000.0);
 
     // Move the blocking receiver loop to a background thread.
     thread::spawn(move || {
@@ -80,6 +84,7 @@ fn dispatch_loop(
         }
 
         // Collect distinct affected paths.
+        let t_batch = Instant::now();
         let mut paths: Vec<PathBuf> = batch
             .into_iter()
             .flatten()
@@ -110,6 +115,8 @@ fn dispatch_loop(
                 FileChangedPayload { path: path_str },
             );
         }
+
+        info!("watcher_batch: processed {} files ({:.1}ms)", paths.len(), t_batch.elapsed().as_secs_f64() * 1000.0);
 
         // Trigger a recompile and stream updated pages.
         pipeline.trigger_compile_and_emit();

@@ -5,11 +5,13 @@ pub use progress::TauriProgress;
 
 use chrono::Datelike;
 use ecow::EcoString;
+use log::info;
 use parking_lot::{Mutex, RwLock};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::OnceLock,
+    time::Instant,
 };
 use tauri::AppHandle;
 use typst::{
@@ -268,23 +270,33 @@ impl IdeWorld for EditorWorld {
 /// [`IdeWorld::packages`]. Returns an empty vec on any network or parse error.
 fn fetch_package_index(downloader: &Downloader) -> Vec<(PackageSpec, Option<EcoString>)> {
     const INDEX_URL: &str = "https://packages.typst.org/preview/index.json";
+    let t = Instant::now();
 
     let response = match downloader.download(INDEX_URL) {
         Ok(r) => r,
-        Err(_) => return vec![],
+        Err(_) => {
+            info!("package_index: network error ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+            return vec![];
+        }
     };
 
     let json: serde_json::Value = match response.into_json() {
         Ok(v) => v,
-        Err(_) => return vec![],
+        Err(_) => {
+            info!("package_index: parse error ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+            return vec![];
+        }
     };
 
     let array = match json.as_array() {
         Some(a) => a,
-        None => return vec![],
+        None => {
+            info!("package_index: invalid format ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+            return vec![];
+        }
     };
 
-    array
+    let packages: Vec<(PackageSpec, Option<EcoString>)> = array
         .iter()
         .filter_map(|entry| {
             let name = entry.get("name")?.as_str()?;
@@ -301,5 +313,8 @@ fn fetch_package_index(downloader: &Downloader) -> Vec<(PackageSpec, Option<EcoS
             };
             Some((spec, description))
         })
-        .collect()
+        .collect();
+
+    info!("package_index: fetched {} packages ({:.1}ms)", packages.len(), t.elapsed().as_secs_f64() * 1000.0);
+    packages
 }
