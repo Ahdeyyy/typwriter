@@ -1,4 +1,4 @@
-import { ResultAsync } from 'neverthrow';
+import { err, ResultAsync } from 'neverthrow';
 import {
     getFileTree, setMainFile, createFile, createFolder,
     deleteFile, deleteFolder, renameFile, moveFile, moveFolder, openFolder, importFiles
@@ -148,6 +148,11 @@ class WorkspaceStore {
     }
 
     setMainFileAction(path: string): ResultAsync<void, string> {
+        const ext = path.split('.').pop()?.toLowerCase();
+        const error = err(`Only .typ files can be set as main file, but got .${ext}`);
+        if (ext !== 'typ') {
+            return ResultAsync.fromPromise(Promise.reject(error.error), () => error.error);
+        }
         return setMainFile(this.toAbs(path)).map(() => {
             this.mainFile = path;
         });
