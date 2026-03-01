@@ -89,6 +89,9 @@ pub struct PreviewPipeline {
     app_handle: AppHandle,
     /// Preview zoom: pixels per typst point.  Default 2.0 (retina).
     pub zoom: Mutex<f32>,
+    /// The page index currently visible in the frontend preview pane.
+    /// Used to prioritise rendering so the user sees instant updates.
+    visible_page: Mutex<usize>,
 }
 
 impl PreviewPipeline {
@@ -100,6 +103,7 @@ impl PreviewPipeline {
             last_document: Mutex::new(None),
             app_handle,
             zoom: Mutex::new(2.0),
+            visible_page: Mutex::new(0),
         }
     }
 
@@ -113,6 +117,11 @@ impl PreviewPipeline {
     pub fn set_zoom(&self, zoom: f32) {
         *self.zoom.lock() = zoom;
         self.invalidate_cache();
+    }
+
+    /// Update which page the frontend is currently showing.
+    pub fn set_visible_page(&self, page: usize) {
+        *self.visible_page.lock() = page;
     }
 
     // ─── Main pipeline ─────────────────────────────────────────────────────
@@ -188,6 +197,7 @@ impl PreviewPipeline {
 
         // Render dirty pages, using cache where possible.
         let zoom = *self.zoom.lock();
+        let vis = *self.visible_page.lock();
 
         // Sequential pass: check cache for hits.
         let mut cache_hits: Vec<(usize, String)> = Vec::new();
@@ -209,31 +219,9 @@ impl PreviewPipeline {
             cache_hits.len(), cache_misses.len()
         );
 
-        // Parallel pass: render only cache misses.
-        let render_t = Instant::now();
-        let rendered: Vec<(usize, PageFingerprint, Vec<u8>)> = cache_misses
-            .par_iter()
-            .filter_map(|&idx| {
-                let fp = new_fps[idx];
-                let page = &doc.pages[idx];
-                match render_page(page, zoom) {
-                    Ok(png) => Some((idx, fp, png)),
-                    Err(e) => {
-                        error!("trigger_compile_and_emit: render error page={idx} err=\"{e}\"");
-                        None
-                    }
-                }
-            })
-            .collect();
-
-        if !cache_misses.is_empty() {
-            info!(
-                "trigger_compile_and_emit: rendered {} page(s) ({:.1}ms)",
-                rendered.len(), render_t.elapsed().as_secs_f64() * 1000.0
-            );
-        }
-
-        // Emit cache hits.
+        // Emit cache hits (visible page first).
+        // Sort so visible page cache hit is emitted first.
+        cache_hits.sort_by_key(|(idx, _)| if *idx == vis { 0 } else { 1 });
         for (idx, b64) in cache_hits {
             let _ = self.app_handle.emit(
                 "preview:page-updated",
@@ -244,8 +232,61 @@ impl PreviewPipeline {
             );
         }
 
-        // Store rendered results in cache and emit.
-        {
+        let render_t = Instant::now();
+
+        // Priority pass: render the visible page first (if it's a cache miss).
+        let (priority_misses, rest_misses): (Vec<usize>, Vec<usize>) = cache_misses
+            .into_iter()
+            .partition(|&idx| idx == vis);
+
+        for idx in &priority_misses {
+            let fp = new_fps[*idx];
+            let page = &doc.pages[*idx];
+            match render_page(page, zoom) {
+                Ok(png) => {
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
+                    self.page_cache.lock().insert(fp, b64.clone());
+                    let _ = self.app_handle.emit(
+                        "preview:page-updated",
+                        PageUpdatedPayload { index: *idx, data: b64 },
+                    );
+                    info!(
+                        "trigger_compile_and_emit: priority page {} emitted ({:.1}ms)",
+                        idx, render_t.elapsed().as_secs_f64() * 1000.0
+                    );
+                }
+                Err(e) => {
+                    error!("trigger_compile_and_emit: render error page={idx} err=\"{e}\"");
+                }
+            }
+        }
+
+        // Eagerly commit the new fingerprints after the priority render so that
+        // any concurrent pipeline run that starts while the rayon batch below is
+        // executing will read up-to-date fingerprints.  Without this, a second
+        // run would find the priority page in the cache (we just inserted it)
+        // and re-emit it as a cache hit, causing a double render on the frontend.
+        if !priority_misses.is_empty() {
+            *self.last_fingerprints.lock() = new_fps.clone();
+        }
+
+        // Remaining pages: render in parallel via rayon.
+        if !rest_misses.is_empty() {
+            let rendered: Vec<(usize, PageFingerprint, Vec<u8>)> = rest_misses
+                .par_iter()
+                .filter_map(|&idx| {
+                    let fp = new_fps[idx];
+                    let page = &doc.pages[idx];
+                    match render_page(page, zoom) {
+                        Ok(png) => Some((idx, fp, png)),
+                        Err(e) => {
+                            error!("trigger_compile_and_emit: render error page={idx} err=\"{e}\"");
+                            None
+                        }
+                    }
+                })
+                .collect();
+
             let mut cache = self.page_cache.lock();
             for (idx, fp, png) in rendered {
                 let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
@@ -258,6 +299,14 @@ impl PreviewPipeline {
                     },
                 );
             }
+        }
+
+        let total_misses = priority_misses.len() + rest_misses.len();
+        if total_misses > 0 {
+            info!(
+                "trigger_compile_and_emit: rendered {} page(s) ({:.1}ms)",
+                total_misses, render_t.elapsed().as_secs_f64() * 1000.0
+            );
         }
 
         // Update stored state.
