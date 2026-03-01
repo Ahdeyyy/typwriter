@@ -1,18 +1,18 @@
+import type { EditorState } from '@codemirror/state';
 import { ResultAsync } from 'neverthrow';
-import { convertFileSrc } from '@tauri-apps/api/core';
-import { updateFileContent, saveFile, readFile } from '$lib/ipc/commands';
-import { workspace } from './workspace.svelte';
+import { updateFileContent, saveFile, readFile, discardShadow } from '$lib/ipc/commands';
+import { workspace, normalize, basename } from './workspace.svelte';
 
 // ─── File type detection ───────────────────────────────────────────────────────
 
 const TEXT_EXTS = new Set([
     '.typ', '.txt', '.md', '.markdown', '.json', '.toml',
     '.yaml', '.yml', '.html', '.htm', '.css', '.js', '.ts',
-    , '.xml', '.csv', '.ini', '.env', '.sh', '.rs','.bib'
+    '.xml', '.csv', '.ini', '.env', '.sh', '.rs', '.bib',
 ]);
 
 const IMAGE_EXTS = new Set([
-    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', 'svg','.ico', '.avif', '.tiff', '.svg'
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico', '.avif', '.tiff',
 ]);
 
 export type ViewMode = 'text' | 'image' | 'unsupported';
@@ -22,92 +22,259 @@ function extOf(path: string): string {
     return dot >= 0 ? path.slice(dot).toLowerCase() : '';
 }
 
+// ─── Tab ──────────────────────────────────────────────────────────────────────
+
+export interface TabInfo {
+    /** Unique tab ID — equals relPath so each file is open at most once. */
+    id: string;
+    relPath: string;
+    absPath: string;
+    name: string;
+    viewMode: ViewMode;
+    isEditable: boolean;
+    content: string;
+    imageSrc: string | null;
+    hasUnsavedChanges: boolean;
+    isLoading: boolean;
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
+const SHADOW_DELAY    = 300;  // ms — fast shadow write for live preview
+const DISK_SAVE_DELAY = 750;  // ms — auto-save to disk after last edit
+
 class EditorStore {
-    filePath          = $state<string | null>(null);
-    fileContent       = $state('');
-    imageSrc          = $state<string | null>(null);
-    viewMode          = $state<ViewMode>('text');
-    isEditable        = $state(true);
-    isLoading         = $state(false);
-    hasUnsavedChanges = $state(false);
+    tabs        = $state<TabInfo[]>([]);
+    activeTabId = $state<string | null>(null);
 
-    private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    activeTab = $derived(
+        this.activeTabId !== null
+            ? (this.tabs.find(t => t.id === this.activeTabId) ?? null)
+            : null
+    );
 
-  loadFile(relPath: string): ResultAsync<void, string> {
-    const path = workspace.toAbs(relPath);
-        this.filePath = path;
-        this.hasUnsavedChanges = false;
-        this.isLoading = true;
+    // ── CodeMirror state map (plain Map, NOT $state — prevents Svelte deep-proxying CM internals)
+    private _cmStates       = new Map<string, EditorState>();
+    // ── Per-tab debounce timers (plain Map, no rune needed)
+    private _shadowTimers   = new Map<string, ReturnType<typeof setTimeout>>();
+    private _autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-        const ext = extOf(path);
+    // ─── Open file ────────────────────────────────────────────────────────────
 
-        if (IMAGE_EXTS.has(ext)) {
-            this.viewMode = 'image';
-            this.isEditable = false;
-            // this.imageSrc = convertFileSrc(path);
+    openFile(relPath: string): ResultAsync<void, string> {
+        const id = normalize(relPath);
 
-            // this.fileContent = '';
-            // this.isLoading = false;
-          return ResultAsync.fromSafePromise<void, string>(readFile(path).then(r => {
-                if (r.isErr()) throw new Error(`Error reading file ${path} : ${r.error}`);
-                if (r.value.type !== 'image') throw new Error(`Expected binary file, got ${r.value.type}`);
-                this.imageSrc = `data:${r.value.mime};base64,${r.value.base64}`;
-                this.fileContent = '';
-                this.isLoading = false;
-            })).mapErr(e => String(e));
+        // If tab is already open, just activate it.
+        const existing = this.tabs.find(t => t.id === id);
+        if (existing) {
+            this.activeTabId = id;
+            return ResultAsync.fromSafePromise(Promise.resolve());
         }
 
-        if (TEXT_EXTS.has(ext)) {
-            this.viewMode = 'text';
-            this.isEditable = true;
-            this.imageSrc = null;
-            // const url = convertFileSrc(path);
-            return ResultAsync.fromPromise<string,string>(
-                readFile(path).then(r => {
-                    // if (!r.ok) throw new Error(`HTTP ${r.status} reading file`);
-                    // return r.text();
-                    if (r.isErr()) throw new Error(`Error reading file ${path} : ${r.error}`);
-                    if (r.value.type !== 'text') throw new Error(`Expected text file, got ${r.value.type}`);
-                    return r.value.content;
-                }),
-                (e) => String(e)
-            ).map(content => {
-                this.fileContent = content;
-                this.isLoading = false;
-            });
+        const absPath   = workspace.toAbs(id);
+        const ext       = extOf(id);
+        const viewMode: ViewMode = IMAGE_EXTS.has(ext)
+            ? 'image'
+            : TEXT_EXTS.has(ext)
+                ? 'text'
+                : 'unsupported';
+
+        const tab: TabInfo = {
+            id,
+            relPath: id,
+            absPath,
+            name:             basename(id),
+            viewMode,
+            isEditable:       viewMode === 'text',
+            content:          '',
+            imageSrc:         null,
+            hasUnsavedChanges: false,
+            isLoading:        viewMode !== 'unsupported',
+        };
+
+        this.tabs.push(tab);
+        this.activeTabId = id;
+
+        if (viewMode === 'unsupported') {
+            return ResultAsync.fromSafePromise(Promise.resolve());
         }
 
-        // Unsupported binary
-        this.viewMode = 'unsupported';
-        this.isEditable = false;
-        this.imageSrc = null;
-        this.fileContent = '';
-        this.isLoading = false;
-        return ResultAsync.fromSafePromise(Promise.resolve());
+        return this._loadTabContent(id, absPath, viewMode);
     }
+
+    // ─── Internal: load content ───────────────────────────────────────────────
+    // IMPORTANT: we accept tabId + raw values rather than the local `tab` object
+    // because `this.tabs.push(tab)` causes Svelte 5 to wrap the element in a
+    // reactive proxy. The original `tab` variable still points to the *raw*
+    // (unproxied) object, so mutations on it are invisible to Svelte. We must
+    // look up the element through `this.tabs.find(...)` inside the async
+    // callback to get the reactive proxy and trigger UI updates.
+
+    private _loadTabContent(tabId: string, absPath: string, viewMode: ViewMode): ResultAsync<void, string> {
+        return ResultAsync.fromPromise(
+            readFile(absPath).then(r => {
+                // Re-acquire the reactive proxy from the live array.
+                const liveTab = this.tabs.find(t => t.id === tabId);
+                if (!liveTab) return; // tab was closed before loading finished
+
+                if (r.isErr()) throw new Error(r.error);
+
+                if (viewMode === 'image') {
+                    if (r.value.type !== 'image') throw new Error(`Expected image, got ${r.value.type}`);
+                    liveTab.imageSrc = `data:${r.value.mime};base64,${r.value.base64}`;
+                    liveTab.content  = '';
+                } else {
+                    if (r.value.type !== 'text') throw new Error(`Expected text, got ${r.value.type}`);
+                    liveTab.content  = r.value.content;
+                }
+
+                liveTab.isLoading = false;
+            }),
+            (e) => String(e)
+        );
+    }
+
+    // ─── Close tab ────────────────────────────────────────────────────────────
+
+    closeTab(id: string): void {
+        const idx = this.tabs.findIndex(t => t.id === id);
+        if (idx === -1) return;
+
+        const tab = this.tabs[idx];
+
+        // Clear pending timers.
+        this._clearTimers(id);
+        // Remove the stored CM state.
+        this._cmStates.delete(id);
+
+        // Discard the in-memory shadow on the backend (fire-and-forget).
+        if (tab.viewMode === 'text') {
+            discardShadow(tab.absPath).mapErr(err =>
+                console.error('discardShadow error on close:', err)
+            );
+        }
+
+        this.tabs.splice(idx, 1);
+
+        // Pick a new active tab if we closed the active one.
+        if (this.activeTabId === id) {
+            if (this.tabs.length === 0) {
+                this.activeTabId = null;
+            } else {
+                const newIdx = Math.min(idx, this.tabs.length - 1);
+                this.activeTabId = this.tabs[newIdx].id;
+            }
+        }
+    }
+
+    closeOtherTabs(keepId: string): void {
+        const toClose = this.tabs.filter(t => t.id !== keepId).map(t => t.id);
+        for (const id of toClose) this.closeTab(id);
+    }
+
+    // ─── Content changes (called from workspace.svelte's CM update listener) ──
 
     handleContentChange(content: string): void {
-        this.fileContent = content;
-        this.hasUnsavedChanges = true;
+        const tab = this.activeTab;
+        if (!tab || !tab.isEditable) return;
 
-        if (this._debounceTimer !== null) clearTimeout(this._debounceTimer);
-        this._debounceTimer = setTimeout(() => {
-            if (this.filePath) {
-                updateFileContent(this.filePath, content).mapErr(err =>
-                    console.error('updateFileContent error:', err)
-                );
-            }
-        }, 300);
+        tab.content          = content;
+        tab.hasUnsavedChanges = true;
+
+        // Shadow write (fast — keeps live preview in sync).
+        clearTimeout(this._shadowTimers.get(tab.id));
+        this._shadowTimers.set(tab.id, setTimeout(() => {
+            updateFileContent(tab.absPath, tab.content)
+                .mapErr(err => console.error('shadow write error:', err));
+        }, SHADOW_DELAY));
+
+        // Auto-save to disk.
+        clearTimeout(this._autoSaveTimers.get(tab.id));
+        this._autoSaveTimers.set(tab.id, setTimeout(() => {
+            saveFile(tab.absPath, tab.content)
+                .map(() => { tab.hasUnsavedChanges = false; })
+                .mapErr(err => console.error('auto-save error:', err));
+        }, DISK_SAVE_DELAY));
     }
+
+    // ─── Manual save (Ctrl+S) ─────────────────────────────────────────────────
 
     saveCurrentFile(): ResultAsync<void, string> {
-        if (!this.filePath) return ResultAsync.fromSafePromise(Promise.resolve());
-        return saveFile(this.filePath, this.fileContent).map(() => {
-            this.hasUnsavedChanges = false;
+        const tab = this.activeTab;
+        if (!tab || !tab.isEditable) return ResultAsync.fromSafePromise(Promise.resolve());
+
+        // Cancel pending timers — we're saving right now.
+        this._clearTimers(tab.id);
+
+        // Flush the shadow write immediately too.
+        updateFileContent(tab.absPath, tab.content)
+            .mapErr(err => console.error('shadow write error on save:', err));
+
+        return saveFile(tab.absPath, tab.content).map(() => {
+            tab.hasUnsavedChanges = false;
         });
     }
+
+    // ─── CM state accessors (used by workspace.svelte) ───────────────────────
+
+    saveCmState(id: string, state: EditorState): void {
+        this._cmStates.set(id, state);
+    }
+
+    getCmState(id: string): EditorState | undefined {
+        return this._cmStates.get(id);
+    }
+
+    // ─── Tab path update (called after rename) ────────────────────────────────
+
+    updateTabPath(oldId: string, newRelPath: string): void {
+        const tab = this.tabs.find(t => t.id === oldId);
+        if (!tab) return;
+
+        const newId = normalize(newRelPath);
+
+        // Move CM state to new key.
+        const cmState = this._cmStates.get(oldId);
+        if (cmState) {
+            this._cmStates.delete(oldId);
+            this._cmStates.set(newId, cmState);
+        }
+
+        // Move timers to new key.
+        const shadow = this._shadowTimers.get(oldId);
+        if (shadow !== undefined) { this._shadowTimers.delete(oldId); this._shadowTimers.set(newId, shadow); }
+        const autoSave = this._autoSaveTimers.get(oldId);
+        if (autoSave !== undefined) { this._autoSaveTimers.delete(oldId); this._autoSaveTimers.set(newId, autoSave); }
+
+        tab.id      = newId;
+        tab.relPath = newId;
+        tab.absPath = workspace.toAbs(newId);
+        tab.name    = basename(newId);
+
+        if (this.activeTabId === oldId) {
+            this.activeTabId = newId;
+        }
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    private _clearTimers(id: string): void {
+        const s = this._shadowTimers.get(id);
+        if (s !== undefined) { clearTimeout(s); this._shadowTimers.delete(id); }
+        const a = this._autoSaveTimers.get(id);
+        if (a !== undefined) { clearTimeout(a); this._autoSaveTimers.delete(id); }
+    }
+
+    // ─── Legacy compatibility getters ────────────────────────────────────────
+    // Kept so any code that still reads `editor.filePath` etc. continues to work.
+
+    get filePath():           string | null { return this.activeTab?.absPath          ?? null; }
+    get viewMode():           ViewMode      { return this.activeTab?.viewMode          ?? 'text'; }
+    get isEditable():         boolean       { return this.activeTab?.isEditable        ?? false; }
+    get isLoading():          boolean       { return this.activeTab?.isLoading         ?? false; }
+    get hasUnsavedChanges():  boolean       { return this.activeTab?.hasUnsavedChanges ?? false; }
+    get imageSrc():           string | null { return this.activeTab?.imageSrc          ?? null; }
+    get fileContent():        string        { return this.activeTab?.content           ?? ''; }
 }
 
 export const editor = new EditorStore();

@@ -82,7 +82,8 @@ impl WorkspaceState {
 
     /// Open a directory as the workspace root.
     /// Starts the FS watcher that auto-recompiles on external changes.
-    pub fn open_folder(&self, path: PathBuf) -> Result<(), String> {
+    /// Returns the workspace-relative path (forward slashes) of the restored main file, if any.
+    pub fn open_folder(&self, path: PathBuf) -> Result<Option<String>, String> {
         let t = Instant::now();
         info!("WorkspaceState::open_folder: path={path:?}");
 
@@ -123,18 +124,30 @@ impl WorkspaceState {
         let _ = store::ensure_typwriter_dir(&path);
 
         // 3. Restore the previously-set main file (if it still exists).
+        let mut restored_main: Option<String> = None;
         if let Some(main) = store::get_workspace_main_file(&self.app_handle, &path) {
             let main_path = PathBuf::from(&main);
             if main_path.exists() {
                 info!("WorkspaceState::open_folder: restoring main file main={main:?}");
-                let _ = self.set_main_file(main_path);
+                let _ = self.set_main_file(main_path.clone());
+                // Compute the workspace-relative path for the frontend (forward slashes).
+                restored_main = main_path
+                    .strip_prefix(&path)
+                    .ok()
+                    .and_then(|r| r.to_str())
+                    .map(|s| s.replace('\\', "/"));
             } else {
-                warn!("WorkspaceState::open_folder: persisted main file no longer exists main={main:?}");
+                warn!(
+                    "WorkspaceState::open_folder: persisted main file no longer exists main={main:?}"
+                );
             }
         }
 
-        info!("WorkspaceState::open_folder: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
-        Ok(())
+        info!(
+            "WorkspaceState::open_folder: ok restored_main={restored_main:?} ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
+        Ok(restored_main)
     }
 
     // ─── Main file ─────────────────────────────────────────────────────────

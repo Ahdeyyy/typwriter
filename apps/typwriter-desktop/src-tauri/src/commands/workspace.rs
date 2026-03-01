@@ -6,13 +6,13 @@ use tauri::State;
 use crate::workspace::{FileTreeEntry, RecentWorkspaceEntry, WorkspaceState};
 
 #[tauri::command]
-pub fn open_folder(path: String, workspace: State<'_, Arc<WorkspaceState>>) -> Result<(), String> {
+pub fn open_folder(path: String, workspace: State<'_, Arc<WorkspaceState>>) -> Result<Option<String>, String> {
     let t = Instant::now();
     info!("open_folder: path={path:?}");
     let result = workspace.open_folder(PathBuf::from(&path));
     match &result {
-        Ok(_)  => info!("open_folder: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0),
-        Err(e) => error!("open_folder: err=\"{e}\" ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0),
+        Ok(main) => info!("open_folder: ok restored_main={main:?} ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0),
+        Err(e)   => error!("open_folder: err=\"{e}\" ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0),
     }
     result
 }

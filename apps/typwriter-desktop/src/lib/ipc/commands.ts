@@ -19,7 +19,7 @@ const toErrString = (e: unknown): string => String(e);
 // ─── Workspace ────────────────────────────────────────────────────────────────
 
 export function openFolder(path: string) {
-    return ResultAsync.fromPromise(invoke<void>('open_folder', { path }), toErrString);
+    return ResultAsync.fromPromise(invoke<string | null>('open_folder', { path }), toErrString);
 }
 
 export function setMainFile(path: string) {

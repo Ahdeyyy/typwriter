@@ -6,6 +6,7 @@ import {
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { onWorkspaceFileChanged } from '$lib/ipc/events';
 import type { FileTreeEntry } from '$lib/types';
+import { editor } from './editor.svelte';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -115,10 +116,6 @@ class WorkspaceStore {
     init(root: string): ResultAsync<void, string> {
         this.rootPath = normalize(root);
 
-        // open the workspace in the backend
-
-        openFolder(root).mapErr(err => console.error('openWorkspace failed:', err));
-
         // Register file-change listener; errors are only logged
         onWorkspaceFileChanged(() => {
             this.refreshTree().mapErr(err =>
@@ -126,7 +123,15 @@ class WorkspaceStore {
             );
         }).mapErr(err => console.error('onWorkspaceFileChanged listener failed:', err));
 
-        return this.refreshTree();
+        // Open the workspace in the backend. The backend returns the workspace-relative
+        // path of the previously-set main file (if any), which we apply to the store.
+        return openFolder(root)
+            .andThen((restoredMain) => {
+                if (restoredMain) {
+                    this.mainFile = normalize(restoredMain);
+                }
+                return this.refreshTree();
+            });
     }
 
     refreshTree(): ResultAsync<void, string> {
@@ -136,8 +141,10 @@ class WorkspaceStore {
         });
     }
 
-    openFile(path: string): void {
+    /** Open a file: activate its tab (or create one) and keep activeFilePath in sync. */
+    openFile(path: string): ResultAsync<void, string> {
         this.activeFilePath = path;
+        return editor.openFile(path);
     }
 
     setMainFileAction(path: string): ResultAsync<void, string> {
@@ -156,6 +163,10 @@ class WorkspaceStore {
 
     deleteFileAction(path: string): ResultAsync<void, string> {
         return deleteFile(this.toAbs(path)).andThen(() => {
+            const normPath = normalize(path);
+            if (editor.tabs.find(t => t.id === normPath)) {
+                editor.closeTab(normPath);
+            }
             if (this.activeFilePath === path) this.activeFilePath = null;
             return this.refreshTree();
         });
@@ -163,6 +174,11 @@ class WorkspaceStore {
 
     deleteFolderAction(path: string): ResultAsync<void, string> {
         return deleteFolder(this.toAbs(path)).andThen(() => {
+            // Close any tabs whose files live inside the deleted folder.
+            const prefix = normalize(path) + '/';
+            for (const tab of [...editor.tabs]) {
+                if (tab.relPath.startsWith(prefix)) editor.closeTab(tab.id);
+            }
             if (this.activeFilePath?.startsWith(path + '/')) {
                 this.activeFilePath = null;
             }
@@ -175,6 +191,11 @@ class WorkspaceStore {
         const dst = dir ? `${dir}/${newName}` : newName;
         console.log("Renaming", src, "to", dst);
         return renameFile(this.toAbs(src), this.toAbs(dst)).andThen(() => {
+            // Update the open tab path if the renamed file was open.
+            const normSrc = normalize(src);
+            if (editor.tabs.find(t => t.id === normSrc)) {
+                editor.updateTabPath(normSrc, dst);
+            }
             if (this.activeFilePath === src) this.activeFilePath = dst;
             if (this.mainFile === src) this.mainFile = dst;
             return this.refreshTree();

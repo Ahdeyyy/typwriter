@@ -2,7 +2,7 @@
   import { page } from "@/stores/page.svelte";
   import { Window } from "@tauri-apps/api/window";
   import Button from "../ui/button/button.svelte";
-  import { getRecentWorkspaces, openFolder } from "$lib/ipc/commands";
+  import { getRecentWorkspaces } from "$lib/ipc/commands";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
   import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
@@ -30,17 +30,10 @@
   }
 
   async function handleOpenRecent(path: string) {
-    const result = await openFolder(path);
+    const result = await workspace.init(path);
     result.match(
-      async () => {
-        await workspace.init(path).mapErr(err =>
-          console.error("Failed to init workspace:", err)
-        );
-        page.navigate("workspace");
-      },
-      (err) => {
-        console.error("Failed to open workspace:", err);
-      },
+      () => { page.navigate("workspace"); },
+      (err) => { console.error("Failed to open workspace:", err); },
     );
   }
 
@@ -48,17 +41,10 @@
     const selected = await openDialog({ directory: true, multiple: false });
     if (!selected) return;
 
-    const result = await openFolder(selected);
+    const result = await workspace.init(selected);
     result.match(
-      async () => {
-        await workspace.init(selected).mapErr(err =>
-          console.error("Failed to init workspace:", err)
-        );
-        page.navigate("workspace");
-      },
-      (err) => {
-        console.error("Failed to open workspace:", err);
-      },
+      () => { page.navigate("workspace"); },
+      (err) => { console.error("Failed to open workspace:", err); },
     );
   }
 

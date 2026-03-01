@@ -4,7 +4,6 @@
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { workspace, type FileNode, basename } from "$lib/stores/workspace.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
   import { toast } from "svelte-sonner";
 
   // ─── Props ──────────────────────────────────────────────────────────────────
@@ -34,8 +33,7 @@
     if (node.is_dir) {
       workspace.toggleFolder(node.path);
     } else {
-      workspace.openFile(node.path);
-      editor.loadFile(node.path).mapErr(err => {
+      workspace.openFile(node.path).mapErr(err => {
         toast.error(`Failed to open file: ${err}`);
       });
     }
