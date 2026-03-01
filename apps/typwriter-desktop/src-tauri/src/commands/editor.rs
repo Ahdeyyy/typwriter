@@ -8,13 +8,80 @@
 
 use std::{path::Path, sync::Arc, time::Instant};
 
+use ecow::EcoString;
 use base64::Engine;
 use log::{debug, error, info};
 use serde::Serialize;
 use tauri::State;
-use typst::{layout::PagedDocument, syntax::Side, World};
+use typst::{
+    foundations::Bytes,
+    layout::PagedDocument,
+    syntax::{package::PackageSpec, FileId, Side, Source},
+    text::{Font, FontBook},
+    utils::LazyHash,
+    Library, World,
+};
+use typst_ide::IdeWorld;
 
 use crate::{compiler::PreviewPipeline, workspace::WorkspaceState, world::EditorWorld};
+
+/// `World` proxy that resolves IDE queries as if `main()` were `query_main`.
+/// This avoids mutating the shared global main file while enabling file-agnostic
+/// hover behavior for non-main tabs.
+struct MainOverrideWorld<'a> {
+    inner: &'a EditorWorld,
+    query_main: FileId,
+}
+
+impl<'a> MainOverrideWorld<'a> {
+    fn new(inner: &'a EditorWorld, query_main: FileId) -> Self {
+        Self { inner, query_main }
+    }
+}
+
+impl World for MainOverrideWorld<'_> {
+    fn library(&self) -> &LazyHash<Library> {
+        self.inner.library()
+    }
+
+    fn book(&self) -> &LazyHash<FontBook> {
+        self.inner.book()
+    }
+
+    fn main(&self) -> FileId {
+        self.query_main
+    }
+
+    fn source(&self, id: FileId) -> typst::diag::FileResult<Source> {
+        self.inner.source(id)
+    }
+
+    fn file(&self, id: FileId) -> typst::diag::FileResult<Bytes> {
+        self.inner.file(id)
+    }
+
+    fn font(&self, index: usize) -> Option<Font> {
+        self.inner.font(index)
+    }
+
+    fn today(&self, offset: Option<i64>) -> Option<typst::foundations::Datetime> {
+        self.inner.today(offset)
+    }
+}
+
+impl IdeWorld for MainOverrideWorld<'_> {
+    fn upcast(&self) -> &dyn World {
+        self
+    }
+
+    fn packages(&self) -> &[(PackageSpec, Option<EcoString>)] {
+        self.inner.packages()
+    }
+
+    fn files(&self) -> Vec<FileId> {
+        self.inner.files()
+    }
+}
 
 // ─── Serialisable IDE response types ─────────────────────────────────────────
 
@@ -298,7 +365,19 @@ pub fn get_tooltip(
     let guard = pipeline.last_document.lock();
     let doc_ref: Option<&PagedDocument> = guard.as_deref();
 
-    let tooltip = typst_ide::tooltip(&**world, doc_ref, &source, cursor, Side::Before);
+    // Try against the latest compiled document first, then document-agnostic.
+    let mut tooltip = typst_ide::tooltip(&**world, doc_ref, &source, cursor, Side::Before)
+        .or_else(|| typst_ide::tooltip(&**world, None, &source, cursor, Side::Before))
+        .or_else(|| typst_ide::tooltip(&**world, doc_ref, &source, cursor, Side::After))
+        .or_else(|| typst_ide::tooltip(&**world, None, &source, cursor, Side::After));
+
+    // If still unresolved and this is not the configured main file, retry with
+    // an override world where `main()` points to the queried file.
+    if tooltip.is_none() && id != world.main() {
+        let local_world = MainOverrideWorld::new(&world, id);
+        tooltip = typst_ide::tooltip(&local_world, None, &source, cursor, Side::Before)
+            .or_else(|| typst_ide::tooltip(&local_world, None, &source, cursor, Side::After));
+    }
     let found = tooltip.is_some();
     debug!("get_tooltip: ok found={found} ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
 

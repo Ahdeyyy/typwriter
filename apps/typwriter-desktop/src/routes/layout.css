@@ -231,5 +231,36 @@
   background: var(--border) !important;
 }
 
+/* Completion popup scrollbar (CodeMirror autocomplete) */
+.cm-tooltip-autocomplete ul,
+.cm-tooltip.cm-completionInfo {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.cm-tooltip-autocomplete ul::-webkit-scrollbar,
+.cm-tooltip.cm-completionInfo::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.cm-tooltip-autocomplete ul::-webkit-scrollbar-track,
+.cm-tooltip.cm-completionInfo::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cm-tooltip-autocomplete ul::-webkit-scrollbar-thumb,
+.cm-tooltip.cm-completionInfo::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.cm-tooltip-autocomplete ul::-webkit-scrollbar-thumb:hover,
+.cm-tooltip.cm-completionInfo::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--border) 75%, transparent);
+}
+
 
 }

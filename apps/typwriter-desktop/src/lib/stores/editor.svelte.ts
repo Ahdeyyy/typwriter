@@ -1,4 +1,3 @@
-import type { EditorState } from '@codemirror/state';
 import { ResultAsync } from 'neverthrow';
 import { updateFileContent, saveFile, readFile, discardShadow } from '$lib/ipc/commands';
 import { workspace, normalize, basename } from './workspace.svelte';
@@ -53,8 +52,6 @@ class EditorStore {
             : null
     );
 
-    // ── CodeMirror state map (plain Map, NOT $state — prevents Svelte deep-proxying CM internals)
-    private _cmStates       = new Map<string, EditorState>();
     // ── Per-tab debounce timers (plain Map, no rune needed)
     private _shadowTimers   = new Map<string, ReturnType<typeof setTimeout>>();
     private _autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -144,9 +141,6 @@ class EditorStore {
 
         // Clear pending timers.
         this._clearTimers(id);
-        // Remove the stored CM state.
-        this._cmStates.delete(id);
-
         // Discard the in-memory shadow on the backend (fire-and-forget).
         if (tab.viewMode === 'text') {
             discardShadow(tab.absPath).mapErr(err =>
@@ -174,8 +168,8 @@ class EditorStore {
 
     // ─── Content changes (called from workspace.svelte's CM update listener) ──
 
-    handleContentChange(content: string): void {
-        const tab = this.activeTab;
+    handleTabContentChange(tabId: string, content: string): void {
+        const tab = this.tabs.find(t => t.id === tabId);
         if (!tab || !tab.isEditable) return;
 
         tab.content          = content;
@@ -199,8 +193,8 @@ class EditorStore {
 
     // ─── Manual save (Ctrl+S) ─────────────────────────────────────────────────
 
-    saveCurrentFile(): ResultAsync<void, string> {
-        const tab = this.activeTab;
+    saveTabById(tabId: string): ResultAsync<void, string> {
+        const tab = this.tabs.find(t => t.id === tabId);
         if (!tab || !tab.isEditable) return ResultAsync.fromSafePromise(Promise.resolve());
 
         // Cancel pending timers — we're saving right now.
@@ -215,14 +209,10 @@ class EditorStore {
         });
     }
 
-    // ─── CM state accessors (used by workspace.svelte) ───────────────────────
-
-    saveCmState(id: string, state: EditorState): void {
-        this._cmStates.set(id, state);
-    }
-
-    getCmState(id: string): EditorState | undefined {
-        return this._cmStates.get(id);
+    saveCurrentFile(): ResultAsync<void, string> {
+        const tab = this.activeTab;
+        if (!tab) return ResultAsync.fromSafePromise(Promise.resolve());
+        return this.saveTabById(tab.id);
     }
 
     // ─── Tab path update (called after rename) ────────────────────────────────
@@ -232,13 +222,6 @@ class EditorStore {
         if (!tab) return;
 
         const newId = normalize(newRelPath);
-
-        // Move CM state to new key.
-        const cmState = this._cmStates.get(oldId);
-        if (cmState) {
-            this._cmStates.delete(oldId);
-            this._cmStates.set(newId, cmState);
-        }
 
         // Move timers to new key.
         const shadow = this._shadowTimers.get(oldId);
