@@ -17,7 +17,7 @@
 <div class="relative flex h-screen w-screen overflow-hidden">
   {#if !sidebarOpen}
     <button
-      class="absolute top-2 left-2 z-50 rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+      class="absolute top-1 left-2 z-50 rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
       onclick={toggleSidebar}
       title="Show file explorer"
     >
@@ -44,7 +44,7 @@
     <Resizable.Handle />
 
     <Resizable.Pane defaultSize={53} minSize={25}>
-      <EditorPane />
+      <EditorPane sidebarCollapsed={!sidebarOpen} />
     </Resizable.Pane>
 
     <Resizable.Handle />

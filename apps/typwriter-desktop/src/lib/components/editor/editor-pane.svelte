@@ -3,11 +3,19 @@
   import TabBar from "$lib/components/editor/tab-bar.svelte";
   import TextEditorTab from "$lib/components/editor/text-editor-tab.svelte";
   import { editor } from "$lib/stores/editor.svelte";
+
+  interface Props {
+    sidebarCollapsed?: boolean;
+  }
+
+  let { sidebarCollapsed = false }: Props = $props();
 </script>
 
 <div class="flex h-svh flex-col bg-background">
   {#if editor.tabs.length > 0}
-    <TabBar />
+    <div class={sidebarCollapsed ? "pl-10" : ""}>
+      <TabBar />
+    </div>
   {/if}
 
   <div class="relative min-h-0 h-screen flex-1 overflow-hidden">
