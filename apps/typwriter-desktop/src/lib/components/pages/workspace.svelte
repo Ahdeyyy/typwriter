@@ -1,13 +1,18 @@
 <script lang="ts">
+  import { onMount, onDestroy } from "svelte";
   import { PanelLeft } from "@lucide/svelte";
   import * as Resizable from "$lib/components/ui/resizable/index.js";
 
   import FileTree from "$lib/components/sidebar/filetree.svelte";
   import Preview from "$lib/components/sidebar/preview.svelte";
   import EditorPane from "$lib/components/editor/editor-pane.svelte";
+  import { diagnostics } from "$lib/stores/diagnostics.svelte";
 
   let leftPaneRef = $state<any>(null);
   let sidebarOpen = $state(true);
+
+  onMount(() => { diagnostics.init(); });
+  onDestroy(() => { diagnostics.destroy(); });
 
   function toggleSidebar() {
     sidebarOpen ? leftPaneRef?.collapse() : leftPaneRef?.expand();

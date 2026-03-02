@@ -15,7 +15,12 @@
       "Bash(RUST_MIN_STACK=8388608 cargo doc --package 'png@0.18.1' --no-deps)",
       "Bash(RUST_MIN_STACK=8388608 grep -r 'FilterType\\\\|set_filter\\\\|AdaptiveFilter' target/doc/png/index.html)",
       "WebFetch(domain:docs.rs)",
-      "Bash(git add apps/typwriter-desktop/src-tauri/src/compiler/mod.rs)"
+      "Bash(git add apps/typwriter-desktop/src-tauri/src/compiler/mod.rs)",
+      "Bash(xargs wc -l)",
+      "Bash(bun add @codemirror/lint)",
+      "Bash(bun run check)",
+      "Bash(bun add @codemirror/lang-json @codemirror/lang-xml @codemirror/lang-yaml @codemirror/legacy-modes)",
+      "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" bun run check)"
     ]
   }
 }

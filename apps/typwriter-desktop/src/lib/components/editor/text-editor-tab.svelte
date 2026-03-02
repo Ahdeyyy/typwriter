@@ -9,7 +9,15 @@
     type Tooltip,
   } from "@codemirror/view";
   import { EditorState } from "@codemirror/state";
-  import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+  import {
+    defaultKeymap,
+    history,
+    historyKeymap,
+    indentWithTab,
+    insertTab,
+    lineComment,
+    lineUncomment,
+  } from "@codemirror/commands";
   import {
     autocompletion,
     closeBrackets,
@@ -26,14 +34,31 @@
     syntaxHighlighting,
     defaultHighlightStyle,
     bracketMatching,
+    StreamLanguage,
   } from "@codemirror/language";
+  import { json } from "@codemirror/lang-json";
+  import { xml } from "@codemirror/lang-xml";
+  import { yaml } from "@codemirror/lang-yaml";
+  import { toml as tomlMode } from "@codemirror/legacy-modes/mode/toml";
 
+  import {
+    lintGutter,
+    setDiagnostics,
+    type Diagnostic as CMDiagnostic,
+  } from "@codemirror/lint";
   import { typst } from "$lib/typst-codemirror-lang/index.js";
   import { githubLight } from "$lib/typst-codemirror-lang/lightTheme.js";
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";
-  import { getCompletions, getTooltip as getTooltipIpc } from "$lib/ipc/commands";
-  import type { TooltipResponse } from "$lib/types";
+  import { diagnostics } from "$lib/stores/diagnostics.svelte";
+  import {
+    getCompletions,
+    getTooltip as getTooltipIpc,
+  } from "$lib/ipc/commands";
+  import type { SerializedDiagnostic, TooltipResponse } from "$lib/types";
+  import { espresso } from "thememirror";
+  import { indentationMarkers } from "@replit/codemirror-indentation-markers";
+  import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
 
   let editorHost = $state<HTMLDivElement | null>(null);
   const tabViews = new Map<string, EditorView>();
@@ -144,24 +169,78 @@
     };
   }
 
+  function toCMDiagnostic(
+    d: SerializedDiagnostic,
+    view: EditorView,
+  ): CMDiagnostic | null {
+    if (!d.range) return null;
+    const doc = view.state.doc;
+    const sl = Math.min(d.range.start_line + 1, doc.lines);
+    const el = Math.min(d.range.end_line + 1, doc.lines);
+    const startLine = doc.line(sl);
+    const endLine = doc.line(el);
+    const from = Math.min(startLine.from + d.range.start_col, startLine.to);
+    const to = Math.max(
+      Math.min(endLine.from + d.range.end_col, endLine.to),
+      from + 1,
+    );
+    return {
+      from,
+      to,
+      severity: d.severity === "error" ? "error" : "warning",
+      message:
+        d.hints.length > 0 ? `${d.message}\n${d.hints.join("\n")}` : d.message,
+    };
+  }
+
+  function getLanguageExtension(relPath: string) {
+    const dot = relPath.lastIndexOf(".");
+    const ext = dot >= 0 ? relPath.slice(dot).toLowerCase() : "";
+    switch (ext) {
+      case ".typ":  return typst();
+      case ".json": return json();
+      case ".xml":  return xml();
+      case ".yaml":
+      case ".yml":  return yaml();
+      case ".toml": return StreamLanguage.define(tomlMode);
+      default:      return null;
+    }
+  }
+
   function makeExtensions(tabId: string) {
+    const tab = editor.tabs.find((t) => t.id === tabId);
+    const relPath = tab?.relPath ?? tabId;
+    const isTypst = relPath.endsWith(".typ");
+    const langExt = getLanguageExtension(relPath);
+
     return [
+      lintGutter(),
       lineNumbers(),
+      EditorView.lineWrapping,
+      EditorView.contentAttributes.of({ spellcheck: "true" }),
       highlightActiveLine(),
       history(),
       drawSelection(),
       foldGutter(),
       bracketMatching(),
       closeBrackets(),
-      autocompletion({ override: [mergedTypstCompletionsForTab(tabId)] }),
+      // .typ: merged Typst language + backend IPC completions
+      // others: let the language package supply its own completions
+      isTypst
+        ? autocompletion({ override: [mergedTypstCompletionsForTab(tabId)] })
+        : autocompletion(),
       indentOnInput(),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-      typst(),
-      githubLight,
+      // Language extension chosen by file extension; null = plain text
+      ...(langExt ? [langExt] : []),
+      indentationMarkers(),
+      keymap.of(vscodeKeymap),
+      espresso,
       keymap.of([
         ...defaultKeymap,
         ...historyKeymap,
         ...closeBracketsKeymap,
+        indentWithTab,
         {
           key: "Mod-s",
           run: () => {
@@ -183,27 +262,32 @@
         const cursor = update.state.selection.main.head;
         preview.setCursorPosition(tab.absPath, cursor);
       }),
-      hoverTooltip(async (_view, pos) => {
-        const tab = editor.tabs.find((t) => t.id === tabId);
-        if (!tab || tab.viewMode !== "text") return null;
+      // Hover tooltip — only for .typ (avoids unnecessary IPC calls for other file types)
+      ...(isTypst ? [hoverTooltip(
+        async (_view, pos) => {
+          const tab = editor.tabs.find((t) => t.id === tabId);
+          if (!tab || tab.viewMode !== "text") return null;
 
-        const tooltipResult = await getTooltipIpc(tab.absPath, pos);
-        if (tooltipResult.isErr() || tooltipResult.value === null) return null;
+          const tooltipResult = await getTooltipIpc(tab.absPath, pos);
+          if (tooltipResult.isErr() || tooltipResult.value === null)
+            return null;
 
-        const data = tooltipResult.value;
-        return {
-          pos,
-          end: pos,
-          above: true,
-          create() {
-            const dom = createHoverTooltipDom(data);
-            return { dom };
-          },
-        } satisfies Tooltip;
-      }, { hoverTime: 250 }),
+          const data = tooltipResult.value;
+          return {
+            pos,
+            end: pos,
+            above: true,
+            create() {
+              const dom = createHoverTooltipDom(data);
+              return { dom };
+            },
+          } satisfies Tooltip;
+        },
+        { hoverTime: 250 },
+      )] : []),
       EditorView.theme({
         "&": {
-          height: "100svh",
+          height: "93svh",
           width: "100%",
           fontSize: "13px",
           fontFamily: "var(--font-mono, monospace)",
@@ -356,6 +440,22 @@
         view.focus();
       }
     });
+  });
+
+  // ── Diagnostics → CodeMirror lint markers
+  $effect(() => {
+    const allDiags = [...diagnostics.errors, ...diagnostics.warnings];
+    const _ = mountedTabId; // re-run when active tab changes
+
+    for (const [tabId, view] of tabViews) {
+      const tab = editor.tabs.find((t) => t.id === tabId);
+      if (!tab) continue;
+      const marks = allDiags
+        .filter((d) => d.file_path === tab.relPath)
+        .map((d) => toCMDiagnostic(d, view))
+        .filter((d): d is CMDiagnostic => d !== null);
+      view.dispatch(setDiagnostics(view.state, marks));
+    }
   });
 </script>
 
