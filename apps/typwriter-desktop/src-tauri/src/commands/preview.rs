@@ -37,3 +37,8 @@ pub fn get_zoom(workspace: State<'_, Arc<WorkspaceState>>) -> f32 {
     info!("get_zoom: returning {zoom}");
     zoom
 }
+
+#[tauri::command]
+pub fn set_visible_page(page: usize, pipeline: State<'_, Arc<PreviewPipeline>>) {
+    pipeline.set_visible_page(page);
+}

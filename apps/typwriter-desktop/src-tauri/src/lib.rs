@@ -20,7 +20,7 @@ use commands::{
         update_file_content,
     },
     export::{export_pdf, export_png, export_svg},
-    preview::{get_zoom, set_zoom, trigger_preview},
+    preview::{get_zoom, set_visible_page, set_zoom, trigger_preview},
     workspace::{
         create_file, create_folder, delete_file, delete_folder, get_file_tree,
         get_recent_workspaces, import_files, move_file, move_folder, open_folder, rename_file,
@@ -94,6 +94,7 @@ pub fn run() {
             trigger_preview,
             set_zoom,
             get_zoom,
+            set_visible_page,
             // bidirectional jump
             jump_from_click,
             jump_from_cursor,

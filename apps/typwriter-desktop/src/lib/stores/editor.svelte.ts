@@ -1,5 +1,5 @@
 import { ResultAsync } from 'neverthrow';
-import { updateFileContent, saveFile, readFile, discardShadow } from '$lib/ipc/commands';
+import { updateFileContent, saveFile, readFile, discardShadow, triggerPreview } from '$lib/ipc/commands';
 import { workspace, normalize, basename } from './workspace.svelte';
 
 // ─── File type detection ───────────────────────────────────────────────────────
@@ -39,11 +39,11 @@ export interface TabInfo {
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
-const SHADOW_DELAY    = 300;  // ms — fast shadow write for live preview
+const SHADOW_DELAY = 0;  // ms — fast shadow write for live preview
 const DISK_SAVE_DELAY = 750;  // ms — auto-save to disk after last edit
 
 class EditorStore {
-    tabs        = $state<TabInfo[]>([]);
+    tabs = $state<TabInfo[]>([]);
     activeTabId = $state<string | null>(null);
 
     activeTab = $derived(
@@ -52,8 +52,15 @@ class EditorStore {
             : null
     );
 
+    /** Set by the preview component after a jump-from-click to move the CM cursor. */
+    cursorJumpRequest = $state<{ tabId: string; offset: number } | null>(null);
+
+    requestCursorJump(tabId: string, offset: number): void {
+        this.cursorJumpRequest = { tabId, offset };
+    }
+
     // ── Per-tab debounce timers (plain Map, no rune needed)
-    private _shadowTimers   = new Map<string, ReturnType<typeof setTimeout>>();
+    private _shadowTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private _autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     // ─── Open file ────────────────────────────────────────────────────────────
@@ -68,8 +75,8 @@ class EditorStore {
             return ResultAsync.fromSafePromise(Promise.resolve());
         }
 
-        const absPath   = workspace.toAbs(id);
-        const ext       = extOf(id);
+        const absPath = workspace.toAbs(id);
+        const ext = extOf(id);
         const viewMode: ViewMode = IMAGE_EXTS.has(ext)
             ? 'image'
             : TEXT_EXTS.has(ext)
@@ -80,13 +87,13 @@ class EditorStore {
             id,
             relPath: id,
             absPath,
-            name:             basename(id),
+            name: basename(id),
             viewMode,
-            isEditable:       viewMode === 'text',
-            content:          '',
-            imageSrc:         null,
+            isEditable: viewMode === 'text',
+            content: '',
+            imageSrc: null,
             hasUnsavedChanges: false,
-            isLoading:        viewMode !== 'unsupported',
+            isLoading: viewMode !== 'unsupported',
         };
 
         this.tabs.push(tab);
@@ -119,10 +126,10 @@ class EditorStore {
                 if (viewMode === 'image') {
                     if (r.value.type !== 'image') throw new Error(`Expected image, got ${r.value.type}`);
                     liveTab.imageSrc = `data:${r.value.mime};base64,${r.value.base64}`;
-                    liveTab.content  = '';
+                    liveTab.content = '';
                 } else {
                     if (r.value.type !== 'text') throw new Error(`Expected text, got ${r.value.type}`);
-                    liveTab.content  = r.value.content;
+                    liveTab.content = r.value.content;
                 }
 
                 liveTab.isLoading = false;
@@ -172,14 +179,15 @@ class EditorStore {
         const tab = this.tabs.find(t => t.id === tabId);
         if (!tab || !tab.isEditable) return;
 
-        tab.content          = content;
+        tab.content = content;
         tab.hasUnsavedChanges = true;
 
         // Shadow write (fast — keeps live preview in sync).
         clearTimeout(this._shadowTimers.get(tab.id));
         this._shadowTimers.set(tab.id, setTimeout(() => {
             updateFileContent(tab.absPath, tab.content)
-                .mapErr(err => console.error('shadow write error:', err));
+                .andThen(() => triggerPreview())
+                .mapErr(err => console.error('shadow write/preview error:', err));
         }, SHADOW_DELAY));
 
         // Auto-save to disk.
@@ -229,10 +237,10 @@ class EditorStore {
         const autoSave = this._autoSaveTimers.get(oldId);
         if (autoSave !== undefined) { this._autoSaveTimers.delete(oldId); this._autoSaveTimers.set(newId, autoSave); }
 
-        tab.id      = newId;
+        tab.id = newId;
         tab.relPath = newId;
         tab.absPath = workspace.toAbs(newId);
-        tab.name    = basename(newId);
+        tab.name = basename(newId);
 
         if (this.activeTabId === oldId) {
             this.activeTabId = newId;
@@ -251,13 +259,13 @@ class EditorStore {
     // ─── Legacy compatibility getters ────────────────────────────────────────
     // Kept so any code that still reads `editor.filePath` etc. continues to work.
 
-    get filePath():           string | null { return this.activeTab?.absPath          ?? null; }
-    get viewMode():           ViewMode      { return this.activeTab?.viewMode          ?? 'text'; }
-    get isEditable():         boolean       { return this.activeTab?.isEditable        ?? false; }
-    get isLoading():          boolean       { return this.activeTab?.isLoading         ?? false; }
-    get hasUnsavedChanges():  boolean       { return this.activeTab?.hasUnsavedChanges ?? false; }
-    get imageSrc():           string | null { return this.activeTab?.imageSrc          ?? null; }
-    get fileContent():        string        { return this.activeTab?.content           ?? ''; }
+    get filePath(): string | null { return this.activeTab?.absPath ?? null; }
+    get viewMode(): ViewMode { return this.activeTab?.viewMode ?? 'text'; }
+    get isEditable(): boolean { return this.activeTab?.isEditable ?? false; }
+    get isLoading(): boolean { return this.activeTab?.isLoading ?? false; }
+    get hasUnsavedChanges(): boolean { return this.activeTab?.hasUnsavedChanges ?? false; }
+    get imageSrc(): string | null { return this.activeTab?.imageSrc ?? null; }
+    get fileContent(): string { return this.activeTab?.content ?? ''; }
 }
 
 export const editor = new EditorStore();

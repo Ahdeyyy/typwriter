@@ -31,6 +31,7 @@
   import { typst } from "$lib/typst-codemirror-lang/index.js";
   import { githubLight } from "$lib/typst-codemirror-lang/lightTheme.js";
   import { editor } from "$lib/stores/editor.svelte";
+  import { preview } from "$lib/stores/preview.svelte";
   import { getCompletions, getTooltip as getTooltipIpc } from "$lib/ipc/commands";
   import type { TooltipResponse } from "$lib/types";
 
@@ -174,6 +175,13 @@
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
         editor.handleTabContentChange(tabId, update.state.doc.toString());
+      }),
+      EditorView.updateListener.of((update) => {
+        if (!update.selectionSet) return;
+        const tab = editor.tabs.find((t) => t.id === tabId);
+        if (!tab || tab.viewMode !== "text") return;
+        const cursor = update.state.selection.main.head;
+        preview.setCursorPosition(tab.absPath, cursor);
       }),
       hoverTooltip(async (_view, pos) => {
         const tab = editor.tabs.find((t) => t.id === tabId);
@@ -332,6 +340,22 @@
       tabViews.clear();
       mountedTabId = null;
     };
+  });
+
+  // ── Preview → Editor: apply cursor jump requested by preview click
+  $effect(() => {
+    const req = editor.cursorJumpRequest;
+    if (!req) return;
+    // rAF lets any pending tab mount complete before we look up the view
+    requestAnimationFrame(() => {
+      const view = tabViews.get(req.tabId);
+      if (view && editor.cursorJumpRequest?.tabId === req.tabId) {
+        editor.cursorJumpRequest = null;
+        const offset = Math.min(req.offset, view.state.doc.length);
+        view.dispatch({ selection: { anchor: offset }, scrollIntoView: true });
+        view.focus();
+      }
+    });
   });
 </script>
 

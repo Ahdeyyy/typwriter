@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc --noEmit --project tsconfig.json)",
+      "Bash(npx svelte-check --tsconfig ./tsconfig.json)",
+      "Bash(git add apps/typwriter-desktop/src/lib/components/sidebar/preview.svelte apps/typwriter-desktop/src/routes/layout.css)",
+      "Bash(git commit:*)",
+      "Bash(RUST_MIN_STACK=8388608 cargo check --package typwriter-desktop)",
+      "Bash(RUST_MIN_STACK=8388608 cargo check)",
+      "Bash(git add -A)",
+      "Bash(git reset HEAD apps/typwriter-desktop/src/lib/ .claude/)",
+      "Bash(python3:*)",
+      "Bash(xargs grep -l \"performance\\\\|benchmark\\\\|timing\\\\|render\\\\|250ms\\\\|310ms\")",
+      "Bash(RUST_MIN_STACK=8388608 cargo doc --package png --no-deps)",
+      "Bash(RUST_MIN_STACK=8388608 cargo doc --package 'png@0.18.1' --no-deps)",
+      "Bash(RUST_MIN_STACK=8388608 grep -r 'FilterType\\\\|set_filter\\\\|AdaptiveFilter' target/doc/png/index.html)",
+      "WebFetch(domain:docs.rs)",
+      "Bash(git add apps/typwriter-desktop/src-tauri/src/compiler/mod.rs)"
+    ]
+  }
+}

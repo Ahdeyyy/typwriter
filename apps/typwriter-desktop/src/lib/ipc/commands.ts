@@ -125,6 +125,10 @@ export function getZoom() {
     return ResultAsync.fromPromise(invoke<number>('get_zoom'), toErrString);
 }
 
+export function setVisiblePage(page: number) {
+    invoke<void>('set_visible_page', { page }).catch(() => {});
+}
+
 // ─── Click / Jump ─────────────────────────────────────────────────────────────
 
 export function jumpFromClick(page: number, x: number, y: number) {

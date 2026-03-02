@@ -6427,6 +6427,7 @@ dependencies = [
  "lru",
  "notify",
  "parking_lot",
+ "png 0.18.1",
  "rayon",
  "serde",
  "serde_json",

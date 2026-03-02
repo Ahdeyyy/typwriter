@@ -5,7 +5,7 @@
   import { preview } from "$lib/stores/preview.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
-  import { jumpFromClick } from "$lib/ipc/commands";
+  import { jumpFromClick, setVisiblePage } from "$lib/ipc/commands";
   import { Button } from "$lib/components/ui/button";
 
   // ── Local state ────────────────────────────────────────────────────────────
@@ -48,7 +48,10 @@
               entry.target.id.replace("preview-page-", ""),
               10,
             );
-            if (!isNaN(idx)) visiblePage = idx;
+            if (!isNaN(idx)) {
+              visiblePage = idx;
+              setVisiblePage(idx);
+            }
           }
         }
       },

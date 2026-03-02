@@ -113,6 +113,14 @@ class WorkspaceStore {
         return `${this.rootPath}/${p}`;
     }
 
+    /** Convert an absolute path to a workspace-relative path. Already-relative paths are returned as-is. */
+    toRel(absPath: string): string {
+        if (!this.rootPath) return absPath;
+        const p = normalize(absPath);
+        const prefix = this.rootPath + '/';
+        return p.startsWith(prefix) ? p.slice(prefix.length) : p;
+    }
+
     init(root: string): ResultAsync<void, string> {
         this.rootPath = normalize(root);
 
