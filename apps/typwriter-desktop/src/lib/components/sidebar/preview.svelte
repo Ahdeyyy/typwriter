@@ -108,7 +108,7 @@
 <div class="flex h-full flex-col bg-background text-foreground">
   <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
   <div
-    class="flex shrink-0 items-center gap-0.5 border-b border-border px-2 py-1"
+    class="flex h-9 shrink-0 items-center gap-0.5 border-b border-border px-2"
   >
     <Button
       variant="ghost"

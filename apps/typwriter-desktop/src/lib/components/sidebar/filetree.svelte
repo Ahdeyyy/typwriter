@@ -117,75 +117,74 @@
 <!-- ─── Sidebar shell ──────────────────────────────────────────────────────── -->
 <div class="flex h-full flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
 
-  <!-- Header: title + toolbar -->
-  <div class="flex flex-col gap-1 px-2 pt-2 pb-1 border-b border-sidebar-border">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-0.5 min-w-0">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          title="Toggle sidebar"
-          onclick={ontoggle}
-        >
-          <PanelLeft class="size-3.5" />
-        </Button>
-        <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
-          {workspaceName}
-        </span>
-      </div>
-      <div class="flex items-center gap-0.5 shrink-0">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          title="Expand all"
-          onclick={() => workspace.expandAll()}
-        >
-          <ChevronsUpDown class="size-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          title="Collapse all"
-          onclick={() => workspace.collapseAll()}
-        >
-          <ChevronsDownUp class="size-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          title="New file"
-          onclick={() => startRootCreate("file")}
-        >
-          <FilePlus class="size-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          title="New folder"
-          onclick={() => startRootCreate("folder")}
-        >
-          <FolderPlus class="size-3.5" />
-        </Button>
-      </div>
+  <!-- Header: title + toolbar (aligned with tab bar) -->
+  <div class="flex h-9 items-center justify-between border-b border-sidebar-border px-2">
+    <div class="flex items-center gap-0.5 min-w-0">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title="Toggle sidebar"
+        onclick={ontoggle}
+      >
+        <PanelLeft class="size-3.5" />
+      </Button>
+      <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+        {workspaceName}
+      </span>
     </div>
-    <!-- Search -->
-    <div class="relative">
-      <Search class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
-      <Input
-        class="h-6 pl-6 pr-6 text-xs"
-        placeholder="Search files…"
-        bind:value={workspace.searchQuery}
-      />
-      {#if workspace.searchQuery}
-        <button
-          class="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          onclick={() => (workspace.searchQuery = "")}
-          aria-label="Clear search"
-        >
-          <X class="size-3" />
-        </button>
-      {/if}
+    <div class="flex items-center gap-0.5 shrink-0">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title="Expand all"
+        onclick={() => workspace.expandAll()}
+      >
+        <ChevronsUpDown class="size-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title="Collapse all"
+        onclick={() => workspace.collapseAll()}
+      >
+        <ChevronsDownUp class="size-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title="New file"
+        onclick={() => startRootCreate("file")}
+      >
+        <FilePlus class="size-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title="New folder"
+        onclick={() => startRootCreate("folder")}
+      >
+        <FolderPlus class="size-3.5" />
+      </Button>
     </div>
+  </div>
+
+  <!-- Search bar -->
+  <div class="border-b border-sidebar-border px-2 py-1 relative">
+    <Search class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
+    <Input
+      class="h-6 pl-6 pr-6 text-xs"
+      placeholder="Search files…"
+      bind:value={workspace.searchQuery}
+    />
+    {#if workspace.searchQuery}
+      <button
+        class="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+        onclick={() => (workspace.searchQuery = "")}
+        aria-label="Clear search"
+      >
+        <X class="size-3" />
+      </button>
+    {/if}
   </div>
 
   <!-- Tree area -->
