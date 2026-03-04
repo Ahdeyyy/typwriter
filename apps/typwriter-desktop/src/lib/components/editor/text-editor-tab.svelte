@@ -47,7 +47,10 @@
     type Diagnostic as CMDiagnostic,
   } from "@codemirror/lint";
   import { typst } from "$lib/typst-codemirror-lang/index.js";
-  import { githubLight } from "$lib/typst-codemirror-lang/lightTheme.js";
+  import {
+    githubLightTheme,
+    githubLightHighlightStyle,
+  } from "$lib/typst-codemirror-lang/lightTheme.js";
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
@@ -197,13 +200,19 @@
     const dot = relPath.lastIndexOf(".");
     const ext = dot >= 0 ? relPath.slice(dot).toLowerCase() : "";
     switch (ext) {
-      case ".typ":  return typst();
-      case ".json": return json();
-      case ".xml":  return xml();
+      case ".typ":
+        return typst();
+      case ".json":
+        return json();
+      case ".xml":
+        return xml();
       case ".yaml":
-      case ".yml":  return yaml();
-      case ".toml": return StreamLanguage.define(tomlMode);
-      default:      return null;
+      case ".yml":
+        return yaml();
+      case ".toml":
+        return StreamLanguage.define(tomlMode);
+      default:
+        return null;
     }
   }
 
@@ -230,12 +239,13 @@
         ? autocompletion({ override: [mergedTypstCompletionsForTab(tabId)] })
         : autocompletion(),
       indentOnInput(),
+      githubLightTheme,
+      syntaxHighlighting(githubLightHighlightStyle),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       // Language extension chosen by file extension; null = plain text
       ...(langExt ? [langExt] : []),
       indentationMarkers(),
       keymap.of(vscodeKeymap),
-      espresso,
       keymap.of([
         ...defaultKeymap,
         ...historyKeymap,
@@ -263,28 +273,32 @@
         preview.setCursorPosition(tab.absPath, cursor);
       }),
       // Hover tooltip — only for .typ (avoids unnecessary IPC calls for other file types)
-      ...(isTypst ? [hoverTooltip(
-        async (_view, pos) => {
-          const tab = editor.tabs.find((t) => t.id === tabId);
-          if (!tab || tab.viewMode !== "text") return null;
+      ...(isTypst
+        ? [
+            hoverTooltip(
+              async (_view, pos) => {
+                const tab = editor.tabs.find((t) => t.id === tabId);
+                if (!tab || tab.viewMode !== "text") return null;
 
-          const tooltipResult = await getTooltipIpc(tab.absPath, pos);
-          if (tooltipResult.isErr() || tooltipResult.value === null)
-            return null;
+                const tooltipResult = await getTooltipIpc(tab.absPath, pos);
+                if (tooltipResult.isErr() || tooltipResult.value === null)
+                  return null;
 
-          const data = tooltipResult.value;
-          return {
-            pos,
-            end: pos,
-            above: true,
-            create() {
-              const dom = createHoverTooltipDom(data);
-              return { dom };
-            },
-          } satisfies Tooltip;
-        },
-        { hoverTime: 250 },
-      )] : []),
+                const data = tooltipResult.value;
+                return {
+                  pos,
+                  end: pos,
+                  above: true,
+                  create() {
+                    const dom = createHoverTooltipDom(data);
+                    return { dom };
+                  },
+                } satisfies Tooltip;
+              },
+              { hoverTime: 250 },
+            ),
+          ]
+        : []),
       EditorView.theme({
         "&": {
           height: "93svh",

@@ -1,13 +1,11 @@
 /**
- * src/themes/light.js
+ * src/themes/light.ts
  *
- * "GitHub Light" theme for the Typst CodeMirror language.
+ * "Manuscript Light" theme for the Typst CodeMirror language.
  *
- * Palette reference:
- *   https://github.com/primer/github-vscode-theme  (light default)
- *
- * Matches the exact same semantic token assignments as dark.js so
- * the two files can be used as a reference pair.
+ * Inspired by the aesthetic of printed technical documents:
+ * warm paper background, ink-dark headings, and a carefully
+ * balanced semantic colour palette.
  */
 
 import { EditorView } from "@codemirror/view";
@@ -17,33 +15,32 @@ import { typstTags } from "./highlight";
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 
-const GH = {
-    bg: "#ffffff",
-    bgDark: "#f6f8fa",
-    bgHighlight: "#f0f3f9",
-    bgSelection: "#add6ff40",
-    border: "#d0d7de",
+const ML = {
+    // ── Chrome ────────────────────────────────────────────────────────────────
+    bg:          "#fefcf8",   // warm paper white
+    bgDark:      "#f5f3ee",   // cream — gutters, panels
+    bgHighlight: "#eef2fb",   // cool blue wash — active line
+    bgSelection: "#b8d4ff50",
+    border:      "#e8e4dc",
 
-    fg: "#24292f",
-    fgGutter: "#8c959f",
-    fgComment: "#6e7781",
+    fg:          "#2c2c2c",   // warm charcoal
+    fgGutter:    "#b0aba1",
+    fgComment:   "#9a9690",
 
-    // Syntax colours
-    red: "#cf222e",
-    orange: "#953800",
-    orangeBright: "#e16f24",
-    yellow: "#9a6700",
-    green: "#116329",
-    teal: "#0550ae",
-    cyan: "#0969da",
-    blue: "#0550ae",
-    blue2: "#218bff",
-    purple: "#6639ba",
-    magenta: "#8250df",
-    pink: "#bf3989",
-
-    // Special
-    invalid: "#cf222e",
+    // ── Syntax ────────────────────────────────────────────────────────────────
+    ink:         "#0d0d0d",   // near-black  — headings, list terms
+    crimson:     "#be2626",   // keyword red — keywords, hash, errors
+    crimsonDark: "#8b1515",   // deep crimson — bold markup
+    violet:      "#6b3fa0",   // purple      — emph, math delimiter, escape
+    cobalt:      "#1155cc",   // web blue    — links, math operators
+    amber:       "#b56b00",   // amber       — labels, refs
+    green:       "#1a7d2e",   // forest green — strings, list markers
+    terracotta:  "#b85c00",   // terracotta  — numbers, raw code
+    indigo:      "#6639ba",   // deep violet — functions
+    navy:        "#1a55a0",   // navy        — interpolated, definitions
+    teal:        "#1876a0",   // teal blue   — property names
+    muted:       "#666666",   // neutral gray — operators
+    faint:       "#999999",   // light gray  — punctuation, brackets
 };
 
 // ── Editor chrome ─────────────────────────────────────────────────────────────
@@ -51,55 +48,55 @@ const GH = {
 export const githubLightTheme = EditorView.theme(
     {
         "&": {
-            color: GH.fg,
-            backgroundColor: GH.bg,
+            color: ML.fg,
+            backgroundColor: ML.bg,
         },
-        ".cm-content": { caretColor: GH.teal },
-        ".cm-cursor, .cm-dropCursor": { borderLeftColor: GH.teal },
+        ".cm-content": { caretColor: ML.indigo },
+        ".cm-cursor, .cm-dropCursor": { borderLeftColor: ML.indigo },
         "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
-            backgroundColor: GH.bgSelection,
+            backgroundColor: ML.bgSelection,
         },
-        ".cm-panels": { backgroundColor: GH.bgDark, color: GH.fg },
-        ".cm-panels.cm-panels-top": { borderBottom: `2px solid ${GH.border}` },
-        ".cm-panels.cm-panels-bottom": { borderTop: `2px solid ${GH.border}` },
+        ".cm-panels": { backgroundColor: ML.bgDark, color: ML.fg },
+        ".cm-panels.cm-panels-top": { borderBottom: `2px solid ${ML.border}` },
+        ".cm-panels.cm-panels-bottom": { borderTop: `2px solid ${ML.border}` },
         ".cm-searchMatch": {
-            backgroundColor: "#ffd33d80",
-            outline: `1px solid ${GH.yellow}`,
+            backgroundColor: "#ffd70050",
+            outline: `1px solid ${ML.amber}`,
         },
         ".cm-searchMatch.cm-searchMatch-selected": {
-            backgroundColor: "#ffa7aa80",
+            backgroundColor: "#ffaa8080",
         },
-        ".cm-activeLine": { backgroundColor: GH.bgHighlight },
-        ".cm-selectionMatch": { backgroundColor: "#add6ff40" },
+        ".cm-activeLine": { backgroundColor: ML.bgHighlight },
+        ".cm-selectionMatch": { backgroundColor: "#b8d4ff40" },
         "&.cm-focused .cm-matchingBracket": {
-            backgroundColor: "#34d05840",
-            outline: `1px solid #34d05880`,
+            backgroundColor: "#2e7d3225",
+            outline: `1px solid #2e7d3250`,
         },
         "&.cm-focused .cm-nonmatchingBracket": {
-            backgroundColor: "#ffa7aa40",
+            backgroundColor: "#be262625",
         },
         ".cm-gutters": {
-            backgroundColor: GH.bgDark,
-            color: GH.fgGutter,
+            backgroundColor: ML.bgDark,
+            color: ML.fgGutter,
             border: "none",
-            borderRight: `1px solid ${GH.border}`,
+            borderRight: `1px solid ${ML.border}`,
         },
         ".cm-activeLineGutter": {
-            backgroundColor: GH.bgHighlight,
-            color: GH.fgComment,
+            backgroundColor: ML.bgHighlight,
+            color: ML.fgComment,
         },
         ".cm-foldPlaceholder": {
             backgroundColor: "transparent",
             border: "none",
-            color: GH.fgComment,
+            color: ML.fgComment,
         },
         ".cm-tooltip": {
-            border: `1px solid ${GH.border}`,
-            backgroundColor: GH.bgDark,
+            border: `1px solid ${ML.border}`,
+            backgroundColor: ML.bgDark,
         },
         ".cm-completionMatchedText": {
             textDecoration: "none",
-            color: GH.blue,
+            color: ML.cobalt,
             fontWeight: "bold",
         },
     },
@@ -113,192 +110,194 @@ export const githubLightHighlightStyle = HighlightStyle.define([
     // ── Trivia ──────────────────────────────────────────────────────────────────
     {
         tag: t.comment,
-        color: GH.fgComment, fontStyle: "italic"
+        color: ML.fgComment, fontStyle: "italic"
     },
 
     // ── Markup ──────────────────────────────────────────────────────────────────
     {
+        // Headings: bold and near-black (as requested)
         tag: typstTags.heading,
-        color: GH.cyan, fontWeight: "bold"
+        color: ML.ink, fontWeight: "bold"
     },
     {
         tag: typstTags.strong,
-        color: GH.orange, fontWeight: "bold"
+        color: ML.crimsonDark, fontWeight: "bold"
     },
     {
         tag: typstTags.emph,
-        color: GH.orange, fontStyle: "italic"
+        color: ML.violet, fontStyle: "italic"
     },
     {
         tag: typstTags.raw,
-        color: GH.red,
-        backgroundColor: "#f6f8fa",
-        fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
-        borderRadius: "3px",
+        color: ML.terracotta,
+        backgroundColor: "#f4f0e8",
+        fontFamily: "'Iosevka','JetBrains Mono', 'Fira Code', Consolas, monospace",
+        borderRadius: "2px",
         padding: "0 2px"
     },
     {
         tag: typstTags.escape,
-        color: GH.magenta
+        color: ML.violet
     },
     {
+        // Links: blue with underline (as requested)
         tag: typstTags.link,
-        color: GH.blue, textDecoration: "underline"
+        color: ML.cobalt, textDecoration: "underline"
     },
     {
         tag: typstTags.label,
-        color: GH.yellow
+        color: ML.amber
     },
     {
         tag: typstTags.ref,
-        color: GH.yellow
+        color: ML.amber
     },
     {
         tag: typstTags.listMarker,
-        color: GH.orangeBright, fontWeight: "bold"
+        color: ML.green, fontWeight: "bold"
     },
     {
         tag: typstTags.listTerm,
-        color: GH.cyan, fontWeight: "bold"
+        color: ML.ink, fontWeight: "bold"
     },
 
     // ── Math ────────────────────────────────────────────────────────────────────
     {
         tag: typstTags.mathDelimiter,
-        color: GH.magenta, fontWeight: "bold"
+        color: ML.violet, fontWeight: "bold"
     },
     {
         tag: typstTags.mathOperator,
-        color: GH.blue2
+        color: ML.cobalt
     },
 
     // ── Code — keywords ─────────────────────────────────────────────────────────
     {
         tag: typstTags.keyword,
-        color: GH.red
+        color: ML.crimson
     },
     {
         tag: t.keyword,
-        color: GH.red
+        color: ML.crimson
     },
     {
         tag: t.operatorKeyword,
-        color: GH.red
+        color: ML.crimson
     },
 
     // ── Code — operators & punctuation ───────────────────────────────────────────
     {
         tag: typstTags.operator,
-        color: GH.fg
+        color: ML.muted
     },
     {
         tag: t.operator,
-        color: GH.fg
+        color: ML.muted
     },
     {
         tag: t.compareOperator,
-        color: GH.fg
+        color: ML.muted
     },
     {
         tag: t.updateOperator,
-        color: GH.fg
+        color: ML.muted
     },
     {
         tag: typstTags.punctuation,
-        color: GH.fg
+        color: ML.faint
     },
     {
         tag: t.punctuation,
-        color: GH.fg
+        color: ML.faint
     },
     {
         tag: typstTags.hash,
-        color: GH.red
+        color: ML.crimson
     },
     {
         tag: t.meta,
-        color: GH.red
+        color: ML.crimson
     },
 
     // ── Code — literals ─────────────────────────────────────────────────────────
     {
         tag: typstTags.number,
-        color: GH.orange
+        color: ML.terracotta
     },
     {
         tag: t.number,
-        color: GH.orange
+        color: ML.terracotta
     },
     {
         tag: typstTags.string,
-        color: GH.green
+        color: ML.green
     },
     {
         tag: t.string,
-        color: GH.green
+        color: ML.green
     },
     {
         tag: t.escape,
-        color: GH.magenta
+        color: ML.violet
     },
 
     // ── Code — identifiers ──────────────────────────────────────────────────────
     {
         tag: typstTags.function,
-        color: GH.purple
+        color: ML.indigo
     },
     {
         tag: t.function(t.variableName),
-        color: GH.purple
+        color: ML.indigo
     },
     {
         tag: typstTags.interpolated,
-        color: GH.cyan
+        color: ML.navy
     },
     {
         tag: t.special(t.variableName),
-        color: GH.cyan
+        color: ML.navy
     },
     {
         tag: t.definition(t.variableName),
-        color: GH.cyan
+        color: ML.navy
     },
     {
         tag: t.propertyName,
-        color: GH.teal
+        color: ML.teal
     },
     {
         tag: t.variableName,
-        color: GH.fg
+        color: ML.fg
     },
 
     // ── Brackets ────────────────────────────────────────────────────────────────
     {
         tag: t.bracket,
-        color: GH.fg
+        color: ML.faint
     },
     {
         tag: t.paren,
-        color: GH.fg
+        color: ML.faint
     },
     {
         tag: t.squareBracket,
-        color: GH.fg
+        color: ML.faint
     },
     {
         tag: t.brace,
-        color: GH.fg
+        color: ML.faint
     },
 
     // ── Errors ─────────────────────────────────────────────────────────────────
     {
         tag: typstTags.error,
-        color: GH.invalid,
+        color: ML.crimson,
         textDecoration: "underline wavy"
     },
     {
         tag: t.invalid,
-        color: GH.invalid,
+        color: ML.crimson,
         textDecoration: "underline wavy"
     },
 ]);
