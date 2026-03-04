@@ -20,7 +20,9 @@
       "Bash(bun add @codemirror/lint)",
       "Bash(bun run check)",
       "Bash(bun add @codemirror/lang-json @codemirror/lang-xml @codemirror/lang-yaml @codemirror/legacy-modes)",
-      "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" bun run check)"
+      "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" bun run check)",
+      "Bash(xargs grep -l \"Dialog\\\\|dialog-\")",
+      "Bash(xargs grep -l \"struct PageRanges\\\\|pub.*PageRanges\")"
     ]
   }
 }
