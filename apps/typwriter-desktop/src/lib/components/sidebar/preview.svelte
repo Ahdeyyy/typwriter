@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { ZoomIn, ZoomOut, RotateCcw } from "@lucide/svelte";
+  import { ZoomIn, ZoomOut, RotateCcw, Download } from "@lucide/svelte";
+  import ExportDialog from "./export-dialog.svelte";
 
   import { preview } from "$lib/stores/preview.svelte";
   import { editor } from "$lib/stores/editor.svelte";
@@ -12,6 +13,7 @@
 
   let scrollEl = $state<HTMLDivElement | null>(null);
   let visiblePage = $state(0);
+  let exportOpen = $state(false);
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -145,6 +147,16 @@
     <Button
       variant="ghost"
       size="icon-sm"
+      title="Export document"
+      onclick={() => (exportOpen = true)}
+      disabled={preview.totalPages === 0}
+    >
+      <Download class="size-3.5" />
+    </Button>
+
+    <Button
+      variant="ghost"
+      size="icon-sm"
       title="Refresh preview"
       onclick={refresh}
     >
@@ -191,3 +203,5 @@
     {/if}
   </div>
 </div>
+
+<ExportDialog bind:open={exportOpen} totalPages={preview.totalPages} />

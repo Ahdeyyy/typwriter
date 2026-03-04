@@ -63,6 +63,8 @@ export interface PdfExportConfig {
     path: string;
     title?: string | null;
     author?: string | null;
+    /** PDF standard: "1.4", "1.7", "2.0", "a-2b", etc. Omit for default (1.7). */
+    pdf_standard?: string | null;
 }
 
 export interface PngExportConfig {
@@ -70,11 +72,15 @@ export interface PngExportConfig {
     /** Pixels per point. 1.0 → 72 dpi, 2.0 → 144 dpi (retina). */
     scale?: number | null;
     prefix?: string | null;
+    /** Page range string like "1-3, 5, 7-9". Omit for all pages. */
+    page_range?: string | null;
 }
 
 export interface SvgExportConfig {
     dir: string;
     prefix?: string | null;
+    /** Page range string like "1-3, 5, 7-9". Omit for all pages. */
+    page_range?: string | null;
 }
 
 // ─── Diagnostics ──────────────────────────────────────────────────────────────

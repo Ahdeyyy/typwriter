@@ -61,6 +61,8 @@ pub struct PdfExportConfig {
     pub path: String,
     pub title: Option<String>,
     pub author: Option<String>,
+    /// PDF standard identifier: "1.7", "a-2b", etc. None means default (1.7).
+    pub pdf_standard: Option<String>,
 }
 
 #[derive(serde::Deserialize, Serialize, Clone, Debug)]
@@ -69,12 +71,91 @@ pub struct PngExportConfig {
     /// Pixels per point.  1.0 → 72 dpi, 2.0 → 144 dpi (retina).
     pub scale: Option<f32>,
     pub prefix: Option<String>,
+    /// Page range string like "1-3, 5, 7-9". None means all pages.
+    pub page_range: Option<String>,
 }
 
 #[derive(serde::Deserialize, Serialize, Clone, Debug)]
 pub struct SvgExportConfig {
     pub dir: String,
     pub prefix: Option<String>,
+    /// Page range string like "1-3, 5, 7-9". None means all pages.
+    pub page_range: Option<String>,
+}
+
+// ─── Export helpers ──────────────────────────────────────────────────────────
+
+/// Parse a page range string like "1-3, 5, 7-9" into sorted, deduplicated
+/// zero-indexed page indices, validated against the total page count.
+fn parse_page_indices(range_str: &str, total_pages: usize) -> Result<Vec<usize>, String> {
+    let mut indices = Vec::new();
+    for part in range_str.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        if let Some((a, b)) = part.split_once('-') {
+            let start: usize = a
+                .trim()
+                .parse()
+                .map_err(|_| format!("Invalid page number: '{}'", a.trim()))?;
+            let end: usize = b
+                .trim()
+                .parse()
+                .map_err(|_| format!("Invalid page number: '{}'", b.trim()))?;
+            if start == 0 || end == 0 {
+                return Err("Page numbers must be 1 or greater".into());
+            }
+            if start > end {
+                return Err(format!("Invalid range: {start}-{end}"));
+            }
+            if end > total_pages {
+                return Err(format!(
+                    "Page {end} exceeds document length ({total_pages})"
+                ));
+            }
+            for p in start..=end {
+                indices.push(p - 1);
+            }
+        } else {
+            let p: usize = part
+                .parse()
+                .map_err(|_| format!("Invalid page number: '{part}'"))?;
+            if p == 0 {
+                return Err("Page numbers must be 1 or greater".into());
+            }
+            if p > total_pages {
+                return Err(format!(
+                    "Page {p} exceeds document length ({total_pages})"
+                ));
+            }
+            indices.push(p - 1);
+        }
+    }
+    if indices.is_empty() {
+        return Err("No pages specified".into());
+    }
+    indices.sort();
+    indices.dedup();
+    Ok(indices)
+}
+
+/// Parse a PDF standard identifier string into PdfStandards.
+fn parse_pdf_standard(s: &str) -> Result<typst_pdf::PdfStandards, String> {
+    let standard = match s.trim().to_lowercase().as_str() {
+        "1.4" => typst_pdf::PdfStandard::V_1_4,
+        "1.5" => typst_pdf::PdfStandard::V_1_5,
+        "1.6" => typst_pdf::PdfStandard::V_1_6,
+        "1.7" => typst_pdf::PdfStandard::V_1_7,
+        "2.0" => typst_pdf::PdfStandard::V_2_0,
+        "a-1b" => typst_pdf::PdfStandard::A_1b,
+        "a-2b" => typst_pdf::PdfStandard::A_2b,
+        "a-3b" => typst_pdf::PdfStandard::A_3b,
+        "a-4" => typst_pdf::PdfStandard::A_4,
+        other => return Err(format!("Unknown PDF standard: '{other}'")),
+    };
+    typst_pdf::PdfStandards::new(&[standard])
+        .map_err(|e| format!("Invalid PDF standard: {e}"))
 }
 
 // ─── PreviewPipeline ──────────────────────────────────────────────────────────
@@ -336,10 +417,15 @@ impl PreviewPipeline {
             })?
             .clone();
 
+        let standards = match &config.pdf_standard {
+            Some(s) if !s.trim().is_empty() => parse_pdf_standard(s)?,
+            _ => typst_pdf::PdfStandards::default(),
+        };
+
         let options = typst_pdf::PdfOptions {
             ident: typst::foundations::Smart::Auto,
             timestamp: None,
-            standards: typst_pdf::PdfStandards::default(),
+            standards,
             page_ranges: None,
             tagged: true,
         };
@@ -382,8 +468,13 @@ impl PreviewPipeline {
             e.to_string()
         })?;
 
-        let page_count = doc.pages.len();
-        for (i, page) in doc.pages.iter().enumerate() {
+        let indices: Vec<usize> = match &config.page_range {
+            Some(s) if !s.trim().is_empty() => parse_page_indices(s, doc.pages.len())?,
+            _ => (0..doc.pages.len()).collect(),
+        };
+
+        for &i in &indices {
+            let page = &doc.pages[i];
             let png = render_page(page, scale).map_err(|e| {
                 error!("export_png: render failed page={i} err=\"{e}\"");
                 e
@@ -395,7 +486,7 @@ impl PreviewPipeline {
             })?;
         }
 
-        info!("export_png: ok — {page_count} page(s) ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        info!("export_png: ok — {} page(s) ({:.1}ms)", indices.len(), t.elapsed().as_secs_f64() * 1000.0);
         Ok(())
     }
 
@@ -421,8 +512,13 @@ impl PreviewPipeline {
             e.to_string()
         })?;
 
-        let page_count = doc.pages.len();
-        for (i, page) in doc.pages.iter().enumerate() {
+        let indices: Vec<usize> = match &config.page_range {
+            Some(s) if !s.trim().is_empty() => parse_page_indices(s, doc.pages.len())?,
+            _ => (0..doc.pages.len()).collect(),
+        };
+
+        for &i in &indices {
+            let page = &doc.pages[i];
             let svg = typst_svg::svg(page);
             let filename = format!("{}-{}.svg", prefix, i + 1);
             std::fs::write(dir.join(&filename), svg.as_str()).map_err(|e| {
@@ -431,7 +527,7 @@ impl PreviewPipeline {
             })?;
         }
 
-        info!("export_svg: ok — {page_count} page(s) ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        info!("export_svg: ok — {} page(s) ({:.1}ms)", indices.len(), t.elapsed().as_secs_f64() * 1000.0);
         Ok(())
     }
 }
