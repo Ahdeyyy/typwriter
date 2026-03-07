@@ -46,7 +46,7 @@
     const kind = creatingRoot;
     creatingRoot = null;
     if (!name || !workspace.rootPath || !kind) return;
-    const path = workspace.rootPath + "/" + name;
+    const path = name;
     const result = await (kind === "folder"
       ? workspace.createFolderAction(path)
       : workspace.createFileAction(path));
@@ -96,7 +96,7 @@
     if (!src || !workspace.rootPath) return;
     // Already at root (relative path has no directory separator)
     if (!src.includes('/')) return;
-    const dst = workspace.rootPath + "/" + basename(src);
+    const dst = basename(src);
     const srcIsDir = findIsDir(src);
     const result = await workspace.moveAction(src, dst, srcIsDir);
     result.mapErr(err => toast.error(`Move failed: ${err}`));
@@ -296,11 +296,11 @@
     <ContextMenu.Root>
       <ContextMenu.Trigger class="block min-h-full">
         <div
+          role="presentation"
           class="py-1 {rootDropTarget ? 'ring-1 ring-inset ring-sidebar-primary' : ''}"
           ondragover={onRootDragOver}
           ondragleave={onRootDragLeave}
           ondrop={onRootDrop}
-          role="tree"
           aria-label="File explorer"
         >
           <!-- Root-level create input -->
@@ -309,7 +309,7 @@
               <input
                 bind:this={rootCreateInputEl}
                 class="h-5 flex-1 rounded border border-input bg-background px-1 text-xs outline-none focus:ring-1 focus:ring-ring"
-                placeholder="{creatingRoot === 'folder' ? 'folder-name' : 'file.typ'}"
+                placeholder={creatingRoot === "folder" ? "folder-name" : "file.typ"}
                 bind:value={newRootName}
                 onkeydown={handleRootCreateKey}
                 onblur={cancelRootCreate}

@@ -23,7 +23,11 @@ use typst::{
 };
 use typst_ide::IdeWorld;
 
-use crate::{compiler::PreviewPipeline, workspace::WorkspaceState, world::EditorWorld};
+use crate::{
+    compiler::{CompileReason, PreviewPipeline},
+    workspace::WorkspaceState,
+    world::EditorWorld,
+};
 
 /// `World` proxy that resolves IDE queries as if `main()` were `query_main`.
 /// This avoids mutating the shared global main file while enabling file-agnostic
@@ -233,6 +237,7 @@ pub fn save_file(
     content: String,
     world: State<'_, Arc<EditorWorld>>,
     workspace: State<'_, Arc<WorkspaceState>>,
+    pipeline: State<'_, Arc<PreviewPipeline>>,
 ) -> Result<(), String> {
     let t = Instant::now();
     info!("save_file: path={path:?} content_bytes={}", content.len());
@@ -254,8 +259,11 @@ pub fn save_file(
     // Remove the shadow since disk now matches the editor content.
     world.shadow_remove(id);
 
-    // Best-effort: update the workspace thumbnail on save.
-    workspace.generate_thumbnail();
+    if workspace.should_generate_thumbnail_for(abs) {
+        workspace.generate_thumbnail();
+    }
+
+    pipeline.request_compile(CompileReason::Save);
 
     info!("save_file: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
     Ok(())

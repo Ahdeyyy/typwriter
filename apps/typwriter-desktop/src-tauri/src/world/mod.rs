@@ -73,6 +73,10 @@ pub struct EditorWorld {
 }
 
 impl EditorWorld {
+    fn placeholder_main() -> FileId {
+        FileId::new(None, VirtualPath::new("main.typ"))
+    }
+
     pub fn new(root: PathBuf, fonts: Vec<Font>, app_handle: AppHandle) -> Self {
         let book = FontBook::from_fonts(&fonts);
         let user_agent = "typwriter-app/0.1".to_string();
@@ -84,7 +88,7 @@ impl EditorWorld {
         );
         Self {
             root: RwLock::new(root),
-            main: RwLock::new(FileId::new(None, VirtualPath::new("main.typ"))), // placeholder
+            main: RwLock::new(Self::placeholder_main()),
             library: LazyHash::new(
                 Library::builder()
                     .with_features(Features::default())
@@ -105,6 +109,10 @@ impl EditorWorld {
     /// Called by Tauri command when user sets main file
     pub fn set_main(&self, id: FileId) {
         *self.main.write() = id;
+    }
+
+    pub fn clear_main(&self) {
+        *self.main.write() = Self::placeholder_main();
     }
 
     /// Update the workspace root and flush all file caches.

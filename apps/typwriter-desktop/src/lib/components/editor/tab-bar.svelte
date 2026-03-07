@@ -4,24 +4,37 @@
   import { workspace } from "$lib/stores/workspace.svelte";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
 
-  function activateTab(tab: TabInfo) {
-    editor.activeTabId = tab.id;
-    workspace.activeFilePath = tab.relPath;
+  async function activateTab(tab: TabInfo) {
+    try {
+      await editor.activateTab(tab.id);
+      workspace.activeFilePath = tab.relPath;
+    } catch {
+      // flushTab already surfaced the error to the user
+    }
   }
 
-  function closeTab(e: MouseEvent, tab: TabInfo) {
+  async function closeTab(e: MouseEvent, tab: TabInfo) {
     e.stopPropagation();
-    editor.closeTab(tab.id);
-    // Keep workspace.activeFilePath in sync with the new active tab.
-    workspace.activeFilePath = editor.activeTab?.relPath ?? null;
+    try {
+      const closed = await editor.closeTab(tab.id);
+      if (!closed) return;
+      workspace.activeFilePath = editor.activeTab?.relPath ?? null;
+    } catch {
+      // closeTab returns false on flush failure, but keep this guard for safety
+    }
   }
 
-  function handleAuxClick(e: MouseEvent, tab: TabInfo) {
+  async function handleAuxClick(e: MouseEvent, tab: TabInfo) {
     // Middle-click closes the tab.
     if (e.button === 1) {
       e.preventDefault();
-      editor.closeTab(tab.id);
-      workspace.activeFilePath = editor.activeTab?.relPath ?? null;
+      try {
+        const closed = await editor.closeTab(tab.id);
+        if (!closed) return;
+        workspace.activeFilePath = editor.activeTab?.relPath ?? null;
+      } catch {
+        // closeTab returns false on flush failure, but keep this guard for safety
+      }
     }
   }
 </script>
@@ -37,8 +50,8 @@
                  {editor.activeTabId === tab.id
                    ? 'bg-background text-foreground'
                    : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'}"
-          onclick={() => activateTab(tab)}
-          onauxclick={(e) => handleAuxClick(e, tab)}
+          onclick={() => void activateTab(tab)}
+          onauxclick={(e) => void handleAuxClick(e, tab)}
           title={tab.relPath}
         >
           <!-- Unsaved dot -->
@@ -57,8 +70,8 @@
                    opacity-0 group-hover:opacity-100
                    hover:bg-accent hover:text-accent-foreground
                    transition-opacity"
-            onclick={(e) => closeTab(e, tab)}
-            onkeydown={(e) => { if (e.key === 'Enter') closeTab(e as unknown as MouseEvent, tab); }}
+            onclick={(e) => void closeTab(e, tab)}
+            onkeydown={(e) => { if (e.key === 'Enter') void closeTab(e as unknown as MouseEvent, tab); }}
             aria-label="Close {tab.name}"
           >
             <X class="size-3" />
@@ -72,10 +85,14 @@
       </ContextMenu.Trigger>
 
       <ContextMenu.Content>
-        <ContextMenu.Item onclick={() => editor.closeTab(tab.id)}>
+        <ContextMenu.Item onclick={() => void editor.closeTab(tab.id).then(() => {
+          workspace.activeFilePath = editor.activeTab?.relPath ?? null;
+        })}>
           Close
         </ContextMenu.Item>
-        <ContextMenu.Item onclick={() => editor.closeOtherTabs(tab.id)}>
+        <ContextMenu.Item onclick={() => void editor.closeOtherTabs(tab.id).then(() => {
+          workspace.activeFilePath = editor.activeTab?.relPath ?? null;
+        })}>
           Close Others
         </ContextMenu.Item>
       </ContextMenu.Content>

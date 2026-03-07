@@ -6,7 +6,8 @@ import type {
     TotalPagesPayload,
     PageUpdatedPayload,
     PageRemovedPayload,
-    FileChangedPayload
+    CompileStatePayload,
+    WorkspaceFilesChangedPayload
 } from '$lib/types';
 
 export type { UnlistenFn };
@@ -53,13 +54,22 @@ export function onPreviewPageRemoved(handler: (payload: PageRemovedPayload) => v
     );
 }
 
+export function onPreviewCompileState(handler: (payload: CompileStatePayload) => void) {
+    return ResultAsync.fromPromise(
+        listen<CompileStatePayload>('preview:compile-state', (event: Event<CompileStatePayload>) =>
+            handler(event.payload)
+        ),
+        toErrString
+    );
+}
+
 // ─── Workspace events ─────────────────────────────────────────────────────────
 
-export function onWorkspaceFileChanged(handler: (payload: FileChangedPayload) => void) {
+export function onWorkspaceFilesChanged(handler: (payload: WorkspaceFilesChangedPayload) => void) {
     return ResultAsync.fromPromise(
-        listen<FileChangedPayload>(
-            'workspace:file-changed',
-            (event: Event<FileChangedPayload>) => handler(event.payload)
+        listen<WorkspaceFilesChangedPayload>(
+            'workspace:files-changed',
+            (event: Event<WorkspaceFilesChangedPayload>) => handler(event.payload)
         ),
         toErrString
     );

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import TreeNode from "./tree-node.svelte";
   import { tick } from "svelte";
   import { ChevronRight } from "@lucide/svelte";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
@@ -184,9 +185,7 @@
 <ContextMenu.Root>
   <ContextMenu.Trigger>
     <div
-      role="treeitem"
-      aria-selected={isActive}
-      aria-expanded={node.is_dir ? node.expanded : undefined}
+      role="button"
       tabindex="0"
       draggable="true"
       class="group flex w-full cursor-pointer select-none items-center gap-1 border-l-2 py-1 pr-2 text-sm outline-none
@@ -272,7 +271,7 @@
       <Input
         bind:ref={createInputEl}
         class="h-5 flex-1 px-1 py-0 text-xs"
-        placeholder="{creatingChild === 'folder' ? 'folder-name' : 'file.typ'}"
+        placeholder={creatingChild === "folder" ? "folder-name" : "file.typ"}
         bind:value={newChildName}
         onkeydown={handleCreateKey}
         onblur={cancelCreate}
@@ -282,6 +281,6 @@
 
   <!-- Recursive children -->
   {#each node.children as child (child.path)}
-    <svelte:self node={child} depth={depth + 1} />
+    <TreeNode node={child} depth={depth + 1} />
   {/each}
 {/if}

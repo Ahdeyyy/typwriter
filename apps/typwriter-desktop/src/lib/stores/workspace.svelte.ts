@@ -1,14 +1,22 @@
 import { err, ResultAsync } from 'neverthrow';
 import {
-    getFileTree, setMainFile, createFile, createFolder,
-    deleteFile, deleteFolder, renameFile, moveFile, moveFolder, openFolder, importFiles
+    createFile,
+    createFolder,
+    deleteFile,
+    deleteFolder,
+    getFileTree,
+    importFiles,
+    moveFile,
+    moveFolder,
+    openFolder,
+    renameFile,
+    setMainFile,
+    triggerPreview,
 } from '$lib/ipc/commands';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
-import { onWorkspaceFileChanged } from '$lib/ipc/events';
+import { onWorkspaceFilesChanged, type UnlistenFn } from '$lib/ipc/events';
 import type { FileTreeEntry } from '$lib/types';
 import { editor } from './editor.svelte';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface FileNode {
     name: string;
@@ -20,8 +28,6 @@ export interface FileNode {
     editName: string;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 export function normalize(path: string): string {
     return path.replace(/\\/g, '/');
 }
@@ -31,9 +37,9 @@ export function basename(path: string): string {
 }
 
 export function dirname(path: string): string {
-    const n = normalize(path);
-    const idx = n.lastIndexOf('/');
-    return idx >= 0 ? n.slice(0, idx) : '';
+    const normalized = normalize(path);
+    const idx = normalized.lastIndexOf('/');
+    return idx >= 0 ? normalized.slice(0, idx) : '';
 }
 
 function entryToNode(entry: FileTreeEntry, expandedPaths: Set<string>): FileNode {
@@ -45,22 +51,26 @@ function entryToNode(entry: FileTreeEntry, expandedPaths: Set<string>): FileNode
         expanded: expandedPaths.has(path),
         isEditing: false,
         editName: '',
-        children: entry.children.map(c => entryToNode(c, expandedPaths)),
+        children: entry.children.map((child) => entryToNode(child, expandedPaths)),
     };
 }
 
 function collectExpandedPaths(nodes: FileNode[], result: Set<string> = new Set()): Set<string> {
     for (const node of nodes) {
-        if (node.is_dir && node.expanded) result.add(node.path);
+        if (node.is_dir && node.expanded) {
+            result.add(node.path);
+        }
         collectExpandedPaths(node.children, result);
     }
     return result;
 }
 
 export function filterTree(nodes: FileNode[], query: string): FileNode[] {
-    if (!query.trim()) return nodes;
+    if (!query.trim()) {
+        return nodes;
+    }
     const q = query.toLowerCase();
-    return nodes.flatMap(node => {
+    return nodes.flatMap((node) => {
         if (node.is_dir) {
             const filteredChildren = filterTree(node.children, query);
             if (filteredChildren.length > 0) {
@@ -86,14 +96,33 @@ function walkAndSetExpanded(nodes: FileNode[], value: boolean): void {
 
 function findNode(nodes: FileNode[], path: string): FileNode | null {
     for (const node of nodes) {
-        if (node.path === path) return node;
+        if (node.path === path) {
+            return node;
+        }
         const found = findNode(node.children, path);
-        if (found) return found;
+        if (found) {
+            return found;
+        }
     }
     return null;
 }
 
-// ─── Store ────────────────────────────────────────────────────────────────────
+function rewritePath(path: string, src: string, dst: string, isDir: boolean): string | null {
+    const normalizedPath = normalize(path);
+    const normalizedSrc = normalize(src).replace(/\/$/, '');
+    const normalizedDst = normalize(dst).replace(/\/$/, '');
+    if (!isDir) {
+        return normalizedPath === normalizedSrc ? normalizedDst : null;
+    }
+    if (normalizedPath === normalizedSrc) {
+        return normalizedDst;
+    }
+    const prefix = `${normalizedSrc}/`;
+    if (!normalizedPath.startsWith(prefix)) {
+        return null;
+    }
+    return `${normalizedDst}/${normalizedPath.slice(prefix.length)}`;
+}
 
 class WorkspaceStore {
     tree = $state<FileNode[]>([]);
@@ -105,65 +134,92 @@ class WorkspaceStore {
 
     filteredTree = $derived(filterTree(this.tree, this.searchQuery));
 
-    /** Convert a workspace-relative path to an absolute path. Already-absolute paths are returned as-is. */
+    private _filesChangedUnlisten: UnlistenFn | null = null;
+    private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
     toAbs(path: string): string {
-        if (!this.rootPath) return path;
-        const p = normalize(path);
-        if (/^([A-Za-z]:\/|\/)/.test(p)) return p;
-        return `${this.rootPath}/${p}`;
+        if (!this.rootPath) {
+            return path;
+        }
+        const normalized = normalize(path);
+        if (/^([A-Za-z]:\/|\/)/.test(normalized)) {
+            return normalized;
+        }
+        return `${this.rootPath}/${normalized}`;
     }
 
-    /** Convert an absolute path to a workspace-relative path. Already-relative paths are returned as-is. */
     toRel(absPath: string): string {
-        if (!this.rootPath) return absPath;
-        const p = normalize(absPath);
-        const prefix = this.rootPath + '/';
-        return p.startsWith(prefix) ? p.slice(prefix.length) : p;
+        if (!this.rootPath) {
+            return absPath;
+        }
+        const normalized = normalize(absPath);
+        const prefix = `${this.rootPath}/`;
+        return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized;
     }
 
     init(root: string): ResultAsync<void, string> {
+        return ResultAsync.fromPromise(this._init(root), (err) => String(err));
+    }
+
+    private async _init(root: string): Promise<void> {
+        await editor.flushAllTabs();
+        this._disposeFilesChangedListener();
+        this._clearRefreshTimer();
+
         this.rootPath = normalize(root);
+        this.tree = [];
+        this.mainFile = null;
+        this.activeFilePath = null;
 
-        // Register file-change listener; errors are only logged
-        onWorkspaceFileChanged(() => {
-            this.refreshTree().mapErr(err =>
-                console.error('refreshTree after file-change failed:', err)
-            );
-        }).mapErr(err => console.error('onWorkspaceFileChanged listener failed:', err));
+        const listenResult = await onWorkspaceFilesChanged(() => {
+            this._scheduleTreeRefresh();
+        });
+        if (listenResult.isOk()) {
+            this._filesChangedUnlisten = listenResult.value;
+        } else {
+            console.error('onWorkspaceFilesChanged listener failed:', listenResult.error);
+        }
 
-        // Open the workspace in the backend. The backend returns the workspace-relative
-        // path of the previously-set main file (if any), which we apply to the store.
-        return openFolder(root)
-            .andThen((restoredMain) => {
-                if (restoredMain) {
-                    this.mainFile = normalize(restoredMain);
-                }
-                return this.refreshTree();
-            });
+        const openResult = await openFolder(root);
+        if (openResult.isErr()) {
+            throw new Error(openResult.error);
+        }
+
+        if (openResult.value) {
+            this.mainFile = normalize(openResult.value);
+        }
+
+        const refreshResult = await this.refreshTree();
+        if (refreshResult.isErr()) {
+            throw new Error(refreshResult.error);
+        }
     }
 
     refreshTree(): ResultAsync<void, string> {
-        return getFileTree().map(entries => {
+        return getFileTree().map((entries) => {
             const expandedPaths = collectExpandedPaths(this.tree);
-            this.tree = entries.map(e => entryToNode(e, expandedPaths));
+            this.tree = entries.map((entry) => entryToNode(entry, expandedPaths));
         });
     }
 
-    /** Open a file: activate its tab (or create one) and keep activeFilePath in sync. */
     openFile(path: string): ResultAsync<void, string> {
-        this.activeFilePath = path;
-        return editor.openFile(path);
+        return editor.openFile(path).map(() => {
+            this.activeFilePath = path;
+        });
     }
 
     setMainFileAction(path: string): ResultAsync<void, string> {
         const ext = path.split('.').pop()?.toLowerCase();
-        const error = err(`Only .typ files can be set as main file, but got .${ext}`);
+        const onlyTypError = err(`Only .typ files can be set as main file, but got .${ext}`);
         if (ext !== 'typ') {
-            return ResultAsync.fromPromise(Promise.reject(error.error), () => error.error);
+            return ResultAsync.fromPromise(Promise.reject(onlyTypError.error), () => onlyTypError.error);
         }
-        return setMainFile(this.toAbs(path)).map(() => {
-            this.mainFile = path;
-        });
+
+        return setMainFile(this.toAbs(path))
+            .andThen(() => triggerPreview('main_file'))
+            .map(() => {
+                this.mainFile = normalize(path);
+            });
     }
 
     createFileAction(path: string): ResultAsync<void, string> {
@@ -175,69 +231,173 @@ class WorkspaceStore {
     }
 
     deleteFileAction(path: string): ResultAsync<void, string> {
-        return deleteFile(this.toAbs(path)).andThen(() => {
-            const normPath = normalize(path);
-            if (editor.tabs.find(t => t.id === normPath)) {
-                editor.closeTab(normPath);
-            }
-            if (this.activeFilePath === path) this.activeFilePath = null;
-            return this.refreshTree();
-        });
+        return ResultAsync.fromPromise(this._deleteFile(path), (err) => String(err));
+    }
+
+    private async _deleteFile(path: string): Promise<void> {
+        const result = await deleteFile(this.toAbs(path));
+        if (result.isErr()) {
+            throw new Error(result.error);
+        }
+
+        const normalized = normalize(path);
+        if (editor.tabs.find((tab) => tab.id === normalized)) {
+            await editor.closeTab(normalized, { flush: false });
+        }
+        if (this.activeFilePath === normalized) {
+            this.activeFilePath = editor.activeTab?.relPath ?? null;
+        }
+        if (this.mainFile === normalized) {
+            this.mainFile = null;
+            triggerPreview('main_file').mapErr((err) => {
+                console.error('preview trigger after main file delete failed:', err);
+            });
+        }
+
+        const refreshResult = await this.refreshTree();
+        if (refreshResult.isErr()) {
+            throw new Error(refreshResult.error);
+        }
     }
 
     deleteFolderAction(path: string): ResultAsync<void, string> {
-        return deleteFolder(this.toAbs(path)).andThen(() => {
-            // Close any tabs whose files live inside the deleted folder.
-            const prefix = normalize(path) + '/';
-            for (const tab of [...editor.tabs]) {
-                if (tab.relPath.startsWith(prefix)) editor.closeTab(tab.id);
+        return ResultAsync.fromPromise(this._deleteFolder(path), (err) => String(err));
+    }
+
+    private async _deleteFolder(path: string): Promise<void> {
+        const result = await deleteFolder(this.toAbs(path));
+        if (result.isErr()) {
+            throw new Error(result.error);
+        }
+
+        const prefix = `${normalize(path)}/`;
+        for (const tab of [...editor.tabs]) {
+            if (tab.relPath.startsWith(prefix)) {
+                await editor.closeTab(tab.id, { flush: false });
             }
-            if (this.activeFilePath?.startsWith(path + '/')) {
-                this.activeFilePath = null;
-            }
-            return this.refreshTree();
-        });
+        }
+
+        if (this.activeFilePath?.startsWith(prefix)) {
+            this.activeFilePath = editor.activeTab?.relPath ?? null;
+        }
+        if (this.mainFile?.startsWith(prefix)) {
+            this.mainFile = null;
+            triggerPreview('main_file').mapErr((err) => {
+                console.error('preview trigger after main folder delete failed:', err);
+            });
+        }
+
+        const refreshResult = await this.refreshTree();
+        if (refreshResult.isErr()) {
+            throw new Error(refreshResult.error);
+        }
     }
 
     renameAction(src: string, newName: string): ResultAsync<void, string> {
+        return ResultAsync.fromPromise(this._renameAction(src, newName), (err) => String(err));
+    }
+
+    private async _renameAction(src: string, newName: string): Promise<void> {
         const dir = dirname(src);
         const dst = dir ? `${dir}/${newName}` : newName;
-        console.log("Renaming", src, "to", dst);
-        return renameFile(this.toAbs(src), this.toAbs(dst)).andThen(() => {
-            // Update the open tab path if the renamed file was open.
-            const normSrc = normalize(src);
-            if (editor.tabs.find(t => t.id === normSrc)) {
-                editor.updateTabPath(normSrc, dst);
-            }
-            if (this.activeFilePath === src) this.activeFilePath = dst;
-            if (this.mainFile === src) this.mainFile = dst;
-            return this.refreshTree();
-        });
+
+        const result = await renameFile(this.toAbs(src), this.toAbs(dst));
+        if (result.isErr()) {
+            throw new Error(result.error);
+        }
+
+        const normalizedSrc = normalize(src);
+        if (editor.tabs.find((tab) => tab.id === normalizedSrc)) {
+            editor.updateTabPath(normalizedSrc, dst);
+        }
+        if (this.activeFilePath === normalizedSrc) {
+            this.activeFilePath = normalize(dst);
+        }
+        const movedMain = this.mainFile === normalizedSrc;
+        if (movedMain) {
+            this.mainFile = normalize(dst);
+        }
+
+        if (movedMain) {
+            triggerPreview('main_file').mapErr((err) => {
+                console.error('preview trigger after main file rename failed:', err);
+            });
+        }
+
+        const refreshResult = await this.refreshTree();
+        if (refreshResult.isErr()) {
+            throw new Error(refreshResult.error);
+        }
     }
 
     moveAction(src: string, dst: string, is_dir: boolean): ResultAsync<void, string> {
-        const op = is_dir ? moveFolder(this.toAbs(src), this.toAbs(dst)) : moveFile(this.toAbs(src), this.toAbs(dst));
-        return op.andThen(() => this.refreshTree());
+        return ResultAsync.fromPromise(this._moveAction(src, dst, is_dir), (err) => String(err));
+    }
+
+    private async _moveAction(src: string, dst: string, is_dir: boolean): Promise<void> {
+        const result = is_dir
+            ? await moveFolder(this.toAbs(src), this.toAbs(dst))
+            : await moveFile(this.toAbs(src), this.toAbs(dst));
+        if (result.isErr()) {
+            throw new Error(result.error);
+        }
+
+        if (is_dir) {
+            editor.updateTabsUnderPath(src, dst);
+        } else {
+            const normalizedSrc = normalize(src);
+            if (editor.tabs.find((tab) => tab.id === normalizedSrc)) {
+                editor.updateTabPath(normalizedSrc, dst);
+            }
+        }
+
+        this.activeFilePath = this.activeFilePath
+            ? rewritePath(this.activeFilePath, src, dst, is_dir) ?? this.activeFilePath
+            : null;
+        const nextMainFile = this.mainFile
+            ? rewritePath(this.mainFile, src, dst, is_dir) ?? this.mainFile
+            : null;
+        const movedMain = this.mainFile !== nextMainFile;
+        this.mainFile = nextMainFile;
+
+        if (movedMain) {
+            triggerPreview('main_file').mapErr((err) => {
+                console.error('preview trigger after moving main path failed:', err);
+            });
+        }
+
+        const refreshResult = await this.refreshTree();
+        if (refreshResult.isErr()) {
+            throw new Error(refreshResult.error);
+        }
     }
 
     async importFilesAction(destDir: string): Promise<void> {
         const selected = await openDialog({ multiple: true, directory: false });
-        if (!selected) return;
-        const paths = Array.isArray(selected) ? selected : [selected];
-        if (paths.length === 0) return;
-        const result = await importFiles(paths, this.toAbs(destDir));
-        if (result.isOk()) {
-            await this.refreshTree();
+        if (!selected) {
+            return;
         }
-        return result.match(
-            () => { },
-            (err) => { throw new Error(err); }
-        );
+        const paths = Array.isArray(selected) ? selected : [selected];
+        if (paths.length === 0) {
+            return;
+        }
+
+        const result = await importFiles(paths, this.toAbs(destDir));
+        if (result.isErr()) {
+            throw new Error(result.error);
+        }
+
+        const refreshResult = await this.refreshTree();
+        if (refreshResult.isErr()) {
+            throw new Error(refreshResult.error);
+        }
     }
 
     toggleFolder(path: string): void {
         const node = findNode(this.tree, path);
-        if (node?.is_dir) node.expanded = !node.expanded;
+        if (node?.is_dir) {
+            node.expanded = !node.expanded;
+        }
     }
 
     expandAll(): void {
@@ -246,6 +406,28 @@ class WorkspaceStore {
 
     collapseAll(): void {
         walkAndSetExpanded(this.tree, false);
+    }
+
+    private _scheduleTreeRefresh(): void {
+        this._clearRefreshTimer();
+        this._refreshTimer = setTimeout(() => {
+            this._refreshTimer = null;
+            this.refreshTree().mapErr((err) => {
+                console.error('refreshTree after workspace changes failed:', err);
+            });
+        }, 120);
+    }
+
+    private _clearRefreshTimer(): void {
+        if (this._refreshTimer !== null) {
+            clearTimeout(this._refreshTimer);
+            this._refreshTimer = null;
+        }
+    }
+
+    private _disposeFilesChangedListener(): void {
+        this._filesChangedUnlisten?.();
+        this._filesChangedUnlisten = null;
     }
 }
 
