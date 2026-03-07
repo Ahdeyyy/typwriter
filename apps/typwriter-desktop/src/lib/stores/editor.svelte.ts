@@ -1,8 +1,14 @@
 import { ResultAsync } from 'neverthrow';
-import { updateFileContent, saveFile, readFile, discardShadow, triggerPreview } from '$lib/ipc/commands';
+import {
+    discardShadow,
+    readFile,
+    saveFile,
+    triggerPreview,
+    updateFileContent,
+} from '$lib/ipc/commands';
+import type { CompileReason } from '$lib/types';
 import { workspace, normalize, basename } from './workspace.svelte';
-
-// ─── File type detection ───────────────────────────────────────────────────────
+import { toast } from 'svelte-sonner';
 
 const TEXT_EXTS = new Set([
     '.typ', '.txt', '.md', '.markdown', '.json', '.toml',
@@ -21,10 +27,7 @@ function extOf(path: string): string {
     return dot >= 0 ? path.slice(dot).toLowerCase() : '';
 }
 
-// ─── Tab ──────────────────────────────────────────────────────────────────────
-
 export interface TabInfo {
-    /** Unique tab ID — equals relPath so each file is open at most once. */
     id: string;
     relPath: string;
     absPath: string;
@@ -37,10 +40,8 @@ export interface TabInfo {
     isLoading: boolean;
 }
 
-// ─── Store ────────────────────────────────────────────────────────────────────
-
-const SHADOW_DELAY = 0;  // ms — fast shadow write for live preview
-const DISK_SAVE_DELAY = 750;  // ms — auto-save to disk after last edit
+const TYPING_PREVIEW_INTERVAL = 75;
+const IDLE_SAVE_DELAY = 1500;
 
 class EditorStore {
     tabs = $state<TabInfo[]>([]);
@@ -48,31 +49,34 @@ class EditorStore {
 
     activeTab = $derived(
         this.activeTabId !== null
-            ? (this.tabs.find(t => t.id === this.activeTabId) ?? null)
+            ? (this.tabs.find((t) => t.id === this.activeTabId) ?? null)
             : null
     );
 
-    /** Set by the preview component after a jump-from-click to move the CM cursor. */
     cursorJumpRequest = $state<{ tabId: string; offset: number } | null>(null);
+
+    private _typingPreviewTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private _typingPreviewLastRun = new Map<string, number>();
+    private _idleSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     requestCursorJump(tabId: string, offset: number): void {
         this.cursorJumpRequest = { tabId, offset };
     }
 
-    // ── Per-tab debounce timers (plain Map, no rune needed)
-    private _shadowTimers = new Map<string, ReturnType<typeof setTimeout>>();
-    private _autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-    // ─── Open file ────────────────────────────────────────────────────────────
-
     openFile(relPath: string): ResultAsync<void, string> {
-        const id = normalize(relPath);
+        return ResultAsync.fromPromise(this._openFile(relPath), (err) => String(err));
+    }
 
-        // If tab is already open, just activate it.
-        const existing = this.tabs.find(t => t.id === id);
+    private async _openFile(relPath: string): Promise<void> {
+        const id = normalize(relPath);
+        if (this.activeTabId && this.activeTabId !== id) {
+            await this.flushActiveTab();
+        }
+
+        const existing = this.tabs.find((t) => t.id === id);
         if (existing) {
             this.activeTabId = id;
-            return ResultAsync.fromSafePromise(Promise.resolve());
+            return;
         }
 
         const absPath = workspace.toAbs(id);
@@ -100,64 +104,72 @@ class EditorStore {
         this.activeTabId = id;
 
         if (viewMode === 'unsupported') {
-            return ResultAsync.fromSafePromise(Promise.resolve());
+            return;
         }
 
-        return this._loadTabContent(id, absPath, viewMode);
+        await this._loadTabContent(id, absPath, viewMode);
     }
 
-    // ─── Internal: load content ───────────────────────────────────────────────
-    // IMPORTANT: we accept tabId + raw values rather than the local `tab` object
-    // because `this.tabs.push(tab)` causes Svelte 5 to wrap the element in a
-    // reactive proxy. The original `tab` variable still points to the *raw*
-    // (unproxied) object, so mutations on it are invisible to Svelte. We must
-    // look up the element through `this.tabs.find(...)` inside the async
-    // callback to get the reactive proxy and trigger UI updates.
-
-    private _loadTabContent(tabId: string, absPath: string, viewMode: ViewMode): ResultAsync<void, string> {
-        return ResultAsync.fromPromise(
-            readFile(absPath).then(r => {
-                // Re-acquire the reactive proxy from the live array.
-                const liveTab = this.tabs.find(t => t.id === tabId);
-                if (!liveTab) return; // tab was closed before loading finished
-
-                if (r.isErr()) throw new Error(r.error);
-
-                if (viewMode === 'image') {
-                    if (r.value.type !== 'image') throw new Error(`Expected image, got ${r.value.type}`);
-                    liveTab.imageSrc = `data:${r.value.mime};base64,${r.value.base64}`;
-                    liveTab.content = '';
-                } else {
-                    if (r.value.type !== 'text') throw new Error(`Expected text, got ${r.value.type}`);
-                    liveTab.content = r.value.content;
-                }
-
-                liveTab.isLoading = false;
-            }),
-            (e) => String(e)
-        );
+    async activateTab(tabId: string): Promise<void> {
+        if (this.activeTabId === tabId) {
+            return;
+        }
+        await this.flushActiveTab();
+        this.activeTabId = tabId;
     }
 
-    // ─── Close tab ────────────────────────────────────────────────────────────
+    private async _loadTabContent(tabId: string, absPath: string, viewMode: ViewMode): Promise<void> {
+        const response = await readFile(absPath);
+        const liveTab = this.tabs.find((t) => t.id === tabId);
+        if (!liveTab) {
+            return;
+        }
+        if (response.isErr()) {
+            liveTab.isLoading = false;
+            throw new Error(response.error);
+        }
 
-    closeTab(id: string): void {
-        const idx = this.tabs.findIndex(t => t.id === id);
-        if (idx === -1) return;
+        if (viewMode === 'image') {
+            if (response.value.type !== 'image') {
+                throw new Error(`Expected image, got ${response.value.type}`);
+            }
+            liveTab.imageSrc = `data:${response.value.mime};base64,${response.value.base64}`;
+            liveTab.content = '';
+        } else {
+            if (response.value.type !== 'text') {
+                throw new Error(`Expected text, got ${response.value.type}`);
+            }
+            liveTab.content = response.value.content;
+        }
+
+        liveTab.isLoading = false;
+    }
+
+    async closeTab(id: string, options: { flush?: boolean } = {}): Promise<boolean> {
+        const { flush = true } = options;
+        const idx = this.tabs.findIndex((t) => t.id === id);
+        if (idx === -1) {
+            return true;
+        }
 
         const tab = this.tabs[idx];
+        if (flush && tab.isEditable && tab.hasUnsavedChanges) {
+            try {
+                await this.flushTab(id);
+            } catch {
+                return false;
+            }
+        }
 
-        // Clear pending timers.
         this._clearTimers(id);
-        // Discard the in-memory shadow on the backend (fire-and-forget).
         if (tab.viewMode === 'text') {
-            discardShadow(tab.absPath).mapErr(err =>
+            discardShadow(tab.absPath).mapErr((err) =>
                 console.error('discardShadow error on close:', err)
             );
         }
 
         this.tabs.splice(idx, 1);
 
-        // Pick a new active tab if we closed the active one.
         if (this.activeTabId === id) {
             if (this.tabs.length === 0) {
                 this.activeTabId = null;
@@ -166,76 +178,100 @@ class EditorStore {
                 this.activeTabId = this.tabs[newIdx].id;
             }
         }
+
+        return true;
     }
 
-    closeOtherTabs(keepId: string): void {
-        const toClose = this.tabs.filter(t => t.id !== keepId).map(t => t.id);
-        for (const id of toClose) this.closeTab(id);
+    async closeOtherTabs(keepId: string): Promise<void> {
+        const toClose = this.tabs.filter((t) => t.id !== keepId).map((t) => t.id);
+        for (const id of toClose) {
+            await this.closeTab(id);
+        }
     }
-
-    // ─── Content changes (called from workspace.svelte's CM update listener) ──
 
     handleTabContentChange(tabId: string, content: string): void {
-        const tab = this.tabs.find(t => t.id === tabId);
-        if (!tab || !tab.isEditable) return;
+        const tab = this.tabs.find((t) => t.id === tabId);
+        if (!tab || !tab.isEditable) {
+            return;
+        }
 
         tab.content = content;
         tab.hasUnsavedChanges = true;
 
-        // Shadow write (fast — keeps live preview in sync).
-        clearTimeout(this._shadowTimers.get(tab.id));
-        this._shadowTimers.set(tab.id, setTimeout(() => {
-            updateFileContent(tab.absPath, tab.content)
-                .andThen(() => triggerPreview())
-                .mapErr(err => console.error('shadow write/preview error:', err));
-        }, SHADOW_DELAY));
+        updateFileContent(tab.absPath, tab.content).mapErr((err) => {
+            console.error('shadow write error:', err);
+            toast.error(`Shadow update failed for ${tab.name}: ${err}`);
+        });
 
-        // Auto-save to disk.
-        clearTimeout(this._autoSaveTimers.get(tab.id));
-        this._autoSaveTimers.set(tab.id, setTimeout(() => {
-            saveFile(tab.absPath, tab.content)
-                .map(() => { tab.hasUnsavedChanges = false; })
-                .mapErr(err => console.error('auto-save error:', err));
-        }, DISK_SAVE_DELAY));
+        this._scheduleTypingPreview(tab.id);
+        this._scheduleIdleSave(tab.id);
     }
 
-    // ─── Manual save (Ctrl+S) ─────────────────────────────────────────────────
-
     saveTabById(tabId: string): ResultAsync<void, string> {
-        const tab = this.tabs.find(t => t.id === tabId);
-        if (!tab || !tab.isEditable) return ResultAsync.fromSafePromise(Promise.resolve());
-
-        // Cancel pending timers — we're saving right now.
-        this._clearTimers(tab.id);
-
-        // Flush the shadow write immediately too.
-        updateFileContent(tab.absPath, tab.content)
-            .mapErr(err => console.error('shadow write error on save:', err));
-
-        return saveFile(tab.absPath, tab.content).map(() => {
-            tab.hasUnsavedChanges = false;
-        });
+        return ResultAsync.fromPromise(this.flushTab(tabId), (err) => String(err));
     }
 
     saveCurrentFile(): ResultAsync<void, string> {
         const tab = this.activeTab;
-        if (!tab) return ResultAsync.fromSafePromise(Promise.resolve());
+        if (!tab) {
+            return ResultAsync.fromSafePromise(Promise.resolve());
+        }
         return this.saveTabById(tab.id);
     }
 
-    // ─── Tab path update (called after rename) ────────────────────────────────
+    async flushTab(tabId: string): Promise<void> {
+        const tab = this.tabs.find((t) => t.id === tabId);
+        if (!tab || !tab.isEditable || !tab.hasUnsavedChanges) {
+            return;
+        }
+
+        this._clearIdleSave(tab.id);
+
+        const shadowResult = await updateFileContent(tab.absPath, tab.content);
+        if (shadowResult.isErr()) {
+            const message = `Failed to stage ${tab.name}: ${shadowResult.error}`;
+            toast.error(message);
+            throw new Error(message);
+        }
+
+        const saveResult = await saveFile(tab.absPath, tab.content);
+        if (saveResult.isErr()) {
+            const message = `Failed to save ${tab.name}: ${saveResult.error}`;
+            toast.error(message);
+            throw new Error(message);
+        }
+
+        tab.hasUnsavedChanges = false;
+    }
+
+    async flushActiveTab(): Promise<void> {
+        if (!this.activeTabId) {
+            return;
+        }
+        await this.flushTab(this.activeTabId);
+    }
+
+    async flushAllTabs(): Promise<void> {
+        for (const tab of [...this.tabs]) {
+            await this.flushTab(tab.id);
+        }
+    }
 
     updateTabPath(oldId: string, newRelPath: string): void {
-        const tab = this.tabs.find(t => t.id === oldId);
-        if (!tab) return;
+        const tab = this.tabs.find((t) => t.id === oldId);
+        if (!tab) {
+            return;
+        }
 
         const newId = normalize(newRelPath);
+        this._moveTimerKey(this._typingPreviewTimers, oldId, newId);
+        this._moveTimerKey(this._idleSaveTimers, oldId, newId);
 
-        // Move timers to new key.
-        const shadow = this._shadowTimers.get(oldId);
-        if (shadow !== undefined) { this._shadowTimers.delete(oldId); this._shadowTimers.set(newId, shadow); }
-        const autoSave = this._autoSaveTimers.get(oldId);
-        if (autoSave !== undefined) { this._autoSaveTimers.delete(oldId); this._autoSaveTimers.set(newId, autoSave); }
+        const lastRun = this._typingPreviewLastRun.get(oldId);
+        if (lastRun !== undefined) {
+            this._typingPreviewLastRun.delete(oldId);
+            this._typingPreviewLastRun.set(newId, lastRun);
+        }
 
         tab.id = newId;
         tab.relPath = newId;
@@ -247,17 +283,94 @@ class EditorStore {
         }
     }
 
-    // ─── Helpers ──────────────────────────────────────────────────────────────
+    updateTabsUnderPath(oldPrefix: string, newPrefix: string): void {
+        const normalizedOld = normalize(oldPrefix).replace(/\/$/, '');
+        const normalizedNew = normalize(newPrefix).replace(/\/$/, '');
+        const prefix = `${normalizedOld}/`;
 
-    private _clearTimers(id: string): void {
-        const s = this._shadowTimers.get(id);
-        if (s !== undefined) { clearTimeout(s); this._shadowTimers.delete(id); }
-        const a = this._autoSaveTimers.get(id);
-        if (a !== undefined) { clearTimeout(a); this._autoSaveTimers.delete(id); }
+        for (const tab of [...this.tabs]) {
+            if (tab.relPath === normalizedOld) {
+                this.updateTabPath(tab.id, normalizedNew);
+            } else if (tab.relPath.startsWith(prefix)) {
+                const suffix = tab.relPath.slice(prefix.length);
+                this.updateTabPath(tab.id, `${normalizedNew}/${suffix}`);
+            }
+        }
     }
 
-    // ─── Legacy compatibility getters ────────────────────────────────────────
-    // Kept so any code that still reads `editor.filePath` etc. continues to work.
+    private _scheduleTypingPreview(tabId: string): void {
+        const now = Date.now();
+        const lastRun = this._typingPreviewLastRun.get(tabId) ?? 0;
+        const existingTimer = this._typingPreviewTimers.get(tabId);
+        const remaining = Math.max(0, TYPING_PREVIEW_INTERVAL - (now - lastRun));
+
+        if (remaining === 0 && existingTimer === undefined) {
+            this._fireTypingPreview(tabId);
+            return;
+        }
+
+        if (existingTimer !== undefined) {
+            return;
+        }
+
+        this._typingPreviewTimers.set(tabId, setTimeout(() => {
+            this._typingPreviewTimers.delete(tabId);
+            this._fireTypingPreview(tabId);
+        }, remaining || TYPING_PREVIEW_INTERVAL));
+    }
+
+    private _fireTypingPreview(tabId: string): void {
+        const tab = this.tabs.find((t) => t.id === tabId);
+        if (!tab || !tab.isEditable || !tab.hasUnsavedChanges) {
+            return;
+        }
+        this._typingPreviewLastRun.set(tabId, Date.now());
+        this._requestPreview('typing');
+    }
+
+    private _scheduleIdleSave(tabId: string): void {
+        this._clearIdleSave(tabId);
+        this._idleSaveTimers.set(tabId, setTimeout(() => {
+            void this.flushTab(tabId).catch(() => {});
+        }, IDLE_SAVE_DELAY));
+    }
+
+    private _requestPreview(reason: CompileReason): void {
+        triggerPreview(reason).mapErr((err) => {
+            console.error('preview trigger error:', err);
+        });
+    }
+
+    private _clearIdleSave(id: string): void {
+        const timer = this._idleSaveTimers.get(id);
+        if (timer !== undefined) {
+            clearTimeout(timer);
+            this._idleSaveTimers.delete(id);
+        }
+    }
+
+    private _clearTimers(id: string): void {
+        const previewTimer = this._typingPreviewTimers.get(id);
+        if (previewTimer !== undefined) {
+            clearTimeout(previewTimer);
+            this._typingPreviewTimers.delete(id);
+        }
+        this._typingPreviewLastRun.delete(id);
+        this._clearIdleSave(id);
+    }
+
+    private _moveTimerKey(
+        map: Map<string, ReturnType<typeof setTimeout>>,
+        oldId: string,
+        newId: string,
+    ): void {
+        const timer = map.get(oldId);
+        if (timer === undefined) {
+            return;
+        }
+        map.delete(oldId);
+        map.set(newId, timer);
+    }
 
     get filePath(): string | null { return this.activeTab?.absPath ?? null; }
     get viewMode(): ViewMode { return this.activeTab?.viewMode ?? 'text'; }

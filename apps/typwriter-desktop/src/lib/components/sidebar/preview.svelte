@@ -14,6 +14,7 @@
   let scrollEl = $state<HTMLDivElement | null>(null);
   let visiblePage = $state(0);
   let exportOpen = $state(false);
+  const PAGE_BUFFER = 2;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -80,6 +81,10 @@
     preview.triggerRefresh().catch(console.error);
   }
 
+  function shouldRenderPage(index: number) {
+    return Math.abs(index - visiblePage) <= PAGE_BUFFER;
+  }
+
   // ── Page click → editor cursor ─────────────────────────────────────────────
 
   async function handlePageClick(e: MouseEvent, pageIndex: number) {
@@ -138,6 +143,12 @@
 
     <div class="flex-1"></div>
 
+    {#if preview.isCompiling}
+      <span class="mr-2 text-[11px] uppercase tracking-wide text-muted-foreground animate-pulse">
+        Compiling
+      </span>
+    {/if}
+
     {#if preview.totalPages > 0}
       <span class="text-xs text-muted-foreground tabular-nums">
         {visiblePage + 1} / {preview.totalPages}
@@ -173,7 +184,7 @@
       <div
         class="flex h-full select-none items-center justify-center text-xs text-muted-foreground"
       >
-        No preview — set a main .typ file
+        Select a main `.typ` file in the explorer to render a preview.
       </div>
     {:else}
       {#each preview.pages as pageData, i}
@@ -181,7 +192,7 @@
           id="preview-page-{i}"
           class="relative shrink-0 overflow-hidden rounded shadow-md"
         >
-          {#if pageData}
+          {#if pageData && shouldRenderPage(i)}
             <button
               class="block border-0 bg-transparent p-0"
               title="Click to jump to source"
@@ -191,6 +202,8 @@
                 src="data:image/png;base64,{pageData}"
                 alt="Page {i + 1}"
                 draggable="false"
+                loading="lazy"
+                decoding="async"
                 class="block max-w-full"
               />
             </button>

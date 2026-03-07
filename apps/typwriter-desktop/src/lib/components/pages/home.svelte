@@ -1,13 +1,12 @@
 <script lang="ts">
   import { page } from "@/stores/page.svelte";
-  import { Window } from "@tauri-apps/api/window";
   import Button from "../ui/button/button.svelte";
   import { getRecentWorkspaces } from "$lib/ipc/commands";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
-  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { Folder, FolderOpen } from "@lucide/svelte";
+  import { toast } from "svelte-sonner";
 
   // const window = Window.getCurrent();
   // window.setTitle("Typwriter");
@@ -24,6 +23,7 @@
       },
       (err) => {
         console.error("Failed to load recent workspaces:", err);
+        toast.error(`Failed to load recent workspaces: ${err}`);
       },
     );
     loading = false;
@@ -33,7 +33,10 @@
     const result = await workspace.init(path);
     result.match(
       () => { page.navigate("workspace"); },
-      (err) => { console.error("Failed to open workspace:", err); },
+      (err) => {
+        console.error("Failed to open workspace:", err);
+        toast.error(`Failed to open workspace: ${err}`);
+      },
     );
   }
 
@@ -44,7 +47,10 @@
     const result = await workspace.init(selected);
     result.match(
       () => { page.navigate("workspace"); },
-      (err) => { console.error("Failed to open workspace:", err); },
+      (err) => {
+        console.error("Failed to open workspace:", err);
+        toast.error(`Failed to open workspace: ${err}`);
+      },
     );
   }
 

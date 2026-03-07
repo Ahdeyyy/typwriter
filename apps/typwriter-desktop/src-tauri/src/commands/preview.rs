@@ -9,12 +9,19 @@ use std::sync::Arc;
 use log::{error, info};
 use tauri::State;
 
-use crate::{compiler::PreviewPipeline, workspace::WorkspaceState};
+use crate::{
+    compiler::{CompileReason, PreviewPipeline},
+    workspace::WorkspaceState,
+};
 
 #[tauri::command]
-pub fn trigger_preview(pipeline: State<'_, Arc<PreviewPipeline>>) -> Result<(), String> {
-    info!("trigger_preview: called");
-    pipeline.trigger_compile_and_emit();
+pub fn trigger_preview(
+    reason: Option<CompileReason>,
+    pipeline: State<'_, Arc<PreviewPipeline>>,
+) -> Result<(), String> {
+    let reason = reason.unwrap_or_default();
+    info!("trigger_preview: called reason={reason:?}");
+    pipeline.request_compile(reason);
     Ok(())
 }
 

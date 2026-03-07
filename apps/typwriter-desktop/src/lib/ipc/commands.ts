@@ -9,6 +9,7 @@ import type {
     TooltipResponse,
     JumpResponse,
     PreviewPositionResponse,
+    CompileReason,
     PdfExportConfig,
     PngExportConfig,
     SvgExportConfig
@@ -113,8 +114,8 @@ export function getDefinitions(path: string, cursor: number) {
 
 // ─── Preview ──────────────────────────────────────────────────────────────────
 
-export function triggerPreview() {
-    return ResultAsync.fromPromise(invoke<void>('trigger_preview'), toErrString);
+export function triggerPreview(reason?: CompileReason) {
+    return ResultAsync.fromPromise(invoke<void>('trigger_preview', { reason }), toErrString);
 }
 
 export function setZoom(scale: number) {

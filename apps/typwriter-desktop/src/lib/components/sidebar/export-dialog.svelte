@@ -44,6 +44,12 @@
   // PNG/SVG shared
   let filePrefix = $state("page");
 
+  const pageRangeInputId = "export-page-range";
+  const pdfTitleInputId = "export-pdf-title";
+  const pdfAuthorInputId = "export-pdf-author";
+  const pngPrefixInputId = "export-png-prefix";
+  const svgPrefixInputId = "export-svg-prefix";
+
   // ── Constants ─────────────────────────────────────────────────────────────
 
   const PDF_STANDARDS = [
@@ -189,7 +195,7 @@
       <!-- ── Page range (PNG/SVG only) ─────────────────────────────── -->
       {#if format !== "pdf"}
         <div class="space-y-2">
-          <label class="text-sm font-medium text-foreground">Pages</label>
+          <p class="text-sm font-medium text-foreground">Pages</p>
           <div class="flex gap-1.5">
             <Button
               variant={pageRangeMode === "all" ? "default" : "outline"}
@@ -207,7 +213,9 @@
             </Button>
           </div>
           {#if pageRangeMode === "custom"}
+            <label class="sr-only" for={pageRangeInputId}>Custom page range</label>
             <Input
+              id={pageRangeInputId}
               placeholder="e.g. 1-3, 5, 7-9"
               bind:value={pageRangeCustom}
             />
@@ -219,9 +227,7 @@
       {#if format === "pdf"}
         <div class="space-y-3">
           <div class="space-y-1.5">
-            <label class="text-sm font-medium text-foreground"
-              >PDF Standard</label
-            >
+            <p class="text-sm font-medium text-foreground">PDF Standard</p>
             <Select.Root type="single" bind:value={pdfStandard}>
               <Select.Trigger
                 class="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
@@ -249,16 +255,18 @@
           </div>
 
           <div class="space-y-1.5">
-            <label class="text-sm font-medium text-foreground">Title</label>
+            <label class="text-sm font-medium text-foreground" for={pdfTitleInputId}>Title</label>
             <Input
+              id={pdfTitleInputId}
               placeholder="Document title (optional)"
               bind:value={pdfTitle}
             />
           </div>
 
           <div class="space-y-1.5">
-            <label class="text-sm font-medium text-foreground">Author</label>
+            <label class="text-sm font-medium text-foreground" for={pdfAuthorInputId}>Author</label>
             <Input
+              id={pdfAuthorInputId}
               placeholder="Author name (optional)"
               bind:value={pdfAuthor}
             />
@@ -270,9 +278,7 @@
       {#if format === "png"}
         <div class="space-y-3">
           <div class="space-y-1.5">
-            <label class="text-sm font-medium text-foreground"
-              >Resolution</label
-            >
+            <p class="text-sm font-medium text-foreground">Resolution</p>
             <div class="flex gap-1.5">
               {#each DPI_PRESETS as preset}
                 <Button
@@ -288,10 +294,8 @@
           </div>
 
           <div class="space-y-1.5">
-            <label class="text-sm font-medium text-foreground"
-              >File prefix</label
-            >
-            <Input bind:value={filePrefix} placeholder="page" />
+            <label class="text-sm font-medium text-foreground" for={pngPrefixInputId}>File prefix</label>
+            <Input id={pngPrefixInputId} bind:value={filePrefix} placeholder="page" />
             <p class="text-xs text-muted-foreground">
               {filePrefix || "page"}-1.png, {filePrefix || "page"}-2.png, ...
             </p>
@@ -302,9 +306,8 @@
       <!-- ── SVG options ─────────────────────────────────────────────── -->
       {#if format === "svg"}
         <div class="space-y-1.5">
-          <label class="text-sm font-medium text-foreground">File prefix</label
-          >
-          <Input bind:value={filePrefix} placeholder="page" />
+          <label class="text-sm font-medium text-foreground" for={svgPrefixInputId}>File prefix</label>
+          <Input id={svgPrefixInputId} bind:value={filePrefix} placeholder="page" />
           <p class="text-xs text-muted-foreground">
             {filePrefix || "page"}-1.svg, {filePrefix || "page"}-2.svg, ...
           </p>

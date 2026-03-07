@@ -17,7 +17,7 @@ use parking_lot::{Mutex, RwLock};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use base64::Engine;
@@ -26,7 +26,10 @@ use serde::Serialize;
 use tauri::AppHandle;
 use typst::syntax::{FileId, VirtualPath};
 
-use crate::{compiler::render_page, compiler::PreviewPipeline, world::EditorWorld};
+use crate::{
+    compiler::{render_page, CompileReason, PreviewPipeline},
+    world::EditorWorld,
+};
 
 // ─── Recent workspace entry (returned to the frontend) ────────────────────────
 
@@ -56,6 +59,7 @@ pub struct WorkspaceState {
     pub zoom: Mutex<f32>,
     /// Keeps the watcher alive for the process lifetime.
     _watcher: Mutex<Option<RecommendedWatcher>>,
+    last_thumbnail_at: Mutex<Option<Instant>>,
     world: Arc<EditorWorld>,
     pipeline: Arc<PreviewPipeline>,
     pub app_handle: AppHandle,
@@ -72,6 +76,7 @@ impl WorkspaceState {
             main_file: RwLock::new(None),
             zoom: Mutex::new(1.0),
             _watcher: Mutex::new(None),
+            last_thumbnail_at: Mutex::new(None),
             world,
             pipeline,
             app_handle,
@@ -96,9 +101,11 @@ impl WorkspaceState {
 
         // Stop any previous watcher.
         *self._watcher.lock() = None;
+        *self.last_thumbnail_at.lock() = None;
 
         // Update the EditorWorld root and flush all caches.
         self.world.set_root(path.clone());
+        self.pipeline.invalidate_cache();
 
         // Start a new watcher for the new root.
         let new_watcher = watcher::start_watcher(
@@ -130,6 +137,8 @@ impl WorkspaceState {
             if main_path.exists() {
                 info!("WorkspaceState::open_folder: restoring main file main={main:?}");
                 let _ = self.set_main_file(main_path.clone());
+                self.pipeline
+                    .request_compile(CompileReason::MainFile);
                 // Compute the workspace-relative path for the frontend (forward slashes).
                 restored_main = main_path
                     .strip_prefix(&path)
@@ -185,6 +194,12 @@ impl WorkspaceState {
         Ok(())
     }
 
+    pub fn clear_main_file(&self) {
+        *self.main_file.write() = None;
+        self.world.clear_main();
+        self.pipeline.invalidate_cache();
+    }
+
     // ─── Zoom / scale ──────────────────────────────────────────────────────
 
     pub fn set_zoom(&self, scale: f32) {
@@ -225,6 +240,29 @@ impl WorkspaceState {
             }
             Err(e) => error!("WorkspaceState::generate_thumbnail: render failed err=\"{e}\""),
         }
+    }
+
+    pub fn should_generate_thumbnail_for(&self, path: &Path) -> bool {
+        let is_main = self
+            .main_file
+            .read()
+            .as_ref()
+            .map(|main| main == path)
+            .unwrap_or(false);
+        if !is_main {
+            return false;
+        }
+
+        let mut last = self.last_thumbnail_at.lock();
+        let now = Instant::now();
+        if let Some(previous) = *last {
+            if now.duration_since(previous) < Duration::from_secs(5) {
+                return false;
+            }
+        }
+
+        *last = Some(now);
+        true
     }
 
     // ─── Recent workspaces ─────────────────────────────────────────────────
@@ -315,6 +353,15 @@ impl WorkspaceState {
             self.world.shadow_remove(id);
             self.world.invalidate_file(id);
         }
+        if self
+            .main_file
+            .read()
+            .as_ref()
+            .map(|main| main == &abs)
+            .unwrap_or(false)
+        {
+            self.clear_main_file();
+        }
         info!("WorkspaceState::delete_file: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
         Ok(())
     }
@@ -340,6 +387,7 @@ impl WorkspaceState {
             self.world.shadow_remove(id);
             self.world.invalidate_file(id);
         }
+        self.update_main_file_path(&src_abs, &dst_abs, false)?;
         info!("WorkspaceState::rename_file: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
         Ok(())
     }
@@ -368,6 +416,15 @@ impl WorkspaceState {
             error!("WorkspaceState::delete_folder: failed abs={abs:?} err=\"{e}\"");
             e.to_string()
         })?;
+        if self
+            .main_file
+            .read()
+            .as_ref()
+            .map(|main| main.starts_with(&abs))
+            .unwrap_or(false)
+        {
+            self.clear_main_file();
+        }
         info!("WorkspaceState::delete_folder: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
         Ok(())
     }
@@ -427,10 +484,17 @@ impl WorkspaceState {
         let src_abs = self.resolve(src)?;
         let dst_abs = self.resolve(dst)?;
         info!("WorkspaceState::move_folder: src={src_abs:?} dst={dst_abs:?}");
+        if let Some(parent) = dst_abs.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                error!("WorkspaceState::move_folder: create_dir_all failed dst_parent={parent:?} err=\"{e}\"");
+                e.to_string()
+            })?;
+        }
         std::fs::rename(&src_abs, &dst_abs).map_err(|e| {
             error!("WorkspaceState::move_folder: failed src={src_abs:?} dst={dst_abs:?} err=\"{e}\"");
             e.to_string()
         })?;
+        self.update_main_file_path(&src_abs, &dst_abs, true)?;
         info!("WorkspaceState::move_folder: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
         Ok(())
     }
@@ -448,6 +512,50 @@ impl WorkspaceState {
             })?.clone()
         };
         Ok(read_dir_recursive(&root, &root))
+    }
+}
+
+impl WorkspaceState {
+    fn update_main_file_path(
+        &self,
+        src_abs: &Path,
+        dst_abs: &Path,
+        is_dir: bool,
+    ) -> Result<(), String> {
+        let current_main = self.main_file.read().clone();
+        let Some(current_main) = current_main else {
+            return Ok(());
+        };
+
+        let updated_main = if is_dir {
+            rewrite_path_prefix(&current_main, src_abs, dst_abs)
+        } else if current_main == src_abs {
+            Some(dst_abs.to_path_buf())
+        } else {
+            None
+        };
+
+        let Some(updated_main) = updated_main else {
+            return Ok(());
+        };
+
+        let root = self.root.read();
+        let root = root
+            .as_ref()
+            .ok_or_else(|| "No workspace open".to_string())?;
+        let relative = updated_main.strip_prefix(root).map_err(|_| {
+            format!(
+                "{} is not inside the workspace root",
+                updated_main.display()
+            )
+        })?;
+
+        self.world.set_main(FileId::new(None, VirtualPath::new(relative)));
+        *self.main_file.write() = Some(updated_main.clone());
+        store::set_workspace_main_file(&self.app_handle, root, &updated_main);
+        self.pipeline.invalidate_cache();
+
+        Ok(())
     }
 }
 
@@ -508,4 +616,9 @@ fn collect_files_recursive(dir: &Path) -> Vec<PathBuf> {
         }
     }
     files
+}
+
+fn rewrite_path_prefix(path: &Path, src_prefix: &Path, dst_prefix: &Path) -> Option<PathBuf> {
+    let suffix = path.strip_prefix(src_prefix).ok()?;
+    Some(dst_prefix.join(suffix))
 }

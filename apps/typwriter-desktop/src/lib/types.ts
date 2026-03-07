@@ -57,6 +57,14 @@ export interface PreviewPositionResponse {
     y: number;
 }
 
+export type CompileReason =
+    | 'typing'
+    | 'save'
+    | 'watcher'
+    | 'explicit'
+    | 'main_file'
+    | 'zoom';
+
 // ─── Export configs ───────────────────────────────────────────────────────────
 
 export interface PdfExportConfig {
@@ -123,6 +131,12 @@ export interface PageRemovedPayload {
     index: number;
 }
 
-export interface FileChangedPayload {
-    path: string;
+export interface CompileStatePayload {
+    status: 'started' | 'idle';
+    revision: number;
+    reason: CompileReason;
+}
+
+export interface WorkspaceFilesChangedPayload {
+    paths: string[];
 }
