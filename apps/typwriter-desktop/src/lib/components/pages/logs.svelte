@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { ArrowLeft, Clock3, FileText, RefreshCcw, TriangleAlert } from "@lucide/svelte";
+  import { ArrowLeft, Clock3, FileText, RefreshCcw, Search, TriangleAlert, X } from "@lucide/svelte";
   import { LineChart } from "layerchart";
   import * as Chart from "$lib/components/ui/chart/index.js";
+  import * as Resizable from "$lib/components/ui/resizable/index.js";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
+  import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { page } from "$lib/stores/page.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { logView, type LogSeverityFilter } from "$lib/stores/log-view.svelte";
@@ -91,213 +93,254 @@
   function toggleEntry(entry: LogEntry) {
     expandedEntries = logView.toggleExpanded(expandedEntries, entry);
   }
+
+  function filterLabel(filter: LogSeverityFilter): string {
+    if (filter === "ALL") return "All";
+    if (filter === "OTHER") return "Other";
+    return filter[0] + filter.slice(1).toLowerCase();
+  }
 </script>
 
-<div class="flex h-screen w-screen flex-col overflow-y-auto bg-background text-foreground">
-  <div class="border-b border-border px-6 py-4">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div class="flex min-w-0 items-start gap-3">
-        <Button variant="outline" class="gap-2" onclick={handleBack}>
-          <ArrowLeft class="size-4" />
-          Back
-        </Button>
-        <div class="min-w-0">
-          <div class="flex items-center gap-2">
-            <h1 class="text-xl font-semibold tracking-tight">Logs</h1>
+<div class="relative flex h-screen w-screen overflow-hidden">
+  <Resizable.PaneGroup direction="horizontal" class="h-full w-full">
+    <!-- ─── Left sidebar ──────────────────────────────────────────────── -->
+    <Resizable.Pane defaultSize={25} minSize={15} maxSize={40}>
+      <div class="flex h-full flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
+        <!-- Sidebar header -->
+        <div class="flex h-9 items-center justify-between border-b border-sidebar-border px-2">
+          <div class="flex items-center gap-0.5 min-w-0">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title="Back"
+              aria-label="Back"
+              onclick={handleBack}
+            >
+              <ArrowLeft class="size-3.5" />
+            </Button>
+            <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+              Logs
+            </span>
             {#if logView.isLoading}
-              <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              <span class="text-[10px] uppercase tracking-[0.18em] text-muted-foreground animate-pulse">
                 Loading
               </span>
             {/if}
           </div>
-          <p class="mt-1 truncate font-mono text-xs text-muted-foreground">
-            {logView.data?.path ?? "Resolving log path..."}
-          </p>
-        </div>
-      </div>
-      <div class="flex items-center gap-2 text-xs text-muted-foreground">
-        <Clock3 class="size-3.5" />
-        <span>
-          Last updated
-          {logView.lastLoadedAt ? logView.lastLoadedAt.toLocaleTimeString() : "never"}
-        </span>
-        <Button variant="outline" class="gap-2" onclick={handleRefresh}>
-          <RefreshCcw class="size-4" />
-          Refresh
-        </Button>
-      </div>
-    </div>
-  </div>
-
-  {#if logView.error}
-    <div class="px-6 pt-6">
-      <div class="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-        <TriangleAlert class="mt-0.5 size-4 shrink-0" />
-        <div>
-          <p class="font-medium">Failed to load logs.</p>
-          <p class="mt-1 whitespace-pre-wrap text-destructive/90">{logView.error}</p>
-        </div>
-      </div>
-    </div>
-  {/if}
-
-  <div class="grid gap-4 px-6 py-6">
-    <div class="grid gap-3 md:grid-cols-4">
-      <div class="rounded-lg border border-border bg-card px-4 py-3">
-        <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">Entries</p>
-        <p class="mt-2 text-2xl font-semibold">{logView.summary.total}</p>
-      </div>
-      <div class="rounded-lg border border-border bg-card px-4 py-3">
-        <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">Errors</p>
-        <p class="mt-2 text-2xl font-semibold text-destructive">{logView.summary.errorCount}</p>
-      </div>
-      <div class="rounded-lg border border-border bg-card px-4 py-3">
-        <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">Warnings</p>
-        <p class="mt-2 text-2xl font-semibold text-[color:var(--chart-3)]">{logView.summary.warnCount}</p>
-      </div>
-      <div class="rounded-lg border border-border bg-card px-4 py-3">
-        <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">File</p>
-        <p class="mt-2 text-sm font-medium">{formatFileSize(logView.data?.size_bytes ?? 0)}</p>
-        <p class="mt-1 text-xs text-muted-foreground">
-          {formatTimestamp(logView.data?.modified_at ?? null)}
-        </p>
-      </div>
-    </div>
-
-    <div class="rounded-xl border border-border bg-card p-4">
-      <div class="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <p class="text-sm font-medium">Severity over time</p>
-          <p class="text-xs text-muted-foreground">
-            Minute buckets from the current log file.
-          </p>
-        </div>
-      </div>
-
-      {#if logView.hasChartData}
-        <Chart.Container config={chartConfig} class="min-h-[260px] w-full">
-          <LineChart
-            data={logView.data?.chart ?? []}
-            x="label"
-            series={[
-              { key: "info", label: chartConfig.info.label, color: chartConfig.info.color },
-              { key: "warn", label: chartConfig.warn.label, color: chartConfig.warn.color },
-              { key: "error", label: chartConfig.error.label, color: chartConfig.error.color },
-            ]}
-            legend
-            props={{
-              yAxis: {
-                format: (value) => `${value}`,
-              },
-            }}
-          >
-            {#snippet tooltip()}
-              <Chart.Tooltip />
-            {/snippet}
-          </LineChart>
-        </Chart.Container>
-      {:else}
-        <div class="flex min-h-[260px] items-center justify-center rounded-lg border border-dashed border-border bg-muted/30">
-          <div class="text-center">
-            <p class="text-sm font-medium">No chartable log activity yet</p>
-            <p class="mt-1 text-xs text-muted-foreground">
-              Info, warn, and error entries will appear here once they are written.
-            </p>
+          <div class="flex items-center gap-0.5 shrink-0">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title="Refresh"
+              aria-label="Refresh"
+              onclick={handleRefresh}
+            >
+              <RefreshCcw class="size-3.5" />
+            </Button>
           </div>
         </div>
-      {/if}
-    </div>
 
-    <div class="flex flex-wrap items-center gap-2">
-      <div class="w-full md:max-w-sm">
-        <Input
-          placeholder="Search messages, targets, timestamps..."
-          bind:value={logView.searchQuery}
-        />
-      </div>
-      <div class="flex flex-wrap gap-2">
-        {#each filters as filter}
-          <Button
-            variant={logView.severityFilter === filter ? "default" : "outline"}
-            size="sm"
-            onclick={() => (logView.severityFilter = filter)}
-          >
-            {filter === "ALL" ? "All" : filter === "OTHER" ? "Other" : filter[0] + filter.slice(1).toLowerCase()}
-          </Button>
-        {/each}
-      </div>
-    </div>
-  </div>
+        <!-- Sidebar body -->
+        <ScrollArea class="flex-1 min-h-0">
+          <div class="flex flex-col gap-3 p-2">
+            <!-- Summary stats -->
+            <div class="flex flex-col gap-1">
+              <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Summary
+              </p>
+              <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                <div class="flex items-center justify-between">
+                  <span class="text-muted-foreground">Entries</span>
+                  <span class="font-medium tabular-nums">{logView.summary.total}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-muted-foreground">Errors</span>
+                  <span class="font-medium tabular-nums text-destructive">{logView.summary.errorCount}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-muted-foreground">Warnings</span>
+                  <span class="font-medium tabular-nums text-[color:var(--chart-3)]">{logView.summary.warnCount}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-muted-foreground">Info</span>
+                  <span class="font-medium tabular-nums text-[color:var(--chart-2)]">{logView.summary.infoCount}</span>
+                </div>
+              </div>
+            </div>
 
-  <div class="flex-1 px-6 pb-6">
-    <div class="flex min-h-full flex-col rounded-xl border border-border bg-card">
-      <div class="flex items-center justify-between border-b border-border px-4 py-3">
-        <div>
-          <p class="text-sm font-medium">Log entries</p>
-          <p class="text-xs text-muted-foreground">
-            {logView.filteredEntries.length} shown of {logView.summary.total}
-          </p>
-        </div>
-        <div class="flex items-center gap-2 text-xs text-muted-foreground">
-          <FileText class="size-3.5" />
-          {logView.data?.exists ? "Current file" : "Waiting for log file"}
-        </div>
-      </div>
+            <!-- Severity filter -->
+            <div class="flex flex-col gap-1">
+              <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Severity
+              </p>
+              <div class="flex flex-wrap gap-1">
+                {#each filters as filter}
+                  <button
+                    class="h-6 rounded-md px-2 text-xs transition-colors
+                           {logView.severityFilter === filter
+                             ? 'bg-accent text-accent-foreground font-medium'
+                             : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}"
+                    onclick={() => (logView.severityFilter = filter)}
+                  >
+                    {filterLabel(filter)}
+                  </button>
+                {/each}
+              </div>
+            </div>
 
-      {#if !(logView.data?.exists ?? false)}
-        <div class="flex h-full items-center justify-center px-6">
-          <div class="max-w-lg text-center">
-            <p class="text-sm font-medium">No log file yet</p>
-            <p class="mt-2 text-sm text-muted-foreground">
-              Typwriter has not written the current log file yet.
-            </p>
-            <p class="mt-3 break-all rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground">
-              {logView.data?.path ?? "Resolving log file path..."}
-            </p>
+            <!-- Chart -->
+            <div class="flex flex-col gap-1">
+              <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Trend
+              </p>
+              {#if logView.hasChartData}
+                <Chart.Container config={chartConfig} class="min-h-[140px] w-full">
+                  <LineChart
+                    data={logView.data?.chart ?? []}
+                    x="label"
+                    series={[
+                      { key: "info", label: chartConfig.info.label, color: chartConfig.info.color },
+                      { key: "warn", label: chartConfig.warn.label, color: chartConfig.warn.color },
+                      { key: "error", label: chartConfig.error.label, color: chartConfig.error.color },
+                    ]}
+                    props={{
+                      yAxis: {
+                        format: (value) => `${value}`,
+                      },
+                    }}
+                  >
+                    {#snippet tooltip()}
+                      <Chart.Tooltip />
+                    {/snippet}
+                  </LineChart>
+                </Chart.Container>
+              {:else}
+                <div class="flex min-h-[140px] items-center justify-center rounded border border-dashed border-sidebar-border bg-muted/20">
+                  <p class="text-[10px] text-muted-foreground">No chart data yet</p>
+                </div>
+              {/if}
+            </div>
+
+            <!-- File info -->
+            <div class="flex flex-col gap-0.5 border-t border-sidebar-border pt-2">
+              <div class="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <FileText class="size-3 shrink-0" />
+                <span class="truncate">{logView.data?.path ?? "Resolving..."}</span>
+              </div>
+              <div class="flex items-center gap-2 text-[10px] text-muted-foreground">
+                <span>{formatFileSize(logView.data?.size_bytes ?? 0)}</span>
+                <span class="text-border">|</span>
+                <span>{formatTimestamp(logView.data?.modified_at ?? null)}</span>
+              </div>
+              <div class="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Clock3 class="size-3 shrink-0" />
+                <span>
+                  Updated {logView.lastLoadedAt ? logView.lastLoadedAt.toLocaleTimeString() : "never"}
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
-      {:else if logView.filteredEntries.length === 0}
-        <div class="flex h-full items-center justify-center px-6">
-          <div class="text-center">
-            <p class="text-sm font-medium">No matching log entries</p>
-            <p class="mt-2 text-sm text-muted-foreground">
-              Adjust the search query or severity filter to widen the results.
-            </p>
-          </div>
-        </div>
-      {:else}
-        <div class="min-h-[24rem] flex-1 overflow-y-auto">
-          <div class="divide-y divide-border">
-            {#each logView.filteredEntries as entry (entry.index)}
+        </ScrollArea>
+      </div>
+    </Resizable.Pane>
+
+    <Resizable.Handle />
+
+    <!-- ─── Right main pane ───────────────────────────────────────────── -->
+    <Resizable.Pane defaultSize={75} minSize={40}>
+      <div class="flex h-full flex-col bg-background">
+        <!-- Toolbar -->
+        <div class="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-muted/20 px-3">
+          <div class="relative flex-1 max-w-sm">
+            <Search class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
+            <Input
+              class="h-6 pl-6 pr-6 text-xs"
+              placeholder="Search messages, targets..."
+              bind:value={logView.searchQuery}
+            />
+            {#if logView.searchQuery}
               <button
-                type="button"
-                class="w-full px-4 py-3 text-left transition-colors hover:bg-muted/40"
-                onclick={() => toggleEntry(entry)}
+                class="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onclick={() => (logView.searchQuery = "")}
+                aria-label="Clear search"
               >
-                <div class="flex flex-wrap items-start gap-3">
-                  <span class="min-w-32 shrink-0 font-mono text-xs text-muted-foreground">
-                    {entry.timestamp ?? "UNKNOWN"}
-                  </span>
-                  <span class={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] ${levelTone(entry.level)}`}>
-                    {entry.level}
-                  </span>
-                  <span class="min-w-0 shrink truncate font-mono text-xs text-muted-foreground">
-                    {entry.target ?? "unknown-target"}
-                  </span>
-                </div>
-                <div class="mt-2 pl-0 md:pl-[calc(8rem+0.75rem)]">
-                  <p class="whitespace-pre-wrap break-words text-sm text-foreground">
-                    {previewMessage(entry)}
-                  </p>
-                  {#if shouldShowDetail(entry) && entry.message !== previewMessage(entry)}
-                    <pre class="mt-3 overflow-x-auto rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">{entry.message}</pre>
-                  {/if}
-                </div>
+                <X class="size-3" />
               </button>
-            {/each}
+            {/if}
+          </div>
+
+          <div class="flex-1"></div>
+
+          <span class="text-xs text-muted-foreground tabular-nums">
+            {logView.filteredEntries.length} / {logView.summary.total}
+          </span>
+
+          <div class="flex items-center gap-1 text-xs text-muted-foreground">
+            <FileText class="size-3.5" />
+            <span>{logView.data?.exists ? "Live" : "Waiting"}</span>
           </div>
         </div>
-      {/if}
-    </div>
-  </div>
+
+        <!-- Body -->
+        <div class="flex-1 min-h-0">
+          {#if logView.error}
+            <div class="flex items-start gap-2 border-b border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              <TriangleAlert class="mt-0.5 size-3.5 shrink-0" />
+              <div>
+                <p class="font-medium">Failed to load logs</p>
+                <p class="mt-0.5 whitespace-pre-wrap text-destructive/80">{logView.error}</p>
+              </div>
+            </div>
+          {/if}
+
+          {#if !(logView.data?.exists ?? false)}
+            <div class="flex h-full flex-col items-center justify-center gap-2 select-none text-muted-foreground">
+              <FileText class="size-10 opacity-30" />
+              <span class="text-sm">Waiting for log file</span>
+              <span class="text-xs opacity-50 max-w-xs truncate font-mono">
+                {logView.data?.path ?? "Resolving..."}
+              </span>
+            </div>
+          {:else if logView.filteredEntries.length === 0}
+            <div class="flex h-full flex-col items-center justify-center gap-2 select-none text-muted-foreground">
+              <Search class="size-10 opacity-30" />
+              <span class="text-sm">No matching entries</span>
+              <span class="text-xs opacity-50">Adjust search or severity filter</span>
+            </div>
+          {:else}
+            <ScrollArea class="h-full">
+              <div class="divide-y divide-border">
+                {#each logView.filteredEntries as entry (entry.index)}
+                  <button
+                    type="button"
+                    class="w-full px-3 py-1.5 text-left transition-colors hover:bg-muted/40"
+                    onclick={() => toggleEntry(entry)}
+                  >
+                    <div class="flex items-center gap-2">
+                      <span class="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+                        {entry.timestamp ?? "??:??"}
+                      </span>
+                      <span class={`shrink-0 rounded-full border px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.15em] ${levelTone(entry.level)}`}>
+                        {entry.level}
+                      </span>
+                      <span class="min-w-0 shrink truncate font-mono text-[10px] text-muted-foreground">
+                        {entry.target ?? ""}
+                      </span>
+                      <span class="min-w-0 flex-1 truncate text-xs text-foreground">
+                        {previewMessage(entry)}
+                      </span>
+                    </div>
+
+                    {#if shouldShowDetail(entry) && entry.message !== previewMessage(entry)}
+                      <pre class="mt-1.5 ml-36 overflow-x-auto rounded border border-border bg-muted/30 px-2 py-1.5 text-[10px] text-muted-foreground whitespace-pre-wrap break-words font-mono">{entry.message}</pre>
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            </ScrollArea>
+          {/if}
+        </div>
+      </div>
+    </Resizable.Pane>
+  </Resizable.PaneGroup>
 </div>
