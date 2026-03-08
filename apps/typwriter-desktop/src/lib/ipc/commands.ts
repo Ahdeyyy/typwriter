@@ -4,6 +4,7 @@ import { ResultAsync } from 'neverthrow';
 import type {
     FileTreeEntry,
     RecentWorkspaceEntry,
+    LogFileView,
     FileContentResponse,
     CompletionsResponse,
     TooltipResponse,
@@ -68,6 +69,10 @@ export function getRecentWorkspaces() {
         invoke<RecentWorkspaceEntry[]>('get_recent_workspaces'),
         toErrString
     );
+}
+
+export function getCurrentLogView() {
+    return ResultAsync.fromPromise(invoke<LogFileView>('get_current_log_view'), toErrString);
 }
 
 // ─── Editor ───────────────────────────────────────────────────────────────────

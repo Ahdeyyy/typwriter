@@ -12,6 +12,7 @@ import {
     type UnlistenFn,
 } from '$lib/ipc/events';
 import type { CompileReason } from '$lib/types';
+import { logError } from '$lib/logger';
 
 const CURSOR_DEBOUNCE = 200;
 
@@ -45,7 +46,7 @@ class PreviewStore {
         if (totalPagesResult.isOk()) {
             this._unlisteners.push(totalPagesResult.value);
         } else {
-            console.error('preview: onPreviewTotalPages listener failed:', totalPagesResult.error);
+            logError('preview: onPreviewTotalPages listener failed:', totalPagesResult.error);
         }
 
         const updatedResult = await onPreviewPageUpdated(({ index, data }) => {
@@ -57,7 +58,7 @@ class PreviewStore {
         if (updatedResult.isOk()) {
             this._unlisteners.push(updatedResult.value);
         } else {
-            console.error('preview: onPreviewPageUpdated listener failed:', updatedResult.error);
+            logError('preview: onPreviewPageUpdated listener failed:', updatedResult.error);
         }
 
         const removedResult = await onPreviewPageRemoved(({ index }) => {
@@ -67,7 +68,7 @@ class PreviewStore {
         if (removedResult.isOk()) {
             this._unlisteners.push(removedResult.value);
         } else {
-            console.error('preview: onPreviewPageRemoved listener failed:', removedResult.error);
+            logError('preview: onPreviewPageRemoved listener failed:', removedResult.error);
         }
 
         const compileStateResult = await onPreviewCompileState(({ status, revision, reason }) => {
@@ -78,11 +79,11 @@ class PreviewStore {
         if (compileStateResult.isOk()) {
             this._unlisteners.push(compileStateResult.value);
         } else {
-            console.error('preview: onPreviewCompileState listener failed:', compileStateResult.error);
+            logError('preview: onPreviewCompileState listener failed:', compileStateResult.error);
         }
 
         triggerPreview('explicit').mapErr((err) =>
-            console.error('preview: initial triggerPreview failed:', err)
+            logError('preview: initial triggerPreview failed:', err)
         );
     }
 
@@ -109,7 +110,7 @@ class PreviewStore {
                         this.scrollTarget = positions[0].page;
                     }
                 })
-                .mapErr((err) => console.error('preview: jumpFromCursor failed:', err));
+                .mapErr((err) => logError('preview: jumpFromCursor failed:', err));
         }, CURSOR_DEBOUNCE);
     }
 
@@ -124,18 +125,18 @@ class PreviewStore {
     private async _applyZoom(scale: number): Promise<void> {
         const result = await setZoom(scale);
         if (result.isErr()) {
-            console.error('preview: setZoom failed:', result.error);
+            logError('preview: setZoom failed:', result.error);
             return;
         }
         this.zoom = scale;
         triggerPreview('zoom').mapErr((err) =>
-            console.error('preview: triggerPreview after zoom failed:', err)
+            logError('preview: triggerPreview after zoom failed:', err)
         );
     }
 
     async triggerRefresh(): Promise<void> {
         triggerPreview('explicit').mapErr((err) =>
-            console.error('preview: triggerRefresh failed:', err)
+            logError('preview: triggerRefresh failed:', err)
         );
     }
 }

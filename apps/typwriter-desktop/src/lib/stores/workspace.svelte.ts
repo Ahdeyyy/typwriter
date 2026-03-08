@@ -16,6 +16,7 @@ import {
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { onWorkspaceFilesChanged, type UnlistenFn } from '$lib/ipc/events';
 import type { FileTreeEntry } from '$lib/types';
+import { logError } from '$lib/logger';
 import { editor } from './editor.svelte';
 
 export interface FileNode {
@@ -161,6 +162,10 @@ class WorkspaceStore {
         return ResultAsync.fromPromise(this._init(root), (err) => String(err));
     }
 
+    leave(): ResultAsync<void, string> {
+        return ResultAsync.fromPromise(this._leave(), (err) => String(err));
+    }
+
     private async _init(root: string): Promise<void> {
         await editor.flushAllTabs();
         this._disposeFilesChangedListener();
@@ -177,7 +182,7 @@ class WorkspaceStore {
         if (listenResult.isOk()) {
             this._filesChangedUnlisten = listenResult.value;
         } else {
-            console.error('onWorkspaceFilesChanged listener failed:', listenResult.error);
+            logError('onWorkspaceFilesChanged listener failed:', listenResult.error);
         }
 
         const openResult = await openFolder(root);
@@ -193,6 +198,19 @@ class WorkspaceStore {
         if (refreshResult.isErr()) {
             throw new Error(refreshResult.error);
         }
+    }
+
+    private async _leave(): Promise<void> {
+        await editor.flushAllTabs();
+        this._disposeFilesChangedListener();
+        this._clearRefreshTimer();
+        await editor.reset();
+        this.tree = [];
+        this.rootPath = null;
+        this.mainFile = null;
+        this.activeFilePath = null;
+        this.searchQuery = '';
+        this.dragSrcPath = null;
     }
 
     refreshTree(): ResultAsync<void, string> {
@@ -250,7 +268,7 @@ class WorkspaceStore {
         if (this.mainFile === normalized) {
             this.mainFile = null;
             triggerPreview('main_file').mapErr((err) => {
-                console.error('preview trigger after main file delete failed:', err);
+                logError('preview trigger after main file delete failed:', err);
             });
         }
 
@@ -283,7 +301,7 @@ class WorkspaceStore {
         if (this.mainFile?.startsWith(prefix)) {
             this.mainFile = null;
             triggerPreview('main_file').mapErr((err) => {
-                console.error('preview trigger after main folder delete failed:', err);
+                logError('preview trigger after main folder delete failed:', err);
             });
         }
 
@@ -320,7 +338,7 @@ class WorkspaceStore {
 
         if (movedMain) {
             triggerPreview('main_file').mapErr((err) => {
-                console.error('preview trigger after main file rename failed:', err);
+                logError('preview trigger after main file rename failed:', err);
             });
         }
 
@@ -362,7 +380,7 @@ class WorkspaceStore {
 
         if (movedMain) {
             triggerPreview('main_file').mapErr((err) => {
-                console.error('preview trigger after moving main path failed:', err);
+                logError('preview trigger after moving main path failed:', err);
             });
         }
 
@@ -413,7 +431,7 @@ class WorkspaceStore {
         this._refreshTimer = setTimeout(() => {
             this._refreshTimer = null;
             this.refreshTree().mapErr((err) => {
-                console.error('refreshTree after workspace changes failed:', err);
+                logError('refreshTree after workspace changes failed:', err);
             });
         }, 120);
     }

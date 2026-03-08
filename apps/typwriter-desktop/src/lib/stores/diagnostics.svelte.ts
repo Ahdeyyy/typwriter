@@ -1,5 +1,6 @@
 import type { SerializedDiagnostic } from '$lib/types';
 import { onCompileDiagnostics, type UnlistenFn } from '$lib/ipc/events';
+import { logError } from '$lib/logger';
 
 class DiagnosticsStore {
     errors   = $state<SerializedDiagnostic[]>([]);
@@ -13,7 +14,7 @@ class DiagnosticsStore {
             this.warnings = warnings;
         });
         if (result.isOk()) this._unlisten = result.value;
-        else console.error('diagnostics: listener failed:', result.error);
+        else logError('diagnostics: listener failed:', result.error);
     }
 
     destroy(): void {

@@ -8,6 +8,7 @@ import {
 } from '$lib/ipc/commands';
 import type { CompileReason } from '$lib/types';
 import { workspace, normalize, basename } from './workspace.svelte';
+import { logError } from '$lib/logger';
 import { toast } from 'svelte-sonner';
 
 const TEXT_EXTS = new Set([
@@ -164,7 +165,7 @@ class EditorStore {
         this._clearTimers(id);
         if (tab.viewMode === 'text') {
             discardShadow(tab.absPath).mapErr((err) =>
-                console.error('discardShadow error on close:', err)
+                logError('discardShadow error on close:', err)
             );
         }
 
@@ -199,7 +200,7 @@ class EditorStore {
         tab.hasUnsavedChanges = true;
 
         updateFileContent(tab.absPath, tab.content).mapErr((err) => {
-            console.error('shadow write error:', err);
+            logError('shadow write error:', err);
             toast.error(`Shadow update failed for ${tab.name}: ${err}`);
         });
 
@@ -255,6 +256,14 @@ class EditorStore {
         for (const tab of [...this.tabs]) {
             await this.flushTab(tab.id);
         }
+    }
+
+    async reset(): Promise<void> {
+        for (const tab of [...this.tabs]) {
+            await this.closeTab(tab.id, { flush: false });
+        }
+        this.activeTabId = null;
+        this.cursorJumpRequest = null;
     }
 
     updateTabPath(oldId: string, newRelPath: string): void {
@@ -337,7 +346,7 @@ class EditorStore {
 
     private _requestPreview(reason: CompileReason): void {
         triggerPreview(reason).mapErr((err) => {
-            console.error('preview trigger error:', err);
+            logError('preview trigger error:', err);
         });
     }
 

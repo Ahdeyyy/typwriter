@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    House,
     ChevronsUpDown,
     ChevronsDownUp,
     FilePlus,
@@ -18,8 +19,12 @@
 
   // ─── Props ──────────────────────────────────────────────────────────────────
 
-  interface Props { ontoggle: () => void; }
-  let { ontoggle }: Props = $props();
+  interface Props {
+    ontoggle: () => void;
+    onhome: () => void;
+    homeDisabled?: boolean;
+  }
+  let { ontoggle, onhome, homeDisabled = false }: Props = $props();
 
   // ─── Root-level create ───────────────────────────────────────────────────────
 
@@ -119,6 +124,16 @@
   <!-- Header: title + toolbar (aligned with tab bar) -->
   <div class="flex h-9 items-center justify-between border-b border-sidebar-border px-2">
     <div class="flex items-center gap-0.5 min-w-0">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title="Back to home"
+        aria-label="Back to home"
+        onclick={onhome}
+        disabled={homeDisabled}
+      >
+        <House class="size-3.5" />
+      </Button>
       <Button
         variant="ghost"
         size="icon-sm"

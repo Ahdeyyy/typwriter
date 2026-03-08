@@ -8,6 +8,7 @@
   import { workspace } from "$lib/stores/workspace.svelte";
   import { jumpFromClick, setVisiblePage } from "$lib/ipc/commands";
   import { Button } from "$lib/components/ui/button";
+  import { logError } from "$lib/logger";
 
   // ── Local state ────────────────────────────────────────────────────────────
 
@@ -19,7 +20,7 @@
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   onMount(() => {
-    preview.init().catch((err) => console.error("preview init failed:", err));
+    preview.init().catch((err) => logError("preview init failed:", err));
   });
 
   onDestroy(() => {
@@ -72,13 +73,15 @@
   // ── Toolbar actions ────────────────────────────────────────────────────────
 
   function zoomIn() {
-    preview.zoomIn().catch(console.error);
+    preview.zoomIn().catch((err) => logError("preview zoom in failed:", err));
   }
   function zoomOut() {
-    preview.zoomOut().catch(console.error);
+    preview.zoomOut().catch((err) => logError("preview zoom out failed:", err));
   }
   function refresh() {
-    preview.triggerRefresh().catch(console.error);
+    preview
+      .triggerRefresh()
+      .catch((err) => logError("preview refresh failed:", err));
   }
 
   function shouldRenderPage(index: number) {
@@ -103,7 +106,7 @@
       editor
         .openFile(relPath)
         .map(() => editor.requestCursorJump(relPath, jump.start_byte))
-        .mapErr((err) => console.error("jump from click failed:", err));
+        .mapErr((err) => logError("jump from click failed:", err));
     }
   }
 

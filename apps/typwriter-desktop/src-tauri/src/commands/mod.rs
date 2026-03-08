@@ -6,5 +6,6 @@
 pub mod click;
 pub mod editor;
 pub mod export;
+pub mod logs;
 pub mod preview;
 pub mod workspace;

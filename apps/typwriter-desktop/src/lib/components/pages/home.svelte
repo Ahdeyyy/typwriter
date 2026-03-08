@@ -5,8 +5,9 @@
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { Folder, FolderOpen } from "@lucide/svelte";
+  import { Folder, FolderOpen, Logs } from "@lucide/svelte";
   import { toast } from "svelte-sonner";
+  import { logError } from "$lib/logger";
 
   // const window = Window.getCurrent();
   // window.setTitle("Typwriter");
@@ -22,7 +23,7 @@
         recentWorkspaces = entries;
       },
       (err) => {
-        console.error("Failed to load recent workspaces:", err);
+        logError("Failed to load recent workspaces:", err);
         toast.error(`Failed to load recent workspaces: ${err}`);
       },
     );
@@ -34,7 +35,7 @@
     result.match(
       () => { page.navigate("workspace"); },
       (err) => {
-        console.error("Failed to open workspace:", err);
+        logError("Failed to open workspace:", err);
         toast.error(`Failed to open workspace: ${err}`);
       },
     );
@@ -48,7 +49,7 @@
     result.match(
       () => { page.navigate("workspace"); },
       (err) => {
-        console.error("Failed to open workspace:", err);
+        logError("Failed to open workspace:", err);
         toast.error(`Failed to open workspace: ${err}`);
       },
     );
@@ -63,9 +64,15 @@
 <main class="flex h-full flex-col items-center justify-center gap-8 p-8">
   <!-- Recent workspaces -->
   <section class="w-full max-w-2xl">
-    <h2 class="mb-4 text-sm font-medium text-muted-foreground">
-      Recent Workspaces
-    </h2>
+    <div class="mb-4 flex items-center justify-between gap-3">
+      <h2 class="text-sm font-medium text-muted-foreground">
+        Recent Workspaces
+      </h2>
+      <Button variant="outline" size="sm" onclick={() => page.navigate("logs")} class="gap-2">
+        <Logs class="size-4" />
+        View Logs
+      </Button>
+    </div>
 
     {#if loading}
       <div class="flex items-center justify-center py-8">

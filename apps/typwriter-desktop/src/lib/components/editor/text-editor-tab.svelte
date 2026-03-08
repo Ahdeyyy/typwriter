@@ -62,6 +62,7 @@
   import { espresso } from "thememirror";
   import { indentationMarkers } from "@replit/codemirror-indentation-markers";
   import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
+  import { logError } from "$lib/logger";
 
   let editorHost = $state<HTMLDivElement | null>(null);
   const tabViews = new Map<string, EditorView>();
@@ -256,7 +257,7 @@
           run: () => {
             editor
               .saveTabById(tabId)
-              .mapErr((err) => console.error("save error:", err));
+              .mapErr((err) => logError("save error:", err));
             return true;
           },
         },

@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use compiler::PreviewPipeline;
 use tauri::Manager;
+use tauri_plugin_log::{Target, TargetKind};
 use typst_kit::fonts::FontSearcher;
 use workspace::WorkspaceState;
 use world::EditorWorld;
@@ -20,6 +21,7 @@ use commands::{
         update_file_content,
     },
     export::{export_pdf, export_png, export_svg},
+    logs::get_current_log_view,
     preview::{get_zoom, set_visible_page, set_zoom, trigger_preview},
     workspace::{
         create_file, create_folder, delete_file, delete_folder, get_file_tree,
@@ -36,6 +38,12 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(tauri_plugin_log::log::LevelFilter::Info)
+                .targets([
+                    Target::new(TargetKind::Stdout),
+                    Target::new(TargetKind::LogDir {
+                        file_name: Some("typwriter-desktop".into()),
+                    }),
+                ])
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
@@ -98,6 +106,8 @@ pub fn run() {
             // bidirectional jump
             jump_from_click,
             jump_from_cursor,
+            // logs
+            get_current_log_view,
             // export
             export_pdf,
             export_png,

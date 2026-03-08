@@ -1,6 +1,6 @@
 {
-  "name": "typwriter-desktop",
-  "version": "0.1.0",
+  "name": "typwriter",
+  "version": "0.2.0",
   "description": "",
   "type": "module",
   "scripts": {
@@ -52,7 +52,7 @@
     "@tauri-apps/cli": "^2",
     "bits-ui": "^2.14.4",
     "clsx": "^2.1.1",
-    "mode-watcher": "^1.1.0",
+    "layerchart": "2.0.0-next.43",
     "paneforge": "^1.0.2",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "svelte": "^5.0.0",

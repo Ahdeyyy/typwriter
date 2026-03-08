@@ -14,6 +14,38 @@ export interface RecentWorkspaceEntry {
     thumbnail: string | null;
 }
 
+// ─── Logs ─────────────────────────────────────────────────────────────────────
+
+export type LogLevel = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'UNKNOWN';
+
+export interface LogEntry {
+    index: number;
+    timestamp: string | null;
+    level: LogLevel;
+    target: string | null;
+    message: string;
+    raw: string;
+}
+
+export interface LogChartBucket {
+    bucket_start: string;
+    label: string;
+    info: number;
+    warn: number;
+    error: number;
+}
+
+export interface LogFileView {
+    path: string;
+    exists: boolean;
+    size_bytes: number;
+    modified_at: string | null;
+    raw_line_count: number;
+    entry_count: number;
+    entries: LogEntry[];
+    chart: LogChartBucket[];
+}
+
 // ─── Editor / IDE ─────────────────────────────────────────────────────────────
 
 export interface CompletionItem {
