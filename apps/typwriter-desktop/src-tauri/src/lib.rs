@@ -24,7 +24,7 @@ use commands::{
     logs::get_current_log_view,
     preview::{get_zoom, set_visible_page, set_zoom, trigger_preview},
     workspace::{
-        create_file, create_folder, delete_file, delete_folder, get_file_tree,
+        create_file, create_folder, create_workspace, delete_file, delete_folder, get_file_tree,
         get_recent_workspaces, import_files, move_file, move_folder, open_folder, rename_file,
         set_main_file,
     },
@@ -79,6 +79,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // workspace / file-system
             open_folder,
+            create_workspace,
             set_main_file,
             get_file_tree,
             get_recent_workspaces,

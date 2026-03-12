@@ -1,19 +1,24 @@
 <script lang="ts">
   import { page } from "@/stores/page.svelte";
   import Button from "../ui/button/button.svelte";
-  import { getRecentWorkspaces } from "$lib/ipc/commands";
+  import { getRecentWorkspaces, createWorkspace } from "$lib/ipc/commands";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { Folder, FolderOpen, Logs } from "@lucide/svelte";
+  import { Folder, FolderOpen, FolderPlus, Logs } from "@lucide/svelte";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
-
-  // const window = Window.getCurrent();
-  // window.setTitle("Typwriter");
+  import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
 
   let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
   let loading = $state(true);
+
+  // New workspace dialog state
+  let newWorkspaceOpen = $state(false);
+  let newWorkspaceName = $state("");
+  let newWorkspaceParent = $state("");
+  let newWorkspaceCreating = $state(false);
 
   async function loadRecent() {
     loading = true;
@@ -55,6 +60,57 @@
     );
   }
 
+  async function handleSelectParentFolder() {
+    const selected = await openDialog({ directory: true, multiple: false });
+    if (selected) {
+      newWorkspaceParent = selected;
+    }
+  }
+
+  async function handleCreateWorkspace() {
+    if (!newWorkspaceName.trim()) {
+      toast.error("Please enter a workspace name.");
+      return;
+    }
+    if (!newWorkspaceParent) {
+      toast.error("Please select a location.");
+      return;
+    }
+
+    newWorkspaceCreating = true;
+    const createResult = await createWorkspace(newWorkspaceParent, newWorkspaceName.trim());
+
+    if (createResult.isErr()) {
+      logError("Failed to create workspace:", createResult.error);
+      toast.error(`Failed to create workspace: ${createResult.error}`);
+      newWorkspaceCreating = false;
+      return;
+    }
+
+    const newPath = createResult.value;
+    const initResult = await workspace.init(newPath);
+    newWorkspaceCreating = false;
+
+    initResult.match(
+      () => {
+        newWorkspaceOpen = false;
+        newWorkspaceName = "";
+        newWorkspaceParent = "";
+        page.navigate("workspace");
+      },
+      (err) => {
+        logError("Failed to open new workspace:", err);
+        toast.error(`Failed to open workspace: ${err}`);
+      },
+    );
+  }
+
+  function handleNewWorkspaceKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter") {
+      handleCreateWorkspace();
+    }
+  }
+
   // Load recent workspaces on mount.
   $effect(() => {
     loadRecent();
@@ -87,7 +143,6 @@
         </p>
       </div>
     {:else}
-    <!-- <ScrollArea class="h-[200px] w-[350px] rounded-md border p-4"> -->
       <ul class="grid grid-cols-1 gap-2">
         {#each recentWorkspaces as entry (entry.path)}
           <li>
@@ -98,7 +153,7 @@
             >
               <!-- Thumbnail -->
               <div
-                class="flex w-48 shrink-0 self-stretch items-center justify-center overflow-hidden rounded-l-md bg-muted"
+                class="flex h-20 w-48 shrink-0 items-center justify-center overflow-hidden rounded-l-md bg-muted"
               >
                 {#if entry.thumbnail}
                   <img
@@ -124,12 +179,89 @@
           </li>
         {/each}
       </ul>
-      <!-- </ScrollArea> -->
     {/if}
   </section>
 
-  <Button onclick={handleOpenNew} class="gap-2">
-    <FolderOpen />
-    Open Folder
-  </Button>
+  <div class="flex gap-2">
+    <!-- New Workspace dialog -->
+    <Dialog.Root bind:open={newWorkspaceOpen}>
+      <Dialog.Trigger>
+        {#snippet child({ props })}
+          <Button {...props} variant="outline" class="gap-2">
+            <FolderPlus class="size-4" />
+            New Workspace
+          </Button>
+        {/snippet}
+      </Dialog.Trigger>
+      <Dialog.Content class="sm:max-w-md">
+        <Dialog.Header>
+          <Dialog.Title>New Workspace</Dialog.Title>
+          <Dialog.Description>
+            Choose a location and name for your new workspace. A folder with a
+            <code>.typwriter</code> metadata directory will be created inside.
+          </Dialog.Description>
+        </Dialog.Header>
+
+        <div class="flex flex-col gap-4 py-2">
+          <!-- Name input -->
+          <div class="flex flex-col gap-1.5">
+            <label for="ws-name" class="text-sm font-medium">Name</label>
+            <Input
+              id="ws-name"
+              placeholder="my-document"
+              bind:value={newWorkspaceName}
+              onkeydown={handleNewWorkspaceKeydown}
+              disabled={newWorkspaceCreating}
+            />
+          </div>
+
+          <!-- Location picker -->
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium">Location</label>
+            <div class="flex gap-2">
+              <Input
+                readonly
+                value={newWorkspaceParent}
+                placeholder="Select a folder…"
+                class="flex-1 cursor-default text-muted-foreground"
+                disabled={newWorkspaceCreating}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onclick={handleSelectParentFolder}
+                disabled={newWorkspaceCreating}
+              >
+                Browse
+              </Button>
+            </div>
+            {#if newWorkspaceParent && newWorkspaceName.trim()}
+              <p class="text-xs text-muted-foreground">
+                Will create: {newWorkspaceParent}/{newWorkspaceName.trim()}
+              </p>
+            {/if}
+          </div>
+        </div>
+
+        <Dialog.Footer>
+          <Dialog.Close>
+            {#snippet child({ props })}
+              <Button {...props} variant="ghost" disabled={newWorkspaceCreating}>Cancel</Button>
+            {/snippet}
+          </Dialog.Close>
+          <Button
+            onclick={handleCreateWorkspace}
+            disabled={newWorkspaceCreating || !newWorkspaceName.trim() || !newWorkspaceParent}
+          >
+            {newWorkspaceCreating ? "Creating…" : "Create"}
+          </Button>
+        </Dialog.Footer>
+      </Dialog.Content>
+    </Dialog.Root>
+
+    <Button onclick={handleOpenNew} class="gap-2">
+      <FolderOpen class="size-4" />
+      Open Folder
+    </Button>
+  </div>
 </main>

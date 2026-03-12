@@ -24,6 +24,10 @@ export function openFolder(path: string) {
     return ResultAsync.fromPromise(invoke<string | null>('open_folder', { path }), toErrString);
 }
 
+export function createWorkspace(parentPath: string, name: string) {
+    return ResultAsync.fromPromise(invoke<string>('create_workspace', { parentPath, name }), toErrString);
+}
+
 export function setMainFile(path: string) {
     return ResultAsync.fromPromise(invoke<void>('set_main_file', { path }), toErrString);
 }

@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc, time::Instant};
+use std::{fs, path::PathBuf, sync::Arc, time::Instant};
 
 use log::{error, info};
 use tauri::State;
@@ -174,4 +174,40 @@ pub fn get_recent_workspaces(
     let result = workspace.get_recent_workspaces_with_thumbnails();
     info!("get_recent_workspaces: returning {} entries", result.len());
     result
+}
+
+/// Create a new workspace folder at `parent_path/name`, initialise a
+/// `.typwriter/` metadata directory inside it, and return the absolute path to
+/// the new workspace root.
+#[tauri::command]
+pub fn create_workspace(parent_path: String, name: String) -> Result<String, String> {
+    let t = Instant::now();
+    info!("create_workspace: parent={parent_path:?} name={name:?}");
+
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("Workspace name must not be empty".into());
+    }
+
+    let workspace_path = PathBuf::from(&parent_path).join(&name);
+    let meta_path = workspace_path.join(".typwriter");
+
+    fs::create_dir_all(&workspace_path)
+        .map_err(|e| format!("Failed to create workspace folder: {e}"))?;
+    fs::create_dir_all(&meta_path)
+        .map_err(|e| format!("Failed to create .typwriter folder: {e}"))?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let meta_json = serde_json::json!({
+        "name": name,
+        "created_at": now,
+        "version": "1"
+    });
+    let meta_file = meta_path.join("workspace.json");
+    fs::write(&meta_file, meta_json.to_string())
+        .map_err(|e| format!("Failed to write workspace.json: {e}"))?;
+
+    let path_str = workspace_path.to_string_lossy().into_owned();
+    info!("create_workspace: ok path={path_str:?} ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+    Ok(path_str)
 }
