@@ -107,11 +107,8 @@ export const typstHighlighting = styleTags({
     // SyntaxKind::Linebreak | Escape | Shorthand  →  Tag::Escape
     "Linebreak Escape Shorthand": typstTags.escape,
 
-    // SyntaxKind::Strong  →  Tag::Strong
-    "Strong": typstTags.strong,
-
-    // SyntaxKind::Emph  →  Tag::Emph
-    "Emph": typstTags.emph,
+    // Strong/Emph styling is handled by the decoration overlay in markupStyles.ts
+    // (LR parsers can't reliably pair *...* / _..._ delimiters)
 
     // SyntaxKind::Raw  →  Tag::Raw
     "Raw": typstTags.raw,
@@ -127,16 +124,10 @@ export const typstHighlighting = styleTags({
     "Ref": typstTags.ref,
 
     // SyntaxKind::Heading  →  Tag::Heading
-    "Heading": typstTags.heading,
+    "Heading HeadingMarker": typstTags.heading,
 
     // SyntaxKind::ListMarker | EnumMarker | TermMarker  →  Tag::ListMarker
-    "ListMarker EnumMarker TermMarker": typstTags.listMarker,
-
-    // SyntaxKind::Markup (when it is the first child of TermItem before Colon)
-    //   →  Tag::ListTerm
-    // Lezer contextual selector: Markup inside TermItem, but only the first one
-    // (term text, not the description after the colon).
-    "TermItem/Markup!": typstTags.listTerm,
+    "EnumMarker": typstTags.listMarker,
 
     // ── Math ───────────────────────────────────────────────────────────────────
     // SyntaxKind::Dollar  →  Tag::MathDelimiter

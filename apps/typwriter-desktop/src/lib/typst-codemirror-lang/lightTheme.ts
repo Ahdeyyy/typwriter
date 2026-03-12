@@ -99,6 +99,27 @@ export const githubLightTheme = EditorView.theme(
             color: ML.cobalt,
             fontWeight: "bold",
         },
+        ".cm-typst-heading": {
+            color: ML.ink,
+            fontWeight: "bold",
+        },
+        ".cm-typst-strong": {
+            color: ML.crimsonDark,
+            fontWeight: "bold",
+        },
+        ".cm-typst-emph": {
+            color: ML.violet,
+            fontStyle: "italic",
+        },
+        ".cm-typst-heading.cm-typst-strong": {
+            color: ML.ink,
+            fontWeight: "bold",
+        },
+        ".cm-typst-heading.cm-typst-emph": {
+            color: ML.ink,
+            fontWeight: "bold",
+            fontStyle: "italic",
+        },
     },
     { dark: false }
 );

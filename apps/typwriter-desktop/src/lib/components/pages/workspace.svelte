@@ -45,7 +45,7 @@
 
 <div class="relative flex h-screen w-screen overflow-hidden">
   {#if !sidebarOpen}
-    <div class="absolute top-1 left-2 z-50 flex items-center gap-1">
+    <div class="absolute top-1 left-2 z-50 flex items-center gap-0.5">
       <Button
         variant="ghost"
         size="icon-sm"

@@ -20,6 +20,9 @@ import {
     Space,
     Parbreak,
     HeadingMarker,
+    HeadingEnd,
+    EnumMarker,
+    Ident,
 } from "./parser.terms.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -78,6 +81,7 @@ function isIdContinue(cp: number) {
 // trimming logic.
 
 export const rawToken = new ExternalTokenizer((input, stack) => {
+    if (!stack.canShift(Raw)) return;
     if (input.next !== 96 /* ` */) return; // not a backtick
 
     let pos = input.pos;
@@ -113,14 +117,15 @@ export const rawToken = new ExternalTokenizer((input, stack) => {
     }
     // Unclosed raw block – accept as error token up to EOF
     input.acceptToken(Raw);
-});
+}, { fallback: true, contextual: true });
 
 // ─── Nested block comment tokenizer ─────────────────────────────────────────
 //
 // Typst block comments can nest: /* foo /* bar */ baz */
 // Mirrors Lexer::block_comment in lexer.rs.
 
-export const blockCommentToken = new ExternalTokenizer((input) => {
+export const blockCommentToken = new ExternalTokenizer((input, stack) => {
+    if (!stack.canShift(BlockComment)) return;
     // Expect /*
     if (input.next !== 47 /* / */) return;
     input.advance();
@@ -146,7 +151,7 @@ export const blockCommentToken = new ExternalTokenizer((input) => {
     }
 
     input.acceptToken(BlockComment);
-});
+}, { fallback: true, contextual: true });
 
 // ─── Context-sensitive markup Text tokenizer ─────────────────────────────────
 //
@@ -161,12 +166,30 @@ export const blockCommentToken = new ExternalTokenizer((input) => {
 // plain text when the continuation makes them non-special
 // (e.g.  '/' that is NOT '/*' or '//' is plain text).
 
+// ─── Code-mode identifier tokenizer ─────────────────────────────────────────
+//
+// The built-in tokenizer picks MathIdent (higher precedence) over Ident for
+// multi-char alphabetic sequences. In code mode MathIdent can't be shifted,
+// causing parse errors for `#let`, `#text()`, etc.
+//
+// This non-fallback contextual tokenizer produces Ident only when the parser
+// expects it (code mode), so it wins over the built-in MathIdent.
+
+export const identToken = new ExternalTokenizer((input, stack) => {
+    if (!stack.canShift(Ident)) return;
+    if (!isIdStart(input.next)) return;
+    input.advance();
+    while (isIdContinue(input.next)) input.advance();
+    input.acceptToken(Ident);
+}, { fallback: true });
+
 const MARKUP_STOP_ASCII = new Uint8Array(128);
 for (const ch of " \t\n\v\f\r\\/[]~-.'\"`$<>@#*_:h") {
     MARKUP_STOP_ASCII[ch.charCodeAt(0)] = 1;
 }
 
 export const markupTextToken = new ExternalTokenizer((input, stack) => {
+    if (!stack.canShift(Text)) return;
     // Only emit Text in markup context (checked by the stack dialect / state)
     let count = 0;
 
@@ -259,7 +282,7 @@ export const markupTextToken = new ExternalTokenizer((input, stack) => {
     }
 
     if (count > 0) input.acceptToken(Text);
-});
+}, { fallback: true, contextual: true });
 
 // ─── Math text token ────────────────────────────────────────────────────────
 //
@@ -267,7 +290,8 @@ export const markupTextToken = new ExternalTokenizer((input, stack) => {
 // Numbers: digit+ ('.' digit*)?
 // Other: single Unicode grapheme cluster.
 
-export const mathTextToken = new ExternalTokenizer((input) => {
+export const mathTextToken = new ExternalTokenizer((input, stack) => {
+    if (!stack.canShift(MathText)) return;
     const cp = input.next;
     if (cp < 0) return;
 
@@ -293,7 +317,7 @@ export const mathTextToken = new ExternalTokenizer((input) => {
     //  handles UTF-16 decoding; we consume a single logical char here)
     input.advance();
     input.acceptToken(MathText);
-});
+}, { fallback: true, contextual: true });
 
 // ─── Context tracker ────────────────────────────────────────────────────────
 //
@@ -320,6 +344,7 @@ export const typstContext = new ContextTracker({
 // in code mode, and the built-in tokenizer can't distinguish by context.
 
 export const headingToken = new ExternalTokenizer((input, stack) => {
+    if (!stack.canShift(HeadingMarker)) return;
     if (input.next !== 61 /* = */) return;
 
     // Check we're at the start of a line (either start of input, or previous char was newline)
@@ -343,4 +368,47 @@ export const headingToken = new ExternalTokenizer((input, stack) => {
     if (next < 0 || next === 32 /* space */ || next === 9 /* tab */ || isNewline(next)) {
         input.acceptToken(HeadingMarker);
     }
-});
+}, { fallback: true, contextual: true });
+
+// ─── Enum marker tokenizer ─────────────────────────────────────────────────
+//
+// EnumMarker is one or more digits followed by '.' at the start of a line.
+// Like HeadingMarker, it's context-sensitive (only valid at line start).
+
+export const enumMarkerToken = new ExternalTokenizer((input, stack) => {
+    if (!stack.canShift(EnumMarker)) return;
+
+    // Must be a digit
+    if (input.next < 48 || input.next > 57) return;
+
+    // Check we're at the start of a line
+    if (input.pos > 0) {
+        const prev = input.peek(-1);
+        if (!isNewline(prev)) return;
+    }
+
+    // Consume all digits
+    while (input.next >= 48 && input.next <= 57) {
+        input.advance();
+    }
+
+    // Must be followed by '.'
+    if (input.next !== 46 /* . */) return;
+    input.advance();
+
+    input.acceptToken(EnumMarker);
+}, { fallback: true, contextual: true });
+
+// ─── Heading end tokenizer ──────────────────────────────────────────────────
+//
+// HeadingEnd is a zero-width token emitted at a newline or EOF position.
+// It closes the Heading wrapper node in the grammar.
+
+export const headingEndToken = new ExternalTokenizer((input, stack) => {
+    if (!stack.canShift(HeadingEnd)) return;
+
+    // Accept at newline or EOF (zero-width — don't consume the newline)
+    if (input.next < 0 || isNewline(input.next)) {
+        input.acceptToken(HeadingEnd, 0);
+    }
+}, { fallback: true, contextual: true });

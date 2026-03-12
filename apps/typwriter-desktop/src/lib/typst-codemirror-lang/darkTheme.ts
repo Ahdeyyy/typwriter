@@ -109,6 +109,27 @@ export const tokyoNightDarkTheme = EditorView.theme(
             color: TN.blue,
             fontWeight: "bold",
         },
+        ".cm-typst-heading": {
+            color: TN.blue,
+            fontWeight: "bold",
+        },
+        ".cm-typst-strong": {
+            color: TN.yellow,
+            fontWeight: "bold",
+        },
+        ".cm-typst-emph": {
+            color: TN.yellow,
+            fontStyle: "italic",
+        },
+        ".cm-typst-heading.cm-typst-strong": {
+            color: TN.blue,
+            fontWeight: "bold",
+        },
+        ".cm-typst-heading.cm-typst-emph": {
+            color: TN.blue,
+            fontWeight: "bold",
+            fontStyle: "italic",
+        },
     },
     { dark: true }
 );

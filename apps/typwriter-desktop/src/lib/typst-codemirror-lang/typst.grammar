@@ -7,6 +7,11 @@
 //
 // External tokenizers (./src/tokens.js) handle:
 //   Raw blocks, nested block comments, markup Text, MathText atoms.
+//
+// Whitespace note: Space and Parbreak are globally skipped so code mode
+// works correctly.  In markup/math, whitespace is part of the text and
+// handled by the external Text/MathText tokenizers, not as separate
+// Space/Parbreak nodes.
 
 @top Document { shebang? markup }
 
@@ -26,7 +31,7 @@
   arrow   @right
 }
 
-@skip { LineComment | BlockComment }
+@skip { Space | Parbreak | LineComment | BlockComment }
 
 // ─── Keyword helper ──────────────────────────────────────────────────────────
 // @specialize replaces an Ident token with a keyword token when the value matches.
@@ -44,8 +49,6 @@ markup { markupExpr* }
 
 markupExpr {
   Text          |
-  Space         |
-  Parbreak      |
   Linebreak     |
   Escape        |
   Shorthand     |
@@ -53,7 +56,27 @@ markupExpr {
   Raw           |
   Link          |
   Label         |
-  HeadingMarker |
+  Heading       |
+  EnumMarker    |
+  Star          |
+  Underscore    |
+  Colon         |
+  Ref           |
+  Equation      |
+  EmbeddedExpr
+}
+
+Heading { HeadingMarker headingContent* HeadingEnd }
+
+headingContent {
+  Text          |
+  Linebreak     |
+  Escape        |
+  Shorthand     |
+  SmartQuote    |
+  Raw           |
+  Link          |
+  Label         |
   EnumMarker    |
   Star          |
   Underscore    |
@@ -84,8 +107,7 @@ mathExpr {
   MathDelimited     |
   Escape            |
   Str               |
-  MathEmbeddedExpr  |
-  Space
+  MathEmbeddedExpr
 }
 
 MathRoot          { Root mathExpr }
@@ -211,8 +233,6 @@ CodeBlock { LeftBrace code RightBrace }
 
   // ── Markup tokens ─────────────────────────────────────────────────────────
 
-  EnumMarker    { $[0-9]+ "." }
-
   Linebreak { "\\" }
 
   Escape { "\\" ($[^\n\r\u000b\u000c] | "u{" $[0-9a-fA-F]+ "}") }
@@ -319,7 +339,8 @@ CodeBlock { LeftBrace code RightBrace }
 
   Str { '"' (![\\"\n\r] | "\\" _)* '"' }
 
-  Ident { $[a-zA-Z_\u0080-\uFFFF] $[a-zA-Z0-9_\-\u0080-\uFFFF]* }
+  // Ident is now an external tokenizer (identToken) to avoid MathIdent
+  // precedence conflicts in code mode.
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -335,7 +356,7 @@ CodeBlock { LeftBrace code RightBrace }
     Shorthand,
     Escape, Linebreak,
     Parbreak, Space,
-    Numeric, Float, Int, EnumMarker,
+    Numeric, Float, Int,
     Dots, Arrow,
     EqEq, ExclEq, LtEq, GtEq, PlusEq, HyphEq, StarEq, SlashEq,
     shebang, LineComment, Hash, Slash,
@@ -343,7 +364,7 @@ CodeBlock { LeftBrace code RightBrace }
     Bool, None, Auto,
     SmartQuote,
     Root, MathOpen, MathClose,
-    MathIdent, Underscore, Ident,
+    MathIdent, Underscore,
     MathPrimes, Dot
   }
 }
@@ -352,9 +373,12 @@ CodeBlock { LeftBrace code RightBrace }
 
 @external tokens rawToken from "./tokens" { Raw }
 @external tokens blockCommentToken from "./tokens" { BlockComment }
+@external tokens headingToken from "./tokens" { HeadingMarker }
+@external tokens enumMarkerToken from "./tokens" { EnumMarker }
+@external tokens headingEndToken from "./tokens" { HeadingEnd }
+@external tokens identToken from "./tokens" { Ident }
 @external tokens markupTextToken from "./tokens" { Text }
 @external tokens mathTextToken from "./tokens" { MathText }
-@external tokens headingToken from "./tokens" { HeadingMarker }
 
 // Keywords are handled inline via the kw<word> template using @specialize.
 

@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "test": "bun test",
     "tauri": "tauri",
     "generate-parser": " bunx lezer-generator ./src/lib/typst-codemirror-lang/typst.grammar -o ./src/lib/typst-codemirror-lang/parser"
   },

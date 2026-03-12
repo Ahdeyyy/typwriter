@@ -22,7 +22,20 @@
       "Bash(bun add @codemirror/lang-json @codemirror/lang-xml @codemirror/lang-yaml @codemirror/legacy-modes)",
       "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" bun run check)",
       "Bash(xargs grep -l \"Dialog\\\\|dialog-\")",
-      "Bash(xargs grep -l \"struct PageRanges\\\\|pub.*PageRanges\")"
+      "Bash(xargs grep -l \"struct PageRanges\\\\|pub.*PageRanges\")",
+      "Bash(bun run generate-parser)",
+      "Bash(bun test src/lib/typst-codemirror-lang/highlight.test.ts)",
+      "Bash(node -e \":*)",
+      "Bash(bun -e \":*)",
+      "Bash(npx lezer-generator --help)",
+      "Bash(bunx lezer-generator --help)",
+      "Bash(bun -e \"const pkg = require\\(''@lezer/generator/package.json''\\); console.log\\(''@lezer/generator version:'', pkg.version\\);\")",
+      "Bash(bunx lezer-generator --version)",
+      "Bash(bun -e \"const fs=require\\(''fs''\\); try { const pkg=JSON.parse\\(fs.readFileSync\\(''node_modules/@lezer/generator/package.json'',''utf8''\\)\\); console.log\\(pkg.version\\); } catch\\(e\\) {}\")",
+      "Bash(bun -e \"console.log\\(require.resolve\\(''@lezer/generator''\\)\\)\")",
+      "WebFetch(domain:lezer.codemirror.net)",
+      "Bash(git push -u origin HEAD)",
+      "Bash(gh pr:*)"
     ]
   }
 }
