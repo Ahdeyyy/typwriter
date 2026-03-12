@@ -5,16 +5,20 @@ mod compiler;
 mod workspace;
 mod world;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use rayon::prelude::*;
+
 use compiler::PreviewPipeline;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_log::{Target, TargetKind};
 use typst_kit::fonts::FontSearcher;
 use workspace::WorkspaceState;
 use world::EditorWorld;
 
 use commands::{
+    app::is_fonts_loaded,
     click::{jump_from_click, jump_from_cursor},
     editor::{
         discard_shadow, get_completions, get_definitions, get_tooltip, read_file, save_file,
@@ -29,6 +33,11 @@ use commands::{
         set_main_file,
     },
 };
+
+/// Lightweight state managed immediately so the frontend can query readiness.
+pub struct AppInit {
+    pub fonts_loaded: AtomicBool,
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -50,19 +59,14 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // ── Font loading ───────────────────────────────────────────────
-            let font_results = FontSearcher::new().search();
-            let fonts: Vec<typst::text::Font> = font_results
-                .fonts
-                .iter()
-                .filter_map(|slot| slot.get())
-                .collect();
-
             // ── Initial workspace root (cwd; replaced when user opens a folder) ─
             let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
-            // ── Shared state ───────────────────────────────────────────────
-            let world = Arc::new(EditorWorld::new(root, fonts, handle.clone()));
+            // ── Shared state (managed immediately — fonts arrive later) ──────
+            let init = Arc::new(AppInit {
+                fonts_loaded: AtomicBool::new(false),
+            });
+            let world = Arc::new(EditorWorld::new(root, handle.clone()));
             let pipeline = Arc::new(PreviewPipeline::new(world.clone(), handle.clone()));
             let workspace = Arc::new(WorkspaceState::new(
                 world.clone(),
@@ -70,13 +74,30 @@ pub fn run() {
                 handle.clone(),
             ));
 
-            app.manage(world);
+            app.manage(init.clone());
+            app.manage(world.clone());
             app.manage(pipeline);
             app.manage(workspace);
+
+            // ── Background font loading ─────────────────────────────────────
+            std::thread::spawn(move || {
+                let font_results = FontSearcher::new().search();
+                let fonts: Vec<typst::text::Font> = font_results
+                    .fonts
+                    .par_iter()
+                    .filter_map(|slot| slot.get())
+                    .collect();
+
+                world.load_fonts(fonts);
+                init.fonts_loaded.store(true, Ordering::Release);
+                let _ = handle.emit("app:fonts-loaded", ());
+            });
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // app init
+            is_fonts_loaded,
             // workspace / file-system
             open_folder,
             create_workspace,

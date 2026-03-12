@@ -74,3 +74,12 @@ export function onWorkspaceFilesChanged(handler: (payload: WorkspaceFilesChanged
         toErrString
     );
 }
+
+// ─── App init events ──────────────────────────────────────────────────────────
+
+export function onAppFontsLoaded(handler: () => void) {
+    return ResultAsync.fromPromise(
+        listen<void>('app:fonts-loaded', () => handler()),
+        toErrString
+    );
+}

@@ -35,7 +35,9 @@
       "Bash(bun -e \"console.log\\(require.resolve\\(''@lezer/generator''\\)\\)\")",
       "WebFetch(domain:lezer.codemirror.net)",
       "Bash(git push -u origin HEAD)",
-      "Bash(gh pr:*)"
+      "Bash(gh pr:*)",
+      "Bash(xargs grep -l \"FontSearcher\\\\|font.*search\\\\|search.*font\\\\|embed.*font\\\\|system.*font\")",
+      "Bash(bunx svelte-check --tsconfig ./tsconfig.json)"
     ]
   }
 }

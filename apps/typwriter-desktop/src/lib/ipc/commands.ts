@@ -168,3 +168,9 @@ export function exportPng(config: PngExportConfig) {
 export function exportSvg(config: SvgExportConfig) {
     return ResultAsync.fromPromise(invoke<void>('export_svg', { config }), toErrString);
 }
+
+// ─── App init ─────────────────────────────────────────────────────────────────
+
+export function isFontsLoaded() {
+    return ResultAsync.fromPromise(invoke<boolean>('is_fonts_loaded'), toErrString);
+}

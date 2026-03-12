@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { onMount, onDestroy } from "svelte";
   import { page } from "@/stores/page.svelte";
   import Button from "../ui/button/button.svelte";
-  import { getRecentWorkspaces, createWorkspace } from "$lib/ipc/commands";
+  import { getRecentWorkspaces, createWorkspace, isFontsLoaded } from "$lib/ipc/commands";
+  import { onAppFontsLoaded, type UnlistenFn } from "$lib/ipc/events";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -13,12 +15,43 @@
 
   let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
   let loading = $state(true);
+  let fontsReady = $state(false);
+  let fontToastId = $state<string | number | undefined>();
 
   // New workspace dialog state
   let newWorkspaceOpen = $state(false);
   let newWorkspaceName = $state("");
   let newWorkspaceParent = $state("");
   let newWorkspaceCreating = $state(false);
+
+  // ── Font readiness ──────────────────────────────────────────────────────────
+
+  let unlistenFonts: UnlistenFn | null = null;
+
+  onMount(async () => {
+    // Check if fonts already loaded (handles race condition)
+    const ready = await isFontsLoaded();
+    if (ready.isOk() && ready.value) {
+      fontsReady = true;
+    } else {
+      fontToastId = toast.loading("Loading fonts…");
+      const result = await onAppFontsLoaded(() => {
+        fontsReady = true;
+        if (fontToastId !== undefined) {
+          toast.dismiss(fontToastId);
+          fontToastId = undefined;
+        }
+      });
+      if (result.isOk()) unlistenFonts = result.value;
+    }
+  });
+
+  onDestroy(() => {
+    unlistenFonts?.();
+    if (fontToastId !== undefined) toast.dismiss(fontToastId);
+  });
+
+  // ── Workspace operations ────────────────────────────────────────────────────
 
   async function loadRecent() {
     loading = true;
@@ -150,6 +183,7 @@
               variant="ghost"
               class="flex h-auto w-full items-center gap-4 rounded-md border border-border bg-card py-1.5 px-3 text-left hover:bg-accent"
               onclick={() => handleOpenRecent(entry.path)}
+              disabled={!fontsReady}
             >
               <!-- Thumbnail -->
               <div
@@ -187,7 +221,7 @@
     <Dialog.Root bind:open={newWorkspaceOpen}>
       <Dialog.Trigger>
         {#snippet child({ props })}
-          <Button {...props} variant="outline" class="gap-2">
+          <Button {...props} variant="outline" class="gap-2" disabled={!fontsReady}>
             <FolderPlus class="size-4" />
             New Workspace
           </Button>
@@ -259,7 +293,7 @@
       </Dialog.Content>
     </Dialog.Root>
 
-    <Button onclick={handleOpenNew} class="gap-2">
+    <Button onclick={handleOpenNew} class="gap-2" disabled={!fontsReady}>
       <FolderOpen class="size-4" />
       Open Folder
     </Button>

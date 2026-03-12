@@ -29,6 +29,12 @@ use typst_kit::{
     package::{default_package_cache_path, default_package_path, PackageStorage},
 };
 
+/// Bundled font data, set once via `OnceLock` when background loading completes.
+struct FontData {
+    fonts: Vec<Font>,
+    book: LazyHash<FontBook>,
+}
+
 pub struct EditorWorld {
     /// Workspace root on disk — updatable when the user opens a new folder.
     root: RwLock<PathBuf>,
@@ -36,14 +42,14 @@ pub struct EditorWorld {
     /// The file currently set as "main" by the user
     main: RwLock<FileId>,
 
-    /// Typst standard library (built once, never changes)
-    library: LazyHash<Library>,
+    /// Typst standard library — built lazily on first compile, not at startup
+    library: OnceLock<LazyHash<Library>>,
 
-    /// Font book (built once at startup)
-    book: LazyHash<FontBook>,
+    /// Fonts + book, set once background font loading completes
+    font_data: OnceLock<FontData>,
 
-    /// Loaded fonts (indexed by FontBook position)
-    fonts: Vec<Font>,
+    /// Empty fallback for `World::book()` before fonts arrive
+    empty_book: LazyHash<FontBook>,
 
     /// In-memory source cache: files the editor has open / has read
     /// Key: FileId, Value: the Source (typst's parsed form)
@@ -77,9 +83,8 @@ impl EditorWorld {
         FileId::new(None, VirtualPath::new("main.typ"))
     }
 
-    pub fn new(root: PathBuf, fonts: Vec<Font>, app_handle: AppHandle) -> Self {
-        let book = FontBook::from_fonts(&fonts);
-        let user_agent = "typwriter-app/0.1".to_string();
+    pub fn new(root: PathBuf, app_handle: AppHandle) -> Self {
+        let user_agent = "typwriter-app/0.2.1".to_string();
         let downloader = Downloader::new(user_agent.clone());
         let package_storage = PackageStorage::new(
             default_package_cache_path(),
@@ -89,13 +94,9 @@ impl EditorWorld {
         Self {
             root: RwLock::new(root),
             main: RwLock::new(Self::placeholder_main()),
-            library: LazyHash::new(
-                Library::builder()
-                    .with_features(Features::default())
-                    .build(),
-            ),
-            book: LazyHash::new(book),
-            fonts,
+            library: OnceLock::new(),
+            font_data: OnceLock::new(),
+            empty_book: LazyHash::new(FontBook::from_fonts(&[])),
             source_cache: Mutex::new(HashMap::new()),
             file_cache: Mutex::new(HashMap::new()),
             shadow: RwLock::new(HashMap::new()),
@@ -104,6 +105,15 @@ impl EditorWorld {
             downloader,
             package_index: OnceLock::new(),
         }
+    }
+
+    /// Load fonts from a background thread after startup.
+    pub fn load_fonts(&self, fonts: Vec<Font>) {
+        let book = FontBook::from_fonts(&fonts);
+        let _ = self.font_data.set(FontData {
+            fonts,
+            book: LazyHash::new(book),
+        });
     }
 
     /// Called by Tauri command when user sets main file
@@ -180,11 +190,13 @@ impl EditorWorld {
 
 impl World for EditorWorld {
     fn library(&self) -> &LazyHash<Library> {
-        &self.library
+        self.library.get_or_init(|| {
+            LazyHash::new(Library::builder().with_features(Features::default()).build())
+        })
     }
 
     fn book(&self) -> &LazyHash<FontBook> {
-        &self.book
+        self.font_data.get().map(|d| &d.book).unwrap_or(&self.empty_book)
     }
 
     fn main(&self) -> FileId {
@@ -229,7 +241,7 @@ impl World for EditorWorld {
     }
 
     fn font(&self, index: usize) -> Option<Font> {
-        self.fonts.get(index).cloned()
+        self.font_data.get().and_then(|d| d.fonts.get(index).cloned())
     }
 
     fn today(&self, offset: Option<i64>) -> Option<Datetime> {
