@@ -13,7 +13,7 @@
 
 <div class="flex h-svh flex-col bg-background">
   {#if editor.tabs.length > 0}
-    <div class={sidebarCollapsed ? "pl-[72px]" : ""}>
+    <div class={sidebarCollapsed ? "pl-[64px]" : ""}>
       <TabBar />
     </div>
   {/if}

@@ -122,8 +122,8 @@
 <div class="flex h-full flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
 
   <!-- Header: title + toolbar (aligned with tab bar) -->
-  <div class="flex h-9 items-center justify-between border-b border-sidebar-border px-2">
-    <div class="flex items-center gap-0.5 min-w-0">
+  <div class="flex h-9 items-center justify-between border-b border-sidebar-border px-1">
+    <div class="flex items-center gap-0 min-w-0">
       <Button
         variant="ghost"
         size="icon-sm"
@@ -146,7 +146,7 @@
         {workspaceName}
       </span>
     </div>
-    <div class="flex items-center gap-0.5 shrink-0">
+    <div class="flex items-center gap-0 shrink-0">
       <Button
         variant="ghost"
         size="icon-sm"

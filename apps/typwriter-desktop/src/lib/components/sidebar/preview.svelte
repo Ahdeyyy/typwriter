@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
   import { ZoomIn, ZoomOut, RotateCcw, Download } from "@lucide/svelte";
   import ExportDialog from "./export-dialog.svelte";
 
@@ -16,6 +16,34 @@
   let visiblePage = $state(0);
   let exportOpen = $state(false);
   const PAGE_BUFFER = 2;
+
+  // ── Double-buffer: hold last decoded page data to avoid flash on update ────
+  let committedPages = $state<(string | null)[]>([]);
+
+  $effect(() => {
+    const incoming = preview.pages;
+
+    // Sync length
+    const curLen = untrack(() => committedPages.length);
+    if (curLen < incoming.length) {
+      for (let i = curLen; i < incoming.length; i++) committedPages.push(null);
+    } else if (curLen > incoming.length) {
+      committedPages.splice(incoming.length);
+    }
+
+    for (let i = 0; i < incoming.length; i++) {
+      const data = incoming[i];
+      if (!data) continue;
+      if (data === untrack(() => committedPages[i])) continue;
+
+      const idx = i;
+      const img = new Image();
+      img.onload = () => {
+        if (preview.pages[idx] === data) committedPages[idx] = data;
+      };
+      img.src = `data:image/png;base64,${data}`;
+    }
+  });
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -190,23 +218,21 @@
         Select a main `.typ` file in the explorer to render a preview.
       </div>
     {:else}
-      {#each preview.pages as pageData, i}
+      {#each preview.pages as _, i}
         <div
           id="preview-page-{i}"
           class="relative shrink-0 overflow-hidden rounded shadow-md"
         >
-          {#if pageData && shouldRenderPage(i)}
+          {#if committedPages[i] && shouldRenderPage(i)}
             <button
               class="block border-0 bg-transparent p-0"
               title="Click to jump to source"
               onclick={(e) => handlePageClick(e, i)}
             >
               <img
-                src="data:image/png;base64,{pageData}"
+                src="data:image/png;base64,{committedPages[i]}"
                 alt="Page {i + 1}"
                 draggable="false"
-                loading="lazy"
-                decoding="async"
                 class="block max-w-full"
               />
             </button>
