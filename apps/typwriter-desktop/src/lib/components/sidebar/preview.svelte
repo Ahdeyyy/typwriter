@@ -141,69 +141,85 @@
   // ── Zoom display (zoom=2.0 → "100%") ──────────────────────────────────────
 
   const zoomLabel = $derived(`${Math.round(preview.zoom * 50)}%`);
+
+  // ── Narrow toolbar ─────────────────────────────────────────────────────────
+
+  let toolbarWidth = $state(0);
+  const isNarrow = $derived(toolbarWidth > 0 && toolbarWidth < 240);
 </script>
 
 <div class="flex h-full flex-col bg-background text-foreground">
   <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
   <div
-    class="flex h-9 shrink-0 items-center gap-0.5 border-b border-border px-2"
+    bind:clientWidth={toolbarWidth}
+    class={isNarrow
+      ? "flex flex-col shrink-0 border-b border-border px-2 py-0.5"
+      : "flex h-9 shrink-0 items-center gap-0.5 border-b border-border px-2"}
   >
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      title="Zoom out"
-      onclick={zoomOut}
-      disabled={preview.zoom <= 0.5}
-    >
-      <ZoomOut class="size-3.5" />
-    </Button>
+    <!-- Zoom controls -->
+    <div class={isNarrow ? "flex items-center gap-0.5 w-full" : "flex items-center gap-0.5"}>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title="Zoom out"
+        onclick={zoomOut}
+        disabled={preview.zoom <= 0.5}
+      >
+        <ZoomOut class="size-3.5" />
+      </Button>
 
-    <span class="w-12 text-center text-xs text-muted-foreground tabular-nums">
-      {zoomLabel}
-    </span>
-
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      title="Zoom in"
-      onclick={zoomIn}
-      disabled={preview.zoom >= 8.0}
-    >
-      <ZoomIn class="size-3.5" />
-    </Button>
-
-    <div class="flex-1"></div>
-
-    {#if preview.isCompiling}
-      <span class="mr-2 text-[11px] uppercase tracking-wide text-muted-foreground animate-pulse">
-        Compiling
+      <span class="w-12 text-center text-xs text-muted-foreground tabular-nums">
+        {zoomLabel}
       </span>
+
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title="Zoom in"
+        onclick={zoomIn}
+        disabled={preview.zoom >= 8.0}
+      >
+        <ZoomIn class="size-3.5" />
+      </Button>
+    </div>
+
+    {#if !isNarrow}
+      <div class="flex-1"></div>
     {/if}
 
-    {#if preview.totalPages > 0}
-      <span class="text-xs text-muted-foreground tabular-nums">
-        {visiblePage + 1} / {preview.totalPages}
-      </span>
-    {/if}
+    <!-- Status + actions -->
+    <div class={isNarrow ? "flex items-center gap-0.5 w-full" : "flex items-center gap-0.5"}>
+      {#if preview.isCompiling}
+        <span class="mr-2 text-[11px] uppercase tracking-wide text-muted-foreground animate-pulse">
+          Compiling
+        </span>
+      {/if}
 
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      title="Export document"
-      onclick={() => (exportOpen = true)}
-      disabled={preview.totalPages === 0}
-    >
-      <Download class="size-3.5" />
-    </Button>
+      {#if preview.totalPages > 0}
+        <span class="text-xs text-muted-foreground tabular-nums">
+          {visiblePage + 1} / {preview.totalPages}
+        </span>
+      {/if}
 
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      title="Refresh preview"
-      onclick={refresh}
-    >
-      <RotateCcw class="size-3.5" />
-    </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title="Export document"
+        onclick={() => (exportOpen = true)}
+        disabled={preview.totalPages === 0}
+      >
+        <Download class="size-3.5" />
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title="Refresh preview"
+        onclick={refresh}
+      >
+        <RotateCcw class="size-3.5" />
+      </Button>
+    </div>
   </div>
 
   <!-- ── Page list ──────────────────────────────────────────────────────── -->

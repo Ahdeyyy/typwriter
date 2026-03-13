@@ -127,14 +127,24 @@
   const workspaceName = $derived(
     workspace.rootPath ? basename(workspace.rootPath) : "Explorer"
   );
+
+  // ─── Narrow toolbar ───────────────────────────────────────────────────────
+
+  let toolbarWidth = $state(0);
+  const isNarrow = $derived(toolbarWidth > 0 && toolbarWidth < 210);
 </script>
 
 <!-- ─── Sidebar shell ──────────────────────────────────────────────────────── -->
 <div class="flex h-full flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
 
   <!-- Header: title + toolbar (aligned with tab bar) -->
-  <div class="flex h-9 items-center justify-between border-b border-sidebar-border px-1">
-    <div class="flex items-center gap-0 min-w-0">
+  <div
+    bind:clientWidth={toolbarWidth}
+    class={isNarrow
+      ? "flex flex-col border-b border-sidebar-border px-1 py-0.5"
+      : "flex h-9 items-center justify-between border-b border-sidebar-border px-1"}
+  >
+    <div class={isNarrow ? "flex items-center gap-0 min-w-0 w-full" : "flex items-center gap-0 min-w-0"}>
       <Button
         variant="ghost"
         size="icon-sm"
@@ -157,7 +167,7 @@
         {workspaceName}
       </span>
     </div>
-    <div class="flex items-center gap-0 shrink-0">
+    <div class={isNarrow ? "flex items-center gap-0 w-full" : "flex items-center gap-0 shrink-0"}>
       <Button
         variant="ghost"
         size="icon-sm"
