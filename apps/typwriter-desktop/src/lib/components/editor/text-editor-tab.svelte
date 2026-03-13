@@ -129,7 +129,7 @@
 
       const [languageResults, backendResult] = await Promise.all([
         getLanguageCompletionResults(context),
-        getCompletions(tab.absPath, context.pos, true),
+        getCompletions(tab.absPath, context.pos, context.explicit ),
       ]);
 
       const languageOptions = languageResults.flatMap(
