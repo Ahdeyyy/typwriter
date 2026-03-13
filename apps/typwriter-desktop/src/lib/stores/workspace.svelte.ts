@@ -25,8 +25,6 @@ export interface FileNode {
     is_dir: boolean;
     children: FileNode[];
     expanded: boolean;
-    isEditing: boolean;
-    editName: string;
 }
 
 export function normalize(path: string): string {
@@ -50,8 +48,6 @@ function entryToNode(entry: FileTreeEntry, expandedPaths: Set<string>): FileNode
         path,
         is_dir: entry.is_dir,
         expanded: expandedPaths.has(path),
-        isEditing: false,
-        editName: '',
         children: entry.children.map((child) => entryToNode(child, expandedPaths)),
     };
 }

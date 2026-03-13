@@ -4,7 +4,7 @@
   import { ChevronRight } from "@lucide/svelte";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
-  import { workspace, type FileNode, basename } from "$lib/stores/workspace.svelte";
+  import { workspace, type FileNode, basename, dirname } from "$lib/stores/workspace.svelte";
   import { toast } from "svelte-sonner";
 
   // ─── Props ──────────────────────────────────────────────────────────────────
@@ -20,6 +20,8 @@
 
   let isDropTarget = $state(false);
   let renameInputEl = $state<HTMLInputElement | null>(null);
+  let isEditing = $state(false);
+  let editName = $state('');
 
   // ─── Derived ────────────────────────────────────────────────────────────────
 
@@ -27,10 +29,28 @@
   const isMainFile = $derived(workspace.mainFile === node.path);
   const indentPx   = $derived(depth * 12);
 
+  // ─── Context-menu action deferral ──────────────────────────────────────────
+
+  let pendingAction = $state<(() => void) | null>(null);
+
+  function onMenuOpenChange(open: boolean) {
+    if (!open && pendingAction) {
+      const action = pendingAction;
+      pendingAction = null;
+      requestAnimationFrame(() => action());
+    }
+  }
+
+  // ─── Blur guard ────────────────────────────────────────────────────────────
+  // After an input is focused, ignore blur events for a short grace period
+  // to prevent bits-ui's focus restoration from cancelling the operation.
+
+  let blurGuardUntil = $state(0);
+
   // ─── Click ──────────────────────────────────────────────────────────────────
 
   function handleClick() {
-    if (node.isEditing) return;
+    if (isEditing) return;
     if (node.is_dir) {
       workspace.toggleFolder(node.path);
     } else {
@@ -43,24 +63,26 @@
   // ─── Rename ─────────────────────────────────────────────────────────────────
 
   async function startRename() {
-    node.editName = node.name;
-    node.isEditing = true;
+    editName = node.name;
+    isEditing = true;
     await tick();
+    blurGuardUntil = Date.now() + 80;
     renameInputEl?.select();
   }
 
   async function commitRename() {
-    if (!node.isEditing) return;
-    const newName = node.editName.trim();
-    node.isEditing = false;
+    if (!isEditing) return;
+    if (Date.now() < blurGuardUntil) return;
+    const newName = editName.trim();
+    isEditing = false;
     if (!newName || newName === node.name) return;
     const result = await workspace.renameAction(node.path, newName);
     result.mapErr(err => toast.error(`Rename failed: ${err}`));
   }
 
   function cancelRename() {
-    node.isEditing = false;
-    node.editName = node.name;
+    isEditing = false;
+    editName = node.name;
   }
 
   function handleRenameKey(e: KeyboardEvent) {
@@ -80,6 +102,7 @@
     creatingChild = kind;
     newChildName = "";
     await tick();
+    blurGuardUntil = Date.now() + 80;
     createInputEl?.focus();
   }
 
@@ -97,6 +120,7 @@
   }
 
   function cancelCreate() {
+    if (Date.now() < blurGuardUntil) return;
     creatingChild = null;
     newChildName = "";
   }
@@ -141,10 +165,9 @@
   }
 
   function onDragOver(e: DragEvent) {
-    if (!node.is_dir) return;
     e.preventDefault();
     e.dataTransfer && (e.dataTransfer.dropEffect = "move");
-    isDropTarget = true;
+    if (node.is_dir) isDropTarget = true;
   }
 
   function onDragLeave() {
@@ -156,13 +179,20 @@
     isDropTarget = false;
     const src = workspace.dragSrcPath;
     workspace.dragSrcPath = null;
-    if (!src || !node.is_dir || src === node.path) return;
-    // Don't drop a folder into its own descendant
-    if (src.startsWith(node.path + "/") || src.startsWith(node.path + "\\")) return;
-    const dst = node.path + "/" + basename(src);
-    const srcIsDir = workspace.filteredTree
-      ? findIsDir(workspace.tree, src)
-      : false;
+    if (!src || src === node.path) return;
+
+    // Determine the target directory: the node itself if it's a folder, or its parent if it's a file
+    const targetDir = node.is_dir ? node.path : dirname(node.path);
+    if (!targetDir) return;
+
+    // Don't drop a folder into itself or its own descendant
+    if (src === targetDir || targetDir.startsWith(src + "/") || targetDir.startsWith(src + "\\")) return;
+
+    const dst = targetDir + "/" + basename(src);
+    // Don't move to the same location
+    if (src === dst) return;
+
+    const srcIsDir = findIsDir(workspace.tree, src);
     const result = await workspace.moveAction(src, dst, srcIsDir);
     result.mapErr(err => toast.error(`Move failed: ${err}`));
   }
@@ -182,60 +212,63 @@
 
 <!-- ─── Node row ─────────────────────────────────────────────────────────── -->
 
-<ContextMenu.Root>
+<ContextMenu.Root onOpenChange={onMenuOpenChange}>
   <ContextMenu.Trigger>
-    <div
-      role="button"
-      tabindex="0"
-      draggable="true"
-      class="group flex w-full cursor-pointer select-none items-center gap-1 border-l-2 py-1 pr-2 text-sm outline-none
-             hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
-             focus-visible:ring-1 focus-visible:ring-sidebar-ring
-             {isActive   ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground'}
-             {isMainFile ? 'border-sidebar-primary' : 'border-transparent'}
-             {isDropTarget ? 'ring-1 ring-inset ring-sidebar-primary bg-sidebar-accent/50' : ''}"
-      style="padding-left: {indentPx + 8}px"
-      onclick={handleClick}
-      onkeydown={(e) => e.key === "Enter" && handleClick()}
-      ondragstart={onDragStart}
-      ondragover={onDragOver}
-      ondragleave={onDragLeave}
-      ondrop={onDrop}
-      ondragend={onDragEnd}
-    >
-      <!-- Expand chevron for folders; spacer for files -->
-      {#if node.is_dir}
-        <ChevronRight
-          class="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150
-                 {node.expanded ? 'rotate-90' : ''}"
-        />
-      {:else}
-        <span class="w-3.5 shrink-0"></span>
-      {/if}
+    {#snippet child({ props })}
+      <div
+        {...props}
+        role="button"
+        tabindex="0"
+        draggable="true"
+        class="group flex w-full cursor-pointer select-none items-center gap-1 border-l-2 py-1 pr-2 text-sm outline-none
+               hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
+               focus-visible:ring-1 focus-visible:ring-sidebar-ring
+               {isActive   ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground'}
+               {isMainFile ? 'border-sidebar-primary' : 'border-transparent'}
+               {isDropTarget ? 'ring-1 ring-inset ring-sidebar-primary bg-sidebar-accent/50' : ''}"
+        style="padding-left: {indentPx + 8}px"
+        onclick={handleClick}
+        onkeydown={(e) => e.key === "Enter" && handleClick()}
+        ondragstart={onDragStart}
+        ondragover={onDragOver}
+        ondragleave={onDragLeave}
+        ondrop={onDrop}
+        ondragend={onDragEnd}
+      >
+        <!-- Expand chevron for folders; spacer for files -->
+        {#if node.is_dir}
+          <ChevronRight
+            class="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150
+                   {node.expanded ? 'rotate-90' : ''}"
+          />
+        {:else}
+          <span class="w-3.5 shrink-0"></span>
+        {/if}
 
-      <!-- Label or rename input -->
-      {#if node.isEditing}
-        <Input
-          bind:ref={renameInputEl}
-          class="h-5 flex-1 px-1 py-0 text-xs"
-          bind:value={node.editName}
-          onkeydown={handleRenameKey}
-          onblur={commitRename}
-          onclick={(e) => e.stopPropagation()}
-        />
-      {:else}
-        <span class="flex-1 truncate text-xs leading-5">{node.name}</span>
-      {/if}
-    </div>
+        <!-- Label or rename input -->
+        {#if isEditing}
+          <Input
+            bind:ref={renameInputEl}
+            class="h-5 flex-1 px-1 py-0 text-xs"
+            bind:value={editName}
+            onkeydown={handleRenameKey}
+            onblur={commitRename}
+            onclick={(e) => e.stopPropagation()}
+          />
+        {:else}
+          <span class="flex-1 truncate text-xs leading-5">{node.name}</span>
+        {/if}
+      </div>
+    {/snippet}
   </ContextMenu.Trigger>
 
   <!-- ─── Context menu ───────────────────────────────────────────────── -->
   <ContextMenu.Content>
     {#if node.is_dir}
-      <ContextMenu.Item onclick={() => startCreate("file")}>
+      <ContextMenu.Item onclick={() => { pendingAction = () => startCreate("file"); }}>
         New File
       </ContextMenu.Item>
-      <ContextMenu.Item onclick={() => startCreate("folder")}>
+      <ContextMenu.Item onclick={() => { pendingAction = () => startCreate("folder"); }}>
         New Folder
       </ContextMenu.Item>
       <ContextMenu.Item onclick={handleImportFiles}>
@@ -252,7 +285,7 @@
       </ContextMenu.Item>
       <ContextMenu.Separator />
     {/if}
-    <ContextMenu.Item onclick={startRename}>Rename</ContextMenu.Item>
+    <ContextMenu.Item onclick={() => { pendingAction = startRename; }}>Rename</ContextMenu.Item>
     <ContextMenu.Item variant="destructive" onclick={handleDelete}>
       Delete
     </ContextMenu.Item>

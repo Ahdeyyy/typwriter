@@ -29,6 +29,8 @@
   let unlistenFonts: UnlistenFn | null = null;
 
   onMount(async () => {
+    loadRecent();
+
     // Check if fonts already loaded (handles race condition)
     const ready = await isFontsLoaded();
     if (ready.isOk() && ready.value) {
@@ -144,10 +146,6 @@
     }
   }
 
-  // Load recent workspaces on mount.
-  $effect(() => {
-    loadRecent();
-  });
 </script>
 
 <main class="flex h-full flex-col items-center justify-center gap-8 p-8">
