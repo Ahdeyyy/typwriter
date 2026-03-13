@@ -158,24 +158,40 @@
 
   // ─── Drag & Drop ─────────────────────────────────────────────────────────────
 
+  let dragEnterCount = 0;
+
   function onDragStart(e: DragEvent) {
     workspace.dragSrcPath = node.path;
     e.dataTransfer?.setData("text/plain", node.path);
     e.dataTransfer && (e.dataTransfer.effectAllowed = "move");
   }
 
-  function onDragOver(e: DragEvent) {
+  function onDragEnter(e: DragEvent) {
     e.preventDefault();
-    e.dataTransfer && (e.dataTransfer.dropEffect = "move");
-    if (node.is_dir) isDropTarget = true;
+    e.stopPropagation();
+    dragEnterCount++;
+    if (node.is_dir && dragEnterCount === 1) isDropTarget = true;
   }
 
-  function onDragLeave() {
-    isDropTarget = false;
+  function onDragOver(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer && (e.dataTransfer.dropEffect = "move");
+  }
+
+  function onDragLeave(e: DragEvent) {
+    e.stopPropagation();
+    dragEnterCount--;
+    if (dragEnterCount <= 0) {
+      dragEnterCount = 0;
+      isDropTarget = false;
+    }
   }
 
   async function onDrop(e: DragEvent) {
     e.preventDefault();
+    e.stopPropagation();
+    dragEnterCount = 0;
     isDropTarget = false;
     const src = workspace.dragSrcPath;
     workspace.dragSrcPath = null;
@@ -206,91 +222,108 @@
   }
 
   function onDragEnd() {
+    dragEnterCount = 0;
+    isDropTarget = false;
     workspace.dragSrcPath = null;
   }
 </script>
 
 <!-- ─── Node row ─────────────────────────────────────────────────────────── -->
 
-<ContextMenu.Root onOpenChange={onMenuOpenChange}>
-  <ContextMenu.Trigger>
-    {#snippet child({ props })}
-      <div
-        {...props}
-        role="button"
-        tabindex="0"
-        draggable="true"
-        class="group flex w-full cursor-pointer select-none items-center gap-1 border-l-2 py-1 pr-2 text-sm outline-none
-               hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
-               focus-visible:ring-1 focus-visible:ring-sidebar-ring
-               {isActive   ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground'}
-               {isMainFile ? 'border-sidebar-primary' : 'border-transparent'}
-               {isDropTarget ? 'ring-1 ring-inset ring-sidebar-primary bg-sidebar-accent/50' : ''}"
-        style="padding-left: {indentPx + 8}px"
-        onclick={handleClick}
-        onkeydown={(e) => e.key === "Enter" && handleClick()}
-        ondragstart={onDragStart}
-        ondragover={onDragOver}
-        ondragleave={onDragLeave}
-        ondrop={onDrop}
-        ondragend={onDragEnd}
-      >
-        <!-- Expand chevron for folders; spacer for files -->
-        {#if node.is_dir}
-          <ChevronRight
-            class="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150
-                   {node.expanded ? 'rotate-90' : ''}"
-          />
-        {:else}
-          <span class="w-3.5 shrink-0"></span>
-        {/if}
+<!-- Outer div: owns all drag-and-drop behavior, isolated from bits-ui's
+     pointer-event handlers inside the ContextMenu.Trigger. -->
 
-        <!-- Label or rename input -->
-        {#if isEditing}
-          <Input
-            bind:ref={renameInputEl}
-            class="h-5 flex-1 px-1 py-0 text-xs"
-            bind:value={editName}
-            onkeydown={handleRenameKey}
-            onblur={commitRename}
-            onclick={(e) => e.stopPropagation()}
-          />
-        {:else}
-          <span class="flex-1 truncate text-xs leading-5">{node.name}</span>
-        {/if}
-      </div>
-    {/snippet}
-  </ContextMenu.Trigger>
+<div
+  draggable="true"
+  ondragstart={onDragStart}
+  ondragenter={onDragEnter}
+  ondragover={onDragOver}
+  ondragleave={onDragLeave}
+  ondrop={onDrop}
+  ondragend={onDragEnd}
+  class="relative"
+  aria-label={node.name}
+  role="treeitem"
+  aria-expanded={node.is_dir ? node.expanded : undefined}
+  aria-selected={isActive ? "true" : "false"}
+  tabindex="0"
+>
+  {#if isDropTarget}
+    <div class="pointer-events-none absolute inset-0 z-10 rounded-sm bg-sidebar-primary/5"></div>
+  {/if}
+  <ContextMenu.Root onOpenChange={onMenuOpenChange}>
+    <ContextMenu.Trigger>
+      {#snippet child({ props })}
+        <div
+          {...props}
+          role="button"
+          tabindex="0"
+          class="group flex w-full cursor-pointer select-none items-center gap-1 border-l-2 py-1 pr-2 text-sm outline-none
+                 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
+                 focus-visible:ring-1 focus-visible:ring-sidebar-ring
+                 {isActive   ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground'}
+                 {isMainFile ? 'border-sidebar-primary' : 'border-transparent'}"
+          style="padding-left: {indentPx + 8}px"
+          onclick={handleClick}
+          onkeydown={(e) => e.key === "Enter" && handleClick()}
+        >
+          <!-- Expand chevron for folders; spacer for files -->
+          {#if node.is_dir}
+            <ChevronRight
+              class="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150
+                     {node.expanded ? 'rotate-90' : ''}"
+            />
+          {:else}
+            <span class="w-3.5 shrink-0"></span>
+          {/if}
 
-  <!-- ─── Context menu ───────────────────────────────────────────────── -->
-  <ContextMenu.Content>
-    {#if node.is_dir}
-      <ContextMenu.Item onclick={() => { pendingAction = () => startCreate("file"); }}>
-        New File
+          <!-- Label or rename input -->
+          {#if isEditing}
+            <Input
+              bind:ref={renameInputEl}
+              class="h-5 flex-1 px-1 py-0 text-xs"
+              bind:value={editName}
+              onkeydown={handleRenameKey}
+              onblur={commitRename}
+              onclick={(e) => e.stopPropagation()}
+            />
+          {:else}
+            <span class="flex-1 truncate text-xs leading-5">{node.name}</span>
+          {/if}
+        </div>
+      {/snippet}
+    </ContextMenu.Trigger>
+
+    <!-- ─── Context menu ───────────────────────────────────────────────── -->
+    <ContextMenu.Content>
+      {#if node.is_dir}
+        <ContextMenu.Item onclick={() => { pendingAction = () => startCreate("file"); }}>
+          New File
+        </ContextMenu.Item>
+        <ContextMenu.Item onclick={() => { pendingAction = () => startCreate("folder"); }}>
+          New Folder
+        </ContextMenu.Item>
+        <ContextMenu.Item onclick={handleImportFiles}>
+          Import Files…
+        </ContextMenu.Item>
+        <ContextMenu.Separator />
+      {:else}
+        <ContextMenu.Item onclick={handleClick}>Open</ContextMenu.Item>
+        <ContextMenu.Item
+          onclick={handleSetMainFile}
+          disabled={isMainFile}
+        >
+          Set as Main File
+        </ContextMenu.Item>
+        <ContextMenu.Separator />
+      {/if}
+      <ContextMenu.Item onclick={() => { pendingAction = startRename; }}>Rename</ContextMenu.Item>
+      <ContextMenu.Item variant="destructive" onclick={handleDelete}>
+        Delete
       </ContextMenu.Item>
-      <ContextMenu.Item onclick={() => { pendingAction = () => startCreate("folder"); }}>
-        New Folder
-      </ContextMenu.Item>
-      <ContextMenu.Item onclick={handleImportFiles}>
-        Import Files…
-      </ContextMenu.Item>
-      <ContextMenu.Separator />
-    {:else}
-      <ContextMenu.Item onclick={handleClick}>Open</ContextMenu.Item>
-      <ContextMenu.Item
-        onclick={handleSetMainFile}
-        disabled={isMainFile}
-      >
-        Set as Main File
-      </ContextMenu.Item>
-      <ContextMenu.Separator />
-    {/if}
-    <ContextMenu.Item onclick={() => { pendingAction = startRename; }}>Rename</ContextMenu.Item>
-    <ContextMenu.Item variant="destructive" onclick={handleDelete}>
-      Delete
-    </ContextMenu.Item>
-  </ContextMenu.Content>
-</ContextMenu.Root>
+    </ContextMenu.Content>
+  </ContextMenu.Root>
+</div>
 
 <!-- ─── Children + inline create ──────────────────────────────────────────── -->
 

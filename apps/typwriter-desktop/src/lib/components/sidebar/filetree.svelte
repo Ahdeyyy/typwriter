@@ -75,19 +75,30 @@
   // ─── Root drop target ─────────────────────────────────────────────────────
 
   let rootDropTarget = $state(false);
+  let rootDragEnterCount = 0;
+
+  function onRootDragEnter(e: DragEvent) {
+    e.preventDefault();
+    rootDragEnterCount++;
+    if (rootDragEnterCount === 1) rootDropTarget = true;
+  }
 
   function onRootDragOver(e: DragEvent) {
     e.preventDefault();
     e.dataTransfer && (e.dataTransfer.dropEffect = "move");
-    rootDropTarget = true;
   }
 
   function onRootDragLeave() {
-    rootDropTarget = false;
+    rootDragEnterCount--;
+    if (rootDragEnterCount <= 0) {
+      rootDragEnterCount = 0;
+      rootDropTarget = false;
+    }
   }
 
   async function onRootDrop(e: DragEvent) {
     e.preventDefault();
+    rootDragEnterCount = 0;
     rootDropTarget = false;
     const src = workspace.dragSrcPath;
     workspace.dragSrcPath = null;
@@ -201,16 +212,23 @@
     {/if}
   </div>
 
-  <div class="flex-1 min-h-0 px-2">
+  <!-- Root drop zone: outside ContextMenu.Trigger to avoid bits-ui pointer event interference -->
+  <div
+    class="relative flex-1 min-h-0 px-2"
+    ondragenter={onRootDragEnter}
+    ondragover={onRootDragOver}
+    ondragleave={onRootDragLeave}
+    ondrop={onRootDrop}
+  >
+    {#if rootDropTarget}
+      <div class="pointer-events-none absolute inset-0 z-10 rounded-sm bg-sidebar-primary/5"></div>
+    {/if}
     <!-- Root-level context menu (empty area) -->
     <ContextMenu.Root>
       <ContextMenu.Trigger class="block min-h-full">
         <div
           role="presentation"
-          class="py-1 {rootDropTarget ? 'ring-1 ring-inset ring-sidebar-primary' : ''}"
-          ondragover={onRootDragOver}
-          ondragleave={onRootDragLeave}
-          ondrop={onRootDrop}
+          class="py-1"
           aria-label="File explorer"
         >
           <!-- Root-level create input -->
