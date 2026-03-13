@@ -52,6 +52,10 @@ export function installGlobalErrorLogging(): () => void {
     }
 
     const onError = (event: ErrorEvent) => {
+        // ResizeObserver loop errors are a benign browser notification (not a real error).
+        if (typeof event.message === 'string' && event.message.includes('ResizeObserver loop')) {
+            return;
+        }
         logError('uncaught window error:', event.error ?? event.message);
     };
 

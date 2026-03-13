@@ -3,6 +3,8 @@
   import { ZoomIn, ZoomOut, RotateCcw, Download } from "@lucide/svelte";
   import ExportDialog from "./export-dialog.svelte";
 
+  import { openUrl } from "@tauri-apps/plugin-opener";
+
   import { preview } from "$lib/stores/preview.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
@@ -61,8 +63,17 @@
     const target = preview.scrollTarget;
     if (target === null) return;
     preview.scrollTarget = null;
-    const el = document.getElementById(`preview-page-${target}`);
-    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+    // Pre-render the target page by moving visiblePage before scrolling.
+    // This ensures shouldRenderPage(target) returns true and the actual image
+    // is in the DOM (correct height) when scrollIntoView fires.
+    visiblePage = target;
+
+    // One rAF lets Svelte flush the DOM update triggered by visiblePage change.
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`preview-page-${target}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   });
 
   // ── IntersectionObserver for page counter ──────────────────────────────────
@@ -135,6 +146,10 @@
         .openFile(relPath)
         .map(() => editor.requestCursorJump(relPath, jump.start_byte))
         .mapErr((err) => logError("jump from click failed:", err));
+    } else if (jump.type === "url") {
+      openUrl(jump.url).catch((err) => logError("open url failed:", err));
+    } else if (jump.type === "position") {
+      preview.scrollTarget = jump.page;
     }
   }
 
