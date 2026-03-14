@@ -38,7 +38,8 @@
       "Bash(gh pr:*)",
       "Bash(xargs grep -l \"FontSearcher\\\\|font.*search\\\\|search.*font\\\\|embed.*font\\\\|system.*font\")",
       "Bash(bunx svelte-check --tsconfig ./tsconfig.json)",
-      "Bash(grep -r \"user-select\\\\|pointer-events\\\\|-webkit-user-drag\" /c/Users/ahdey/projects/typwriter/node_modules/.bun/bits-ui*/node_modules/bits-ui/dist/bits/context-menu/)"
+      "Bash(grep -r \"user-select\\\\|pointer-events\\\\|-webkit-user-drag\" /c/Users/ahdey/projects/typwriter/node_modules/.bun/bits-ui*/node_modules/bits-ui/dist/bits/context-menu/)",
+      "Bash(xargs grep -l \"diagnostics\\\\|errors\\\\|warnings\")"
     ]
   }
 }
