@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Pagination as PaginationPrimitive } from "bits-ui";
-	import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
+	import { CaretLeft } from "phosphor-svelte";
 	import { buttonVariants } from "$lib/components/ui/button/index.js";
 	import { cn } from "$lib/utils.js";
 
@@ -24,6 +24,6 @@
 	)}
 	{...restProps}
 >
-	<ChevronLeftIcon />
+	<CaretLeft />
 	<span class="hidden sm:block">Previous</span></PaginationPrimitive.PrevButton
 >

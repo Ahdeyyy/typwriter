@@ -1,14 +1,14 @@
 <script lang="ts">
   import {
     House,
-    ChevronsUpDown,
-    ChevronsDownUp,
+    ArrowsDownUp,
+    ArrowsInLineVertical,
     FilePlus,
     FolderPlus,
-    PanelLeft,
-    Search,
+    SidebarSimple,
+    MagnifyingGlass,
     X,
-  } from "@lucide/svelte";
+  } from "phosphor-svelte";
   import { tick } from "svelte";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -161,7 +161,7 @@
         title="Toggle sidebar"
         onclick={ontoggle}
       >
-        <PanelLeft class="size-3.5" />
+        <SidebarSimple class="size-3.5" />
       </Button>
       <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
         {workspaceName}
@@ -174,7 +174,7 @@
         title="Expand all"
         onclick={() => workspace.expandAll()}
       >
-        <ChevronsUpDown class="size-3.5" />
+        <ArrowsDownUp class="size-3.5" />
       </Button>
       <Button
         variant="ghost"
@@ -182,7 +182,7 @@
         title="Collapse all"
         onclick={() => workspace.collapseAll()}
       >
-        <ChevronsDownUp class="size-3.5" />
+        <ArrowsInLineVertical class="size-3.5" />
       </Button>
       <Button
         variant="ghost"
@@ -205,7 +205,7 @@
 
   <!-- Search bar -->
   <div class="border-b border-sidebar-border px-2 py-1 relative">
-    <Search class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
+    <MagnifyingGlass class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
     <Input
       class="h-6 pl-6 pr-6 text-xs"
       placeholder="Search files…"

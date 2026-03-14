@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from "svelte";
-  import { ZoomIn, ZoomOut, RotateCcw, Download } from "@lucide/svelte";
+  import { MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowCounterClockwise, DownloadSimple } from "phosphor-svelte";
   import ExportDialog from "./export-dialog.svelte";
 
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -180,7 +180,7 @@
         onclick={zoomOut}
         disabled={preview.zoom <= 0.5}
       >
-        <ZoomOut class="size-3.5" />
+        <MagnifyingGlassMinus class="size-3.5" />
       </Button>
 
       <span class="w-12 text-center text-xs text-muted-foreground tabular-nums">
@@ -194,7 +194,7 @@
         onclick={zoomIn}
         disabled={preview.zoom >= 8.0}
       >
-        <ZoomIn class="size-3.5" />
+        <MagnifyingGlassPlus class="size-3.5" />
       </Button>
     </div>
 
@@ -223,7 +223,7 @@
         onclick={() => (exportOpen = true)}
         disabled={preview.totalPages === 0}
       >
-        <Download class="size-3.5" />
+        <DownloadSimple class="size-3.5" />
       </Button>
 
       <Button
@@ -232,7 +232,7 @@
         title="Refresh preview"
         onclick={refresh}
       >
-        <RotateCcw class="size-3.5" />
+        <ArrowCounterClockwise class="size-3.5" />
       </Button>
     </div>
   </div>

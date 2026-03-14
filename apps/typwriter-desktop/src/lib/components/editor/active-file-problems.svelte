@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { TriangleAlert, XCircle } from "@lucide/svelte";
+  import { Warning, XCircle } from "phosphor-svelte";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -68,7 +68,7 @@
       class="relative"
       onclick={() => (dialogOpen = true)}
     >
-      <TriangleAlert
+      <Warning
         class="size-3.5 {hasErrors ? 'text-destructive' : hasWarnings ? 'text-yellow-500' : 'text-muted-foreground'}"
       />
       {#if diagCount > 0}
@@ -119,7 +119,7 @@
               class="flex w-full items-start gap-2 rounded px-3 py-2 text-left text-sm hover:bg-accent {diag.range ? 'cursor-pointer' : 'cursor-default'}"
               onclick={() => jumpToDiagnostic(diag)}
             >
-              <TriangleAlert class="mt-0.5 size-4 shrink-0 text-yellow-500" />
+              <Warning class="mt-0.5 size-4 shrink-0 text-yellow-500" />
               <div class="min-w-0">
                 <p class="font-medium">{diag.message}</p>
                 {#if diag.range}

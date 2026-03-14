@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { House, PanelLeft } from "@lucide/svelte";
+  import { House, SidebarSimple } from "phosphor-svelte";
   import * as Resizable from "$lib/components/ui/resizable/index.js";
 
   import FileTree from "$lib/components/sidebar/filetree.svelte";
@@ -65,7 +65,7 @@
         title="Show file explorer"
         aria-label="Show file explorer"
       >
-        <PanelLeft class="size-4" />
+        <SidebarSimple class="size-4" />
       </Button>
     </div>
   {/if}

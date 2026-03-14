@@ -55,6 +55,7 @@
     "clsx": "^2.1.1",
     "layerchart": "2.0.0-next.43",
     "paneforge": "^1.0.2",
+    "phosphor-svelte": "^3.1.0",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowLeft, Clock3, FileText, RefreshCcw, Search, TriangleAlert, X } from "@lucide/svelte";
+  import { ArrowLeft, Clock, FileText, ArrowCounterClockwise, MagnifyingGlass, Warning, X } from "phosphor-svelte";
   import { LineChart } from "layerchart";
   import * as Chart from "$lib/components/ui/chart/index.js";
   import * as Resizable from "$lib/components/ui/resizable/index.js";
@@ -135,7 +135,7 @@
               aria-label="Refresh"
               onclick={handleRefresh}
             >
-              <RefreshCcw class="size-3.5" />
+              <ArrowCounterClockwise class="size-3.5" />
             </Button>
           </div>
         </div>
@@ -233,7 +233,7 @@
                 <span>{formatTimestamp(logView.data?.modified_at ?? null)}</span>
               </div>
               <div class="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Clock3 class="size-3 shrink-0" />
+                <Clock class="size-3 shrink-0" />
                 <span>
                   Updated {logView.lastLoadedAt ? logView.lastLoadedAt.toLocaleTimeString() : "never"}
                 </span>
@@ -252,7 +252,7 @@
         <!-- Toolbar -->
         <div class="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-muted/20 px-3">
           <div class="relative flex-1 max-w-sm">
-            <Search class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
+            <MagnifyingGlass class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
             <Input
               class="h-6 pl-6 pr-6 text-xs"
               placeholder="Search messages, targets..."
@@ -285,7 +285,7 @@
         <div class="flex-1 min-h-0">
           {#if logView.error}
             <div class="flex items-start gap-2 border-b border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              <TriangleAlert class="mt-0.5 size-3.5 shrink-0" />
+              <Warning class="mt-0.5 size-3.5 shrink-0" />
               <div>
                 <p class="font-medium">Failed to load logs</p>
                 <p class="mt-0.5 whitespace-pre-wrap text-destructive/80">{logView.error}</p>
@@ -303,7 +303,7 @@
             </div>
           {:else if logView.filteredEntries.length === 0}
             <div class="flex h-full flex-col items-center justify-center gap-2 select-none text-muted-foreground">
-              <Search class="size-10 opacity-30" />
+              <MagnifyingGlass class="size-10 opacity-30" />
               <span class="text-sm">No matching entries</span>
               <span class="text-xs opacity-50">Adjust search or severity filter</span>
             </div>

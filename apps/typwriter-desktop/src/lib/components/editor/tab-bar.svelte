@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { X } from "@lucide/svelte";
+  import { X } from "phosphor-svelte";
   import ActiveFileProblems from "$lib/components/editor/active-file-problems.svelte";
   import { editor, type TabInfo } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FileCode, BanIcon } from "@lucide/svelte";
+  import { FileCode, Prohibit } from "phosphor-svelte";
   import TabBar from "$lib/components/editor/tab-bar.svelte";
   import TextEditorTab from "$lib/components/editor/text-editor-tab.svelte";
   import { editor } from "$lib/stores/editor.svelte";
@@ -41,7 +41,7 @@
 
     {:else if editor.activeTab.viewMode === "unsupported"}
       <div class="flex h-full flex-col items-center justify-center gap-2 select-none text-muted-foreground">
-        <BanIcon class="size-10 opacity-30" />
+        <Prohibit class="size-10 opacity-30" />
         <span class="text-sm">Binary format — preview not available</span>
         <span class="text-xs opacity-50 max-w-xs truncate">{editor.activeTab.relPath}</span>
       </div>

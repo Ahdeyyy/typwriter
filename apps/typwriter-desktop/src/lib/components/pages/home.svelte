@@ -7,7 +7,7 @@
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { Folder, FolderOpen, FolderPlus, Logs } from "@lucide/svelte";
+  import { Folder, FolderOpen, FolderPlus, List } from "phosphor-svelte";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
@@ -156,7 +156,7 @@
         Recent Workspaces
       </h2>
       <Button variant="outline" size="sm" onclick={() => page.navigate("logs")} class="gap-2">
-        <Logs class="size-4" />
+        <List class="size-4" />
         View Logs
       </Button>
     </div>
