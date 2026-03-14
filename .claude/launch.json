@@ -3,8 +3,9 @@
   "configurations": [
     {
       "name": "typwriter-desktop",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "typwriter-desktop", "dev"],
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "apps/typwriter-desktop",
       "port": 1420
     }
   ]
