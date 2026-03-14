@@ -1,6 +1,6 @@
 [package]
 name = "typwriter"
-version = "0.2.1"
+version = "0.2.2"
 description = "A typsetting app built on top of typst, with a desktop interface built using Tauri."
 authors = ["ade"]
 edition = "2021"
