@@ -5,6 +5,9 @@ import { logError } from '$lib/logger';
 class DiagnosticsStore {
     errors   = $state<SerializedDiagnostic[]>([]);
     warnings = $state<SerializedDiagnostic[]>([]);
+    paneOpen = $state(false);
+
+    togglePane() { this.paneOpen = !this.paneOpen; }
 
     private _unlisten: UnlistenFn | null = null;
 

@@ -11,7 +11,7 @@ mod compile;
 mod diff;
 mod render;
 
-pub use compile::{compile_document, CompileOutput, SerializedDiagnostic};
+pub use compile::{compile_document, collect_workspace_diagnostics, dedup_merge, CompileOutput, SerializedDiagnostic};
 pub use diff::{diff_pages, fingerprint_pages, PageFingerprint};
 pub use render::render_page;
 
@@ -321,8 +321,8 @@ impl PreviewPipeline {
 
         let CompileOutput {
             document,
-            errors,
-            warnings,
+            mut errors,
+            mut warnings,
         } = compile_document(&*self.world);
 
         let compile_ms = t.elapsed().as_secs_f64() * 1000.0;
@@ -339,6 +339,10 @@ impl PreviewPipeline {
                 warnings.len(),
             );
         }
+
+        // Collect diagnostics from other .typ files not reachable from the main file
+        let (extra_errors, extra_warnings) = collect_workspace_diagnostics(&*self.world);
+        dedup_merge(&mut errors, &mut warnings, extra_errors, extra_warnings);
 
         if let Err(err) = self.app_handle.emit(
             "compile:diagnostics",

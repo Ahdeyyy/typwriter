@@ -125,6 +125,16 @@ impl EditorWorld {
         *self.main.write() = Self::placeholder_main();
     }
 
+    /// The workspace root path.
+    pub fn root(&self) -> PathBuf {
+        self.root.read().clone()
+    }
+
+    /// The current main `FileId`.
+    pub fn main_id(&self) -> FileId {
+        *self.main.read()
+    }
+
     /// Update the workspace root and flush all file caches.
     pub fn set_root(&self, path: PathBuf) {
         *self.root.write() = path;
