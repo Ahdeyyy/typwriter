@@ -171,18 +171,14 @@
       <Button
         variant="ghost"
         size="icon-sm"
-        title="Expand all"
-        onclick={() => workspace.expandAll()}
+        title={workspace.anyFolderExpanded ? "Collapse all" : "Expand all"}
+        onclick={() => workspace.anyFolderExpanded ? workspace.collapseAll() : workspace.expandAll()}
       >
-        <CaretUpDown class="size-3.5" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        title="Collapse all"
-        onclick={() => workspace.collapseAll()}
-      >
-        <ChevronsDownUp class="size-3.5" />
+        {#if workspace.anyFolderExpanded}
+          <ChevronsDownUp class="size-3.5" />
+        {:else}
+          <CaretUpDown class="size-3.5" />
+        {/if}
       </Button>
       <Button
         variant="ghost"

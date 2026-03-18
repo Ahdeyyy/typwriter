@@ -91,6 +91,16 @@ function walkAndSetExpanded(nodes: FileNode[], value: boolean): void {
     }
 }
 
+function hasExpandedFolder(nodes: FileNode[]): boolean {
+    for (const node of nodes) {
+        if (node.is_dir) {
+            if (node.expanded) return true;
+            if (hasExpandedFolder(node.children)) return true;
+        }
+    }
+    return false;
+}
+
 function findNode(nodes: FileNode[], path: string): FileNode | null {
     for (const node of nodes) {
         if (node.path === path) {
@@ -130,6 +140,7 @@ class WorkspaceStore {
     dragSrcPath = $state<string | null>(null);
 
     filteredTree = $derived(filterTree(this.tree, this.searchQuery));
+    anyFolderExpanded = $derived(hasExpandedFolder(this.tree));
 
     private _filesChangedUnlisten: UnlistenFn | null = null;
     private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
