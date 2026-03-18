@@ -96,7 +96,12 @@ class PreviewStore {
             clearTimeout(this._cursorTimer);
             this._cursorTimer = null;
         }
+        this.pages = [];
+        this.totalPages = 0;
+        this.scrollTarget = null;
         this.isCompiling = false;
+        this.lastCompileRevision = 0;
+        this.lastCompileReason = 'explicit';
     }
 
     setCursorPosition(path: string, offset: number): void {

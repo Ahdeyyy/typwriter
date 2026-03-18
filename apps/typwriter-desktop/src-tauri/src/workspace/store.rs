@@ -53,6 +53,37 @@ pub fn add_recent_workspace(handle: &AppHandle, root: &Path) {
     info!("store: added recent workspace ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
 }
 
+/// Remove a single workspace path from the recent list.
+pub fn remove_recent_workspace(handle: &AppHandle, path: &str) {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        warn!("store: could not open {STORE_FILE}");
+        return;
+    };
+
+    let mut list: Vec<String> = store
+        .get("recent_workspaces")
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+
+    list.retain(|p| p != path);
+
+    store.set("recent_workspaces", json!(list));
+    let _ = store.save();
+    info!("store: removed recent workspace {path:?}");
+}
+
+/// Clear the entire recent workspaces list.
+pub fn clear_recent_workspaces(handle: &AppHandle) {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        warn!("store: could not open {STORE_FILE}");
+        return;
+    };
+
+    store.set("recent_workspaces", json!(Vec::<String>::new()));
+    let _ = store.save();
+    info!("store: cleared recent workspaces");
+}
+
 /// Return the recent workspaces list (newest first).
 pub fn get_recent_workspaces(handle: &AppHandle) -> Vec<String> {
     let Ok(store) = handle.store(STORE_FILE) else {

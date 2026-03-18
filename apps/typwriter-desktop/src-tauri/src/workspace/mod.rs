@@ -267,6 +267,16 @@ impl WorkspaceState {
 
     // ─── Recent workspaces ─────────────────────────────────────────────────
 
+    /// Remove a single entry from the recent workspaces list.
+    pub fn remove_recent_workspace(&self, path: &str) {
+        store::remove_recent_workspace(&self.app_handle, path);
+    }
+
+    /// Clear the entire recent workspaces list.
+    pub fn clear_recent_workspaces(&self) {
+        store::clear_recent_workspaces(&self.app_handle);
+    }
+
     /// Return the recent workspaces list enriched with names and thumbnails.
     pub fn get_recent_workspaces_with_thumbnails(&self) -> Vec<RecentWorkspaceEntry> {
         let paths = store::get_recent_workspaces(&self.app_handle);

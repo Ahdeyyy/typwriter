@@ -138,6 +138,7 @@ impl EditorWorld {
     /// Update the workspace root and flush all file caches.
     pub fn set_root(&self, path: PathBuf) {
         *self.root.write() = path;
+        *self.main.write() = Self::placeholder_main();
         self.source_cache.lock().clear();
         self.file_cache.lock().clear();
         self.shadow.write().clear();

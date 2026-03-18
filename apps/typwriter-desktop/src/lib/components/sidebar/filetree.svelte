@@ -26,6 +26,24 @@
   }
   let { ontoggle, onhome, homeDisabled = false }: Props = $props();
 
+  // ─── Context-menu action deferral ──────────────────────────────────────────
+
+  let pendingAction = $state<(() => void) | null>(null);
+
+  function onMenuOpenChange(open: boolean) {
+    if (!open && pendingAction) {
+      const action = pendingAction;
+      pendingAction = null;
+      requestAnimationFrame(() => action());
+    }
+  }
+
+  // ─── Blur guard ────────────────────────────────────────────────────────────
+  // After an input is focused, ignore blur events for a short grace period
+  // to prevent bits-ui's focus restoration from cancelling the operation.
+
+  let blurGuardUntil = $state(0);
+
   // ─── Root-level create ───────────────────────────────────────────────────────
 
   let creatingRoot = $state<"file" | "folder" | null>(null);
@@ -36,6 +54,7 @@
     creatingRoot = kind;
     newRootName = "";
     await tick();
+    blurGuardUntil = Date.now() + 80;
     rootCreateInputEl?.focus();
   }
 
@@ -52,6 +71,7 @@
   }
 
   function cancelRootCreate() {
+    if (Date.now() < blurGuardUntil) return;
     creatingRoot = null;
     newRootName = "";
   }
@@ -232,7 +252,7 @@
       <div class="pointer-events-none absolute inset-0 z-10 rounded-sm bg-sidebar-primary/5"></div>
     {/if}
     <!-- Root-level context menu (empty area) -->
-    <ContextMenu.Root>
+    <ContextMenu.Root onOpenChange={onMenuOpenChange}>
       <ContextMenu.Trigger class="block min-h-full">
         <div
           role="presentation"
@@ -270,10 +290,10 @@
       </ContextMenu.Trigger>
 
       <ContextMenu.Content>
-        <ContextMenu.Item onclick={() => startRootCreate("file")}>
+        <ContextMenu.Item onclick={() => { pendingAction = () => startRootCreate("file"); }}>
           New File
         </ContextMenu.Item>
-        <ContextMenu.Item onclick={() => startRootCreate("folder")}>
+        <ContextMenu.Item onclick={() => { pendingAction = () => startRootCreate("folder"); }}>
           New Folder
         </ContextMenu.Item>
         <ContextMenu.Item onclick={handleImportFiles}>

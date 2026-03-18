@@ -75,6 +75,14 @@ export function getRecentWorkspaces() {
     );
 }
 
+export function removeRecentWorkspace(path: string) {
+    return ResultAsync.fromPromise(invoke<void>('remove_recent_workspace', { path }), toErrString);
+}
+
+export function clearRecentWorkspaces() {
+    return ResultAsync.fromPromise(invoke<void>('clear_recent_workspaces'), toErrString);
+}
+
 export function getCurrentLogView() {
     return ResultAsync.fromPromise(invoke<LogFileView>('get_current_log_view'), toErrString);
 }

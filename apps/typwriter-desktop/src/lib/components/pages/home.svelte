@@ -2,12 +2,12 @@
   import { onMount, onDestroy } from "svelte";
   import { page } from "@/stores/page.svelte";
   import Button from "../ui/button/button.svelte";
-  import { getRecentWorkspaces, createWorkspace, isFontsLoaded } from "$lib/ipc/commands";
+  import { getRecentWorkspaces, createWorkspace, isFontsLoaded, removeRecentWorkspace, clearRecentWorkspaces } from "$lib/ipc/commands";
   import { onAppFontsLoaded, type UnlistenFn } from "$lib/ipc/events";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { Folder, FolderOpen, FolderPlus, List } from "phosphor-svelte";
+  import { Folder, FolderOpen, FolderPlus, List, Trash, X } from "phosphor-svelte";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
@@ -81,6 +81,29 @@
     );
   }
 
+  async function handleRemoveRecent(e: MouseEvent, path: string) {
+    e.stopPropagation();
+    const result = await removeRecentWorkspace(path);
+    result.match(
+      () => { loadRecent(); },
+      (err) => {
+        logError("Failed to remove workspace from recents:", err);
+        toast.error(`Failed to remove workspace: ${err}`);
+      },
+    );
+  }
+
+  async function handleClearRecent() {
+    const result = await clearRecentWorkspaces();
+    result.match(
+      () => { loadRecent(); },
+      (err) => {
+        logError("Failed to clear recent workspaces:", err);
+        toast.error(`Failed to clear recent workspaces: ${err}`);
+      },
+    );
+  }
+
   async function handleOpenNew() {
     const selected = await openDialog({ directory: true, multiple: false });
     if (!selected) return;
@@ -150,15 +173,28 @@
 
 <main class="flex h-full flex-col items-center justify-center gap-8 p-8">
   <!-- Recent workspaces -->
-  <section class="w-full max-w-2xl">
+  <section class="w-full max-w-3xl">
     <div class="mb-4 flex items-center justify-between gap-3">
       <h2 class="text-sm font-medium text-muted-foreground">
         Recent Workspaces
       </h2>
-      <Button variant="outline" size="sm" onclick={() => page.navigate("logs")} class="gap-2">
-        <List class="size-4" />
-        View Logs
-      </Button>
+      <div class="flex items-center gap-2">
+        {#if recentWorkspaces.length > 0}
+          <Button
+            variant="ghost"
+            size="sm"
+            onclick={handleClearRecent}
+            class="gap-2 text-destructive hover:text-destructive"
+          >
+            <Trash class="size-4" />
+            Clear All
+          </Button>
+        {/if}
+        <Button variant="outline" size="sm" onclick={() => page.navigate("logs")} class="gap-2">
+          <List class="size-4" />
+          View Logs
+        </Button>
+      </div>
     </div>
 
     {#if loading}
@@ -174,32 +210,29 @@
         </p>
       </div>
     {:else}
-      <ul class="grid grid-cols-1 gap-2">
-        {#each recentWorkspaces as entry (entry.path)}
-          <li>
-            <Button
-              variant="ghost"
-              class="flex h-auto w-full items-center gap-4 rounded-md border border-border bg-card py-1.5 px-3 text-left hover:bg-accent"
+      <ul class="grid grid-cols-2 gap-2">
+        {#each recentWorkspaces.slice(0, 6) as entry (entry.path)}
+          <li class="group relative">
+            <button
+              class="flex w-full flex-col overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
               onclick={() => handleOpenRecent(entry.path)}
               disabled={!fontsReady}
             >
               <!-- Thumbnail -->
-              <div
-                class="flex h-20 w-48 shrink-0 items-center justify-center overflow-hidden rounded-l-md bg-muted"
-              >
+              <div class="flex h-28 w-full items-center justify-center overflow-hidden bg-muted">
                 {#if entry.thumbnail}
                   <img
                     src="data:image/png;base64,{entry.thumbnail}"
                     alt="{entry.name} preview"
-                    class="h-20 w-full object-none object-top-left"
+                    class="h-full w-full object-cover object-top"
                   />
                 {:else}
-                  <Folder class="h-5 w-5 text-muted-foreground" />
+                  <Folder class="h-8 w-8 text-muted-foreground" />
                 {/if}
               </div>
 
               <!-- Details -->
-              <div class="min-w-0 flex-1">
+              <div class="min-w-0 px-3 py-2">
                 <p class="truncate text-sm font-medium text-foreground">
                   {entry.name}
                 </p>
@@ -207,7 +240,17 @@
                   {entry.path}
                 </p>
               </div>
-            </Button>
+            </button>
+
+            <!-- Per-entry delete button -->
+            <button
+              class="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-sm bg-background/70 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 group-hover:opacity-100"
+              onclick={(e) => handleRemoveRecent(e, entry.path)}
+              title="Remove from recents"
+              aria-label="Remove {entry.name} from recents"
+            >
+              <X class="size-3.5" />
+            </button>
           </li>
         {/each}
       </ul>

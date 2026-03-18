@@ -23,8 +23,9 @@ use parking_lot::Mutex;
 use base64::Engine;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
+use crate::workspace::WorkspaceState;
 use crate::world::EditorWorld;
 use cache::PageCache;
 use typst::layout::PagedDocument;
@@ -226,6 +227,7 @@ impl PreviewPipeline {
     pub fn invalidate_cache(&self) {
         self.page_cache.lock().clear();
         *self.last_fingerprints.lock() = Vec::new();
+        *self.last_document.lock() = None;
     }
 
     pub fn set_zoom(&self, zoom: f32) {
@@ -469,6 +471,13 @@ impl PreviewPipeline {
 
         *self.last_fingerprints.lock() = new_fps;
         *self.last_document.lock() = Some(Arc::new(doc));
+
+        // Generate thumbnail when the workspace is opened and the main file is compiled.
+        if reason == CompileReason::MainFile {
+            if let Some(ws) = self.app_handle.try_state::<Arc<WorkspaceState>>() {
+                ws.generate_thumbnail();
+            }
+        }
 
         info!(
             "compile revision={revision} reason={reason:?} done ({:.1}ms render, {:.1}ms total)",

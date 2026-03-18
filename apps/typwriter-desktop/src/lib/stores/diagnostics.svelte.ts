@@ -23,6 +23,8 @@ class DiagnosticsStore {
     destroy(): void {
         this._unlisten?.();
         this._unlisten = null;
+        this.errors = [];
+        this.warnings = [];
     }
 }
 

@@ -176,6 +176,18 @@ pub fn get_recent_workspaces(
     result
 }
 
+#[tauri::command]
+pub fn remove_recent_workspace(path: String, workspace: State<'_, Arc<WorkspaceState>>) {
+    info!("remove_recent_workspace: path={path:?}");
+    workspace.remove_recent_workspace(&path);
+}
+
+#[tauri::command]
+pub fn clear_recent_workspaces(workspace: State<'_, Arc<WorkspaceState>>) {
+    info!("clear_recent_workspaces: called");
+    workspace.clear_recent_workspaces();
+}
+
 /// Create a new workspace folder at `parent_path/name`, initialise a
 /// `.typwriter/` metadata directory inside it, and return the absolute path to
 /// the new workspace root.
