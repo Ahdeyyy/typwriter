@@ -40,7 +40,12 @@
       "Bash(bunx svelte-check --tsconfig ./tsconfig.json)",
       "Bash(grep -r \"user-select\\\\|pointer-events\\\\|-webkit-user-drag\" /c/Users/ahdey/projects/typwriter/node_modules/.bun/bits-ui*/node_modules/bits-ui/dist/bits/context-menu/)",
       "Bash(xargs grep -l \"diagnostics\\\\|errors\\\\|warnings\")",
-      "Bash(sed 's/\\\\.svelte$//')"
+      "Bash(sed 's/\\\\.svelte$//')",
+      "Bash(xargs grep -l \"recent\\\\|workspace\")",
+      "Bash(xargs grep -l \"createFileAction\\\\|createFolderAction\")",
+      "Bash(cargo check)",
+      "Bash(npx svelte-check)",
+      "Bash(find /c/Users/ahdey/projects/typwriter/apps/typwriter-desktop/src -name \"*.svelte\" -exec grep -l \"preview.init\\\\|preview.destroy\" {} ;)"
     ]
   }
 }
