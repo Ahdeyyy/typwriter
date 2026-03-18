@@ -222,7 +222,7 @@
 
   <!-- Root drop zone: outside ContextMenu.Trigger to avoid bits-ui pointer event interference -->
   <div
-    class="relative flex-1 min-h-0 px-2"
+    class="relative flex-1 min-h-0 overflow-y-auto px-2"
     ondragenter={onRootDragEnter}
     ondragover={onRootDragOver}
     ondragleave={onRootDragLeave}
