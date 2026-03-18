@@ -204,22 +204,24 @@
   </div>
 
   <!-- Search bar -->
-  <div class="border-b border-sidebar-border px-2 py-1 relative">
-    <MagnifyingGlass class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
-    <Input
-      class="h-6 pl-6 pr-6 text-xs"
-      placeholder="Search files…"
-      bind:value={workspace.searchQuery}
-    />
-    {#if workspace.searchQuery}
-      <button
-        class="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-        onclick={() => (workspace.searchQuery = "")}
-        aria-label="Clear search"
-      >
-        <X class="size-3" />
-      </button>
-    {/if}
+  <div class="border-b border-sidebar-border px-2 py-1.5">
+    <div class="relative">
+      <MagnifyingGlass class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
+      <Input
+        class="h-6 pl-6 pr-6 text-xs"
+        placeholder="Search files…"
+        bind:value={workspace.searchQuery}
+      />
+      {#if workspace.searchQuery}
+        <button
+          class="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          onclick={() => (workspace.searchQuery = "")}
+          aria-label="Clear search"
+        >
+          <X class="size-3" />
+        </button>
+      {/if}
+    </div>
   </div>
 
   <!-- Root drop zone: outside ContextMenu.Trigger to avoid bits-ui pointer event interference -->
