@@ -1,14 +1,14 @@
 <script lang="ts">
   import {
     House,
-    ArrowsDownUp,
-    ArrowsInLineVertical,
+    CaretUpDown,
     FilePlus,
     FolderPlus,
     SidebarSimple,
     MagnifyingGlass,
     X,
   } from "phosphor-svelte";
+  import { ChevronsDownUp } from "@lucide/svelte";
   import { tick } from "svelte";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -174,7 +174,7 @@
         title="Expand all"
         onclick={() => workspace.expandAll()}
       >
-        <ArrowsDownUp class="size-3.5" />
+        <CaretUpDown class="size-3.5" />
       </Button>
       <Button
         variant="ghost"
@@ -182,7 +182,7 @@
         title="Collapse all"
         onclick={() => workspace.collapseAll()}
       >
-        <ArrowsInLineVertical class="size-3.5" />
+        <ChevronsDownUp class="size-3.5" />
       </Button>
       <Button
         variant="ghost"
