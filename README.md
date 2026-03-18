@@ -4,29 +4,6 @@
 
 **Typwriter** is a flexible, modern editor for [Typst](https://typst.app/), built with Tauri and Svelte. It allows you to write Typst documents, see a live preview of the compiled output, and export your documents directly to PDF, SVG and PNG.
 
-## Showcase
-
-### Editor
-![Editor](showcase/show%20case%20editor.png)
-
-### Editor Lint
-![Editor lint](showcase/show%20case%20editor%20lint.png)
-
-### Preview
-![Preview](showcase/show%20case%20-%20preview.png)
-
-### Diagnostics
-![Diagnostics](showcase/show%20case%20-%20diagnostic.png)
-
-### Export PDF
-![Export PDF](showcase/show%20case%20export%20pdf.png)
-
-### Export PNG
-![Export PNG](showcase/show%20case%20export%20png.png)
-
-### Export SVG
-![Export SVG](showcase/show%20case%20export%20svg.png)
-
 ## Features
 
 I have implemented most of the editor features in the official [web app](https://typst.app/)
