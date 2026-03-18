@@ -48,6 +48,7 @@ jobs:
 
       - uses: tauri-apps/tauri-action@v0
         env:
+          NODE_OPTIONS: --max-old-space-size=4096
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -55,7 +56,7 @@ jobs:
           projectPath: apps/typwriter-desktop
           tagName: typwriter-v__VERSION__
           releaseName: "typwriter v__VERSION__"
-          releaseBody: "See the assets to download this version and install."
+          releaseBody: "__VERSION__ Release"
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
