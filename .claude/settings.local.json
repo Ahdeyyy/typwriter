@@ -45,7 +45,19 @@
       "Bash(xargs grep -l \"createFileAction\\\\|createFolderAction\")",
       "Bash(cargo check)",
       "Bash(npx svelte-check)",
-      "Bash(find /c/Users/ahdey/projects/typwriter/apps/typwriter-desktop/src -name \"*.svelte\" -exec grep -l \"preview.init\\\\|preview.destroy\" {} ;)"
+      "Bash(find /c/Users/ahdey/projects/typwriter/apps/typwriter-desktop/src -name \"*.svelte\" -exec grep -l \"preview.init\\\\|preview.destroy\" {} ;)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.shadcn-svelte.com)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(bun x shadcn-svelte@latest add button badge card separator tabs --yes)",
+      "Bash(ls /c/Users/ahdey/projects/typwriter/apps/typwriter-web/node_modules/phosphor-svelte/lib/*.svelte)",
+      "Bash(xargs -I{} basename {} .svelte)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(timeout 60 bun run build)",
+      "Bash(timeout 120 bun run build)",
+      "Bash(curl -s http://localhost:5173/)",
+      "Bash(ls /c/Users/ahdey/projects/typwriter/*.md)",
+      "Bash(git -C /c/Users/ahdey/projects/typwriter log --format=\"%an\" -1)"
     ]
   }
 }
