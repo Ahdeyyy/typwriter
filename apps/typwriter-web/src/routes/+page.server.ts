@@ -1,3 +1,5 @@
+import type { PageServerLoad } from './$types';
+
 interface ReleaseAsset {
 	name: string;
 	browser_download_url: string;
@@ -11,7 +13,7 @@ interface Release {
 	assets: ReleaseAsset[];
 }
 
-export const load = async ({ fetch }) => {
+export const load: PageServerLoad = async ({ fetch }) => {
 	try {
 		const res = await fetch('https://api.github.com/repos/Ahdeyyy/typwriter/releases/latest', {
 			headers: { Accept: 'application/vnd.github+json' }

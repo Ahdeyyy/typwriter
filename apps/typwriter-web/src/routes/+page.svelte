@@ -8,7 +8,7 @@
 
 	import {
 		GithubLogo,
-		Eye,
+		EyeIcon,
 		ArrowsHorizontal,
 		Lightning,
 		FolderOpen,
@@ -54,7 +54,7 @@
 
 	const features = [
 		{
-			icon: Eye,
+			icon: EyeIcon,
 			title: 'Live Preview',
 			description:
 				'Documents compile and render in real-time as you type. No manual refresh, no waiting.'
