@@ -31,12 +31,20 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ]},
+    "plugins": {
+        "updater": {
+          "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMxRThFQTIzRDY5OTVDQkYKUldTL1hKbldJK3JvTWRjL2RVcDl0R2g4VUd2eDN1Z0hnSUFUN0lndHB6RlBDVEN3NmJZbW1SUk8K",
+          "endpoints": [
+            "https://github.com/ahdeyyy/typwriter/releases/latest/download/latest.json"
+          ]
+        }
   }
 }
