@@ -50,7 +50,10 @@ pub fn add_recent_workspace(handle: &AppHandle, root: &Path) {
 
     store.set("recent_workspaces", json!(list));
     let _ = store.save();
-    info!("store: added recent workspace ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+    info!(
+        "store: added recent workspace ({:.1}ms)",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
 }
 
 /// Remove a single workspace path from the recent list.
@@ -124,7 +127,10 @@ pub fn set_workspace_main_file(handle: &AppHandle, root: &Path, main_file: &Path
 
     store.set("workspace_main_files", JsonValue::Object(map));
     let _ = store.save();
-    info!("store: set workspace main file ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+    info!(
+        "store: set workspace main file ({:.1}ms)",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
 }
 
 /// Look up the persisted main file for the workspace rooted at `root`.
@@ -165,7 +171,11 @@ pub fn save_thumbnail(root: &Path, png_bytes: &[u8]) -> Result<(), String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(THUMBNAIL_FILE);
     std::fs::write(&path, png_bytes).map_err(|e| format!("Failed to write thumbnail: {e}"))?;
-    info!("store: saved thumbnail {} bytes ({:.1}ms)", png_bytes.len(), t.elapsed().as_secs_f64() * 1000.0);
+    info!(
+        "store: saved thumbnail {} bytes ({:.1}ms)",
+        png_bytes.len(),
+        t.elapsed().as_secs_f64() * 1000.0
+    );
     Ok(())
 }
 

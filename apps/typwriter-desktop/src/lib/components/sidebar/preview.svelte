@@ -21,6 +21,7 @@
 
   // ── Double-buffer: hold last decoded page data to avoid flash on update ────
   let committedPages = $state<(string | null)[]>([]);
+  const pending = new Map<number, string>();
 
   $effect(() => {
     const incoming = preview.pages;
@@ -37,13 +38,22 @@
       const data = incoming[i];
       if (!data) continue;
       if (data === untrack(() => committedPages[i])) continue;
+      if (pending.get(i) === data) continue;
 
       const idx = i;
+      pending.set(idx, data);
+
       const img = new Image();
-      img.onload = () => {
-        if (preview.pages[idx] === data) committedPages[idx] = data;
-      };
       img.src = `data:image/png;base64,${data}`;
+      img.decode()
+        .then(() => {
+          if (pending.get(idx) === data) pending.delete(idx);
+          if (preview.pages[idx] === data) committedPages[idx] = data;
+        })
+        .catch(() => {
+          if (pending.get(idx) === data) pending.delete(idx);
+          console.warn(`preview: failed to decode page ${idx}`);
+        });
     }
   });
 

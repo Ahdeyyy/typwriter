@@ -11,7 +11,10 @@ mod compile;
 mod diff;
 mod render;
 
-pub use compile::{compile_document, collect_workspace_diagnostics, dedup_merge, CompileOutput, SerializedDiagnostic};
+pub use compile::{
+    collect_workspace_diagnostics, compile_document, dedup_merge, CompileOutput,
+    SerializedDiagnostic,
+};
 pub use diff::{diff_pages, fingerprint_pages, PageFingerprint};
 pub use render::render_page;
 
@@ -155,9 +158,7 @@ fn parse_page_indices(range_str: &str, total_pages: usize) -> Result<Vec<usize>,
                 return Err("Page numbers must be 1 or greater".into());
             }
             if p > total_pages {
-                return Err(format!(
-                    "Page {p} exceeds document length ({total_pages})"
-                ));
+                return Err(format!("Page {p} exceeds document length ({total_pages})"));
             }
             indices.push(p - 1);
         }
@@ -183,8 +184,7 @@ fn parse_pdf_standard(s: &str) -> Result<typst_pdf::PdfStandards, String> {
         "a-4" => typst_pdf::PdfStandard::A_4,
         other => return Err(format!("Unknown PDF standard: '{other}'")),
     };
-    typst_pdf::PdfStandards::new(&[standard])
-        .map_err(|e| format!("Invalid PDF standard: {e}"))
+    typst_pdf::PdfStandards::new(&[standard]).map_err(|e| format!("Invalid PDF standard: {e}"))
 }
 
 #[derive(Default)]
@@ -566,7 +566,10 @@ impl PreviewPipeline {
         let prefix = config.prefix.as_deref().unwrap_or("page");
         let dir = std::path::Path::new(&config.dir);
         std::fs::create_dir_all(dir).map_err(|e| {
-            error!("export_png: create_dir_all failed dir={:?} err=\"{e}\"", config.dir);
+            error!(
+                "export_png: create_dir_all failed dir={:?} err=\"{e}\"",
+                config.dir
+            );
             e.to_string()
         })?;
 
@@ -598,7 +601,10 @@ impl PreviewPipeline {
 
     pub fn export_svg(&self, config: SvgExportConfig) -> Result<(), String> {
         let t = Instant::now();
-        info!("export_svg: dir={:?} prefix={:?}", config.dir, config.prefix);
+        info!(
+            "export_svg: dir={:?} prefix={:?}",
+            config.dir, config.prefix
+        );
 
         let doc = self
             .last_document
@@ -614,7 +620,10 @@ impl PreviewPipeline {
         let prefix = config.prefix.as_deref().unwrap_or("page");
         let dir = std::path::Path::new(&config.dir);
         std::fs::create_dir_all(dir).map_err(|e| {
-            error!("export_svg: create_dir_all failed dir={:?} err=\"{e}\"", config.dir);
+            error!(
+                "export_svg: create_dir_all failed dir={:?} err=\"{e}\"",
+                config.dir
+            );
             e.to_string()
         })?;
 

@@ -153,7 +153,9 @@ fn is_ignored_path(root: &Path, path: &Path) -> bool {
     rel.components().any(|component| match component {
         Component::Normal(name) => {
             let name = name.to_string_lossy();
-            IGNORED_DIRS.iter().any(|ignored| name.eq_ignore_ascii_case(ignored))
+            IGNORED_DIRS
+                .iter()
+                .any(|ignored| name.eq_ignore_ascii_case(ignored))
         }
         _ => false,
     })

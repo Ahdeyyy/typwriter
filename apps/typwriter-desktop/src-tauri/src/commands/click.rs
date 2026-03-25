@@ -49,20 +49,32 @@ pub fn jump_from_click(
     let guard = pipeline.last_document.lock();
     let doc = guard.as_deref().ok_or_else(|| {
         let e = "No compiled document available";
-        error!("jump_from_click: err=\"{e}\" ({:.1}ms) page={page}", t.elapsed().as_secs_f64() * 1000.0);
+        error!(
+            "jump_from_click: err=\"{e}\" ({:.1}ms) page={page}",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
         e.to_string()
     })?;
 
     if page >= doc.pages.len() {
-        let e = format!("page index {page} out of bounds (doc has {} pages)", doc.pages.len());
-        error!("jump_from_click: err=\"{e}\" ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        let e = format!(
+            "page index {page} out of bounds (doc has {} pages)",
+            doc.pages.len()
+        );
+        error!(
+            "jump_from_click: err=\"{e}\" ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
         return Err(e);
     }
 
     let frame = &doc.pages[page].frame;
     let jump = typst_ide::jump_from_click(&**world, doc, frame, point);
     let found = jump.is_some();
-    debug!("jump_from_click: ok found={found} ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+    debug!(
+        "jump_from_click: ok found={found} ({:.1}ms)",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
 
     Ok(jump.map(|j| serialize_jump(&j, &**world)))
 }
@@ -86,29 +98,39 @@ pub fn jump_from_cursor(
     debug!("jump_from_cursor: path={path:?} cursor={cursor}");
 
     let abs = Path::new(&path);
-    let id = world
-        .path_to_id(abs)
-        .ok_or_else(|| {
-            let e = "Could not resolve file path to a FileId";
-            error!("jump_from_cursor: err=\"{e}\" ({:.1}ms) path={path:?}", t.elapsed().as_secs_f64() * 1000.0);
-            e.to_string()
-        })?;
+    let id = world.path_to_id(abs).ok_or_else(|| {
+        let e = "Could not resolve file path to a FileId";
+        error!(
+            "jump_from_cursor: err=\"{e}\" ({:.1}ms) path={path:?}",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
+        e.to_string()
+    })?;
 
     let source = world.source(id).map_err(|e| {
-        error!("jump_from_cursor: source error path={path:?} err=\"{e}\" ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        error!(
+            "jump_from_cursor: source error path={path:?} err=\"{e}\" ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
         e.to_string()
     })?;
 
     let guard = pipeline.last_document.lock();
     let doc = guard.as_deref().ok_or_else(|| {
         let e = "No compiled document available";
-        error!("jump_from_cursor: err=\"{e}\" ({:.1}ms) path={path:?}", t.elapsed().as_secs_f64() * 1000.0);
+        error!(
+            "jump_from_cursor: err=\"{e}\" ({:.1}ms) path={path:?}",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
         e.to_string()
     })?;
 
     let positions = typst_ide::jump_from_cursor(doc, &source, cursor);
     let count = positions.len();
-    info!("jump_from_cursor: ok — {count} position(s) ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+    info!(
+        "jump_from_cursor: ok — {count} position(s) ({:.1}ms)",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
 
     Ok(positions
         .into_iter()

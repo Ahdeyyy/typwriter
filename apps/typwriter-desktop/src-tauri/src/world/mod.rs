@@ -202,12 +202,19 @@ impl EditorWorld {
 impl World for EditorWorld {
     fn library(&self) -> &LazyHash<Library> {
         self.library.get_or_init(|| {
-            LazyHash::new(Library::builder().with_features(Features::default()).build())
+            LazyHash::new(
+                Library::builder()
+                    .with_features(Features::default())
+                    .build(),
+            )
         })
     }
 
     fn book(&self) -> &LazyHash<FontBook> {
-        self.font_data.get().map(|d| &d.book).unwrap_or(&self.empty_book)
+        self.font_data
+            .get()
+            .map(|d| &d.book)
+            .unwrap_or(&self.empty_book)
     }
 
     fn main(&self) -> FileId {
@@ -252,7 +259,9 @@ impl World for EditorWorld {
     }
 
     fn font(&self, index: usize) -> Option<Font> {
-        self.font_data.get().and_then(|d| d.fonts.get(index).cloned())
+        self.font_data
+            .get()
+            .and_then(|d| d.fonts.get(index).cloned())
     }
 
     fn today(&self, offset: Option<i64>) -> Option<Datetime> {
@@ -306,7 +315,10 @@ fn fetch_package_index(downloader: &Downloader) -> Vec<(PackageSpec, Option<EcoS
     let response = match downloader.download(INDEX_URL) {
         Ok(r) => r,
         Err(_) => {
-            info!("package_index: network error ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+            info!(
+                "package_index: network error ({:.1}ms)",
+                t.elapsed().as_secs_f64() * 1000.0
+            );
             return vec![];
         }
     };
@@ -314,7 +326,10 @@ fn fetch_package_index(downloader: &Downloader) -> Vec<(PackageSpec, Option<EcoS
     let json: serde_json::Value = match response.into_json() {
         Ok(v) => v,
         Err(_) => {
-            info!("package_index: parse error ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+            info!(
+                "package_index: parse error ({:.1}ms)",
+                t.elapsed().as_secs_f64() * 1000.0
+            );
             return vec![];
         }
     };
@@ -322,7 +337,10 @@ fn fetch_package_index(downloader: &Downloader) -> Vec<(PackageSpec, Option<EcoS
     let array = match json.as_array() {
         Some(a) => a,
         None => {
-            info!("package_index: invalid format ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+            info!(
+                "package_index: invalid format ({:.1}ms)",
+                t.elapsed().as_secs_f64() * 1000.0
+            );
             return vec![];
         }
     };
@@ -346,6 +364,10 @@ fn fetch_package_index(downloader: &Downloader) -> Vec<(PackageSpec, Option<EcoS
         })
         .collect();
 
-    info!("package_index: fetched {} packages ({:.1}ms)", packages.len(), t.elapsed().as_secs_f64() * 1000.0);
+    info!(
+        "package_index: fetched {} packages ({:.1}ms)",
+        packages.len(),
+        t.elapsed().as_secs_f64() * 1000.0
+    );
     packages
 }

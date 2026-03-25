@@ -137,8 +137,7 @@ impl WorkspaceState {
             if main_path.exists() {
                 info!("WorkspaceState::open_folder: restoring main file main={main:?}");
                 let _ = self.set_main_file(main_path.clone());
-                self.pipeline
-                    .request_compile(CompileReason::MainFile);
+                self.pipeline.request_compile(CompileReason::MainFile);
                 // Compute the workspace-relative path for the frontend (forward slashes).
                 restored_main = main_path
                     .strip_prefix(&path)
@@ -190,7 +189,10 @@ impl WorkspaceState {
             store::set_workspace_main_file(&self.app_handle, root, &path);
         }
 
-        info!("WorkspaceState::set_main_file: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        info!(
+            "WorkspaceState::set_main_file: ok ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
         Ok(())
     }
 
@@ -325,7 +327,9 @@ impl WorkspaceState {
         info!("WorkspaceState::create_file: abs={abs:?}");
         if let Some(parent) = abs.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                error!("WorkspaceState::create_file: create_dir_all failed abs={abs:?} err=\"{e}\"");
+                error!(
+                    "WorkspaceState::create_file: create_dir_all failed abs={abs:?} err=\"{e}\""
+                );
                 e.to_string()
             })?;
         }
@@ -333,7 +337,10 @@ impl WorkspaceState {
             error!("WorkspaceState::create_file: create failed abs={abs:?} err=\"{e}\"");
             e.to_string()
         })?;
-        info!("WorkspaceState::create_file: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        info!(
+            "WorkspaceState::create_file: ok ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
         Ok(())
     }
 
@@ -346,7 +353,10 @@ impl WorkspaceState {
             error!("WorkspaceState::create_folder: failed abs={abs:?} err=\"{e}\"");
             e.to_string()
         })?;
-        info!("WorkspaceState::create_folder: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        info!(
+            "WorkspaceState::create_folder: ok ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
         Ok(())
     }
 
@@ -372,7 +382,10 @@ impl WorkspaceState {
         {
             self.clear_main_file();
         }
-        info!("WorkspaceState::delete_file: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        info!(
+            "WorkspaceState::delete_file: ok ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
         Ok(())
     }
 
@@ -398,7 +411,10 @@ impl WorkspaceState {
             self.world.invalidate_file(id);
         }
         self.update_main_file_path(&src_abs, &dst_abs, false)?;
-        info!("WorkspaceState::rename_file: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        info!(
+            "WorkspaceState::rename_file: ok ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
         Ok(())
     }
 
@@ -413,7 +429,10 @@ impl WorkspaceState {
         // Invalidate caches for every file inside the directory before removing.
         if abs.is_dir() {
             let files = collect_files_recursive(&abs);
-            info!("WorkspaceState::delete_folder: invalidating {} cached file(s)", files.len());
+            info!(
+                "WorkspaceState::delete_folder: invalidating {} cached file(s)",
+                files.len()
+            );
             for file_path in files {
                 if let Some(id) = self.world.path_to_id(&file_path) {
                     self.world.shadow_remove(id);
@@ -435,7 +454,10 @@ impl WorkspaceState {
         {
             self.clear_main_file();
         }
-        info!("WorkspaceState::delete_folder: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        info!(
+            "WorkspaceState::delete_folder: ok ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
         Ok(())
     }
 
@@ -449,7 +471,10 @@ impl WorkspaceState {
     pub fn import_files(&self, sources: &[String], dest_dir: &str) -> Result<(), String> {
         let t = Instant::now();
         let dest = self.resolve(dest_dir)?;
-        info!("WorkspaceState::import_files: dest={dest:?} count={}", sources.len());
+        info!(
+            "WorkspaceState::import_files: dest={dest:?} count={}",
+            sources.len()
+        );
 
         if !dest.is_dir() {
             let e = format!("{} is not a directory", dest.display());
@@ -464,13 +489,11 @@ impl WorkspaceState {
                 error!("WorkspaceState::import_files: err=\"{e}\"");
                 return Err(e);
             }
-            let file_name = src_path
-                .file_name()
-                .ok_or_else(|| {
-                    let e = format!("Cannot determine file name for {}", src_path.display());
-                    error!("WorkspaceState::import_files: err=\"{e}\"");
-                    e
-                })?;
+            let file_name = src_path.file_name().ok_or_else(|| {
+                let e = format!("Cannot determine file name for {}", src_path.display());
+                error!("WorkspaceState::import_files: err=\"{e}\"");
+                e
+            })?;
             let dst_path = dest.join(file_name);
             if dst_path.exists() {
                 let e = format!("File already exists: {}", dst_path.display());
@@ -481,10 +504,16 @@ impl WorkspaceState {
                 error!("WorkspaceState::import_files: copy failed src={src_path:?} dst={dst_path:?} err=\"{e}\"");
                 e.to_string()
             })?;
-            info!("WorkspaceState::import_files: copied {:?} -> {:?}", src_path, dst_path);
+            info!(
+                "WorkspaceState::import_files: copied {:?} -> {:?}",
+                src_path, dst_path
+            );
         }
 
-        info!("WorkspaceState::import_files: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        info!(
+            "WorkspaceState::import_files: ok ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
         Ok(())
     }
 
@@ -501,11 +530,16 @@ impl WorkspaceState {
             })?;
         }
         std::fs::rename(&src_abs, &dst_abs).map_err(|e| {
-            error!("WorkspaceState::move_folder: failed src={src_abs:?} dst={dst_abs:?} err=\"{e}\"");
+            error!(
+                "WorkspaceState::move_folder: failed src={src_abs:?} dst={dst_abs:?} err=\"{e}\""
+            );
             e.to_string()
         })?;
         self.update_main_file_path(&src_abs, &dst_abs, true)?;
-        info!("WorkspaceState::move_folder: ok ({:.1}ms)", t.elapsed().as_secs_f64() * 1000.0);
+        info!(
+            "WorkspaceState::move_folder: ok ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
         Ok(())
     }
 
@@ -516,10 +550,13 @@ impl WorkspaceState {
     pub fn get_file_tree(&self) -> Result<Vec<FileTreeEntry>, String> {
         let root = {
             let guard = self.root.read();
-            guard.as_ref().ok_or_else(|| {
-                error!("WorkspaceState::get_file_tree: no workspace open");
-                "No workspace open".to_string()
-            })?.clone()
+            guard
+                .as_ref()
+                .ok_or_else(|| {
+                    error!("WorkspaceState::get_file_tree: no workspace open");
+                    "No workspace open".to_string()
+                })?
+                .clone()
         };
         Ok(read_dir_recursive(&root, &root))
     }
@@ -560,7 +597,8 @@ impl WorkspaceState {
             )
         })?;
 
-        self.world.set_main(FileId::new(None, VirtualPath::new(relative)));
+        self.world
+            .set_main(FileId::new(None, VirtualPath::new(relative)));
         *self.main_file.write() = Some(updated_main.clone());
         store::set_workspace_main_file(&self.app_handle, root, &updated_main);
         self.pipeline.invalidate_cache();

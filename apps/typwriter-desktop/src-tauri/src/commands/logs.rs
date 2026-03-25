@@ -199,11 +199,9 @@ fn parse_log_prefix(line: &str) -> Option<ParsedLogPrefix> {
     let (target, rest) = take_bracketed(rest)?;
     let (level, rest) = take_bracketed(rest)?;
 
-    let timestamp = NaiveDateTime::parse_from_str(
-        &format!("{date} {time}"),
-        LOG_PREFIX_TIMESTAMP_FORMAT,
-    )
-    .ok()?;
+    let timestamp =
+        NaiveDateTime::parse_from_str(&format!("{date} {time}"), LOG_PREFIX_TIMESTAMP_FORMAT)
+            .ok()?;
 
     let message = rest.strip_prefix(' ').unwrap_or(rest).to_string();
 
@@ -282,7 +280,11 @@ mod tests {
         aggregate_chart_buckets, empty_log_view, parse_log_entries, read_log_view_from_path,
         LogLevel,
     };
-    use std::{fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     fn unique_temp_path(name: &str) -> PathBuf {
         let suffix = SystemTime::now()
@@ -364,9 +366,15 @@ mod tests {
 [2026-03-08][00:12:27][desktop_lib][INFO] three",
         );
 
-        assert_eq!(entries.iter().map(|entry| entry.index).collect::<Vec<_>>(), vec![0, 1, 2]);
         assert_eq!(
-            entries.iter().map(|entry| entry.message.as_str()).collect::<Vec<_>>(),
+            entries.iter().map(|entry| entry.index).collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.message.as_str())
+                .collect::<Vec<_>>(),
             vec!["one", "two", "three"]
         );
     }

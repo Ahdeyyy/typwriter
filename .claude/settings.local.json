@@ -57,7 +57,8 @@
       "Bash(timeout 120 bun run build)",
       "Bash(curl -s http://localhost:5173/)",
       "Bash(ls /c/Users/ahdey/projects/typwriter/*.md)",
-      "Bash(git -C /c/Users/ahdey/projects/typwriter log --format=\"%an\" -1)"
+      "Bash(git -C /c/Users/ahdey/projects/typwriter log --format=\"%an\" -1)",
+      "Bash(find /c/Users/ahdey/projects/typwriter/apps/typwriter-desktop/src-tauri -name \"Cargo.toml\" -exec grep -A 20 \"^\\\\[dependencies\\\\]\" {} ;)"
     ]
   }
 }

@@ -40,3 +40,6 @@ parking_lot = "0.12"
 tauri-plugin-dialog = "2"
 log = "0.4.29"
 png = "0.18"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"

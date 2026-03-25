@@ -75,7 +75,9 @@ pub fn compile_document(world: &dyn World) -> CompileOutput {
 /// Collect diagnostics from every `.typ` file in the workspace that is NOT the
 /// current main file. Each file is compiled as its own entry point via a thin
 /// `World` wrapper so the shared `EditorWorld` state is never mutated.
-pub fn collect_workspace_diagnostics(world: &EditorWorld) -> (Vec<SerializedDiagnostic>, Vec<SerializedDiagnostic>) {
+pub fn collect_workspace_diagnostics(
+    world: &EditorWorld,
+) -> (Vec<SerializedDiagnostic>, Vec<SerializedDiagnostic>) {
     let root = world.root();
     let main_id = world.main_id();
 
@@ -84,12 +86,17 @@ pub fn collect_workspace_diagnostics(world: &EditorWorld) -> (Vec<SerializedDiag
     let mut seen = HashSet::new();
 
     for path in walk_typ_files(&root) {
-        let Some(id) = world.path_to_id(&path) else { continue };
+        let Some(id) = world.path_to_id(&path) else {
+            continue;
+        };
         if id == main_id {
             continue;
         }
 
-        let override_world = MainOverride { inner: world, main_id: id };
+        let override_world = MainOverride {
+            inner: world,
+            main_id: id,
+        };
         let result = typst::compile::<PagedDocument>(&override_world);
 
         for diag in &result.warnings {
@@ -147,22 +154,33 @@ struct MainOverride<'a> {
 }
 
 impl World for MainOverride<'_> {
-    fn library(&self) -> &LazyHash<Library> { self.inner.library() }
-    fn book(&self) -> &LazyHash<FontBook> { self.inner.book() }
-    fn main(&self) -> FileId { self.main_id }
-    fn source(&self, id: FileId) -> FileResult<Source> { self.inner.source(id) }
-    fn file(&self, id: FileId) -> FileResult<Bytes> { self.inner.file(id) }
-    fn font(&self, index: usize) -> Option<Font> { self.inner.font(index) }
-    fn today(&self, offset: Option<i64>) -> Option<Datetime> { self.inner.today(offset) }
+    fn library(&self) -> &LazyHash<Library> {
+        self.inner.library()
+    }
+    fn book(&self) -> &LazyHash<FontBook> {
+        self.inner.book()
+    }
+    fn main(&self) -> FileId {
+        self.main_id
+    }
+    fn source(&self, id: FileId) -> FileResult<Source> {
+        self.inner.source(id)
+    }
+    fn file(&self, id: FileId) -> FileResult<Bytes> {
+        self.inner.file(id)
+    }
+    fn font(&self, index: usize) -> Option<Font> {
+        self.inner.font(index)
+    }
+    fn today(&self, offset: Option<i64>) -> Option<Datetime> {
+        self.inner.today(offset)
+    }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 fn serialize_diags(world: &dyn World, diags: &[SourceDiagnostic]) -> Vec<SerializedDiagnostic> {
-    diags
-        .iter()
-        .map(|d| serialize_one(world, d))
-        .collect()
+    diags.iter().map(|d| serialize_one(world, d)).collect()
 }
 
 fn serialize_one(world: &dyn World, d: &SourceDiagnostic) -> SerializedDiagnostic {
@@ -212,7 +230,9 @@ fn resolve_span(
 }
 
 /// Deduplication key: (severity, file_path, message, start_line, start_col).
-fn dedup_key(d: &SerializedDiagnostic) -> (String, Option<String>, String, Option<usize>, Option<usize>) {
+fn dedup_key(
+    d: &SerializedDiagnostic,
+) -> (String, Option<String>, String, Option<usize>, Option<usize>) {
     (
         d.severity.clone(),
         d.file_path.clone(),
