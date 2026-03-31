@@ -6,6 +6,11 @@
   import { workspace } from "$lib/stores/workspace.svelte";
   import type { SerializedDiagnostic } from "$lib/types";
 
+  interface Props {
+    onclose?: () => void;
+  }
+  let { onclose }: Props = $props();
+
   // Group all diagnostics by file_path
   const grouped = $derived.by(() => {
     const map = new Map<string, { errors: SerializedDiagnostic[]; warnings: SerializedDiagnostic[] }>();
@@ -73,7 +78,7 @@
     </div>
     <button
       class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-      onclick={() => diagnostics.togglePane()}
+      onclick={() => onclose ? onclose() : diagnostics.togglePane()}
       aria-label="Close problems pane"
     >
       <X class="size-3.5" />

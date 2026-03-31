@@ -16,7 +16,11 @@
       "WebFetch(domain:runed.dev)",
       "Bash(set RUST_MIN_STACK=8388608)",
       "Bash(cargo check)",
-      "Bash(npx svelte-check --tsconfig ./tsconfig.json)"
+      "Bash(npx svelte-check --tsconfig ./tsconfig.json)",
+      "Bash(xargs cat)",
+      "WebFetch(domain:tauri.app)",
+      "WebFetch(domain:v2.tauri.app)",
+      "Bash(Remove-Item \"C:\\\\Users\\\\ahdey\\\\projects\\\\typwriter\\\\apps\\\\typwriter-desktop\\\\src\\\\lib\\\\components\\\\MenuBar.svelte\")"
     ]
   }
 }

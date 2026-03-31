@@ -1,6 +1,5 @@
 <script lang="ts">
   import { X } from "phosphor-svelte";
-  import ActiveFileProblems from "$lib/components/editor/active-file-problems.svelte";
   import { editor, type TabInfo } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
@@ -102,9 +101,6 @@
     {/each}
   </div>
 
-  <div class="flex shrink-0 items-center gap-1 border-l border-border px-2">
-    <ActiveFileProblems />
-  </div>
 </div>
 
 <style>

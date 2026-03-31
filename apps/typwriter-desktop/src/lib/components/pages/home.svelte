@@ -7,7 +7,9 @@
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { Folder, FolderOpen, FolderPlus, List, Trash, X } from "phosphor-svelte";
+  import { Folder, FolderOpen, FolderPlus, Trash, X, BookOpen, ArrowClockwise, List } from "phosphor-svelte";
+  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { updater } from "$lib/stores/updater.svelte";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
@@ -171,7 +173,7 @@
 
 </script>
 
-<main class="flex h-full flex-col items-center justify-center gap-8 p-8">
+<main class="flex h-full flex-col items-center justify-center gap-5 p-4">
   <!-- Recent workspaces -->
   <section class="w-full max-w-3xl">
     <div class="mb-4 flex items-center justify-between gap-3">
@@ -190,10 +192,6 @@
             Clear All
           </Button>
         {/if}
-        <Button variant="outline" size="sm" onclick={() => page.navigate("logs")} class="gap-2">
-          <List class="size-4" />
-          View Logs
-        </Button>
       </div>
     </div>
 
@@ -337,6 +335,39 @@
     <Button onclick={handleOpenNew} class="gap-2" disabled={!fontsReady}>
       <FolderOpen class="size-4" />
       Open Folder
+    </Button>
+  </div>
+
+  <div class="flex items-center gap-1">
+    <Button
+      variant="link"
+      size="sm"
+      class="gap-1.5 text-muted-foreground"
+      onclick={() => openUrl("https://typst.app/docs/")}
+    >
+      <BookOpen class="size-3.5" />
+      Typst Docs
+    </Button>
+
+    <Button
+      variant="link"
+      size="sm"
+      class="gap-1.5 text-muted-foreground"
+      onclick={() => updater.checkManual()}
+      disabled={updater.checking || updater.downloading}
+    >
+      <ArrowClockwise class="size-3.5 {updater.checking ? 'animate-spin' : ''}" />
+      Check for Updates
+    </Button>
+
+    <Button
+      variant="link"
+      size="sm"
+      class="gap-1.5 text-muted-foreground"
+      onclick={() => page.navigate("logs")}
+    >
+      <List class="size-3.5" />
+      View Logs
     </Button>
   </div>
 </main>
