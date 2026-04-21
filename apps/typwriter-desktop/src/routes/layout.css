@@ -191,6 +191,36 @@
       @apply h-screen;
   }
 
+  /*default scroll bar*/
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  /* WebKit-based browsers */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--border) 60%, transparent);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--border) 75%, transparent);
+  }
+
+  ::-webkit-scrollbar-thumb[data-slot="scroll-area-thumb"] {
+    background: var(--border) !important;
+  }
 
 
 /* Editor / CodeMirror scrollbar theme matching ScrollArea */

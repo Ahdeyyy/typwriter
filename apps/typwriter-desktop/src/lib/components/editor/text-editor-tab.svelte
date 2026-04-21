@@ -46,11 +46,11 @@
     setDiagnostics,
     type Diagnostic as CMDiagnostic,
   } from "@codemirror/lint";
-  import { typst } from "$lib/typst-codemirror-lang/index.js";
-  import {
-    githubLightTheme,
-    githubLightHighlightStyle,
-  } from "$lib/typst-codemirror-lang/lightTheme.js";
+  import { typst,light  } from "$lib/typst-codemirror-lang";
+  // import {
+  //   githubLightTheme,
+  //   githubLightHighlightStyle,
+  // } from "$lib/typst-codemirror-lang/lightTheme.js";
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
@@ -59,7 +59,7 @@
     getTooltip as getTooltipIpc,
   } from "$lib/ipc/commands";
   import type { SerializedDiagnostic, TooltipResponse } from "$lib/types";
-  import { espresso } from "thememirror";
+  import { ayuLight } from "thememirror";
   import { indentationMarkers } from "@replit/codemirror-indentation-markers";
   import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
   import { logError } from "$lib/logger";
@@ -225,7 +225,7 @@
 
     return [
       lintGutter(),
-      lineNumbers(),
+      // lineNumbers(),
       EditorView.lineWrapping,
       EditorView.contentAttributes.of({ spellcheck: "true" }),
       highlightActiveLine(),
@@ -240,9 +240,10 @@
         ? autocompletion({ override: [mergedTypstCompletionsForTab(tabId)] })
         : autocompletion(),
       indentOnInput(),
-      githubLightTheme,
-      syntaxHighlighting(githubLightHighlightStyle),
+      // githubLightTheme,
+      // syntaxHighlighting(githubLightHighlightStyle),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      light,
       // Language extension chosen by file extension; null = plain text
       ...(langExt ? [langExt] : []),
       indentationMarkers(),
@@ -300,6 +301,7 @@
             ),
           ]
         : []),
+      // ayuLight,
       EditorView.theme({
         "&": {
           height: "93svh",
