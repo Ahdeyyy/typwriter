@@ -49,6 +49,7 @@
   import { search } from "@codemirror/search";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
   import { typst,light  } from "$lib/typst-codemirror-lang";
+  import { languages } from "@codemirror/language-data";
   // import {
   //   githubLightTheme,
   //   githubLightHighlightStyle,
@@ -205,7 +206,7 @@
     const ext = dot >= 0 ? relPath.slice(dot).toLowerCase() : "";
     switch (ext) {
       case ".typ":
-        return typst();
+        return typst({ codeLanguages: languages });
       case ".json":
         return json();
       case ".xml":
