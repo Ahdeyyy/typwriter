@@ -48,7 +48,9 @@
   } from "@codemirror/lint";
   import { search } from "@codemirror/search";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
-  import { typst,light  } from "$lib/typst-codemirror-lang";
+  import { typst, light, dark } from "$lib/typst-codemirror-lang";
+  import { Compartment } from "@codemirror/state";
+  import { mode, systemPrefersMode } from "mode-watcher";
   import { languages } from "@codemirror/language-data";
   // import {
   //   githubLightTheme,
@@ -71,6 +73,14 @@
   let editorHost = $state<HTMLDivElement | null>(null);
   const tabViews = new Map<string, EditorView>();
   let mountedTabId = $state<string | null>(null);
+
+  const themeCompartment = new Compartment();
+
+  function resolvedTheme() {
+    const m = mode.current;
+    const sys = systemPrefersMode.current;
+    return m === "dark" || (m === "system" && sys === "dark") ? dark : light;
+  }
 
   function mapBackendCompletionKind(kind: string): Completion["type"] {
     const normalizedKind = kind.toLowerCase();
@@ -247,7 +257,7 @@
       // githubLightTheme,
       // syntaxHighlighting(githubLightHighlightStyle),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-      light,
+      themeCompartment.of(resolvedTheme()),
       // Language extension chosen by file extension; null = plain text
       ...(langExt ? [langExt] : []),
       indentationMarkers(),
@@ -515,6 +525,16 @@
         if (!editorSearch.open) view.focus();
       }
     });
+  });
+
+  // ── Theme → reconfigure all views when mode changes
+  $effect(() => {
+    const _ = mode.current;
+    const __ = systemPrefersMode.current;
+    const themeExt = resolvedTheme();
+    for (const view of tabViews.values()) {
+      view.dispatch({ effects: themeCompartment.reconfigure(themeExt) });
+    }
   });
 
   // ── Diagnostics → CodeMirror lint markers

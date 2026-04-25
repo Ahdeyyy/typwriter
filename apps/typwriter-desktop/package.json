@@ -46,15 +46,15 @@
     "thememirror": "^2.0.1"
   },
   "devDependencies": {
-    "@internationalized/date": "^3.10.0",
+    "@internationalized/date": "^3.12.0",
     "@lezer/generator": "^1.8.0",
-    "@lucide/svelte": "^0.561.0",
+    "@lucide/svelte": "^1.11.0",
     "@sveltejs/adapter-static": "^3.0.6",
     "@sveltejs/kit": "^2.9.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tailwindcss/vite": "^4.1.18",
     "@tauri-apps/cli": "^2",
-    "bits-ui": "^2.14.4",
+    "bits-ui": "^2.16.3",
     "clsx": "^2.1.1",
     "layerchart": "2.0.0-next.43",
     "paneforge": "^1.0.2",

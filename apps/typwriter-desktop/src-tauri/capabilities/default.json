@@ -11,6 +11,7 @@
     "log:default",
     "store:default",
     "core:window:allow-set-title",
+    "core:app:allow-set-app-theme",
     "dialog:default"
   ]
 }

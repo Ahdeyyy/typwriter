@@ -22,7 +22,8 @@
       "WebFetch(domain:v2.tauri.app)",
       "Bash(Remove-Item \"C:\\\\Users\\\\ahdey\\\\projects\\\\typwriter\\\\apps\\\\typwriter-desktop\\\\src\\\\lib\\\\components\\\\MenuBar.svelte\")",
       "Bash(bun run *)",
-      "Bash(bun add *)"
+      "Bash(bun add *)",
+      "WebFetch(domain:www.shadcn-svelte.com)"
     ]
   }
 }

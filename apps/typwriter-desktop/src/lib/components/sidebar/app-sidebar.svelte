@@ -8,6 +8,7 @@
   import { logError } from "$lib/logger";
   import FileTree from "$lib/components/sidebar/filetree.svelte";
   import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
+    import ModeSwitcher from "./mode-switcher.svelte";
 
   type Section = "files" | "diagnostics";
 
@@ -132,8 +133,11 @@
 
     </div>
 
-    <!-- Home (bottom) -->
+    <!-- Home (bottom), Theme Switcher -->
+
     <div class="mt-auto p-1">
+
+       <ModeSwitcher />
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
