@@ -20,7 +20,8 @@
       "Bash(xargs cat)",
       "WebFetch(domain:tauri.app)",
       "WebFetch(domain:v2.tauri.app)",
-      "Bash(Remove-Item \"C:\\\\Users\\\\ahdey\\\\projects\\\\typwriter\\\\apps\\\\typwriter-desktop\\\\src\\\\lib\\\\components\\\\MenuBar.svelte\")"
+      "Bash(Remove-Item \"C:\\\\Users\\\\ahdey\\\\projects\\\\typwriter\\\\apps\\\\typwriter-desktop\\\\src\\\\lib\\\\components\\\\MenuBar.svelte\")",
+      "Bash(bun run *)"
     ]
   }
 }

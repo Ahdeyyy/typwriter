@@ -46,6 +46,8 @@
     setDiagnostics,
     type Diagnostic as CMDiagnostic,
   } from "@codemirror/lint";
+  import { search } from "@codemirror/search";
+  import { editorSearch } from "$lib/stores/editor-search.svelte";
   import { typst,light  } from "$lib/typst-codemirror-lang";
   // import {
   //   githubLightTheme,
@@ -63,6 +65,7 @@
   import { indentationMarkers } from "@replit/codemirror-indentation-markers";
   import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
   import { logError } from "$lib/logger";
+
 
   let editorHost = $state<HTMLDivElement | null>(null);
   const tabViews = new Map<string, EditorView>();
@@ -247,6 +250,44 @@
       // Language extension chosen by file extension; null = plain text
       ...(langExt ? [langExt] : []),
       indentationMarkers(),
+      // Custom Svelte search panel — provide an empty CM panel so the
+      // search extension's state is initialized but its UI is suppressed.
+      search({
+        top: true,
+        createPanel: () => {
+          const dom = document.createElement("div");
+          dom.style.display = "none";
+          return { dom };
+        },
+      }),
+      // Search bindings BEFORE vscodeKeymap so they take precedence over
+      // vscodeKeymap's built-in Mod-f (openSearchPanel) handler.
+      keymap.of([
+        {
+          key: "Mod-f",
+          run: () => {
+            editorSearch.openPanel(false);
+            return true;
+          },
+        },
+        {
+          key: "Mod-h",
+          run: () => {
+            editorSearch.openPanel(true);
+            return true;
+          },
+        },
+        {
+          key: "Escape",
+          run: () => {
+            if (editorSearch.open) {
+              editorSearch.closePanel();
+              return true;
+            }
+            return false;
+          },
+        },
+      ]),
       keymap.of(vscodeKeymap),
       keymap.of([
         ...defaultKeymap,
@@ -273,6 +314,15 @@
         if (!tab || tab.viewMode !== "text") return;
         const cursor = update.state.selection.main.head;
         preview.setCursorPosition(tab.absPath, cursor);
+      }),
+      EditorView.updateListener.of((update) => {
+        if (!editorSearch.open) return;
+        if (
+          editorSearch.getActiveView() === update.view &&
+          (update.docChanged || update.selectionSet)
+        ) {
+          editorSearch.refreshCounts();
+        }
       }),
       // Hover tooltip — only for .typ (avoids unnecessary IPC calls for other file types)
       ...(isTypst
@@ -396,6 +446,7 @@
     if (!activeTab || activeTab.viewMode !== "text" || activeTab.isLoading) {
       editorHost.replaceChildren();
       mountedTabId = null;
+      editorSearch.setActiveView(null);
       return;
     }
 
@@ -409,7 +460,9 @@
       mountedTabId = activeTab.id;
     }
 
-    view.focus();
+    editorSearch.setActiveView(view);
+    // Don't steal focus away from the search panel if it's open.
+    if (!editorSearch.open) view.focus();
   }
 
   function destroyClosedTabViews() {
@@ -418,6 +471,9 @@
     );
     for (const [tabId, view] of tabViews) {
       if (openTabIds.has(tabId)) continue;
+      if (editorSearch.getActiveView() === view) {
+        editorSearch.setActiveView(null);
+      }
       view.destroy();
       tabViews.delete(tabId);
       if (mountedTabId === tabId) mountedTabId = null;
@@ -440,6 +496,7 @@
       for (const view of tabViews.values()) view.destroy();
       tabViews.clear();
       mountedTabId = null;
+      editorSearch.setActiveView(null);
     };
   });
 
@@ -454,7 +511,7 @@
         editor.cursorJumpRequest = null;
         const offset = Math.min(req.offset, view.state.doc.length);
         view.dispatch({ selection: { anchor: offset }, scrollIntoView: true });
-        view.focus();
+        if (!editorSearch.open) view.focus();
       }
     });
   });

@@ -2,6 +2,7 @@
   import { FileCode, Prohibit } from "phosphor-svelte";
   import TabBar from "$lib/components/editor/tab-bar.svelte";
   import TextEditorTab from "$lib/components/editor/text-editor-tab.svelte";
+  import SearchPanel from "$lib/components/editor/search-panel.svelte";
   import { editor } from "$lib/stores/editor.svelte";
 </script>
 
@@ -41,6 +42,7 @@
     {:else}
       <div class="relative h-full w-full overflow-hidden">
         <TextEditorTab />
+        <SearchPanel />
       </div>
     {/if}
   </div>

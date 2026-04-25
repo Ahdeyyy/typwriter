@@ -12,7 +12,7 @@
     },
     "apps/typwriter-desktop": {
       "name": "typwriter",
-      "version": "0.3.0",
+      "version": "0.3.2",
       "dependencies": {
         "@citedrive/codemirror-lang-bibtex": "^6.4.1",
         "@codemirror/autocomplete": "^6.20.0",
@@ -23,6 +23,7 @@
         "@codemirror/language": "^6.12.1",
         "@codemirror/legacy-modes": "^6.5.2",
         "@codemirror/lint": "^6.9.4",
+        "@codemirror/search": "^6.5.10",
         "@codemirror/state": "^6.5.4",
         "@codemirror/view": "^6.39.14",
         "@fontsource-variable/inter": "^5.2.8",
