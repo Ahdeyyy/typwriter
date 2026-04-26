@@ -28,6 +28,7 @@ const MD = {
     indigo:      "#b4befe",
     navy:        "#89dceb",
     teal:        "#94e2d5",
+    sapphire:    "#74c7ec",
     muted:       "#9399b2",
     faint:       "#585b70",
 };
@@ -132,9 +133,16 @@ export const darkHighlightStyle = HighlightStyle.define([
 
     // ── Code — literals ─────────────────────────────────────────────────────────
     { tag: t.number, color: MD.terracotta },
+    { tag: t.unit, color: MD.terracotta },
     { tag: t.string, color: MD.green },
     { tag: t.bool, color: MD.crimson },
     { tag: t.null, color: MD.crimson },
+
+    // ── Code — types ────────────────────────────────────────────────────────────
+    { tag: t.typeName, color: MD.sapphire },
+    { tag: t.definition(t.typeName), color: MD.sapphire, fontStyle: "italic" },
+    { tag: t.typeOperator, color: MD.muted },
+    { tag: t.className, color: MD.sapphire },
 
     // ── Code — identifiers ──────────────────────────────────────────────────────
     { tag: t.function(t.variableName), color: MD.indigo },
