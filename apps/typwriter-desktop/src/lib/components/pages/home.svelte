@@ -15,6 +15,7 @@
   import { logError } from "$lib/logger";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
+  import ModeSwitcher from "$lib/components/sidebar/mode-switcher.svelte";
 
   let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
   let loading = $state(true);
@@ -174,7 +175,10 @@
 
 </script>
 
-<main class="flex h-full flex-col items-center justify-center gap-5 p-4">
+<main class="relative flex h-full flex-col items-center justify-center gap-5 p-4">
+  <div class="absolute right-3 top-3">
+    <ModeSwitcher />
+  </div>
   <!-- Recent workspaces -->
   <section class="w-full max-w-3xl">
     <div class="mb-4 flex items-center justify-between gap-3">
@@ -232,10 +236,10 @@
 
               <!-- Details -->
               <div class="min-w-0 px-3 py-2">
-                <p class="truncate text-sm font-medium text-foreground">
+                <p class="truncate text-sm font-medium text-foreground group-hover:text-accent-foreground">
                   {entry.name}
                 </p>
-                <p class="truncate text-xs text-muted-foreground">
+                <p class="truncate text-xs text-muted-foreground group-hover:text-accent-foreground/70">
                   {entry.path}
                 </p>
               </div>
@@ -243,7 +247,7 @@
 
             <!-- Per-entry delete button -->
             <button
-              class="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-sm bg-background/70 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 group-hover:opacity-100"
+              class="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-background text-muted-foreground opacity-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 group-hover:opacity-100"
               onclick={(e) => handleRemoveRecent(e, entry.path)}
               title="Remove from recents"
               aria-label="Remove {entry.name} from recents"
