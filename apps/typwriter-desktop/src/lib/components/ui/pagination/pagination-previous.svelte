@@ -1,29 +1,21 @@
 <script lang="ts">
-	import { Pagination as PaginationPrimitive } from "bits-ui";
-	import { CaretLeft } from "phosphor-svelte";
-	import { buttonVariants } from "$lib/components/ui/button/index.js";
+	import type { ComponentProps } from "svelte";
 	import { cn } from "$lib/utils.js";
+	import { PaginationLink } from "./index.js";
+	import { HugeiconsIcon } from "@hugeicons/svelte"
+	import { ArrowLeft01Icon } from '@hugeicons/core-free-icons';
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		...restProps
-	}: PaginationPrimitive.PrevButtonProps = $props();
+	type PaginationPreviousProps = ComponentProps<typeof PaginationLink>;
+
+	let { class: className, ...restProps }: PaginationPreviousProps = $props();
 </script>
 
-<PaginationPrimitive.PrevButton
-	bind:ref
+<PaginationLink
 	aria-label="Go to previous page"
-	class={cn(
-		buttonVariants({
-			size: "default",
-			variant: "ghost",
-			class: "gap-1 px-2.5 sm:ps-2.5",
-		}),
-		className
-	)}
+	size="default"
+	class={cn("pl-2!", className)}
 	{...restProps}
 >
-	<CaretLeft />
-	<span class="hidden sm:block">Previous</span></PaginationPrimitive.PrevButton
->
+	<HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={2} data-icon="inline-start" />
+	<span class="cn-pagination-previous-text hidden sm:block">Previous</span>
+</PaginationLink>

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { Button } from "$lib/components/ui/button/index.js";
+	import { HugeiconsIcon } from "@hugeicons/svelte"
+	import { SidebarLeftIcon } from '@hugeicons/core-free-icons';
 	import { cn } from "$lib/utils.js";
-	import { SidebarSimple } from "phosphor-svelte";
 	import type { ComponentProps } from "svelte";
 	import { useSidebar } from "./context.svelte.js";
 
@@ -18,11 +19,12 @@
 </script>
 
 <Button
+	bind:ref
 	data-sidebar="trigger"
 	data-slot="sidebar-trigger"
 	variant="ghost"
-	size="icon"
-	class={cn("size-7", className)}
+	size="icon-sm"
+	class={cn("cn-sidebar-trigger", className)}
 	type="button"
 	onclick={(e) => {
 		onclick?.(e);
@@ -30,6 +32,6 @@
 	}}
 	{...restProps}
 >
-	<SidebarSimple />
+	<HugeiconsIcon icon={SidebarLeftIcon} strokeWidth={2}  />
 	<span class="sr-only">Toggle Sidebar</span>
 </Button>

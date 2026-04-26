@@ -12,5 +12,9 @@
 		"lib": "$lib"
 	},
 	"typescript": true,
-	"registry": "https://shadcn-svelte.com/registry"
+	"registry": "https://shadcn-svelte.com/registry",
+	"style": "mira",
+	"iconLibrary": "hugeicons",
+	"menuColor": "default-translucent",
+	"menuAccent": "bold"
 }

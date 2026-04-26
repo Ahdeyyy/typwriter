@@ -17,7 +17,7 @@
 	bind:this={ref}
 	data-slot="context-menu-label"
 	data-inset={inset}
-	class={cn("text-foreground px-2 py-1.5 text-sm font-medium data-[inset]:ps-8", className)}
+	class={cn("text-muted-foreground px-2 py-1.5 text-xs data-inset:pl-7.5 data-inset:pl-8", className)}
 	{...restProps}
 >
 	{@render children?.()}

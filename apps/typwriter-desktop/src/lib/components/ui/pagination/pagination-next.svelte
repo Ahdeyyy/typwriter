@@ -1,29 +1,21 @@
 <script lang="ts">
-	import { Pagination as PaginationPrimitive } from "bits-ui";
-	import { CaretRight } from "phosphor-svelte";
-	import { buttonVariants } from "$lib/components/ui/button/index.js";
+	import type { ComponentProps } from "svelte";
 	import { cn } from "$lib/utils.js";
+	import { PaginationLink } from "./index.js";
+	import { HugeiconsIcon } from "@hugeicons/svelte"
+	import { ArrowRight01Icon } from '@hugeicons/core-free-icons';
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		...restProps
-	}: PaginationPrimitive.NextButtonProps = $props();
+	type PaginationNextProps = ComponentProps<typeof PaginationLink>;
+
+	let { class: className, ...restProps }: PaginationNextProps = $props();
 </script>
 
-<PaginationPrimitive.NextButton
-	bind:ref
+<PaginationLink
 	aria-label="Go to next page"
-	class={cn(
-		buttonVariants({
-			size: "default",
-			variant: "ghost",
-			class: "gap-1 px-2.5 sm:pe-2.5",
-		}),
-		className
-	)}
+	size="default"
+	class={cn("pr-2!", className)}
 	{...restProps}
 >
-	<span class="hidden sm:block">Next</span>
-	<CaretRight /></PaginationPrimitive.NextButton
->
+	<span class="cn-pagination-next-text hidden sm:block">Next</span>
+	<HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} data-icon="inline-end" />
+</PaginationLink>
