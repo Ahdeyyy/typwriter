@@ -48,17 +48,17 @@ const ML = {
 export const lightTheme = EditorView.theme(
     {
         "&": {
-            color: ML.fg,
-            backgroundColor: ML.bg,
+            color: "var(--foreground)",
+            backgroundColor: "var(--background)",
         },
         ".cm-content": { caretColor: ML.indigo, padding: "0.55rem" },
         ".cm-cursor, .cm-dropCursor": { borderLeftColor: ML.indigo },
         "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
             backgroundColor: ML.bgSelection,
         },
-        ".cm-panels": { backgroundColor: ML.bgDark, color: ML.fg },
-        ".cm-panels.cm-panels-top": { borderBottom: `2px solid ${ML.border}` },
-        ".cm-panels.cm-panels-bottom": { borderTop: `2px solid ${ML.border}` },
+        ".cm-panels": { backgroundColor: "var(--muted)", color: "var(--foreground)" },
+        ".cm-panels.cm-panels-top": { borderBottom: "2px solid var(--border)" },
+        ".cm-panels.cm-panels-bottom": { borderTop: "2px solid var(--border)" },
         ".cm-searchMatch": {
             backgroundColor: "#ffd70050",
             outline: `1px solid ${ML.amber}`,
@@ -66,7 +66,6 @@ export const lightTheme = EditorView.theme(
         ".cm-searchMatch.cm-searchMatch-selected": {
             backgroundColor: "#ffaa8080",
         },
-        // ".cm-activeLine": { backgroundColor: ML. },
         ".cm-selectionMatch": { backgroundColor: "#b8d4ff40" },
         "&.cm-focused .cm-matchingBracket": {
             backgroundColor: "#2e7d3225",
@@ -76,24 +75,24 @@ export const lightTheme = EditorView.theme(
             backgroundColor: "#be262625",
         },
         ".cm-gutters": {
-            backgroundColor: ML.bg,
-            color: ML.fgGutter,
-          border: "none",
-          width: "1.35rem",
-            borderRight: `1px solid ${ML.border}`,
+            backgroundColor: "var(--background)",
+            color: "var(--muted-foreground)",
+            border: "none",
+            width: "1.35rem",
+            borderRight: "1px solid var(--border)",
         },
         ".cm-activeLineGutter": {
-            backgroundColor: ML.bgHighlight,
-            color: ML.fgComment,
+            backgroundColor: "var(--secondary)",
+            color: "var(--muted-foreground)",
         },
         ".cm-foldPlaceholder": {
             backgroundColor: "transparent",
             border: "none",
-            color: ML.fgComment,
+            color: "var(--muted-foreground)",
         },
         ".cm-tooltip": {
-            border: `1px solid ${ML.border}`,
-            backgroundColor: ML.bgDark,
+            border: "1px solid var(--border)",
+            backgroundColor: "var(--popover)",
         },
         ".cm-completionMatchedText": {
             textDecoration: "none",

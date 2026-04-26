@@ -37,17 +37,17 @@ const MD = {
 export const darkTheme = EditorView.theme(
     {
         "&": {
-            color: MD.fg,
-            backgroundColor: MD.bg,
+            color: "var(--foreground)",
+            backgroundColor: "var(--background)",
         },
         ".cm-content": { caretColor: MD.indigo, padding: "0.55rem" },
         ".cm-cursor, .cm-dropCursor": { borderLeftColor: MD.indigo },
         "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
             backgroundColor: MD.bgSelection,
         },
-        ".cm-panels": { backgroundColor: MD.bgDark, color: MD.fg },
-        ".cm-panels.cm-panels-top": { borderBottom: `2px solid ${MD.border}` },
-        ".cm-panels.cm-panels-bottom": { borderTop: `2px solid ${MD.border}` },
+        ".cm-panels": { backgroundColor: "var(--card)", color: "var(--foreground)" },
+        ".cm-panels.cm-panels-top": { borderBottom: "2px solid var(--border)" },
+        ".cm-panels.cm-panels-bottom": { borderTop: "2px solid var(--border)" },
         ".cm-searchMatch": {
             backgroundColor: "#f9e2af28",
             outline: `1px solid ${MD.amber}`,
@@ -64,24 +64,24 @@ export const darkTheme = EditorView.theme(
             backgroundColor: "#f38ba825",
         },
         ".cm-gutters": {
-            backgroundColor: MD.bg,
-            color: MD.fgGutter,
+            backgroundColor: "var(--background)",
+            color: "var(--muted-foreground)",
             border: "none",
             width: "1.35rem",
-            borderRight: `1px solid ${MD.border}`,
+            borderRight: "1px solid var(--border)",
         },
         ".cm-activeLineGutter": {
-            backgroundColor: MD.bgHighlight,
-            color: MD.fgComment,
+            backgroundColor: "var(--secondary)",
+            color: "var(--muted-foreground)",
         },
         ".cm-foldPlaceholder": {
             backgroundColor: "transparent",
             border: "none",
-            color: MD.fgComment,
+            color: "var(--muted-foreground)",
         },
         ".cm-tooltip": {
-            border: `1px solid ${MD.border}`,
-            backgroundColor: MD.bgDark,
+            border: "1px solid var(--border)",
+            backgroundColor: "var(--popover)",
         },
         ".cm-completionMatchedText": {
             textDecoration: "none",
