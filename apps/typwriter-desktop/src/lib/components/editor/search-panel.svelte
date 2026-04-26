@@ -1,13 +1,6 @@
 <script lang="ts">
-  import {
-    ArrowUp,
-    ArrowDown,
-    CaretDown,
-    CaretRight,
-    X,
-    ArrowsClockwise,
-    Repeat,
-  } from "phosphor-svelte";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { ArrowUp01Icon, ArrowDown01Icon, ArrowRight01Icon, Cancel01Icon, RotateClockwiseIcon, ReplaceAllIcon } from "@hugeicons/core-free-icons";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
   import { tick } from "svelte";
 
@@ -80,9 +73,9 @@
       title={editorSearch.replaceVisible ? "Hide Replace" : "Show Replace"}
     >
       {#if editorSearch.replaceVisible}
-        <CaretDown class="size-3" />
+        <HugeiconsIcon icon={ArrowDown01Icon} class="size-3" />
       {:else}
-        <CaretRight class="size-3" />
+        <HugeiconsIcon icon={ArrowRight01Icon} class="size-3" />
       {/if}
     </button>
 
@@ -154,7 +147,7 @@
           title="Previous Match (Shift+Enter)"
           aria-label="Previous Match"
         >
-          <ArrowUp class="size-3.5" />
+          <HugeiconsIcon icon={ArrowUp01Icon} class="size-3.5" />
         </button>
         <button
           type="button"
@@ -164,7 +157,7 @@
           title="Next Match (Enter)"
           aria-label="Next Match"
         >
-          <ArrowDown class="size-3.5" />
+          <HugeiconsIcon icon={ArrowDown01Icon} class="size-3.5" />
         </button>
         <button
           type="button"
@@ -173,7 +166,7 @@
           title="Close (Escape)"
           aria-label="Close"
         >
-          <X class="size-3.5" />
+          <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
         </button>
       </div>
 
@@ -203,7 +196,7 @@
             title="Replace (Enter)"
             aria-label="Replace"
           >
-            <ArrowsClockwise class="size-3.5" />
+            <HugeiconsIcon icon={RotateClockwiseIcon} class="size-3.5" />
           </button>
           <button
             type="button"
@@ -213,7 +206,7 @@
             title="Replace All (Ctrl+Enter)"
             aria-label="Replace All"
           >
-            <Repeat class="size-3.5" />
+            <HugeiconsIcon icon={ReplaceAllIcon} class="size-3.5" />
           </button>
         </div>
       {/if}

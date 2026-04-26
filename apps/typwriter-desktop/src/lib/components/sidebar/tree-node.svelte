@@ -1,7 +1,8 @@
 <script lang="ts">
   import TreeNode from "./tree-node.svelte";
   import { tick } from "svelte";
-  import { CaretRight } from "phosphor-svelte";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { workspace, type FileNode, basename, dirname } from "$lib/stores/workspace.svelte";
@@ -269,7 +270,7 @@
         >
           <!-- Expand chevron for folders; spacer for files -->
           {#if node.is_dir}
-            <CaretRight
+            <HugeiconsIcon icon={ArrowRight01Icon}
               class="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150
                      {node.expanded ? 'rotate-90' : ''}"
             />

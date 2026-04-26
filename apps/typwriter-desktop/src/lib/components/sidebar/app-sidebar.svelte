@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { SidebarSimple, Folder, Warning, House } from "phosphor-svelte";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { SidebarLeftIcon, Folder01Icon, Alert01Icon, Home01Icon } from "@hugeicons/core-free-icons";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { page } from "$lib/stores/page.svelte";
@@ -65,7 +66,7 @@
               onclick={() => (panelOpen = !panelOpen)}
               title="Toggle sidebar"
             >
-              <SidebarSimple class="size-4" />
+              <HugeiconsIcon icon={SidebarLeftIcon} class="size-4" />
             </button>
           {/snippet}
         </Tooltip.Trigger>
@@ -87,7 +88,7 @@
               onclick={() => selectSection("files")}
               title="Files"
             >
-              <Folder class="size-4" />
+              <HugeiconsIcon icon={Folder01Icon} class="size-4" />
             </button>
           {/snippet}
         </Tooltip.Trigger>
@@ -109,7 +110,7 @@
               onclick={() => selectSection("diagnostics")}
               title="Diagnostics"
             >
-              <Warning
+              <HugeiconsIcon icon={Alert01Icon}
                 class="size-4 {hasErrors
                   ? 'text-destructive'
                   : diagCount > 0
@@ -151,7 +152,7 @@
               disabled={returningHome}
               title="Home"
             >
-              <House class="size-4" />
+              <HugeiconsIcon icon={Home01Icon} class="size-4" />
             </button>
           {/snippet}
         </Tooltip.Trigger>

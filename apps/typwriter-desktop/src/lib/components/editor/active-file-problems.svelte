@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Warning } from "phosphor-svelte";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { Alert01Icon } from "@hugeicons/core-free-icons";
   import { Button } from "$lib/components/ui/button/index.js";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
 
@@ -16,7 +17,7 @@
   class="relative"
   onclick={() => diagnostics.togglePane()}
 >
-  <Warning
+  <HugeiconsIcon icon={Alert01Icon}
     class="size-3.5 {hasErrors ? 'text-destructive' : hasWarnings ? 'text-yellow-500' : 'text-muted-foreground'}"
   />
   {#if diagCount > 0}

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Warning, XCircle, X } from "phosphor-svelte";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { Alert01Icon, MultiplicationSignCircleIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
   import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { editor } from "$lib/stores/editor.svelte";
@@ -81,7 +82,7 @@
       onclick={() => onclose ? onclose() : diagnostics.togglePane()}
       aria-label="Close problems pane"
     >
-      <X class="size-3.5" />
+      <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
     </button>
   </div>
 
@@ -105,7 +106,7 @@
               class="flex w-full items-start gap-2 px-6 py-1.5 text-left text-sm hover:bg-accent transition-colors {diag.range ? 'cursor-pointer' : 'cursor-default'}"
               onclick={() => void jumpToDiagnostic(diag)}
             >
-              <XCircle class="mt-0.5 size-3.5 shrink-0 text-destructive" />
+              <HugeiconsIcon icon={MultiplicationSignCircleIcon} class="mt-0.5 size-3.5 shrink-0 text-destructive" />
               <div class="min-w-0 flex-1">
                 <span class="break-words">{diag.message}</span>
                 {#if diag.range}
@@ -126,7 +127,7 @@
               class="flex w-full items-start gap-2 px-6 py-1.5 text-left text-sm hover:bg-accent transition-colors {diag.range ? 'cursor-pointer' : 'cursor-default'}"
               onclick={() => void jumpToDiagnostic(diag)}
             >
-              <Warning class="mt-0.5 size-3.5 shrink-0 text-yellow-500" />
+              <HugeiconsIcon icon={Alert01Icon} class="mt-0.5 size-3.5 shrink-0 text-yellow-500" />
               <div class="min-w-0 flex-1">
                 <span class="break-words">{diag.message}</span>
                 {#if diag.range}

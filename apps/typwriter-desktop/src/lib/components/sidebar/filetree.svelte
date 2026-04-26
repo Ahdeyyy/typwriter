@@ -1,11 +1,6 @@
 <script lang="ts">
-  import {
-    CaretUpDown,
-    FilePlus,
-    FolderPlus,
-    MagnifyingGlass,
-    X,
-  } from "phosphor-svelte";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { ArrowUpDownIcon, FilePlusIcon, FolderAddIcon, Search01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
   import { ChevronsDownUp } from "@lucide/svelte";
   import { tick } from "svelte";
   import { Input } from "$lib/components/ui/input/index.js";
@@ -144,7 +139,7 @@
       {#if workspace.anyFolderExpanded}
         <ChevronsDownUp class="size-3.5" />
       {:else}
-        <CaretUpDown class="size-3.5" />
+        <HugeiconsIcon icon={ArrowUpDownIcon} class="size-3.5" />
       {/if}
     </Button>
     <Button
@@ -153,7 +148,7 @@
       title="New file"
       onclick={() => startRootCreate("file")}
     >
-      <FilePlus class="size-3.5" />
+      <HugeiconsIcon icon={FilePlusIcon} class="size-3.5" />
     </Button>
     <Button
       variant="ghost"
@@ -161,7 +156,7 @@
       title="New folder"
       onclick={() => startRootCreate("folder")}
     >
-      <FolderPlus class="size-3.5" />
+      <HugeiconsIcon icon={FolderAddIcon} class="size-3.5" />
     </Button>
   </div>
 </div>
@@ -169,7 +164,7 @@
 <!-- ─── Search bar ─────────────────────────────────────────────────────────── -->
 <div class="shrink-0 border-b border-sidebar-border px-2 py-1.5">
   <div class="relative">
-    <MagnifyingGlass class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
+    <HugeiconsIcon icon={Search01Icon} class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
     <Input
       class="h-6 pl-6 pr-6 text-xs"
       placeholder="Search files…"
@@ -181,7 +176,7 @@
         onclick={() => (workspace.searchQuery = "")}
         aria-label="Clear search"
       >
-        <X class="size-3" />
+        <HugeiconsIcon icon={Cancel01Icon} class="size-3" />
       </button>
     {/if}
   </div>

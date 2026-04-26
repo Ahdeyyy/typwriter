@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { X } from "phosphor-svelte";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { Cancel01Icon } from "@hugeicons/core-free-icons";
   import { editor, type TabInfo } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
@@ -75,7 +76,7 @@
               onkeydown={(e) => { if (e.key === 'Enter') void closeTab(e as unknown as MouseEvent, tab); }}
               aria-label="Close {tab.name}"
             >
-              <X class="size-3" />
+              <HugeiconsIcon icon={Cancel01Icon} class="size-3" />
             </span>
 
             <!-- Active underline bar -->

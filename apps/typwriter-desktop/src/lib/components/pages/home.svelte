@@ -7,7 +7,8 @@
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { Folder, FolderOpen, FolderPlus, Trash, X, BookOpen, ArrowClockwise, List } from "phosphor-svelte";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, ListViewIcon } from "@hugeicons/core-free-icons";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { updater } from "$lib/stores/updater.svelte";
   import { toast } from "svelte-sonner";
@@ -188,7 +189,7 @@
             onclick={handleClearRecent}
             class="gap-2 text-destructive hover:text-destructive"
           >
-            <Trash class="size-4" />
+            <HugeiconsIcon icon={Delete01Icon} class="size-4" />
             Clear All
           </Button>
         {/if}
@@ -225,7 +226,7 @@
                     class="h-full w-full object-cover object-top"
                   />
                 {:else}
-                  <Folder class="h-8 w-8 text-muted-foreground" />
+                  <HugeiconsIcon icon={Folder01Icon} class="h-8 w-8 text-muted-foreground" />
                 {/if}
               </div>
 
@@ -247,7 +248,7 @@
               title="Remove from recents"
               aria-label="Remove {entry.name} from recents"
             >
-              <X class="size-3.5" />
+              <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
             </button>
           </li>
         {/each}
@@ -261,7 +262,7 @@
       <Dialog.Trigger>
         {#snippet child({ props })}
           <Button {...props} variant="outline" class="gap-2" disabled={!fontsReady}>
-            <FolderPlus class="size-4" />
+            <HugeiconsIcon icon={FolderAddIcon} class="size-4" />
             New Workspace
           </Button>
         {/snippet}
@@ -333,7 +334,7 @@
     </Dialog.Root>
 
     <Button onclick={handleOpenNew} class="gap-2" disabled={!fontsReady}>
-      <FolderOpen class="size-4" />
+      <HugeiconsIcon icon={FolderOpenIcon} class="size-4" />
       Open Folder
     </Button>
   </div>
@@ -345,7 +346,7 @@
       class="gap-1.5 text-muted-foreground"
       onclick={() => openUrl("https://typst.app/docs/")}
     >
-      <BookOpen class="size-3.5" />
+      <HugeiconsIcon icon={BookOpen01Icon} class="size-3.5" />
       Typst Docs
     </Button>
 
@@ -356,7 +357,7 @@
       onclick={() => updater.checkManual()}
       disabled={updater.checking || updater.downloading}
     >
-      <ArrowClockwise class="size-3.5 {updater.checking ? 'animate-spin' : ''}" />
+      <HugeiconsIcon icon={Refresh01Icon} class="size-3.5 {updater.checking ? 'animate-spin' : ''}" />
       Check for Updates
     </Button>
 
@@ -366,7 +367,7 @@
       class="gap-1.5 text-muted-foreground"
       onclick={() => page.navigate("logs")}
     >
-      <List class="size-3.5" />
+      <HugeiconsIcon icon={ListViewIcon} class="size-3.5" />
       View Logs
     </Button>
   </div>

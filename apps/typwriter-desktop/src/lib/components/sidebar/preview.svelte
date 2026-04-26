@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from "svelte";
-  import { MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowCounterClockwise, DownloadSimple } from "phosphor-svelte";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { ZoomInAreaIcon, ZoomOutAreaIcon, RotateLeft01Icon, Download01Icon } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
 
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -190,7 +191,7 @@
         onclick={zoomOut}
         disabled={preview.zoom <= 0.5}
       >
-        <MagnifyingGlassMinus class="size-3.5" />
+        <HugeiconsIcon icon={ZoomOutAreaIcon} class="size-3.5" />
       </Button>
 
       <span class="w-12 text-center text-xs text-muted-foreground tabular-nums">
@@ -204,7 +205,7 @@
         onclick={zoomIn}
         disabled={preview.zoom >= 8.0}
       >
-        <MagnifyingGlassPlus class="size-3.5" />
+        <HugeiconsIcon icon={ZoomInAreaIcon} class="size-3.5" />
       </Button>
     </div>
 
@@ -233,7 +234,7 @@
         onclick={() => (exportOpen = true)}
         disabled={preview.totalPages === 0}
       >
-        <DownloadSimple class="size-3.5" />
+        <HugeiconsIcon icon={Download01Icon} class="size-3.5" />
       </Button>
 
       <Button
@@ -242,7 +243,7 @@
         title="Refresh preview"
         onclick={refresh}
       >
-        <ArrowCounterClockwise class="size-3.5" />
+        <HugeiconsIcon icon={RotateLeft01Icon} class="size-3.5" />
       </Button>
     </div>
   </div>

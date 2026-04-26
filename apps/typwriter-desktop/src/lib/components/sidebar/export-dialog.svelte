@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { CaretDown } from "phosphor-svelte";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
   import { Select } from "bits-ui";
   import { toast } from "svelte-sonner";
   import {
@@ -233,7 +234,7 @@
                 class="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span>{selectedStandardLabel}</span>
-                <CaretDown class="size-4 opacity-50" />
+                <HugeiconsIcon icon={ArrowDown01Icon} class="size-4 opacity-50" />
               </Select.Trigger>
               <Select.Portal>
                 <Select.Content

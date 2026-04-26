@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { ArrowLeft, Clock, FileText, ArrowCounterClockwise, MagnifyingGlass, Warning, X } from "phosphor-svelte";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { ArrowLeft01Icon, Clock01Icon, File01Icon, RotateLeft01Icon, Search01Icon, Alert01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
   import { LineChart } from "layerchart";
   import * as Chart from "$lib/components/ui/chart/index.js";
   import * as Resizable from "$lib/components/ui/resizable/index.js";
@@ -116,7 +117,7 @@
               aria-label="Back"
               onclick={handleBack}
             >
-              <ArrowLeft class="size-3.5" />
+              <HugeiconsIcon icon={ArrowLeft01Icon} class="size-3.5" />
             </Button>
             <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
               Logs
@@ -135,7 +136,7 @@
               aria-label="Refresh"
               onclick={handleRefresh}
             >
-              <ArrowCounterClockwise class="size-3.5" />
+              <HugeiconsIcon icon={RotateLeft01Icon} class="size-3.5" />
             </Button>
           </div>
         </div>
@@ -224,7 +225,7 @@
             <!-- File info -->
             <div class="flex flex-col gap-0.5 border-t border-sidebar-border pt-2">
               <div class="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <FileText class="size-3 shrink-0" />
+                <HugeiconsIcon icon={File01Icon} class="size-3 shrink-0" />
                 <span class="truncate">{logView.data?.path ?? "Resolving..."}</span>
               </div>
               <div class="flex items-center gap-2 text-[10px] text-muted-foreground">
@@ -233,7 +234,7 @@
                 <span>{formatTimestamp(logView.data?.modified_at ?? null)}</span>
               </div>
               <div class="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Clock class="size-3 shrink-0" />
+                <HugeiconsIcon icon={Clock01Icon} class="size-3 shrink-0" />
                 <span>
                   Updated {logView.lastLoadedAt ? logView.lastLoadedAt.toLocaleTimeString() : "never"}
                 </span>
@@ -252,7 +253,7 @@
         <!-- Toolbar -->
         <div class="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-muted/20 px-3">
           <div class="relative flex-1 max-w-sm">
-            <MagnifyingGlass class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
+            <HugeiconsIcon icon={Search01Icon} class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
             <Input
               class="h-6 pl-6 pr-6 text-xs"
               placeholder="Search messages, targets..."
@@ -264,7 +265,7 @@
                 onclick={() => (logView.searchQuery = "")}
                 aria-label="Clear search"
               >
-                <X class="size-3" />
+                <HugeiconsIcon icon={Cancel01Icon} class="size-3" />
               </button>
             {/if}
           </div>
@@ -276,7 +277,7 @@
           </span>
 
           <div class="flex items-center gap-1 text-xs text-muted-foreground">
-            <FileText class="size-3.5" />
+            <HugeiconsIcon icon={File01Icon} class="size-3.5" />
             <span>{logView.data?.exists ? "Live" : "Waiting"}</span>
           </div>
         </div>
@@ -285,7 +286,7 @@
         <div class="flex-1 min-h-0">
           {#if logView.error}
             <div class="flex items-start gap-2 border-b border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              <Warning class="mt-0.5 size-3.5 shrink-0" />
+              <HugeiconsIcon icon={Alert01Icon} class="mt-0.5 size-3.5 shrink-0" />
               <div>
                 <p class="font-medium">Failed to load logs</p>
                 <p class="mt-0.5 whitespace-pre-wrap text-destructive/80">{logView.error}</p>
@@ -295,7 +296,7 @@
 
           {#if !(logView.data?.exists ?? false)}
             <div class="flex h-full flex-col items-center justify-center gap-2 select-none text-muted-foreground">
-              <FileText class="size-10 opacity-30" />
+              <HugeiconsIcon icon={File01Icon} class="size-10 opacity-30" />
               <span class="text-sm">Waiting for log file</span>
               <span class="text-xs opacity-50 max-w-xs truncate font-mono">
                 {logView.data?.path ?? "Resolving..."}
@@ -303,7 +304,7 @@
             </div>
           {:else if logView.filteredEntries.length === 0}
             <div class="flex h-full flex-col items-center justify-center gap-2 select-none text-muted-foreground">
-              <MagnifyingGlass class="size-10 opacity-30" />
+              <HugeiconsIcon icon={Search01Icon} class="size-10 opacity-30" />
               <span class="text-sm">No matching entries</span>
               <span class="text-xs opacity-50">Adjust search or severity filter</span>
             </div>
