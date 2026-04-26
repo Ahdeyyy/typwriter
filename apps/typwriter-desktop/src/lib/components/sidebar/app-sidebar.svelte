@@ -1,35 +1,63 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { SidebarLeftIcon, Folder01Icon, Alert01Icon, Home01Icon } from "@hugeicons/core-free-icons";
+  import {
+    Folder01Icon,
+    Alert01Icon,
+    Home01Icon,
+    ArrowDown01Icon,
+  } from "@hugeicons/core-free-icons";
+  import * as Sidebar from "$lib/components/ui/sidebar/index.js";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { page } from "$lib/stores/page.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { getRecentWorkspaces } from "$lib/ipc/commands";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
   import FileTree from "$lib/components/sidebar/filetree.svelte";
   import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
-    import ModeSwitcher from "./mode-switcher.svelte";
+  import ModeSwitcher from "./mode-switcher.svelte";
+  import type { RecentWorkspaceEntry } from "$lib/types";
 
   type Section = "files" | "diagnostics";
 
-  let panelOpen = $state(true);
+  const sidebarCtx = Sidebar.useSidebar();
   let activeSection = $state<Section>("files");
+  let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
   let returningHome = $state(false);
 
   const diagCount = $derived(diagnostics.errors.length + diagnostics.warnings.length);
   const hasErrors = $derived(diagnostics.errors.length > 0);
   const workspaceName = $derived(
-    workspace.rootPath?.split(/[/\\]/).pop() ?? "Explorer"
+    workspace.rootPath?.split(/[/\\]/).pop() ?? "Workspace"
   );
 
-  function selectSection(section: Section) {
-    if (panelOpen && activeSection === section) {
-      panelOpen = false;
+  onMount(async () => {
+    const result = await getRecentWorkspaces();
+    result.match(
+      (entries) => { recentWorkspaces = entries.slice(0, 3); },
+      (err) => { logError("Failed to load recent workspaces:", err); }
+    );
+  });
+
+  function toggleSection(section: Section) {
+    if (sidebarCtx.open && activeSection === section) {
+      sidebarCtx.setOpen(false);
     } else {
       activeSection = section;
-      panelOpen = true;
+      sidebarCtx.setOpen(true);
     }
+  }
+
+  async function handleOpenRecent(path: string) {
+    if (workspace.rootPath === path) return;
+    const result = await workspace.init(path);
+    result.mapErr((err) => {
+      logError("Failed to open workspace:", err);
+      toast.error(`Failed to open workspace: ${err}`);
+    });
   }
 
   async function handleReturnHome() {
@@ -41,76 +69,108 @@
       (err) => {
         logError("Failed to return home:", err);
         toast.error(`Failed to return home: ${err}`);
-      },
+      }
     );
     returningHome = false;
   }
 </script>
 
-<div class="flex h-full shrink-0">
+<Sidebar.Root collapsible="icon">
 
-  <!-- ─── Icon rail (always visible) ─────────────────────────────────────── -->
-  <div class="flex h-full w-10 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-    <div class="flex flex-col gap-0.5 p-1">
+  <!-- ─── Header: recent projects dropdown ──────────────────────────────────── -->
+  <Sidebar.Header>
+    <Sidebar.Menu>
+      <Sidebar.MenuItem>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            {#snippet child({ props })}
+              <Sidebar.MenuButton size="lg" {...props} tooltipContent={workspaceName}>
+                <div
+                  class="bg-sidebar-primary text-sidebar-primary-foreground flex size-8 shrink-0
+                         items-center justify-center rounded-lg"
+                >
+                  <HugeiconsIcon icon={Folder01Icon} class="size-4" />
+                </div>
+                <div class="flex min-w-0 flex-col gap-0.5 leading-none">
+                  <span class="truncate font-semibold">{workspaceName}</span>
+                  <span class="truncate text-[10px] opacity-50">{workspace.rootPath ?? ""}</span>
+                </div>
+                <HugeiconsIcon icon={ArrowDown01Icon} class="ml-auto size-4 shrink-0 opacity-50" />
+              </Sidebar.MenuButton>
+            {/snippet}
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content align="start" class="w-60">
+            <DropdownMenu.Label>Recent projects</DropdownMenu.Label>
+            <DropdownMenu.Separator />
+            {#if recentWorkspaces.length === 0}
+              <DropdownMenu.Item disabled>No recent projects</DropdownMenu.Item>
+            {:else}
+              {#each recentWorkspaces as recent (recent.path)}
+                <DropdownMenu.Item
+                  class="flex flex-col items-start gap-0.5 py-2"
+                  onclick={() => handleOpenRecent(recent.path)}
+                >
+                  <span class="font-medium">{recent.name}</span>
+                  <span class="text-muted-foreground max-w-full truncate text-[10px]">
+                    {recent.path}
+                  </span>
+                </DropdownMenu.Item>
+              {/each}
+            {/if}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      </Sidebar.MenuItem>
+    </Sidebar.Menu>
+  </Sidebar.Header>
 
-      <!-- Sidebar toggle -->
+  <!-- ─── Content: file tree or diagnostics ─────────────────────────────────── -->
+  <Sidebar.Content class="group-data-[collapsible=icon]:hidden">
+    {#if activeSection === "files"}
+      <FileTree />
+    {:else}
+      <DiagnosticsPane onclose={() => sidebarCtx.setOpen(false)} />
+    {/if}
+  </Sidebar.Content>
+
+  <!-- ─── Footer: section toggles + home + theme (horizontal) ─────────────── -->
+  <Sidebar.Footer class="border-t border-sidebar-border">
+    <div class="flex items-center group-data-[collapsible=icon]:block gap-0.5 p-1">
+
+      <!-- File explorer toggle -->
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
             <button
               {...props}
-              class="relative flex h-8 w-8 items-center justify-center rounded-md
-                     text-sidebar-foreground/70 transition-colors
-                     hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
-                     {panelOpen ? 'bg-sidebar-accent text-sidebar-accent-foreground' : ''}"
-              onclick={() => (panelOpen = !panelOpen)}
-              title="Toggle sidebar"
-            >
-              <HugeiconsIcon icon={SidebarLeftIcon} class="size-4" />
-            </button>
-          {/snippet}
-        </Tooltip.Trigger>
-        <Tooltip.Content side="right">Toggle sidebar</Tooltip.Content>
-      </Tooltip.Root>
-
-      <!-- Files -->
-      <Tooltip.Root>
-        <Tooltip.Trigger>
-          {#snippet child({ props })}
-            <button
-              {...props}
-              class="relative flex h-8 w-8 items-center justify-center rounded-md
-                     text-sidebar-foreground/70 transition-colors
-                     hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
-                     {panelOpen && activeSection === 'files'
+              class="relative flex size-8 shrink-0 items-center justify-center rounded-md
+                     transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
+                     {sidebarCtx.open && activeSection === 'files'
                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                       : ''}"
-              onclick={() => selectSection("files")}
-              title="Files"
+                       : 'text-sidebar-foreground/70'}"
+              onclick={() => toggleSection("files")}
             >
               <HugeiconsIcon icon={Folder01Icon} class="size-4" />
             </button>
           {/snippet}
         </Tooltip.Trigger>
-        <Tooltip.Content side="right">Files</Tooltip.Content>
+        <Tooltip.Content side="top">Files</Tooltip.Content>
       </Tooltip.Root>
 
-      <!-- Diagnostics -->
+      <!-- Diagnostics toggle -->
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
             <button
               {...props}
-              class="relative flex h-8 w-8 items-center justify-center rounded-md
-                     transition-colors
-                     hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
-                     {panelOpen && activeSection === 'diagnostics'
+              class="relative flex size-8 shrink-0 items-center justify-center rounded-md
+                     transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
+                     {sidebarCtx.open && activeSection === 'diagnostics'
                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                        : 'text-sidebar-foreground/70'}"
-              onclick={() => selectSection("diagnostics")}
-              title="Diagnostics"
+              onclick={() => toggleSection("diagnostics")}
             >
-              <HugeiconsIcon icon={Alert01Icon}
+              <HugeiconsIcon
+                icon={Alert01Icon}
                 class="size-4 {hasErrors
                   ? 'text-destructive'
                   : diagCount > 0
@@ -129,57 +189,34 @@
             </button>
           {/snippet}
         </Tooltip.Trigger>
-        <Tooltip.Content side="right">Diagnostics</Tooltip.Content>
+        <Tooltip.Content side="top">Diagnostics</Tooltip.Content>
       </Tooltip.Root>
 
-    </div>
-
-    <!-- Home (bottom), Theme Switcher -->
-
-    <div class="mt-auto p-1">
-
-       <ModeSwitcher />
+      <!-- Home -->
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
             <button
               {...props}
-              class="flex h-8 w-8 items-center justify-center rounded-md
+              class="flex size-8 shrink-0 items-center justify-center rounded-md
                      text-sidebar-foreground/70 transition-colors
-                     hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
-                     disabled:opacity-50 disabled:pointer-events-none"
+                     hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               onclick={handleReturnHome}
-              disabled={returningHome}
-              title="Home"
             >
               <HugeiconsIcon icon={Home01Icon} class="size-4" />
             </button>
           {/snippet}
         </Tooltip.Trigger>
-        <Tooltip.Content side="right">Home</Tooltip.Content>
+        <Tooltip.Content side="top">Home</Tooltip.Content>
       </Tooltip.Root>
-    </div>
-  </div>
 
-  <!-- ─── Content panel (conditional) ──────────────────────────────────────── -->
-  {#if panelOpen}
-    <div class="flex h-full w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-
-      <!-- Header -->
-      <div class="flex h-9 shrink-0 items-center border-b border-sidebar-border px-2">
-        <span class="truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {activeSection === "files" ? workspaceName : "Diagnostics"}
-        </span>
+      <!-- Theme switcher -->
+      <div class="ml-auto">
+        <ModeSwitcher />
       </div>
 
-      <!-- Section content -->
-      {#if activeSection === "files"}
-        <FileTree />
-      {:else}
-        <DiagnosticsPane onclose={() => (panelOpen = false)} />
-      {/if}
-
     </div>
-  {/if}
+  </Sidebar.Footer>
 
-</div>
+  <Sidebar.Rail />
+</Sidebar.Root>
