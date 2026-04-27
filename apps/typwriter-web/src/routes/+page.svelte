@@ -16,7 +16,8 @@
 		Download,
 		AppleLogo,
 		LinuxLogo,
-		Monitor
+		Monitor,
+		Code
 	} from 'phosphor-svelte';
 
 	import showcaseDark from '$lib/assets/showcase_dark.png';
@@ -60,25 +61,31 @@
 			icon: EyeIcon,
 			title: 'Live Preview',
 			description:
-				'Documents compile and render in real-time as you type. No manual refresh, no waiting.'
+				'Your document compiles and renders as you type. See the final result instantly, with no manual refresh.'
+		},
+		{
+			icon: Code,
+			title: 'Syntax Highlighting',
+			description:
+				'Full syntax highlighting for Typst — markup, math, code blocks, and more — making your source easy to read and navigate.'
 		},
 		{
 			icon: ArrowsHorizontal,
 			title: 'Bidirectional Navigation',
 			description:
-				'Click anywhere in the preview to jump to the corresponding source line — and vice versa.'
+				'Click anywhere in the preview to jump to the matching source line, or navigate the other way around.'
 		},
 		{
 			icon: Lightning,
-			title: 'Editor Intelligence',
+			title: 'Autocomplete & Docs',
 			description:
-				'Autocomplete suggestions and inline documentation keep you in flow while writing Typst.'
+				'Context-aware autocomplete and inline documentation surface the right suggestions as you write.'
 		},
 		{
 			icon: FolderOpen,
 			title: 'Workspace Management',
 			description:
-				'Organise your files into projects and quickly reopen recent workspaces from the start screen.'
+				'Organise documents into projects and pick up where you left off with quick access to recent workspaces.'
 		},
 		{
 			icon: Export,
@@ -92,56 +99,48 @@
 	<title>Typwriter - Typst editor</title>
 	<meta
 		name="description"
-		content="Typwriter is a native desktop editor for Typst with real-time preview, bidirectional navigation, and export to PDF, SVG, and PNG."
+		content="Typwriter is a cross-platform desktop editor for Typst — runs on Windows, macOS, and Linux. Syntax highlighting, live preview, bidirectional navigation, and export to PDF, SVG, and PNG."
 	/>
 </svelte:head>
 
 <!-- ─── Hero ───────────────────────────────────────────────── -->
 <section class="mx-auto max-w-5xl px-6 py-24 text-center">
-	<div class="mb-6 flex items-center justify-center gap-3">
-		{#if version}
-			<Badge variant="secondary">{version}</Badge>
-		{/if}
-		<Badge variant="outline">Open Source</Badge>
-	</div>
-
 	<h1 class="mb-4 text-4xl font-bold tracking-tighter sm:text-5xl lg:text-6xl">Typwriter</h1>
 
 	<p class="mx-auto mb-10 max-w-xl text-base text-muted-foreground sm:text-lg">
-		A native desktop editor for Typst with real-time preview, bidirectional navigation, and export
-		to PDF, SVG, and PNG.
+		A cross-platform Typst editor for Windows, macOS, and Linux. Write with syntax highlighting and
+		autocomplete, preview your document in real time, and export to PDF, SVG, or PNG.
 	</p>
 
 	<div class="flex flex-wrap items-center justify-center gap-3">
-		<Button size="lg" href="#download">
-			<Download size={16} class="mr-2" />
+		<Button size="lg" class="px-8 py-6 text-base" href="#download">
+			<Download size={18} class="mr-2" />
 			Download
-		</Button>
-		<Button variant="outline" size="lg" href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
-			<GithubLogo size={16} class="mr-2" />
-			View on GitHub
 		</Button>
 	</div>
 
 	<!-- Screenshot -->
-	<div class="relative mt-16 overflow-hidden rounded-sm border border-border shadow-sm">
-		<img
-			src={showcaseLight}
-			alt="Typwriter editor interface showing source and preview side by side"
-			class="block w-full object-cover dark:hidden"
-			loading="lazy"
-		/>
-		<img
-			src={showcaseDark}
-			alt="Typwriter editor interface showing source and preview side by side"
-			class="hidden w-full object-cover dark:block"
-			loading="lazy"
-		/>
-		<!-- Edge fades -->
-		<div class="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-background/40 to-transparent"></div>
-		<div class="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background/40 to-transparent"></div>
-		<div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-background/40 to-transparent"></div>
-		<div class="pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-background/40 to-transparent"></div>
+	<div class="relative mt-16">
+		<!-- Image container (overflow-hidden keeps scale animation clipped) -->
+		<div class="group overflow-hidden rounded-sm border border-border shadow-sm transition-all duration-500 ease-out hover:-translate-y-1 hover:shadow-lg">
+			<img
+				src={showcaseLight}
+				alt="Typwriter editor interface showing source and preview side by side"
+				class="block w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.01] dark:hidden"
+				loading="lazy"
+			/>
+			<img
+				src={showcaseDark}
+				alt="Typwriter editor interface showing source and preview side by side"
+				class="hidden w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.01] dark:block"
+				loading="lazy"
+			/>
+		</div>
+		<!-- Edge fades bleed beyond the image into the page background -->
+		<div class="pointer-events-none absolute inset-y-0 -left-3 w-12 bg-gradient-to-r from-background to-transparent"></div>
+		<div class="pointer-events-none absolute inset-y-0 -right-3 w-12 bg-gradient-to-l from-background to-transparent"></div>
+		<div class="pointer-events-none absolute inset-x-0 -bottom-3 h-14 bg-gradient-to-t from-background to-transparent"></div>
+		<div class="pointer-events-none absolute inset-x-0 -top-3 h-10 bg-gradient-to-b from-background to-transparent"></div>
 	</div>
 </section>
 
