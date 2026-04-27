@@ -15,7 +15,7 @@
     },
     "apps/typwriter-desktop": {
       "name": "typwriter",
-      "version": "0.3.2",
+      "version": "0.4.0",
       "dependencies": {
         "@citedrive/codemirror-lang-bibtex": "^6.4.1",
         "@codemirror/autocomplete": "^6.20.0",
@@ -85,7 +85,11 @@
       "devDependencies": {
         "@eslint/compat": "^2.0.2",
         "@eslint/js": "^9.39.2",
+        "@fontsource-variable/geist": "^5.2.8",
+        "@fontsource-variable/ibm-plex-sans": "^5.2.8",
         "@fontsource-variable/jetbrains-mono": "^5.2.8",
+        "@hugeicons/core-free-icons": "^4.1.1",
+        "@hugeicons/svelte": "^1.1.2",
         "@internationalized/date": "^3.12.0",
         "@sveltejs/adapter-auto": "^7.0.0",
         "@sveltejs/kit": "^2.50.2",
@@ -102,6 +106,7 @@
         "prettier": "^3.8.1",
         "prettier-plugin-svelte": "^3.4.1",
         "prettier-plugin-tailwindcss": "^0.7.2",
+        "shadcn-svelte": "^1.2.7",
         "svelte": "^5.51.0",
         "svelte-check": "^4.4.2",
         "tailwind-merge": "^3.5.0",

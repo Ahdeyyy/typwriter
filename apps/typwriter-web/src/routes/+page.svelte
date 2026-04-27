@@ -19,6 +19,9 @@
 		Monitor
 	} from 'phosphor-svelte';
 
+	import showcaseDark from '$lib/assets/showcase_dark.png';
+	import showcaseLight from '$lib/assets/showcase_light.png';
+
 	let { data }: { data: PageData } = $props();
 
 	const GITHUB_URL = 'https://github.com/Ahdeyyy/typwriter';
@@ -121,13 +124,24 @@
 	</div>
 
 	<!-- Screenshot -->
-	<div class="mt-16 border border-border bg-muted/30 p-1 shadow-sm">
+	<div class="relative mt-16 overflow-hidden rounded-sm border border-border shadow-sm">
 		<img
-			src="/typwriter%20editor.png"
+			src={showcaseLight}
 			alt="Typwriter editor interface showing source and preview side by side"
-			class="w-full object-cover"
+			class="block w-full object-cover dark:hidden"
 			loading="lazy"
 		/>
+		<img
+			src={showcaseDark}
+			alt="Typwriter editor interface showing source and preview side by side"
+			class="hidden w-full object-cover dark:block"
+			loading="lazy"
+		/>
+		<!-- Edge fades -->
+		<div class="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-background/40 to-transparent"></div>
+		<div class="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background/40 to-transparent"></div>
+		<div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-background/40 to-transparent"></div>
+		<div class="pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-background/40 to-transparent"></div>
 	</div>
 </section>
 
