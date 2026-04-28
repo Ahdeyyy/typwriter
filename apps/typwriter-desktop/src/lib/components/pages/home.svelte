@@ -217,7 +217,7 @@
         {#each recentWorkspaces.slice(0, 6) as entry (entry.path)}
           <li class="group relative">
             <button
-              class="flex w-full flex-col overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+              class="group/card flex w-full flex-col overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:bg-accent disabled:pointer-events-none cursor-pointer disabled:opacity-50"
               onclick={() => handleOpenRecent(entry.path)}
               disabled={!fontsReady}
             >
@@ -236,10 +236,10 @@
 
               <!-- Details -->
               <div class="min-w-0 px-3 py-2">
-                <p class="truncate text-sm font-medium text-foreground group-hover:text-accent-foreground">
+                <p class="truncate text-sm font-medium text-foreground group-hover/card:text-accent-foreground">
                   {entry.name}
                 </p>
-                <p class="truncate text-xs text-muted-foreground group-hover:text-accent-foreground/70">
+                <p class="truncate text-xs text-muted-foreground group-hover/card:text-accent-foreground/70">
                   {entry.path}
                 </p>
               </div>
