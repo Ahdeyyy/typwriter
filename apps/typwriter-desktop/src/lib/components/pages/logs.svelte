@@ -11,6 +11,7 @@
   import { workspace } from "$lib/stores/workspace.svelte";
   import { logView, type LogSeverityFilter } from "$lib/stores/log-view.svelte";
   import type { LogEntry } from "$lib/types";
+  import Titlebar from "$lib/components/titlebar/titlebar.svelte";
 
   const chartConfig = {
     info: {
@@ -102,8 +103,9 @@
   }
 </script>
 
-<div class="relative flex h-screen w-screen overflow-hidden">
-  <Resizable.PaneGroup direction="horizontal" class="h-full w-full">
+<div class="relative flex h-screen w-screen flex-col overflow-hidden">
+  <Titlebar variant="minimal" title="Logs" />
+  <Resizable.PaneGroup direction="horizontal" class="h-full w-full flex-1">
     <!-- ─── Left sidebar ──────────────────────────────────────────────── -->
     <Resizable.Pane defaultSize={25} minSize={15} maxSize={40}>
       <div class="flex h-full flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">

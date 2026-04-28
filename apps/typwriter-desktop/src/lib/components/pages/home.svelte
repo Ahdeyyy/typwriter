@@ -16,6 +16,7 @@
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import ModeSwitcher from "$lib/components/sidebar/mode-switcher.svelte";
+  import Titlebar from "$lib/components/titlebar/titlebar.svelte";
 
   let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
   let loading = $state(true);
@@ -175,10 +176,12 @@
 
 </script>
 
-<main class="relative flex h-full flex-col items-center justify-center gap-5 p-4">
-  <div class="absolute right-3 top-3">
-    <ModeSwitcher />
-  </div>
+<div class="flex h-full w-full flex-col">
+  <Titlebar variant="minimal" title="Typwriter" />
+  <main class="relative flex flex-1 flex-col items-center justify-center gap-5 p-4">
+    <div class="absolute right-3 top-3">
+      <ModeSwitcher />
+    </div>
   <!-- Recent workspaces -->
   <section class="w-full max-w-3xl">
     <div class="mb-4 flex items-center justify-between gap-3">
@@ -375,4 +378,5 @@
       View Logs
     </Button>
   </div>
-</main>
+  </main>
+</div>
