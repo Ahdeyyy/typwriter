@@ -137,10 +137,10 @@
 			/>
 		</div>
 		<!-- Edge fades bleed beyond the image into the page background -->
-		<div class="pointer-events-none absolute inset-y-0 -left-3 w-12 bg-gradient-to-r from-background to-transparent"></div>
-		<div class="pointer-events-none absolute inset-y-0 -right-3 w-12 bg-gradient-to-l from-background to-transparent"></div>
-		<div class="pointer-events-none absolute inset-x-0 -bottom-3 h-14 bg-gradient-to-t from-background to-transparent"></div>
-		<div class="pointer-events-none absolute inset-x-0 -top-3 h-10 bg-gradient-to-b from-background to-transparent"></div>
+		<div class="pointer-events-none absolute inset-y-0 -translate-x-2 -left-3 w-12 bg-gradient-to-r from-background to-transparent"></div>
+		<div class="pointer-events-none absolute inset-y-0 translate-x-2 -right-3 w-12 bg-gradient-to-l from-background/20 to-transparent"></div>
+		<div class="pointer-events-none absolute inset-x-0 translate-y-2 -bottom-3 h-14 bg-gradient-to-t from-background to-transparent"></div>
+		<div class="pointer-events-none absolute inset-x-0 -translate-y-2 -top-3 h-10 bg-gradient-to-b from-background/20 to-transparent"></div>
 	</div>
 </section>
 
