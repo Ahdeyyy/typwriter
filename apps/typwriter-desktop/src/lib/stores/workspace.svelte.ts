@@ -144,6 +144,7 @@ class WorkspaceStore {
 
     private _filesChangedUnlisten: UnlistenFn | null = null;
     private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    private _opLock: Promise<void> = Promise.resolve();
 
     toAbs(path: string): string {
         if (!this.rootPath) {
@@ -166,15 +167,20 @@ class WorkspaceStore {
     }
 
     init(root: string): ResultAsync<void, string> {
-        return ResultAsync.fromPromise(this._init(root), (err) => String(err));
+        const op = this._opLock.then(() => this._init(root));
+        this._opLock = op.catch(() => {});
+        return ResultAsync.fromPromise(op, (err) => String(err));
     }
 
     leave(): ResultAsync<void, string> {
-        return ResultAsync.fromPromise(this._leave(), (err) => String(err));
+        const op = this._opLock.then(() => this._leave());
+        this._opLock = op.catch(() => {});
+        return ResultAsync.fromPromise(op, (err) => String(err));
     }
 
     private async _init(root: string): Promise<void> {
         await editor.flushAllTabs();
+        await editor.reset();
         this._disposeFilesChangedListener();
         this._clearRefreshTimer();
 

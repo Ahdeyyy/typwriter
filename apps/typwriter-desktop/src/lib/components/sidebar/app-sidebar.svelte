@@ -20,8 +20,31 @@
   import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
   import ModeSwitcher from "./mode-switcher.svelte";
   import type { RecentWorkspaceEntry } from "$lib/types";
+  import { defaultWindowIcon } from '@tauri-apps/api/app';
+
+function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: number): string {
+    // 1. Wrap the array in a Uint8ClampedArray (required by the ImageData API)
+    const clampedArray = new Uint8ClampedArray(rgbaArray);
+
+    // 2. Create an ImageData object
+    const imageData = new ImageData(clampedArray, width, height);
+
+    // 3. Create an off-screen canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    // 4. Put the image data onto the canvas context
+    const ctx = canvas.getContext('2d');
+    ctx.putImageData(imageData, 0, 0);
+
+    // 5. Export the canvas as a base64 encoded PNG URL
+    return canvas.toDataURL('image/png');
+}
 
   type Section = "files" | "diagnostics";
+
+  let iconImage: HTMLImageElement | undefined = $state(undefined);
 
   const sidebarCtx = Sidebar.useSidebar();
   let activeSection = $state<Section>("files");
@@ -35,6 +58,15 @@
   );
 
   onMount(async () => {
+    const icon = await defaultWindowIcon();
+    if (icon) {
+      const size = await icon.size()
+      const htmlImage = new Image(size.width, size.height)
+      const bytes = await icon.rgba()
+      htmlImage.src = createImageUrlFromRgba(bytes, size.width, size.height)
+      iconImage = htmlImage;
+      await icon.close()
+    }
     const result = await getRecentWorkspaces();
     result.match(
       (entries) => { recentWorkspaces = entries.slice(0, 3); },
@@ -86,10 +118,14 @@
             {#snippet child({ props })}
               <Sidebar.MenuButton size="lg" {...props} tooltipContent={workspaceName}>
                 <div
-                  class="bg-sidebar-primary text-sidebar-primary-foreground flex size-8 shrink-0
-                         items-center justify-center rounded-lg"
+                  class="bg-sidebar-accent text-sidebar-accent-foreground shadow-lg flex size-8 shrink-0
+                         items-center justify-center rounded-lg mx-auto"
                 >
-                  <HugeiconsIcon icon={Folder01Icon} class="size-4" />
+                    {#if iconImage}
+                        <img src={iconImage.src} alt="typwriter logo" class="mx-auto size-8" />
+                    {:else}
+                      <HugeiconsIcon icon={Folder01Icon} class="size-4" />
+                    {/if}
                 </div>
                 <div class="flex min-w-0 flex-col gap-0.5 leading-none">
                   <span class="truncate font-semibold">{workspaceName}</span>
@@ -134,7 +170,7 @@
 
   <!-- ─── Footer: section toggles + home + theme (horizontal) ─────────────── -->
   <Sidebar.Footer class="border-t border-sidebar-border">
-    <div class="flex items-center group-data-[collapsible=icon]:block gap-0.5 p-1">
+    <div class="flex items-center group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-center gap-0.5 p-1">
 
       <!-- File explorer toggle -->
       <Tooltip.Root>
@@ -211,7 +247,7 @@
       </Tooltip.Root>
 
       <!-- Theme switcher -->
-      <div class="ml-auto">
+      <div class="ml-auto group-data-[collapsible=icon]:ml-0">
         <ModeSwitcher />
       </div>
 

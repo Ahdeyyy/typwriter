@@ -64,6 +64,7 @@
   --shadow-2xl: 0px 1px 4px 0px hsl(0 0% 0% / 0.13);
   --tracking-normal: 0.0125em;
   --spacing: 0.25rem;
+  --titlebar-height: 2.25rem;
 }
 
 .dark {
@@ -323,8 +324,23 @@
 .preview-scroll::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--border) 75%, transparent);
 }
+
+
+/* Disable text selection / cursor change in the drag region to feel native. */
+[data-tauri-drag-region] {
+  cursor: default;
+}
 	html {
 		@apply font-sans;
   }
 
+}
+
+/* Shift the fixed sidebar below the custom titlebar.
+   Must be in @layer utilities (not base) so it wins over inset-y-0 / h-svh. */
+@layer utilities {
+  .has-titlebar [data-slot="sidebar-container"] {
+    top: var(--titlebar-height);
+    height: calc(100svh - var(--titlebar-height));
+  }
 }

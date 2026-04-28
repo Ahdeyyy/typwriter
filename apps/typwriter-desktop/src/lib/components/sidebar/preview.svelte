@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { ZoomInAreaIcon, ZoomOutAreaIcon, RotateLeft01Icon, Download01Icon } from "@hugeicons/core-free-icons";
+  import { ZoomInAreaIcon, ZoomOutAreaIcon, RotateLeft01Icon, Download01Icon, Refresh01Icon } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
 
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -243,7 +243,7 @@
         title="Refresh preview"
         onclick={refresh}
       >
-        <HugeiconsIcon icon={RotateLeft01Icon} class="size-3.5" />
+        <HugeiconsIcon icon={Refresh01Icon} class="size-3.5" />
       </Button>
     </div>
   </div>

@@ -7,7 +7,7 @@
   import { editor } from "$lib/stores/editor.svelte";
 </script>
 
-<div class="flex h-svh flex-col bg-background">
+<div class="flex h-full flex-col bg-background">
   {#if editor.tabs.length > 0}
     <TabBar />
   {/if}

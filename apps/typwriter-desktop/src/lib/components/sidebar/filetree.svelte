@@ -1,7 +1,7 @@
 <script lang="ts">
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { ArrowUpDownIcon, FilePlusIcon, FolderAddIcon, Search01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
-  import { ChevronsDownUp } from "@lucide/svelte";
+  import { ArrowUpDownIcon, FilePlusIcon, FolderAddIcon, Search01Icon, Cancel01Icon, UnfoldLessIcon, UnfoldMoreIcon, UnfoldMoreDownIcon, UnfoldMoreFreeIcons, ChevronsUpDown } from "@hugeicons/core-free-icons";
+  import { ChevronsDownUp, ChevronsUpDownIcon } from "@lucide/svelte";
   import { tick } from "svelte";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -137,9 +137,12 @@
       onclick={() => workspace.anyFolderExpanded ? workspace.collapseAll() : workspace.expandAll()}
     >
       {#if workspace.anyFolderExpanded}
-        <ChevronsDownUp class="size-3.5" />
+
+        <HugeiconsIcon icon={UnfoldLessIcon} class="size-4" />
+
       {:else}
-        <HugeiconsIcon icon={ArrowUpDownIcon} class="size-3.5" />
+        <!-- <HugeiconsIcon icon={ChevronsUpDownI} class="size-7" /> -->
+        <ChevronsUpDownIcon class="size-4" />
       {/if}
     </Button>
     <Button
@@ -148,7 +151,7 @@
       title="New file"
       onclick={() => startRootCreate("file")}
     >
-      <HugeiconsIcon icon={FilePlusIcon} class="size-3.5" />
+      <HugeiconsIcon icon={FilePlusIcon} class="size-4" />
     </Button>
     <Button
       variant="ghost"
@@ -156,7 +159,7 @@
       title="New folder"
       onclick={() => startRootCreate("folder")}
     >
-      <HugeiconsIcon icon={FolderAddIcon} class="size-3.5" />
+      <HugeiconsIcon icon={FolderAddIcon} class="size-4" />
     </Button>
   </div>
 </div>
