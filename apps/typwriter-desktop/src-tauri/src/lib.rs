@@ -12,7 +12,7 @@ use rayon::prelude::*;
 
 use compiler::PreviewPipeline;
 use tauri::{Emitter, Manager};
-use tauri_plugin_log::{Target, TargetKind};
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 use typst_kit::fonts::FontSearcher;
 use workspace::WorkspaceState;
 use world::EditorWorld;
@@ -48,12 +48,14 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(tauri_plugin_log::log::LevelFilter::Info)
+                .max_file_size(5 * 1024 * 1024)
                 .targets([
                     Target::new(TargetKind::Stdout),
                     Target::new(TargetKind::LogDir {
                         file_name: Some("typwriter-desktop".into()),
                     }),
                 ])
+                .rotation_strategy(RotationStrategy::KeepOne)
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
