@@ -8,8 +8,6 @@ mod world;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use rayon::prelude::*;
-
 use compiler::PreviewPipeline;
 use tauri::{Emitter, Manager};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
@@ -85,13 +83,7 @@ pub fn run() {
             // ── Background font loading ─────────────────────────────────────
             std::thread::spawn(move || {
                 let font_results = FontSearcher::new().search();
-                let fonts: Vec<typst::text::Font> = font_results
-                    .fonts
-                    .par_iter()
-                    .filter_map(|slot| slot.get())
-                    .collect();
-
-                world.load_fonts(fonts);
+                world.load_fonts(font_results.book, font_results.fonts);
                 init.fonts_loaded.store(true, Ordering::Release);
                 let _ = handle.emit("app:fonts-loaded", ());
             });

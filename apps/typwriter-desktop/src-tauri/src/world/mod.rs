@@ -26,12 +26,13 @@ use typst::{
 use typst_ide::IdeWorld;
 use typst_kit::{
     download::Downloader,
+    fonts::FontSlot,
     package::{default_package_cache_path, default_package_path, PackageStorage},
 };
 
 /// Bundled font data, set once via `OnceLock` when background loading completes.
 struct FontData {
-    fonts: Vec<Font>,
+    slots: Vec<FontSlot>,
     book: LazyHash<FontBook>,
 }
 
@@ -108,10 +109,9 @@ impl EditorWorld {
     }
 
     /// Load fonts from a background thread after startup.
-    pub fn load_fonts(&self, fonts: Vec<Font>) {
-        let book = FontBook::from_fonts(&fonts);
+    pub fn load_fonts(&self, book: FontBook, slots: Vec<FontSlot>) {
         let _ = self.font_data.set(FontData {
-            fonts,
+            slots,
             book: LazyHash::new(book),
         });
     }
@@ -261,7 +261,8 @@ impl World for EditorWorld {
     fn font(&self, index: usize) -> Option<Font> {
         self.font_data
             .get()
-            .and_then(|d| d.fonts.get(index).cloned())
+            .and_then(|d| d.slots.get(index))
+            .and_then(|slot| slot.get())
     }
 
     fn today(&self, offset: Option<i64>) -> Option<Datetime> {
