@@ -26,7 +26,9 @@
       "WebFetch(domain:www.shadcn-svelte.com)",
       "Read(//c/Users/ahdey/projects/typwriter/apps/typwriter-desktop/node_modules/@hugeicons/svelte/dist/**)",
       "Read(//c/Users/ahdey/projects/typwriter/node_modules/.bun/@hugeicons+svelte@1.1.2+d405b258e3abf470/node_modules/@hugeicons/svelte/dist/**)",
-      "Bash(xargs wc *)"
+      "Bash(xargs wc *)",
+      "WebSearch",
+      "Bash(ls -la C:\\\\\\\\Users\\\\\\\\ahdey\\\\\\\\projects\\\\\\\\typwriter\\\\\\\\apps\\\\\\\\typwriter-desktop\\\\\\\\node_modules\\\\\\\\@hugeicons\\\\\\\\core-free-icons\\\\\\\\lib)"
     ]
   }
 }
