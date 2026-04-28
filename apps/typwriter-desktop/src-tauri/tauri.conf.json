@@ -16,7 +16,9 @@
         "width": 800,
         "height": 600,
         "maximized": true,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "titleBarStyle": "Transparent",
+        "center": true
       }
     ],
     "security": {

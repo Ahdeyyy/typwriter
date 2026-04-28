@@ -157,6 +157,7 @@ function parseExpr(s: Scanner, ctx: TypstParseContext, minPrec: number, embedded
     // In embedded mode, don't consume binary operators
     if (embedded) break
 
+    const beforeSkip = s.pos
     skipWhitespaceAndComments(s)
 
     // Binary operators
@@ -177,6 +178,7 @@ function parseExpr(s: Scanner, ctx: TypstParseContext, minPrec: number, embedded
       continue
     }
 
+    s.pos = beforeSkip
     break
   }
 
@@ -405,12 +407,16 @@ function parseNumber(s: Scanner): Elt {
     s.eatWhile(isDigit)
   }
 
-  // Exponent
+  // Exponent: only when e/E is followed by an optional sign then a digit
+  // (prevents consuming the 'e' in units like "em")
   if (s.peek() === Ch.e || s.peek() === 69) { // e or E
-    isFloat = true
-    s.next()
-    if (s.peek() === Ch.Plus || s.peek() === Ch.Minus) s.next()
-    s.eatWhile(isDigit)
+    const signOffset = (s.peek(1) === Ch.Plus || s.peek(1) === Ch.Minus) ? 2 : 1
+    if (isDigit(s.peek(signOffset))) {
+      isFloat = true
+      s.next()
+      if (s.peek() === Ch.Plus || s.peek() === Ch.Minus) s.next()
+      s.eatWhile(isDigit)
+    }
   }
 
   // Unit suffix: pt, cm, mm, em, in, deg, rad, fr, %
@@ -678,7 +684,8 @@ function parseSetRule(s: Scanner, ctx: TypstParseContext): Elt {
   const target = parseExpr(s, ctx, Prec.Postfix, false)
   if (target) children.push(target)
 
-  // Optional "if" condition
+  // Optional "if" condition (only on the same line — don't consume newlines)
+  const beforeIfSkip = s.pos
   skipWhitespaceAndComments(s)
   if (peekWord(s) === "if") {
     const ifStart = s.pos
@@ -687,6 +694,8 @@ function parseSetRule(s: Scanner, ctx: TypstParseContext): Elt {
     skipWhitespaceAndComments(s)
     const cond = parseExpr(s, ctx, 0, false)
     if (cond) children.push(cond)
+  } else {
+    s.pos = beforeIfSkip
   }
 
   return new Elt(Type.SetRule, start, s.pos, children)
@@ -740,7 +749,8 @@ function parseConditional(s: Scanner, ctx: TypstParseContext): Elt {
   const body = parseBlockBody(s, ctx)
   if (body) children.push(body)
 
-  // Optional else
+  // Optional else (don't consume newlines speculatively)
+  const beforeElseSkip = s.pos
   skipWhitespaceAndComments(s)
   if (peekWord(s) === "else") {
     const elseStart = s.pos
@@ -757,6 +767,8 @@ function parseConditional(s: Scanner, ctx: TypstParseContext): Elt {
       const elseBody = parseBlockBody(s, ctx)
       if (elseBody) children.push(elseBody)
     }
+  } else {
+    s.pos = beforeElseSkip
   }
 
   return new Elt(Type.Conditional, start, s.pos, children)

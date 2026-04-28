@@ -6,7 +6,10 @@
   import { installGlobalErrorLogging } from "$lib/logger";
   import { updater } from "$lib/stores/updater.svelte";
   import { mode, ModeWatcher } from "mode-watcher";
-  import {app} from "@tauri-apps/api"
+  import {app,window} from "@tauri-apps/api"
+    import { Effect } from "@tauri-apps/api/window";
+
+  const darkBackground = "#0a0a0a"
 
   const { children } = $props();
 
@@ -15,7 +18,7 @@
     return installGlobalErrorLogging();
   });
 
-  onMount(() => {
+  onMount(async () => {
     app.setTheme(mode.current === "dark" ? "dark": "light")
     updater.checkPassive();
   });
