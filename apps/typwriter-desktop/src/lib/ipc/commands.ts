@@ -135,6 +135,10 @@ export function triggerPreview(reason?: CompileReason) {
     return ResultAsync.fromPromise(invoke<void>('trigger_preview', { reason }), toErrString);
 }
 
+export function syncPreview() {
+    return ResultAsync.fromPromise(invoke<void>('sync_preview'), toErrString);
+}
+
 export function setZoom(scale: number) {
     return ResultAsync.fromPromise(invoke<void>('set_zoom', { scale }), toErrString);
 }

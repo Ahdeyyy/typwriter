@@ -24,7 +24,7 @@ use commands::{
     },
     export::{export_pdf, export_png, export_svg},
     logs::get_current_log_view,
-    preview::{get_zoom, set_visible_page, set_zoom, trigger_preview},
+    preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
         delete_folder, get_file_tree, get_recent_workspaces, import_files, move_file, move_folder,
@@ -119,6 +119,7 @@ pub fn run() {
             get_definitions,
             // preview control
             trigger_preview,
+            sync_preview,
             set_zoom,
             get_zoom,
             set_visible_page,

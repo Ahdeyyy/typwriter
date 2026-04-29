@@ -1,17 +1,30 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { ZoomInAreaIcon, ZoomOutAreaIcon, RotateLeft01Icon, Download01Icon, Refresh01Icon } from "@hugeicons/core-free-icons";
+  import { ZoomInAreaIcon, ZoomOutAreaIcon, RotateLeft01Icon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
 
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
 
   import { preview } from "$lib/stores/preview.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { jumpFromClick, setVisiblePage } from "$lib/ipc/commands";
+  import { emitPreviewSourceJump } from "$lib/ipc/events";
   import { Button } from "$lib/components/ui/button";
   import { logError } from "$lib/logger";
+
+  const isPopout = (() => {
+    try {
+      return getCurrentWindow().label === "preview";
+    } catch {
+      return false;
+    }
+  })();
+
+  type Props = { onPresentationMode?: () => void };
+  let { onPresentationMode }: Props = $props();
 
   // ── Local state ────────────────────────────────────────────────────────────
 
@@ -66,14 +79,27 @@
     preview.scrollTarget = null;
 
     // Pre-render the target page by moving visiblePage before scrolling.
-    // This ensures shouldRenderPage(target) returns true and the actual image
-    // is in the DOM (correct height) when scrollIntoView fires.
-    visiblePage = target;
+    visiblePage = target.page;
 
-    // One rAF lets Svelte flush the DOM update triggered by visiblePage change.
     requestAnimationFrame(() => {
-      const el = document.getElementById(`preview-page-${target}`);
-      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const pageEl = document.getElementById(`preview-page-${target.page}`);
+      if (!pageEl || !scrollEl) return;
+
+      // y is in typst points; renderer produces naturalHeight = pageHeightPt * zoom,
+      // so 1pt = zoom px. Pixel offset within the page image = y * zoom.
+      const yPx = target.y * preview.zoom;
+      const yAbs = pageEl.offsetTop + yPx;
+
+      // If the target is already on screen, don't scroll — the user is likely
+      // already looking at it (e.g. they just clicked there).
+      const viewTop = scrollEl.scrollTop;
+      const viewBottom = viewTop + scrollEl.clientHeight;
+      const margin = 24;
+      if (yAbs >= viewTop + margin && yAbs <= viewBottom - margin) return;
+
+      // Otherwise scroll to put the target into the upper third of the viewport.
+      const scrollTo = yAbs - scrollEl.clientHeight / 3;
+      scrollEl.scrollTo({ top: scrollTo, behavior: "smooth" });
     });
   });
 
@@ -124,6 +150,17 @@
       .catch((err) => logError("preview refresh failed:", err));
   }
 
+  function togglePresentation() {
+    if (!isPopout) {
+      // Will be handled by parent via prop
+      onPresentationMode?.();
+      return;
+    }
+    preview
+      .togglePresentationMode()
+      .catch((err) => logError("preview presentation mode failed:", err));
+  }
+
   function shouldRenderPage(index: number) {
     return Math.abs(index - visiblePage) <= PAGE_BUFFER;
   }
@@ -142,6 +179,13 @@
 
     const jump = result.value;
     if (jump.type === "file") {
+      if (isPopout) {
+        emitPreviewSourceJump({ path: jump.path, offset: jump.start_byte }).mapErr(
+          (err) => logError("emit preview:source-jump failed:", err)
+        );
+        return;
+      }
+      if (!workspace.rootPath) return;
       const relPath = workspace.toRel(jump.path);
       editor
         .openFile(relPath)
@@ -150,7 +194,7 @@
     } else if (jump.type === "url") {
       openUrl(jump.url).catch((err) => logError("open url failed:", err));
     } else if (jump.type === "position") {
-      preview.scrollTarget = jump.page;
+      preview.scrollTarget = { page: jump.page, x: jump.x, y: jump.y };
     }
   }
 
@@ -166,6 +210,7 @@
 
 <div class="flex h-full flex-col bg-background text-foreground">
   <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
+  {#if !preview.presentationMode}
   <div
     bind:clientWidth={toolbarWidth}
     class={isNarrow
@@ -235,8 +280,20 @@
       >
         <HugeiconsIcon icon={Refresh01Icon} class="size-3.5" />
       </Button>
+
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title={preview.presentationMode ? "Exit presentation mode" : "Presentation mode"}
+        onclick={togglePresentation}
+        disabled={preview.totalPages === 0}
+        class={preview.presentationMode ? "text-accent-foreground bg-accent/20" : ""}
+      >
+        <HugeiconsIcon icon={preview.presentationMode ? Cancel01Icon : PresentationBarChart01Icon} class="size-3.5" />
+      </Button>
     </div>
   </div>
+  {/if}
 
   <!-- ── Page list ──────────────────────────────────────────────────────── -->
   <div

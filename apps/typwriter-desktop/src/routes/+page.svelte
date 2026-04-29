@@ -1,13 +1,25 @@
 <script lang="ts">
   import { page } from "@/stores/page.svelte";
   import { workspace } from "@/stores/workspace.svelte";
+  import PreviewWindow from "$lib/components/pages/preview-window.svelte";
 
   import { Window } from "@tauri-apps/api/window";
   import { watch } from "runed";
 
   const window = Window.getCurrent();
 
+  const searchParams =
+    typeof globalThis.window !== "undefined"
+      ? new URLSearchParams(globalThis.window.location.search)
+      : new URLSearchParams();
+
+  const isPreviewWindow = searchParams.get("window") === "preview";
+  const autoPresent = isPreviewWindow && searchParams.get("present") === "1";
+
   const title = $derived.by(() => {
+    if (isPreviewWindow) {
+      return "Preview - Typwriter";
+    }
     if (page.current.name === "logs") {
       return "Logs - Typwriter";
     }
@@ -27,7 +39,10 @@
 
 <section class="w-100svw h-100svh">
   <svelte:boundary>
-    <page.current.component />
-    <!-- <page.component /> -->
+    {#if isPreviewWindow}
+      <PreviewWindow {autoPresent} />
+    {:else}
+      <page.current.component />
+    {/if}
   </svelte:boundary>
 </section>

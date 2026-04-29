@@ -1,5 +1,15 @@
-import { listen, type Event, type UnlistenFn } from '@tauri-apps/api/event';
+import { emit, listen, type Event, type UnlistenFn } from '@tauri-apps/api/event';
 import { ResultAsync } from 'neverthrow';
+
+export interface EditorCursorPositionPayload {
+    path: string;
+    offset: number;
+}
+
+export interface PreviewSourceJumpPayload {
+    path: string;
+    offset: number;
+}
 
 import type {
     DiagnosticsPayload,
@@ -82,4 +92,28 @@ export function onAppFontsLoaded(handler: () => void) {
         listen<void>('app:fonts-loaded', () => handler()),
         toErrString
     );
+}
+
+// ─── Cross-window preview <-> editor sync ────────────────────────────────────
+
+export function onEditorCursorPosition(handler: (payload: EditorCursorPositionPayload) => void) {
+    return ResultAsync.fromPromise(
+        listen<EditorCursorPositionPayload>('editor:cursor-position', (event) => handler(event.payload)),
+        toErrString
+    );
+}
+
+export function emitEditorCursorPosition(payload: EditorCursorPositionPayload) {
+    return ResultAsync.fromPromise(emit('editor:cursor-position', payload), toErrString);
+}
+
+export function onPreviewSourceJump(handler: (payload: PreviewSourceJumpPayload) => void) {
+    return ResultAsync.fromPromise(
+        listen<PreviewSourceJumpPayload>('preview:source-jump', (event) => handler(event.payload)),
+        toErrString
+    );
+}
+
+export function emitPreviewSourceJump(payload: PreviewSourceJumpPayload) {
+    return ResultAsync.fromPromise(emit('preview:source-jump', payload), toErrString);
 }

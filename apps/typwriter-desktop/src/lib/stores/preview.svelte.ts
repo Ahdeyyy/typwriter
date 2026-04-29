@@ -2,9 +2,12 @@ import {
     getZoom,
     jumpFromCursor,
     setZoom,
+    syncPreview,
     triggerPreview,
 } from '$lib/ipc/commands';
 import {
+    emitEditorCursorPosition,
+    onEditorCursorPosition,
     onPreviewCompileState,
     onPreviewPageRemoved,
     onPreviewPageUpdated,
@@ -13,6 +16,17 @@ import {
 } from '$lib/ipc/events';
 import type { CompileReason } from '$lib/types';
 import { logError } from '$lib/logger';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+
+const PREVIEW_WINDOW_LABEL = 'preview';
+
+function isPopoutWindow(): boolean {
+    try {
+        return getCurrentWindow().label === PREVIEW_WINDOW_LABEL;
+    } catch {
+        return false;
+    }
+}
 
 const CURSOR_DEBOUNCE = 200;
 
@@ -20,10 +34,12 @@ class PreviewStore {
     pages = $state<(string | null)[]>([]);
     totalPages = $state<number>(0);
     zoom = $state<number>(2.0);
-    scrollTarget = $state<number | null>(null);
+    scrollTarget = $state<{ page: number; x: number; y: number } | null>(null);
     isCompiling = $state(false);
     lastCompileRevision = $state(0);
     lastCompileReason = $state<CompileReason>('explicit');
+    poppedOut = $state(false);
+    presentationMode = $state(false);
 
     private _unlisteners: UnlistenFn[] = [];
     private _cursorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -71,6 +87,17 @@ class PreviewStore {
             logError('preview: onPreviewPageRemoved listener failed:', removedResult.error);
         }
 
+        if (isPopoutWindow()) {
+            const cursorResult = await onEditorCursorPosition(({ path, offset }) => {
+                this._runCursorJump(path, offset);
+            });
+            if (cursorResult.isOk()) {
+                this._unlisteners.push(cursorResult.value);
+            } else {
+                logError('preview: onEditorCursorPosition listener failed:', cursorResult.error);
+            }
+        }
+
         const compileStateResult = await onPreviewCompileState(({ status, revision, reason }) => {
             this.isCompiling = status === 'started';
             this.lastCompileRevision = revision;
@@ -82,9 +109,17 @@ class PreviewStore {
             logError('preview: onPreviewCompileState listener failed:', compileStateResult.error);
         }
 
-        triggerPreview('explicit').mapErr((err) =>
-            logError('preview: initial triggerPreview failed:', err)
-        );
+        if (isPopoutWindow()) {
+            // Popout joins an already-running pipeline; pull current cached
+            // pages instead of forcing a recompile.
+            syncPreview().mapErr((err) =>
+                logError('preview: initial syncPreview failed:', err)
+            );
+        } else {
+            triggerPreview('explicit').mapErr((err) =>
+                logError('preview: initial triggerPreview failed:', err)
+            );
+        }
     }
 
     destroy(): void {
@@ -102,6 +137,20 @@ class PreviewStore {
         this.isCompiling = false;
         this.lastCompileRevision = 0;
         this.lastCompileReason = 'explicit';
+        this.presentationMode = false;
+    }
+
+    async togglePresentationMode(): Promise<void> {
+        const win = getCurrentWindow();
+        if (this.presentationMode) {
+            await win.setDecorations(true);
+            await win.unmaximize();
+            this.presentationMode = false;
+        } else {
+            await win.setDecorations(false);
+            await win.maximize();
+            this.presentationMode = true;
+        }
     }
 
     setCursorPosition(path: string, offset: number): void {
@@ -109,14 +158,25 @@ class PreviewStore {
             clearTimeout(this._cursorTimer);
         }
         this._cursorTimer = setTimeout(() => {
-            jumpFromCursor(path, offset)
-                .map((positions) => {
-                    if (positions.length > 0) {
-                        this.scrollTarget = positions[0].page;
-                    }
-                })
-                .mapErr((err) => logError('preview: jumpFromCursor failed:', err));
+            if (this.poppedOut) {
+                emitEditorCursorPosition({ path, offset }).mapErr((err) =>
+                    logError('preview: emit editor:cursor-position failed:', err)
+                );
+                return;
+            }
+            this._runCursorJump(path, offset);
         }, CURSOR_DEBOUNCE);
+    }
+
+    private _runCursorJump(path: string, offset: number): void {
+        jumpFromCursor(path, offset)
+            .map((positions) => {
+                if (positions.length > 0) {
+                    const { page, x, y } = positions[0];
+                    this.scrollTarget = { page, x, y };
+                }
+            })
+            .mapErr((err) => logError('preview: jumpFromCursor failed:', err));
     }
 
     async zoomIn(): Promise<void> {

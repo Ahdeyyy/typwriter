@@ -3,7 +3,8 @@
   "identifier": "default",
   "description": "Capability for the main window",
   "windows": [
-    "main"
+    "main",
+    "preview"
   ],
   "permissions": [
     "core:default",
@@ -21,6 +22,10 @@
     "core:window:allow-is-maximized",
     "core:window:allow-internal-toggle-maximize",
     "core:app:allow-set-app-theme",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-destroy",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-set-decorations",
     "dialog:default"
   ]
 }

@@ -18,7 +18,9 @@
     title?: string;
     subtitle?: string;
     previewVisible?: boolean;
+    previewPoppedOut?: boolean;
     onTogglePreview?: () => void;
+    onPopoutPreview?: () => void;
   };
 
   let {
@@ -26,7 +28,9 @@
     title,
     subtitle,
     previewVisible = $bindable(true),
+    previewPoppedOut = false,
     onTogglePreview,
+    onPopoutPreview,
   }: Props = $props();
 
   const sidebarCtx = untrack(() => variant) === "workspace" ? Sidebar.useSidebar() : null;
@@ -98,19 +102,25 @@
             <button
               {...props}
               type="button"
+              disabled={previewPoppedOut}
               aria-label={previewVisible ? "Hide preview" : "Show preview"}
               onclick={() => onTogglePreview?.()}
               class="flex size-7 items-center justify-center rounded-md
                      text-foreground/70 transition-colors
                      hover:bg-accent hover:text-accent-foreground
-                     {previewVisible ? 'bg-accent/20 text-accent-foreground' : ''}"
+                     disabled:cursor-not-allowed disabled:opacity-50
+                     {previewVisible && !previewPoppedOut ? 'bg-accent/20 text-accent-foreground' : ''}"
             >
               <HugeiconsIcon icon={EyeIcon} class="size-4" />
             </button>
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="bottom">
-          {previewVisible ? "Hide preview" : "Show preview"}
+          {previewPoppedOut
+            ? "Preview is open in another window"
+            : previewVisible
+              ? "Hide preview"
+              : "Show preview"}
         </Tooltip.Content>
       </Tooltip.Root>
 
@@ -121,16 +131,21 @@
               {...props}
               type="button"
               aria-label="Pop out preview to a new window"
-              disabled
+              disabled={previewPoppedOut}
+              onclick={() => onPopoutPreview?.()}
               class="flex size-7 items-center justify-center rounded-md
-                     text-foreground/40 transition-colors
-                     disabled:cursor-not-allowed disabled:opacity-50"
+                     text-foreground/70 transition-colors
+                     hover:bg-accent hover:text-accent-foreground
+                     disabled:cursor-not-allowed disabled:opacity-50
+                     {previewPoppedOut ? 'bg-accent/20 text-accent-foreground' : ''}"
             >
               <HugeiconsIcon icon={LinkSquare01Icon} class="size-4" />
             </button>
           {/snippet}
         </Tooltip.Trigger>
-        <Tooltip.Content side="bottom">Open preview in a new window(coming soon)</Tooltip.Content>
+        <Tooltip.Content side="bottom">
+          {previewPoppedOut ? "Preview is open in another window" : "Open preview in a new window"}
+        </Tooltip.Content>
       </Tooltip.Root>
 
       <div class={[ isMac && "hidden","mx-1 h-4 w-px bg-border"]}></div>

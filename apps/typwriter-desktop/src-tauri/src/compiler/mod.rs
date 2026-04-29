@@ -230,6 +230,29 @@ impl PreviewPipeline {
         *self.last_document.lock() = None;
     }
 
+    /// Re-emit total-pages and every cached page. Used when a new webview
+    /// (e.g. the popped-out preview window) needs to populate its UI from the
+    /// existing compiled state without forcing a recompile.
+    pub fn emit_current_state(&self) {
+        let fps = self.last_fingerprints.lock().clone();
+        let _ = self.app_handle.emit(
+            "preview:total-pages",
+            TotalPagesPayload { count: fps.len() },
+        );
+        let mut cache = self.page_cache.lock();
+        for (idx, fp) in fps.iter().enumerate() {
+            if let Some(b64) = cache.get(*fp) {
+                let _ = self.app_handle.emit(
+                    "preview:page-updated",
+                    PageUpdatedPayload {
+                        index: idx,
+                        data: b64.clone(),
+                    },
+                );
+            }
+        }
+    }
+
     pub fn set_zoom(&self, zoom: f32) {
         *self.zoom.lock() = zoom;
         self.invalidate_cache();
