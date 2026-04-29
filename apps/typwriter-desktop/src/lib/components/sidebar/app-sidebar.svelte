@@ -36,6 +36,10 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
 
     // 4. Put the image data onto the canvas context
     const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      console.error("Failed to get 2d context from canvas");
+      return "";
+    }
     ctx.putImageData(imageData, 0, 0);
 
     // 5. Export the canvas as a base64 encoded PNG URL
