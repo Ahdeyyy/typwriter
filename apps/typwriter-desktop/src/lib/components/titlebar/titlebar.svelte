@@ -98,7 +98,6 @@
             <button
               {...props}
               type="button"
-              disabled
               aria-label={previewVisible ? "Hide preview" : "Show preview"}
               onclick={() => onTogglePreview?.()}
               class="flex size-7 items-center justify-center rounded-md
@@ -111,7 +110,7 @@
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="bottom">
-          {previewVisible ? "Hide preview (coming soon)" : "Show preview"}
+          {previewVisible ? "Hide preview" : "Show preview"}
         </Tooltip.Content>
       </Tooltip.Root>
 

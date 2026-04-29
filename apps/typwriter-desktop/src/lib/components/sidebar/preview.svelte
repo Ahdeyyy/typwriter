@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, untrack } from "svelte";
+  import { untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { ZoomInAreaIcon, ZoomOutAreaIcon, RotateLeft01Icon, Download01Icon, Refresh01Icon } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
@@ -56,16 +56,6 @@
           console.warn(`preview: failed to decode page ${idx}`);
         });
     }
-  });
-
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
-
-  onMount(() => {
-    preview.init().catch((err) => logError("preview init failed:", err));
-  });
-
-  onDestroy(() => {
-    preview.destroy();
   });
 
   // ── Scroll to page when cursor sync fires ──────────────────────────────────
@@ -257,7 +247,11 @@
       <div
         class="flex h-full select-none items-center justify-center text-xs text-muted-foreground"
       >
-        Select a main `.typ` file in the explorer to render a preview.
+        {#if workspace.mainFile}
+          Loading preview…
+        {:else}
+          Select a main `.typ` file in the explorer to render a preview.
+        {/if}
       </div>
     {:else}
       {#each preview.pages as _, i}

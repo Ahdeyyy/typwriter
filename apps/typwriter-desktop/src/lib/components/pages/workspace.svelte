@@ -8,7 +8,9 @@
   import EditorPane from "$lib/components/editor/editor-pane.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
+  import { preview } from "$lib/stores/preview.svelte";
   import { workspace, basename } from "$lib/stores/workspace.svelte";
+  import { logError } from "$lib/logger";
 
   let previewVisible = $state(true);
 
@@ -19,8 +21,14 @@
     workspace.activeFilePath ? basename(workspace.activeFilePath) : undefined
   );
 
-  onMount(() => { diagnostics.init(); });
-  onDestroy(() => { diagnostics.destroy(); });
+  onMount(() => {
+    diagnostics.init();
+    preview.init().catch((err) => logError("preview init failed:", err));
+  });
+  onDestroy(() => {
+    diagnostics.destroy();
+    preview.destroy();
+  });
 </script>
 
 <Sidebar.Provider class="has-titlebar h-screen w-screen flex-col overflow-hidden">
