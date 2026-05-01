@@ -48,7 +48,7 @@
   } from "@codemirror/lint";
   import { search } from "@codemirror/search";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
-  import { typst, light, dark } from "$lib/typst-codemirror-lang";
+  import { typst, light, dark, typstSpellcheck } from "$lib/typst-codemirror-lang";
   import { Compartment } from "@codemirror/state";
   import { mode, systemPrefersMode } from "mode-watcher";
   import { languages } from "@codemirror/language-data";
@@ -260,6 +260,7 @@
       themeCompartment.of(resolvedTheme()),
       // Language extension chosen by file extension; null = plain text
       ...(langExt ? [langExt] : []),
+      ...(isTypst ? [typstSpellcheck] : []),
       indentationMarkers(),
       // Custom Svelte search panel — provide an empty CM panel so the
       // search extension's state is initialized but its UI is suppressed.

@@ -588,7 +588,7 @@ function parseEscape(s: Scanner): Elt | null {
 
 // === Label: <name> ===
 
-function parseLabel(s: Scanner): Elt | null {
+export function parseLabel(s: Scanner): Elt | null {
   const start = s.pos
   s.next() // consume <
 

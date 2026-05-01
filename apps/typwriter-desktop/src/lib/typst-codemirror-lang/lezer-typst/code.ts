@@ -1,7 +1,7 @@
 import { Type } from "./types"
 import { Elt, TypstParseContext } from "./parser"
 import { Scanner, Ch, isAlpha, isDigit, isHexDigit, isIdentStart, isIdentChar, isWhitespace, isNewline, isLineWhitespace } from "./scanner"
-import { parseContentBlock, parseLineComment, parseBlockComment } from "./markup"
+import { parseContentBlock, parseLineComment, parseBlockComment, parseLabel } from "./markup"
 import { parseMathContent } from "./math"
 
 /// Keyword table for quick lookup.
@@ -323,6 +323,12 @@ function parseAtom(s: Scanner, ctx: TypstParseContext, embedded: boolean): Elt |
       children.push(new Elt(Type.Dollar, s.pos - 1, s.pos))
     }
     return new Elt(Type.Equation, start, s.pos, children)
+  }
+
+  // Label as expression: <name>
+  if (ch === Ch.Lt) {
+    const label = parseLabel(s)
+    if (label) return label
   }
 
   // Spread: ..
