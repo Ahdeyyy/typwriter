@@ -32,7 +32,6 @@
   let scrollEl = $state<HTMLDivElement | null>(null);
   let visiblePage = $state(0);
   let exportOpen = $state(false);
-  const PAGE_BUFFER = 2;
 
   // ── Double-buffer: hold last decoded page data to avoid flash on update ────
   let committedPages = $state<(string | null)[]>([]);
@@ -165,10 +164,6 @@
         }
       })
       .catch((err) => logError("preview presentation mode failed:", err));
-  }
-
-  function shouldRenderPage(index: number) {
-    return Math.abs(index - visiblePage) <= PAGE_BUFFER;
   }
 
   // ── Page click → editor cursor ─────────────────────────────────────────────
@@ -322,7 +317,7 @@
           id="preview-page-{i}"
           class="relative shrink-0 overflow-hidden rounded shadow-md"
         >
-          {#if committedPages[i] && shouldRenderPage(i)}
+          {#if committedPages[i]}
             <button
               class="block border-0 bg-transparent p-0"
               title="Click to jump to source"
