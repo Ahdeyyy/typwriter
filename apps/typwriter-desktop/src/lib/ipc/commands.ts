@@ -162,7 +162,7 @@ export function jumpFromClick(page: number, x: number, y: number) {
 
 export function jumpFromCursor(path: string, cursor: number) {
     return ResultAsync.fromPromise(
-        invoke<PreviewPositionResponse[]>('jump_from_cursor', { path, cursor }),
+        invoke<PreviewPositionResponse | null>('jump_from_cursor', { path, cursor }),
         toErrString
     );
 }

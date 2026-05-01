@@ -170,9 +170,9 @@ class PreviewStore {
 
     private _runCursorJump(path: string, offset: number): void {
         jumpFromCursor(path, offset)
-            .map((positions) => {
-                if (positions.length > 0) {
-                    const { page, x, y } = positions[0];
+            .map((position) => {
+                if (position) {
+                    const { page, x, y } = position;
                     this.scrollTarget = { page, x, y };
                 }
             })
