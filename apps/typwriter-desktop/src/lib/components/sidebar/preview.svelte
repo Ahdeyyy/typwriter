@@ -14,6 +14,7 @@
   import { emitPreviewSourceJump } from "$lib/ipc/events";
   import { Button } from "$lib/components/ui/button";
   import { logError } from "$lib/logger";
+  import { toast } from "svelte-sonner";
 
   const isPopout = (() => {
     try {
@@ -152,12 +153,17 @@
 
   function togglePresentation() {
     if (!isPopout) {
-      // Will be handled by parent via prop
       onPresentationMode?.();
       return;
     }
+    const entering = !preview.presentationMode;
     preview
       .togglePresentationMode()
+      .then(() => {
+        if (entering) {
+          toast.info("Press Esc to exit presenter mode");
+        }
+      })
       .catch((err) => logError("preview presentation mode failed:", err));
   }
 

@@ -3,6 +3,7 @@
   import Preview from "$lib/components/sidebar/preview.svelte";
   import { preview } from "$lib/stores/preview.svelte";
   import { logError } from "$lib/logger";
+  import { toast } from "svelte-sonner";
 
   type Props = { autoPresent?: boolean };
   let { autoPresent = false }: Props = $props();
@@ -20,6 +21,7 @@
     if (autoPresent) {
       await preview
         .togglePresentationMode()
+        .then(() => toast.info("Press Esc to exit presenter mode"))
         .catch((err) => logError("preview auto-present failed:", err));
     }
   });
