@@ -460,16 +460,16 @@ export function parseRaw(s: Scanner): Elt | null {
     let foundClose = false
 
     while (!s.done) {
-      // Check for closing backticks
-      let btCount = 0
       const linePos = s.pos
+      // Skip leading whitespace before checking for closing backticks
+      s.eatWhile(isLineWhitespace)
+      let btCount = 0
       while (s.peek() === Ch.Backtick) { s.next(); btCount++ }
       if (btCount >= backtickCount) {
         codeEnd = linePos
         foundClose = true
         break
       }
-      // If we consumed some backticks but not enough, they're content
       // Skip to end of line
       while (!s.done && !isNewline(s.peek())) s.next()
       if (!s.done) {
