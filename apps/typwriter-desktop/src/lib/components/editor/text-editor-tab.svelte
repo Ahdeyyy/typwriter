@@ -366,7 +366,7 @@
       // ayuLight,
       EditorView.theme({
         "&": {
-          height: "93svh",
+          height: "100%",
           width: "100%",
           fontSize: "13px",
           fontFamily: "var(--font-mono, monospace)",
@@ -555,4 +555,4 @@
   });
 </script>
 
-<div bind:this={editorHost} class="h-95svh w-full overflow-hidden"></div>
+<div bind:this={editorHost} class="h-full w-full overflow-hidden"></div>
