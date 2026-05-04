@@ -83,6 +83,20 @@ export function clearRecentWorkspaces() {
     return ResultAsync.fromPromise(invoke<void>('clear_recent_workspaces'), toErrString);
 }
 
+export function saveWorkspaceTabs(tabs: string[], activeTabId: string | null) {
+    return ResultAsync.fromPromise(
+        invoke<void>('save_workspace_tabs', { tabs, activeTabId }),
+        toErrString
+    );
+}
+
+export function getWorkspaceTabs(root: string) {
+    return ResultAsync.fromPromise(
+        invoke<[string[], string | null] | null>('get_workspace_tabs', { root }),
+        toErrString
+    );
+}
+
 export function getCurrentLogView() {
     return ResultAsync.fromPromise(invoke<LogFileView>('get_current_log_view'), toErrString);
 }

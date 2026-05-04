@@ -73,6 +73,7 @@
     dragTabId = null;
     dropTargetId = null;
     dropSide = null;
+    workspace.schedulePersistTabs();
   }
 
   function handleDragEnd() {

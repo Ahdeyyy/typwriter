@@ -304,6 +304,20 @@ impl WorkspaceState {
             .collect()
     }
 
+    // ─── Open tabs persistence ──────────────────────────────────────────────
+
+    pub fn save_workspace_tabs(&self, tabs: Vec<String>, active_tab_id: Option<String>) {
+        let root = self.root.read();
+        let Some(root) = root.as_ref() else {
+            return;
+        };
+        store::save_workspace_tabs(&self.app_handle, root, tabs, active_tab_id);
+    }
+
+    pub fn get_workspace_tabs(&self, root: &str) -> Option<(Vec<String>, Option<String>)> {
+        store::get_workspace_tabs(&self.app_handle, &PathBuf::from(root))
+    }
+
     // ─── File-system helpers ───────────────────────────────────────────────
 
     /// Resolve a workspace-relative string path to an absolute PathBuf.

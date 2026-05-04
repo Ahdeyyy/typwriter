@@ -28,7 +28,8 @@ use commands::{
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
         delete_folder, get_file_tree, get_recent_workspaces, import_files, move_file, move_folder,
-        open_folder, remove_recent_workspace, rename_file, set_main_file,
+        get_workspace_tabs, open_folder, remove_recent_workspace, rename_file,
+        save_workspace_tabs, set_main_file,
     },
 };
 
@@ -101,6 +102,8 @@ pub fn run() {
             get_recent_workspaces,
             remove_recent_workspace,
             clear_recent_workspaces,
+            save_workspace_tabs,
+            get_workspace_tabs,
             create_file,
             create_folder,
             delete_file,

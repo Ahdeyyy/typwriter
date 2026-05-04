@@ -77,6 +77,7 @@ class EditorStore {
         const existing = this.tabs.find((t) => t.id === id);
         if (existing) {
             this.activeTabId = id;
+            workspace.schedulePersistTabs();
             return;
         }
 
@@ -103,6 +104,7 @@ class EditorStore {
 
         this.tabs.push(tab);
         this.activeTabId = id;
+        workspace.schedulePersistTabs();
 
         if (viewMode === 'unsupported') {
             return;
@@ -117,6 +119,7 @@ class EditorStore {
         }
         await this.flushActiveTab();
         this.activeTabId = tabId;
+        workspace.schedulePersistTabs();
     }
 
     private async _loadTabContent(tabId: string, absPath: string, viewMode: ViewMode): Promise<void> {
@@ -180,6 +183,7 @@ class EditorStore {
             }
         }
 
+        workspace.schedulePersistTabs();
         return true;
     }
 
@@ -290,6 +294,8 @@ class EditorStore {
         if (this.activeTabId === oldId) {
             this.activeTabId = newId;
         }
+
+        workspace.schedulePersistTabs();
     }
 
     updateTabsUnderPath(oldPrefix: string, newPrefix: string): void {
@@ -379,6 +385,13 @@ class EditorStore {
         }
         map.delete(oldId);
         map.set(newId, timer);
+    }
+
+    getTabState(): { tabs: string[]; activeTabId: string | null } {
+        return {
+            tabs: this.tabs.map((t) => t.relPath),
+            activeTabId: this.activeTabId,
+        };
     }
 
     get filePath(): string | null { return this.activeTab?.absPath ?? null; }

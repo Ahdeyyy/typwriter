@@ -5,11 +5,13 @@ import {
     deleteFile,
     deleteFolder,
     getFileTree,
+    getWorkspaceTabs,
     importFiles,
     moveFile,
     moveFolder,
     openFolder,
     renameFile,
+    saveWorkspaceTabs,
     setMainFile,
     triggerPreview,
 } from '$lib/ipc/commands';
@@ -144,6 +146,7 @@ class WorkspaceStore {
 
     private _filesChangedUnlisten: UnlistenFn | null = null;
     private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    private _persistTabsTimer: ReturnType<typeof setTimeout> | null = null;
     private _opLock: Promise<void> = Promise.resolve();
 
     toAbs(path: string): string {
@@ -211,13 +214,43 @@ class WorkspaceStore {
         if (refreshResult.isErr()) {
             throw new Error(refreshResult.error);
         }
+
+        await this._restoreTabs(root);
+    }
+
+    private async _restoreTabs(root: string): Promise<void> {
+        const result = await getWorkspaceTabs(root);
+        if (result.isErr()) {
+            logError('getWorkspaceTabs failed:', result.error);
+            return;
+        }
+        const data = result.value;
+        if (!data) return;
+
+        const [tabPaths, activeTabId] = data;
+        for (const relPath of tabPaths) {
+            await editor.openFile(relPath).match(
+                () => {},
+                (err) => logError(`restore tab failed for ${relPath}:`, err),
+            );
+        }
+
+        if (activeTabId && editor.tabs.find((t) => t.id === activeTabId)) {
+            await editor.activateTab(activeTabId);
+        }
+
+        if (editor.activeTab) {
+            this.activeFilePath = editor.activeTab.relPath;
+        }
     }
 
     private async _leave(): Promise<void> {
+        this.persistTabs();
         await editor.flushAllTabs();
         this._disposeFilesChangedListener();
         this._clearRefreshTimer();
         await editor.reset();
+        this._clearPersistTabsTimer();
         this.tree = [];
         this.rootPath = null;
         this.mainFile = null;
@@ -439,6 +472,24 @@ class WorkspaceStore {
         walkAndSetExpanded(this.tree, false);
     }
 
+    persistTabs(): void {
+        if (!this.rootPath) return;
+        const state = editor.getTabState();
+        saveWorkspaceTabs(state.tabs, state.activeTabId).mapErr((err) => {
+            logError('saveWorkspaceTabs failed:', err);
+        });
+    }
+
+    schedulePersistTabs(): void {
+        if (this._persistTabsTimer !== null) {
+            clearTimeout(this._persistTabsTimer);
+        }
+        this._persistTabsTimer = setTimeout(() => {
+            this._persistTabsTimer = null;
+            this.persistTabs();
+        }, 300);
+    }
+
     private _scheduleTreeRefresh(): void {
         this._clearRefreshTimer();
         this._refreshTimer = setTimeout(() => {
@@ -453,6 +504,13 @@ class WorkspaceStore {
         if (this._refreshTimer !== null) {
             clearTimeout(this._refreshTimer);
             this._refreshTimer = null;
+        }
+    }
+
+    private _clearPersistTabsTimer(): void {
+        if (this._persistTabsTimer !== null) {
+            clearTimeout(this._persistTabsTimer);
+            this._persistTabsTimer = null;
         }
     }
 

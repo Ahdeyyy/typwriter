@@ -153,6 +153,79 @@ pub fn get_workspace_main_file(handle: &AppHandle, root: &Path) -> Option<String
         .map(|s| s.to_string())
 }
 
+// ─── Per-workspace open tabs ─────────────────────────────────────────────────
+
+/// Persist the list of open tabs and the active tab for the workspace at `root`.
+pub fn save_workspace_tabs(
+    handle: &AppHandle,
+    root: &Path,
+    tabs: Vec<String>,
+    active_tab_id: Option<String>,
+) {
+    let t = Instant::now();
+    let Ok(store) = handle.store(STORE_FILE) else {
+        warn!("store: could not open {STORE_FILE}");
+        return;
+    };
+
+    let root_key = root.to_string_lossy().to_string();
+
+    let mut map: serde_json::Map<String, JsonValue> = store
+        .get("workspace_open_tabs")
+        .and_then(|v| {
+            if let JsonValue::Object(m) = v {
+                Some(m)
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default();
+
+    map.insert(
+        root_key,
+        json!({
+            "tabs": tabs,
+            "activeTabId": active_tab_id,
+        }),
+    );
+
+    store.set("workspace_open_tabs", JsonValue::Object(map));
+    let _ = store.save();
+    info!(
+        "store: saved workspace tabs ({:.1}ms)",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
+}
+
+/// Look up the persisted open tabs for the workspace rooted at `root`.
+pub fn get_workspace_tabs(
+    handle: &AppHandle,
+    root: &Path,
+) -> Option<(Vec<String>, Option<String>)> {
+    let store = handle.store(STORE_FILE).ok()?;
+    let root_key = root.to_string_lossy().to_string();
+
+    let map: serde_json::Map<String, JsonValue> =
+        store.get("workspace_open_tabs").and_then(|v| {
+            if let JsonValue::Object(m) = v {
+                Some(m)
+            } else {
+                None
+            }
+        })?;
+
+    let entry = map.get(&root_key)?;
+    let tabs: Vec<String> = entry
+        .get("tabs")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    let active_tab_id: Option<String> = entry
+        .get("activeTabId")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
+
+    Some((tabs, active_tab_id))
+}
+
 // ─── .typwriter folder & thumbnail ───────────────────────────────────────────
 
 const TYPWRITER_DIR: &str = ".typwriter";

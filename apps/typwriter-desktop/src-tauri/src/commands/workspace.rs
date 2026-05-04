@@ -261,6 +261,23 @@ pub fn clear_recent_workspaces(workspace: State<'_, Arc<WorkspaceState>>) {
     workspace.clear_recent_workspaces();
 }
 
+#[tauri::command]
+pub fn save_workspace_tabs(
+    tabs: Vec<String>,
+    active_tab_id: Option<String>,
+    workspace: State<'_, Arc<WorkspaceState>>,
+) {
+    workspace.save_workspace_tabs(tabs, active_tab_id);
+}
+
+#[tauri::command]
+pub fn get_workspace_tabs(
+    root: String,
+    workspace: State<'_, Arc<WorkspaceState>>,
+) -> Option<(Vec<String>, Option<String>)> {
+    workspace.get_workspace_tabs(&root)
+}
+
 /// Create a new workspace folder at `parent_path/name`, initialise a
 /// `.typwriter/` metadata directory inside it, and return the absolute path to
 /// the new workspace root.
