@@ -20,7 +20,7 @@ use typst::{
 };
 
 use crate::{
-    commands::editor::{serialize_jump, JumpResponse},
+    commands::editor::{serialize_jump, utf16_to_byte, JumpResponse},
     compiler::PreviewPipeline,
     world::EditorWorld,
 };
@@ -118,6 +118,9 @@ pub fn jump_from_cursor(
         e.to_string()
     })?;
 
+    let text = source.text();
+    let byte_cursor = utf16_to_byte(text, cursor);
+
     let guard = pipeline.last_document.lock();
     let doc = guard.as_deref().ok_or_else(|| {
         let e = "No compiled document available";
@@ -128,10 +131,9 @@ pub fn jump_from_cursor(
         e.to_string()
     })?;
 
-    let text = source.text();
-    let positions = typst_ide::jump_from_cursor(doc, &source, cursor);
+    let positions = typst_ide::jump_from_cursor(doc, &source, byte_cursor);
     let count = positions.len();
-    let resolved = resolve_preview_position(doc, &source, text, cursor, positions);
+    let resolved = resolve_preview_position(doc, &source, text, byte_cursor, positions);
     info!(
         "jump_from_cursor: ok — {count} position(s), resolved={} ({:.1}ms)",
         resolved.is_some(),

@@ -374,16 +374,20 @@ pub fn get_completions(
         );
         e.to_string()
     })?;
+
+    let text = source.text();
+    let byte_cursor = utf16_to_byte(text, cursor);
+
     let guard = pipeline.last_document.lock();
     let doc_ref: Option<&PagedDocument> = guard.as_deref();
 
-    let result = typst_ide::autocomplete(&**world, doc_ref, &source, cursor, explicit);
+    let result = typst_ide::autocomplete(&**world, doc_ref, &source, byte_cursor, explicit);
 
     match result {
         Some((from, items)) => {
             let count = items.len();
             let response = CompletionsResponse {
-                from,
+                from: byte_to_utf16(text, from),
                 completions: items
                     .into_iter()
                     .map(|c| CompletionItem {
@@ -402,11 +406,11 @@ pub fn get_completions(
         }
         None => {
             debug!(
-                "get_completions: ok — no completions ({:.1}ms)",
+                "get_completions: ok ��� no completions ({:.1}ms)",
                 t.elapsed().as_secs_f64() * 1000.0
             );
             Ok(CompletionsResponse {
-                from: cursor,
+                from: cursor, // already in UTF-16 units (passthrough)
                 completions: vec![],
             })
         }
@@ -441,21 +445,24 @@ pub fn get_tooltip(
         );
         e.to_string()
     })?;
+
+    let byte_cursor = utf16_to_byte(source.text(), cursor);
+
     let guard = pipeline.last_document.lock();
     let doc_ref: Option<&PagedDocument> = guard.as_deref();
 
     // Try against the latest compiled document first, then document-agnostic.
-    let mut tooltip = typst_ide::tooltip(&**world, doc_ref, &source, cursor, Side::Before)
-        .or_else(|| typst_ide::tooltip(&**world, None, &source, cursor, Side::Before))
-        .or_else(|| typst_ide::tooltip(&**world, doc_ref, &source, cursor, Side::After))
-        .or_else(|| typst_ide::tooltip(&**world, None, &source, cursor, Side::After));
+    let mut tooltip = typst_ide::tooltip(&**world, doc_ref, &source, byte_cursor, Side::Before)
+        .or_else(|| typst_ide::tooltip(&**world, None, &source, byte_cursor, Side::Before))
+        .or_else(|| typst_ide::tooltip(&**world, doc_ref, &source, byte_cursor, Side::After))
+        .or_else(|| typst_ide::tooltip(&**world, None, &source, byte_cursor, Side::After));
 
     // If still unresolved and this is not the configured main file, retry with
     // an override world where `main()` points to the queried file.
     if tooltip.is_none() && id != world.main() {
         let local_world = MainOverrideWorld::new(&world, id);
-        tooltip = typst_ide::tooltip(&local_world, None, &source, cursor, Side::Before)
-            .or_else(|| typst_ide::tooltip(&local_world, None, &source, cursor, Side::After));
+        tooltip = typst_ide::tooltip(&local_world, None, &source, byte_cursor, Side::Before)
+            .or_else(|| typst_ide::tooltip(&local_world, None, &source, byte_cursor, Side::After));
     }
     let found = tooltip.is_some();
     debug!(
@@ -503,10 +510,13 @@ pub fn get_definitions(
         );
         e.to_string()
     })?;
+
+    let byte_cursor = utf16_to_byte(source.text(), cursor);
+
     let guard = pipeline.last_document.lock();
     let doc_ref: Option<&PagedDocument> = guard.as_deref();
 
-    let def = typst_ide::definition(&**world, doc_ref, &source, cursor, Side::Before);
+    let def = typst_ide::definition(&**world, doc_ref, &source, byte_cursor, Side::Before);
     let result = def.and_then(|d| serialize_definition(&d, &**world));
     let found = result.is_some();
     debug!(
@@ -516,10 +526,35 @@ pub fn get_definitions(
     Ok(result)
 }
 
+// ─── Offset conversion ───────────────────────────────────────────────────────
+//
+// The frontend (CodeMirror) counts positions as UTF-16 code units, while
+// Typst internally uses UTF-8 byte offsets. These helpers bridge the two at
+// the IPC boundary so every offset crossing Tauri is in UTF-16 units.
+
+/// Convert a UTF-8 byte offset to a UTF-16 code unit offset.
+pub(crate) fn byte_to_utf16(text: &str, byte_offset: usize) -> usize {
+    let clamped = byte_offset.min(text.len());
+    text[..clamped].encode_utf16().count()
+}
+
+/// Convert a UTF-16 code unit offset to a UTF-8 byte offset.
+pub(crate) fn utf16_to_byte(text: &str, utf16_offset: usize) -> usize {
+    let mut utf16_count = 0usize;
+    for (byte_idx, ch) in text.char_indices() {
+        if utf16_count >= utf16_offset {
+            return byte_idx;
+        }
+        utf16_count += ch.len_utf16();
+    }
+    text.len()
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /// Serialise a `typst_ide::Jump` to our IPC-safe `JumpResponse` type.
-pub(crate) fn serialize_jump(jump: &typst_ide::Jump, _world: &dyn typst::World) -> JumpResponse {
+/// Byte offsets are converted to UTF-16 code unit offsets for the frontend.
+pub(crate) fn serialize_jump(jump: &typst_ide::Jump, world: &dyn typst::World) -> JumpResponse {
     match jump {
         typst_ide::Jump::File(id, offset) => {
             let path = id
@@ -528,10 +563,14 @@ pub(crate) fn serialize_jump(jump: &typst_ide::Jump, _world: &dyn typst::World) 
                 .to_str()
                 .map(String::from)
                 .unwrap_or_default();
+            let utf16_offset = world
+                .source(*id)
+                .map(|src| byte_to_utf16(src.text(), *offset))
+                .unwrap_or(*offset);
             JumpResponse::File {
                 path,
-                start_byte: *offset,
-                end_byte: *offset,
+                start_byte: utf16_offset,
+                end_byte: utf16_offset,
             }
         }
         typst_ide::Jump::Url(url) => JumpResponse::Url {
@@ -556,6 +595,7 @@ pub(crate) fn serialize_definition(
             let id = span.id()?;
             let source = world.source(id).ok()?;
             let range = source.range(*span)?;
+            let text = source.text();
             let path = id
                 .vpath()
                 .as_rootless_path()
@@ -564,8 +604,8 @@ pub(crate) fn serialize_definition(
                 .unwrap_or_default();
             Some(JumpResponse::File {
                 path,
-                start_byte: range.start,
-                end_byte: range.end,
+                start_byte: byte_to_utf16(text, range.start),
+                end_byte: byte_to_utf16(text, range.end),
             })
         }
         typst_ide::Definition::Std(_) => None,
