@@ -113,6 +113,23 @@ function parseExpr(s: Scanner, ctx: TypstParseContext, minPrec: number, embedded
   let left = parseUnary(s, ctx, embedded)
   if (!left) return null
 
+  // Bare closure: ident => expr
+  if (!embedded && minPrec === 0 && left.type === Type.Ident) {
+    const savedPos = s.pos
+    skipWhitespaceAndComments(s)
+    if (s.peek() === Ch.Eq && s.peek(1) === Ch.Gt) {
+      const arrowStart = s.pos
+      s.next(); s.next()
+      const arrowElt = new Elt(Type.Arrow, arrowStart, s.pos)
+      skipWhitespaceAndComments(s)
+      const body = parseExpr(s, ctx, 0, false)
+      const children: Elt[] = [left, arrowElt]
+      if (body) children.push(body)
+      return new Elt(Type.Closure, left.from, s.pos, children)
+    }
+    s.pos = savedPos
+  }
+
   for (;;) {
     const ch = s.peek()
 
@@ -298,6 +315,25 @@ function parseAtom(s: Scanner, ctx: TypstParseContext, embedded: boolean): Elt |
     if (word === "auto") {
       s.pos += 4
       return new Elt(Type.Auto, pos, s.pos)
+    }
+
+    // Keyword-led expressions in expression position
+    const kwType = KEYWORDS[word]
+    if (kwType !== undefined) {
+      switch (kwType) {
+        case Type.If: return parseConditional(s, ctx)
+        case Type.For: return parseForLoop(s, ctx)
+        case Type.While: return parseWhileLoop(s, ctx)
+        case Type.Context: return parseContextExpr(s, ctx)
+        case Type.Let: return parseLetBinding(s, ctx)
+        case Type.Set: return parseSetRule(s, ctx)
+        case Type.Show: return parseShowRule(s, ctx)
+        case Type.Return: return parseReturn(s, ctx)
+        case Type.Import: return parseImport(s, ctx)
+        case Type.Include: return parseInclude(s, ctx)
+        case Type.Break: return parseBreakContinue(s, Type.Break, Type.LoopBreak)
+        case Type.Continue: return parseBreakContinue(s, Type.Continue, Type.LoopContinue)
+      }
     }
 
     return parseIdentifier(s)
@@ -692,7 +728,7 @@ function parseSetRule(s: Scanner, ctx: TypstParseContext): Elt {
 
   // Optional "if" condition (only on the same line — don't consume newlines)
   const beforeIfSkip = s.pos
-  skipWhitespaceAndComments(s)
+  s.eatWhile(isLineWhitespace)
   if (peekWord(s) === "if") {
     const ifStart = s.pos
     s.pos += 2
