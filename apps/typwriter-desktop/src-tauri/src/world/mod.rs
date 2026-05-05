@@ -183,7 +183,7 @@ impl EditorWorld {
     /// For package files, uses `PackageStorage::prepare_package` which
     /// downloads the package if not already cached, reporting progress via
     /// Tauri events.
-    fn id_to_path(&self, id: FileId) -> Result<PathBuf, FileError> {
+    pub fn id_to_path(&self, id: FileId) -> Result<PathBuf, FileError> {
         let vpath = id.vpath();
         if let Some(spec) = id.package() {
             let label = format!("{spec}");

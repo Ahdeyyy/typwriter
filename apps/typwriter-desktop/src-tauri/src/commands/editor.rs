@@ -554,14 +554,13 @@ pub(crate) fn utf16_to_byte(text: &str, utf16_offset: usize) -> usize {
 
 /// Serialise a `typst_ide::Jump` to our IPC-safe `JumpResponse` type.
 /// Byte offsets are converted to UTF-16 code unit offsets for the frontend.
-pub(crate) fn serialize_jump(jump: &typst_ide::Jump, world: &dyn typst::World) -> JumpResponse {
+pub(crate) fn serialize_jump(jump: &typst_ide::Jump, world: &EditorWorld) -> JumpResponse {
     match jump {
         typst_ide::Jump::File(id, offset) => {
-            let path = id
-                .vpath()
-                .as_rootless_path()
-                .to_str()
-                .map(String::from)
+            let path = world
+                .id_to_path(*id)
+                .ok()
+                .and_then(|p| p.to_str().map(String::from))
                 .unwrap_or_default();
             let utf16_offset = world
                 .source(*id)
@@ -588,7 +587,7 @@ pub(crate) fn serialize_jump(jump: &typst_ide::Jump, world: &dyn typst::World) -
 /// Returns `None` for standard-library definitions that have no source file.
 pub(crate) fn serialize_definition(
     def: &typst_ide::Definition,
-    world: &dyn typst::World,
+    world: &EditorWorld,
 ) -> Option<JumpResponse> {
     match def {
         typst_ide::Definition::Span(span) => {
@@ -596,11 +595,10 @@ pub(crate) fn serialize_definition(
             let source = world.source(id).ok()?;
             let range = source.range(*span)?;
             let text = source.text();
-            let path = id
-                .vpath()
-                .as_rootless_path()
-                .to_str()
-                .map(String::from)
+            let path = world
+                .id_to_path(id)
+                .ok()
+                .and_then(|p| p.to_str().map(String::from))
                 .unwrap_or_default();
             Some(JumpResponse::File {
                 path,
