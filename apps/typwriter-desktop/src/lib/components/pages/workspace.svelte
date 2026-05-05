@@ -25,7 +25,7 @@
     workspace.rootPath ? basename(workspace.rootPath) : "Typwriter"
   );
   const openedName = $derived(
-    workspace.activeFilePath ? basename(workspace.activeFilePath) : undefined
+    workspace.activeFilePath ? workspace.activeFilePath.replaceAll("/", "  /  ") : undefined
   );
 
   let popoutCloseUnlisten: (() => void) | null = null;
