@@ -20,7 +20,7 @@
         "maximized": true,
         "dragDropEnabled": false,
         "decorations": false,
-        "titleBarStyle": "Overlay",
+        "titleBarStyle": "Transparent",
         "center": true
       }
     ],
