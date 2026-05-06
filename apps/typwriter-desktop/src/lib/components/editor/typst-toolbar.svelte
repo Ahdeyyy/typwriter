@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { TextB, TextItalic, TextStrikethrough, Code, CodeBlock } from "phosphor-svelte";
+
+  import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/svelte";
+  import { TextBoldIcon, TextItalicIcon, TextStrikethroughIcon,  CodeIcon } from "@hugeicons/core-free-icons";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
   import {
@@ -7,21 +9,16 @@
     toggleItalic,
     toggleRawInline,
     toggleStrikethrough,
-    toggleLineComment,
-    toggleBlockComment,
   } from "$lib/typst-codemirror-lang";
   import type { EditorView } from "@codemirror/view";
-  import type { Component } from "svelte";
 
   type Cmd = (view: EditorView) => boolean;
 
-  const actions: { label: string; shortcut?: string; icon: Component; run: Cmd }[] = [
-    { label: "Bold", shortcut: "Ctrl+B", icon: TextB, run: toggleBold },
-    { label: "Italic", shortcut: "Ctrl+I", icon: TextItalic, run: toggleItalic },
-    { label: "Inline code", shortcut: "Ctrl+E", icon: Code, run: toggleRawInline },
-    { label: "Strikethrough", icon: TextStrikethrough, run: toggleStrikethrough },
-    { label: "Toggle line comment", icon: CodeBlock, run: toggleLineComment },
-    { label: "Toggle block comment", icon: CodeBlock, run: toggleBlockComment },
+  const actions: { label: string; shortcut?: string; icon: typeof TextBoldIcon; run: Cmd }[] = [
+    { label: "Bold", shortcut: "Ctrl+B", icon: TextBoldIcon, run: toggleBold },
+    { label: "Italic", shortcut: "Ctrl+I", icon: TextItalicIcon, run: toggleItalic },
+    { label: "Inline code", shortcut: "Ctrl+E", icon: CodeIcon, run: toggleRawInline },
+    { label: "Strikethrough", icon: TextStrikethroughIcon, run: toggleStrikethrough },
   ];
 
   function dispatch(run: Cmd) {
@@ -47,7 +44,8 @@
             onclick={() => dispatch(action.run)}
             aria-label={action.label}
           >
-            <action.icon size={14} weight="regular" />
+            <!-- <action.icon size={14} weight="regular" /> -->
+            <HugeiconsIcon icon={action.icon} size={14}/>
           </button>
         {/snippet}
       </Tooltip.Trigger>
