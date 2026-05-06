@@ -42,7 +42,11 @@ class SidebarState {
 
 	// Event handler to apply to the `<svelte:window>`
 	handleShortcutKeydown = (e: KeyboardEvent) => {
-		if (e.key === SIDEBAR_KEYBOARD_SHORTCUT && (e.metaKey || e.ctrlKey)) {
+		if (
+			e.key.toLowerCase() === SIDEBAR_KEYBOARD_SHORTCUT &&
+			e.shiftKey &&
+			(e.metaKey || e.ctrlKey)
+		) {
 			e.preventDefault();
 			this.toggle();
 		}

@@ -8,7 +8,7 @@
   import { workspace } from "$lib/stores/workspace.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, ListViewIcon } from "@hugeicons/core-free-icons";
+  import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, ListViewIcon, KeyboardIcon } from "@hugeicons/core-free-icons";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { updater } from "$lib/stores/updater.svelte";
   import { toast } from "svelte-sonner";
@@ -376,6 +376,16 @@
     >
       <HugeiconsIcon icon={ListViewIcon} class="size-3.5" />
       View Logs
+    </Button>
+
+    <Button
+      variant="link"
+      size="sm"
+      class="gap-1.5 text-muted-foreground"
+      onclick={() => page.navigate("keymaps")}
+    >
+      <HugeiconsIcon icon={KeyboardIcon} class="size-3.5" />
+      Keymaps
     </Button>
   </div>
   </main>

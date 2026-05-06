@@ -4,12 +4,23 @@
   import TabBar from "$lib/components/editor/tab-bar.svelte";
   import TextEditorTab from "$lib/components/editor/text-editor-tab.svelte";
   import SearchPanel from "$lib/components/editor/search-panel.svelte";
+  import TypstToolbar from "$lib/components/editor/typst-toolbar.svelte";
   import { editor } from "$lib/stores/editor.svelte";
+
+  const isTypstActive = $derived(
+    editor.activeTab?.viewMode === "text" &&
+    !editor.activeTab.isLoading &&
+    editor.activeTab.relPath.endsWith(".typ"),
+  );
 </script>
 
 <div class="flex h-full flex-col bg-background">
   {#if editor.tabs.length > 0}
     <TabBar />
+  {/if}
+
+  {#if isTypstActive}
+    <TypstToolbar />
   {/if}
 
   <div class="relative flex-1 min-h-0 overflow-hidden">

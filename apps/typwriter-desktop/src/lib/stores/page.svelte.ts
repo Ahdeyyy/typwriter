@@ -2,9 +2,12 @@
 import Home from "$lib/components/pages/home.svelte"
 import Logs from "$lib/components/pages/logs.svelte"
 import Workspace from "$lib/components/pages/workspace.svelte"
+import Keymaps from "$lib/components/pages/keymaps.svelte"
+
+type PageName = "home" | "workspace" | "logs" | "keymaps"
 
 type PageDefinition = {
-    name: "home" | "workspace" | "logs"
+    name: PageName
     component: typeof Home
 }
 
@@ -20,8 +23,12 @@ export const pages = {
     "logs": {
         name: "logs",
         component: Logs,
-    }
-} satisfies Record<"home" | "workspace" | "logs", PageDefinition>
+    },
+    "keymaps": {
+        name: "keymaps",
+        component: Keymaps,
+    },
+} satisfies Record<PageName, PageDefinition>
 
 export type Pages = keyof typeof pages
 
