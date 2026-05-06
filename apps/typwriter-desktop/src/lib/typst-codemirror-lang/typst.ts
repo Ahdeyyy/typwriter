@@ -55,7 +55,7 @@ const typstNodeSet = nodeSet.extend(
 const typstParser = baseParser.configure({ nodeSet: typstNodeSet })
 
 /// The base Typst language (no nested code block parsing).
-export const typstLanguage = new Language(data, baseParser, [], "typst")
+export const typstLanguage = new Language(data, typstParser, [], "typst")
 
 
 /// Resolve a language info string (from a raw code block) to a
@@ -106,7 +106,7 @@ export function typst(config?: {
   let lang = typstLanguage
   if (codeLanguages || defaultCodeLanguage) {
     const codeParser = getCodeParser(codeLanguages, defaultCodeLanguage)
-    const wrappedParser = baseParser.configure({
+    const wrappedParser = typstParser.configure({
       wrap: parseCode({ codeParser }),
     })
     lang = new Language(data, wrappedParser, [], "typst")

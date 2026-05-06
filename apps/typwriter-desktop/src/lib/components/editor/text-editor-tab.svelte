@@ -260,7 +260,7 @@
       themeCompartment.of(resolvedTheme()),
       // Language extension chosen by file extension; null = plain text
       ...(langExt ? [langExt] : []),
-      ...(isTypst ? [typstSpellcheck] : []),
+      ...(isTypst ? [typstCommentDecorations, typstSpellcheck, keymap.of(typstKeymap)] : []),
       indentationMarkers(),
       // Custom Svelte search panel — provide an empty CM panel so the
       // search extension's state is initialized but its UI is suppressed.

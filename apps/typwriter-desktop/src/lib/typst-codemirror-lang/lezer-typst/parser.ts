@@ -57,7 +57,7 @@ export class TypstParser extends Parser {
 
   /// Return a new parser with the given configuration applied.
   configure(config: TypstParserConfig): TypstParser {
-    return new TypstParser(this.nodeSet, config.wrap ?? this.wrap)
+    return new TypstParser(config.nodeSet ?? this.nodeSet, config.wrap ?? this.wrap)
   }
 }
 

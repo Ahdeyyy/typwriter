@@ -100,6 +100,15 @@ export const lightTheme = EditorView.theme(
             color: ML.cobalt,
             fontWeight: "bold",
         },
+        ".cm-typst-comment": {
+            color: `${ML.fgComment} !important`,
+            fontStyle: "italic",
+            textDecoration: "none !important",
+        },
+        ".cm-typst-comment *": {
+            color: `${ML.fgComment} !important`,
+            textDecoration: "none !important",
+        },
     },
     { dark: false }
 );
@@ -109,7 +118,7 @@ export const lightTheme = EditorView.theme(
 export const lightHighlightStyle = HighlightStyle.define([
 
     // ── Trivia & Comments ───────────────────────────────────────────────────────
-    { tag: t.comment, color: ML.fgComment, fontStyle: "italic" },
+    { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: ML.fgComment, fontStyle: "italic" },
 
     // ── Markup & Typography ─────────────────────────────────────────────────────
     { tag: t.heading, color: ML.ink, fontWeight: "900"},

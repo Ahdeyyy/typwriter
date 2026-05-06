@@ -89,6 +89,15 @@ export const darkTheme = EditorView.theme(
             color: MD.cobalt,
             fontWeight: "bold",
         },
+        ".cm-typst-comment": {
+            color: `${MD.fgComment} !important`,
+            fontStyle: "italic",
+            textDecoration: "none !important",
+        },
+        ".cm-typst-comment *": {
+            color: `${MD.fgComment} !important`,
+            textDecoration: "none !important",
+        },
     },
     { dark: true }
 );
@@ -98,7 +107,7 @@ export const darkTheme = EditorView.theme(
 export const darkHighlightStyle = HighlightStyle.define([
 
     // ── Trivia & Comments ───────────────────────────────────────────────────────
-    { tag: t.comment, color: MD.fgComment, fontStyle: "italic" },
+    { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: MD.fgComment, fontStyle: "italic" },
 
     // ── Markup & Typography ─────────────────────────────────────────────────────
     { tag: t.heading, color: MD.ink, fontWeight: "900" },

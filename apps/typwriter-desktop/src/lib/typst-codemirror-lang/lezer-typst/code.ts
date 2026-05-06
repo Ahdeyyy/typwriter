@@ -902,7 +902,7 @@ function parseImport(s: Scanner, ctx: TypstParseContext): Elt {
       const item = parseIdentifier(s)
       if (item) {
         children.push(item)
-        skipWhitespaceAndComments(s)
+        s.eatWhile(isLineWhitespace)
         if (peekWord(s) === "as") {
           const asStart = s.pos
           s.pos += 2
@@ -912,7 +912,7 @@ function parseImport(s: Scanner, ctx: TypstParseContext): Elt {
           if (alias) children.push(alias)
         }
       }
-      skipWhitespaceAndComments(s)
+      s.eatWhile(isLineWhitespace)
       if (s.peek() === Ch.Comma) {
         const commaPos = s.pos
         s.next()
