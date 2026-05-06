@@ -49,12 +49,30 @@ export const darkTheme = EditorView.theme(
         ".cm-panels": { backgroundColor: "var(--card)", color: "var(--foreground)" },
         ".cm-panels.cm-panels-top": { borderBottom: "2px solid var(--border)" },
         ".cm-panels.cm-panels-bottom": { borderTop: "2px solid var(--border)" },
+        ".cm-activeLine": {
+            backgroundColor: MD.bgSelection,
+        },
         ".cm-searchMatch": {
-            backgroundColor: "#f9e2af28",
-            outline: `1px solid ${MD.amber}`,
+            backgroundColor: "#fde047",
+            color: MD.bg,
+            outline: "1px solid #ca8a04",
+            borderRadius: "2px",
+        },
+        ".cm-searchMatch *": {
+            color: `${MD.bg} !important`,
         },
         ".cm-searchMatch.cm-searchMatch-selected": {
-            backgroundColor: "#f38ba840",
+            backgroundColor: "#fb923c",
+            color: MD.bg,
+            outline: "1px solid #c2410c",
+        },
+        ".cm-activeLine .cm-searchMatch": {
+            backgroundColor: "#fde047",
+            color: MD.bg,
+        },
+        ".cm-activeLine .cm-searchMatch.cm-searchMatch-selected": {
+            backgroundColor: "#fb923c",
+            color: MD.bg,
         },
         ".cm-selectionMatch": { backgroundColor: "#89b4fa28" },
         "&.cm-focused .cm-matchingBracket": {

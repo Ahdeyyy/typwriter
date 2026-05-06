@@ -60,12 +60,30 @@ export const lightTheme = EditorView.theme(
         ".cm-panels": { backgroundColor: "var(--muted)", color: "var(--foreground)" },
         ".cm-panels.cm-panels-top": { borderBottom: "2px solid var(--border)" },
         ".cm-panels.cm-panels-bottom": { borderTop: "2px solid var(--border)" },
+        ".cm-activeLine": {
+            backgroundColor: "#eef2fb80",
+        },
         ".cm-searchMatch": {
-            backgroundColor: "#ffd70050",
-            outline: `1px solid ${ML.amber}`,
+            backgroundColor: "#fde047",
+            color: ML.ink,
+            outline: "1px solid #ca8a04",
+            borderRadius: "2px",
+        },
+        ".cm-searchMatch *": {
+            color: `${ML.ink} !important`,
         },
         ".cm-searchMatch.cm-searchMatch-selected": {
-            backgroundColor: "#ffaa8080",
+            backgroundColor: "#fb923c",
+            color: ML.ink,
+            outline: "1px solid #c2410c",
+        },
+        ".cm-activeLine .cm-searchMatch": {
+            backgroundColor: "#fde047",
+            color: ML.ink,
+        },
+        ".cm-activeLine .cm-searchMatch.cm-searchMatch-selected": {
+            backgroundColor: "#fb923c",
+            color: ML.ink,
         },
         ".cm-selectionMatch": { backgroundColor: "#b8d4ff40" },
         "&.cm-focused .cm-matchingBracket": {

@@ -86,7 +86,7 @@
   function resolvedTheme() {
     const m = mode.current;
     const sys = systemPrefersMode.current;
-    return m === "dark" || (m === "system" && sys === "dark") ? dark : light;
+    return m === "dark" ||  sys === "dark" ? dark : light;
   }
 
   function mapBackendCompletionKind(kind: string): Completion["type"] {
