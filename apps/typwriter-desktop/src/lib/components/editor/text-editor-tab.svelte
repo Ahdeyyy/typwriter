@@ -48,7 +48,14 @@
   } from "@codemirror/lint";
   import { search } from "@codemirror/search";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
-  import { typst, light, dark, typstSpellcheck } from "$lib/typst-codemirror-lang";
+  import {
+    typst,
+    light,
+    dark,
+    typstSpellcheck,
+    typstCommentDecorations,
+    typstKeymap,
+  } from "$lib/typst-codemirror-lang";
   import { Compartment } from "@codemirror/state";
   import { mode, systemPrefersMode } from "mode-watcher";
   import { languages } from "@codemirror/language-data";
