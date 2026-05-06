@@ -2,14 +2,14 @@
   import { onMount, onDestroy } from "svelte";
   import { page } from "@/stores/page.svelte";
   import Button from "../ui/button/button.svelte";
-  import { getRecentWorkspaces, createWorkspace, isFontsLoaded, removeRecentWorkspace, clearRecentWorkspaces } from "$lib/ipc/commands";
+  import { getRecentWorkspaces, createWorkspace, isFontsLoaded, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath } from "$lib/ipc/commands";
   import { onAppFontsLoaded, type UnlistenFn } from "$lib/ipc/events";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, ListViewIcon, KeyboardIcon } from "@hugeicons/core-free-icons";
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, File01Icon, KeyboardIcon } from "@hugeicons/core-free-icons";
+  import { openUrl, openPath } from "@tauri-apps/plugin-opener";
   import { updater } from "$lib/stores/updater.svelte";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
@@ -168,6 +168,21 @@
     );
   }
 
+  async function handleOpenLogsFile() {
+    const result = await getLogFilePath();
+    if (result.isErr()) {
+      logError("Failed to resolve log file path:", result.error);
+      toast.error(`Failed to resolve log file path: ${result.error}`);
+      return;
+    }
+    try {
+      await openPath(result.value);
+    } catch (err) {
+      logError("Failed to open log file:", err);
+      toast.error(`Failed to open log file: ${err}`);
+    }
+  }
+
   function handleNewWorkspaceKeydown(e: KeyboardEvent) {
     if (e.key === "Enter") {
       handleCreateWorkspace();
@@ -203,6 +218,9 @@
       </div>
     </div>
 
+    <!-- Heuristic min-height keeps items below in a stable position regardless
+         of how many recents are listed. Calc: 3 rows × ~10.5rem card + 2 × 0.5rem gap. -->
+    <div class="min-h-[32.5rem]">
     {#if loading}
       <div class="flex items-center justify-center py-8">
         <span class="text-sm text-muted-foreground">Loading…</span>
@@ -261,6 +279,7 @@
         {/each}
       </ul>
     {/if}
+    </div>
   </section>
 
   <div class="flex gap-2">
@@ -372,10 +391,10 @@
       variant="link"
       size="sm"
       class="gap-1.5 text-muted-foreground"
-      onclick={() => page.navigate("logs")}
+      onclick={handleOpenLogsFile}
     >
-      <HugeiconsIcon icon={ListViewIcon} class="size-3.5" />
-      View Logs
+      <HugeiconsIcon icon={File01Icon} class="size-3.5" />
+      Open Logs File
     </Button>
 
     <Button

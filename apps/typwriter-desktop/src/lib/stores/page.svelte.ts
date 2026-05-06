@@ -1,10 +1,9 @@
 
 import Home from "$lib/components/pages/home.svelte"
-import Logs from "$lib/components/pages/logs.svelte"
 import Workspace from "$lib/components/pages/workspace.svelte"
 import Keymaps from "$lib/components/pages/keymaps.svelte"
 
-type PageName = "home" | "workspace" | "logs" | "keymaps"
+type PageName = "home" | "workspace" | "keymaps"
 
 type PageDefinition = {
     name: PageName
@@ -19,10 +18,6 @@ export const pages = {
     "workspace": {
         name: "workspace",
         component: Workspace,
-    },
-    "logs": {
-        name: "logs",
-        component: Logs,
     },
     "keymaps": {
         name: "keymaps",

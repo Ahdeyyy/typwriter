@@ -20,9 +20,6 @@
     if (isPreviewWindow) {
       return "Preview - Typwriter";
     }
-    if (page.current.name === "logs") {
-      return "Logs - Typwriter";
-    }
     if (page.current.name === "home") {
       return "Typwriter";
     }

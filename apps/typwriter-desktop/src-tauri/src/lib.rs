@@ -23,7 +23,7 @@ use commands::{
         update_file_content,
     },
     export::{export_pdf, export_png, export_svg},
-    logs::get_current_log_view,
+    logs::get_log_file_path,
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
@@ -130,7 +130,7 @@ pub fn run() {
             jump_from_click,
             jump_from_cursor,
             // logs
-            get_current_log_view,
+            get_log_file_path,
             // export
             export_pdf,
             export_png,

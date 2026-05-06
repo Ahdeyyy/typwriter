@@ -9,6 +9,10 @@
   "permissions": [
     "core:default",
     "opener:default",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "$APPLOG/**" }]
+    },
     "log:default",
     "store:default",
     "core:window:allow-set-title",
