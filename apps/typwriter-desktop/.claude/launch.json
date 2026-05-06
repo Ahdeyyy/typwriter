@@ -5,7 +5,7 @@
       "name": "typwriter-desktop",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 5173
+      "port": 1420
     }
   ]
 }
