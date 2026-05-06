@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { ZoomInAreaIcon, ZoomOutAreaIcon, RotateLeft01Icon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
+  import { ZoomInAreaIcon, ZoomOutAreaIcon, RotateLeft01Icon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon, ArrowLeft01Icon, ArrowRight01Icon, Menu01Icon, File01Icon } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
 
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -80,6 +80,10 @@
 
     // Pre-render the target page by moving visiblePage before scrolling.
     visiblePage = target.page;
+    if (preview.paginated) {
+      setVisiblePage(target.page);
+      return;
+    }
 
     requestAnimationFrame(() => {
       const pageEl = document.getElementById(`preview-page-${target.page}`);
@@ -108,7 +112,7 @@
   $effect(() => {
     const el = scrollEl;
     const count = preview.totalPages;
-    if (!el || count === 0) return;
+    if (!el || count === 0 || preview.paginated) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -149,6 +153,55 @@
       .triggerRefresh()
       .catch((err) => logError("preview refresh failed:", err));
   }
+
+  function togglePaginated() {
+    preview.togglePaginated();
+  }
+
+  function goToPage(idx: number) {
+    if (preview.totalPages === 0) return;
+    const clamped = Math.max(0, Math.min(preview.totalPages - 1, idx));
+    visiblePage = clamped;
+    setVisiblePage(clamped);
+  }
+
+  function nextPage() {
+    goToPage(visiblePage + 1);
+  }
+  function prevPage() {
+    goToPage(visiblePage - 1);
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (!preview.paginated) return;
+    const target = e.target as HTMLElement | null;
+    if (target) {
+      const tag = target.tagName;
+      if (target.isContentEditable || tag === "INPUT" || tag === "TEXTAREA") return;
+    }
+    if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
+      e.preventDefault();
+      nextPage();
+    } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+      e.preventDefault();
+      prevPage();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      goToPage(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      goToPage(preview.totalPages - 1);
+    }
+  }
+
+  // Clamp visiblePage when total pages shrinks
+  $effect(() => {
+    const total = preview.totalPages;
+    if (total === 0) return;
+    if (visiblePage >= total) {
+      visiblePage = total - 1;
+    }
+  });
 
   function togglePresentation() {
     if (!isPopout) {
@@ -209,6 +262,8 @@
   const isNarrow = $derived(toolbarWidth > 0 && toolbarWidth < 240);
 </script>
 
+<svelte:window onkeydown={handleKeydown} />
+
 <div class="flex h-full flex-col bg-background text-foreground">
   <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
   {#if !preview.presentationMode}
@@ -257,11 +312,46 @@
         </span>
       {/if}
 
+      {#if preview.paginated && preview.totalPages > 0}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title="Previous page"
+          onclick={prevPage}
+          disabled={visiblePage <= 0}
+        >
+          <HugeiconsIcon icon={ArrowLeft01Icon} class="size-3.5" />
+        </Button>
+      {/if}
+
       {#if preview.totalPages > 0}
         <span class="text-xs text-muted-foreground tabular-nums">
           {visiblePage + 1} / {preview.totalPages}
         </span>
       {/if}
+
+      {#if preview.paginated && preview.totalPages > 0}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title="Next page"
+          onclick={nextPage}
+          disabled={visiblePage >= preview.totalPages - 1}
+        >
+          <HugeiconsIcon icon={ArrowRight01Icon} class="size-3.5" />
+        </Button>
+      {/if}
+
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title={preview.paginated ? "Switch to scroll view" : "Switch to paginated view"}
+        onclick={togglePaginated}
+        disabled={preview.totalPages === 0}
+        class={preview.paginated ? "text-accent-foreground bg-accent/20" : ""}
+      >
+        <HugeiconsIcon icon={preview.paginated ? Menu01Icon : File01Icon} class="size-3.5" />
+      </Button>
 
       <Button
         variant="ghost"
@@ -297,47 +387,100 @@
   {/if}
 
   <!-- ── Page list ──────────────────────────────────────────────────────── -->
-  <div
-    bind:this={scrollEl}
-    class="flex flex-1 flex-col items-center gap-4 overflow-y-auto py-4 preview-scroll"
-  >
-    {#if preview.totalPages === 0}
-      <div
-        class="flex h-full select-none items-center justify-center text-xs text-muted-foreground"
-      >
-        {#if workspace.mainFile}
-          Loading preview…
-        {:else}
-          Select a main `.typ` file in the explorer to render a preview.
-        {/if}
-      </div>
-    {:else}
-      {#each preview.pages as _, i}
+  {#if preview.presentationMode}
+    <div class="flex flex-1 items-center justify-center overflow-hidden bg-black">
+      {#if committedPages[visiblePage]}
+        <button
+          class="block h-full w-full border-0 bg-transparent p-0"
+          title="Click to jump to source"
+          onclick={(e) => handlePageClick(e, visiblePage)}
+        >
+          <img
+            src="data:image/png;base64,{committedPages[visiblePage]}"
+            alt="Page {visiblePage + 1}"
+            draggable="false"
+            class="block h-full w-full object-cover"
+          />
+        </button>
+      {/if}
+    </div>
+  {:else if preview.paginated}
+    <div class="flex flex-1 flex-col items-center overflow-auto py-4 preview-scroll">
+      {#if preview.totalPages === 0}
+        <div class="m-auto select-none text-xs text-muted-foreground">
+          {#if workspace.mainFile}
+            Loading preview…
+          {:else}
+            Select a main `.typ` file in the explorer to render a preview.
+          {/if}
+        </div>
+      {:else}
         <div
-          id="preview-page-{i}"
+          id="preview-page-{visiblePage}"
           class="relative shrink-0 overflow-hidden rounded shadow-md"
         >
-          {#if committedPages[i]}
+          {#if committedPages[visiblePage]}
             <button
               class="block border-0 bg-transparent p-0"
               title="Click to jump to source"
-              onclick={(e) => handlePageClick(e, i)}
+              onclick={(e) => handlePageClick(e, visiblePage)}
             >
               <img
-                src="data:image/png;base64,{committedPages[i]}"
-                alt="Page {i + 1}"
+                src="data:image/png;base64,{committedPages[visiblePage]}"
+                alt="Page {visiblePage + 1}"
                 draggable="false"
                 class="block max-w-full"
               />
             </button>
           {:else}
-            <!-- Placeholder while page is rendering -->
             <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
           {/if}
         </div>
-      {/each}
-    {/if}
-  </div>
+      {/if}
+    </div>
+  {:else}
+    <div
+      bind:this={scrollEl}
+      class="flex flex-1 flex-col items-center gap-4 overflow-y-auto py-4 preview-scroll"
+    >
+      {#if preview.totalPages === 0}
+        <div
+          class="flex h-full select-none items-center justify-center text-xs text-muted-foreground"
+        >
+          {#if workspace.mainFile}
+            Loading preview…
+          {:else}
+            Select a main `.typ` file in the explorer to render a preview.
+          {/if}
+        </div>
+      {:else}
+        {#each preview.pages as _, i}
+          <div
+            id="preview-page-{i}"
+            class="relative shrink-0 overflow-hidden rounded shadow-md"
+          >
+            {#if committedPages[i]}
+              <button
+                class="block border-0 bg-transparent p-0"
+                title="Click to jump to source"
+                onclick={(e) => handlePageClick(e, i)}
+              >
+                <img
+                  src="data:image/png;base64,{committedPages[i]}"
+                  alt="Page {i + 1}"
+                  draggable="false"
+                  class="block max-w-full"
+                />
+              </button>
+            {:else}
+              <!-- Placeholder while page is rendering -->
+              <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
+            {/if}
+          </div>
+        {/each}
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <ExportDialog bind:open={exportOpen} totalPages={preview.totalPages} />

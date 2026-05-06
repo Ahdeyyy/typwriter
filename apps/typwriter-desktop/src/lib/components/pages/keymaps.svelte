@@ -49,6 +49,13 @@
       title: "Preview",
       bindings: [
         { keys: "Esc", description: "Exit presentation mode" },
+        { keys: "←", description: "Previous page (paginated/presentation)" },
+        { keys: "→", description: "Next page (paginated/presentation)" },
+        { keys: "PageUp", description: "Previous page (paginated/presentation)" },
+        { keys: "PageDown", description: "Next page (paginated/presentation)" },
+        { keys: "Space", description: "Next page (paginated/presentation)" },
+        { keys: "Home", description: "Jump to first page" },
+        { keys: "End", description: "Jump to last page" },
       ],
     },
   ];

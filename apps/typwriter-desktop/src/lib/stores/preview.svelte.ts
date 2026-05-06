@@ -40,9 +40,11 @@ class PreviewStore {
     lastCompileReason = $state<CompileReason>('explicit');
     poppedOut = $state(false);
     presentationMode = $state(false);
+    paginated = $state(false);
 
     private _unlisteners: UnlistenFn[] = [];
     private _cursorTimer: ReturnType<typeof setTimeout> | null = null;
+    private _paginatedBeforePresentation = false;
 
     async init(): Promise<void> {
         const zoomResult = await getZoom();
@@ -146,11 +148,19 @@ class PreviewStore {
             await win.setDecorations(true);
             await win.unmaximize();
             this.presentationMode = false;
+            this.paginated = this._paginatedBeforePresentation;
         } else {
             await win.setDecorations(false);
             await win.maximize();
             this.presentationMode = true;
+            this._paginatedBeforePresentation = this.paginated;
+            this.paginated = true;
         }
+    }
+
+    togglePaginated(): void {
+        if (this.presentationMode) return;
+        this.paginated = !this.paginated;
     }
 
     setCursorPosition(path: string, offset: number): void {
