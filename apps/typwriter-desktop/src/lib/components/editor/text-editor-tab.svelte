@@ -306,6 +306,16 @@
             return false;
           },
         },
+        // Format the current .typ file (overrides vscodeKeymap's Format Document)
+        {
+          key: "Shift-Alt-f",
+          run: () => {
+            editor
+              .formatTabById(tabId)
+              .mapErr((err) => logError("format error:", err));
+            return true;
+          },
+        },
       ]),
       keymap.of(vscodeKeymap),
       keymap.of([
@@ -517,6 +527,22 @@
       mountedTabId = null;
       editorSearch.setActiveView(null);
     };
+  });
+
+  // ── Store → Editor: push externally-replaced content (e.g. format) into CM
+  $effect(() => {
+    const req = editor.contentSyncRequest;
+    if (!req) return;
+    const view = tabViews.get(req.tabId);
+    if (!view) return;
+    const current = view.state.doc.toString();
+    if (current === req.content) return;
+    const sel = view.state.selection.main;
+    const len = req.content.length;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: req.content },
+      selection: { anchor: Math.min(sel.anchor, len), head: Math.min(sel.head, len) },
+    });
   });
 
   // ── Preview → Editor: apply cursor jump requested by preview click

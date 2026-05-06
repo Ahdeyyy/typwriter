@@ -180,6 +180,33 @@ export function jumpFromCursor(path: string, cursor: number) {
     );
 }
 
+// ─── Format ───────────────────────────────────────────────────────────────────
+
+export interface FormatWorkspaceReport {
+    total: number;
+    formatted: number;
+    unchanged: number;
+    failed: string[];
+}
+
+export function formatTypstSource(source: string) {
+    return ResultAsync.fromPromise(
+        invoke<string>('format_typst_source', { source }),
+        toErrString
+    );
+}
+
+export function formatTypstFile(path: string) {
+    return ResultAsync.fromPromise(invoke<string>('format_typst_file', { path }), toErrString);
+}
+
+export function formatWorkspaceTypFiles() {
+    return ResultAsync.fromPromise(
+        invoke<FormatWorkspaceReport>('format_workspace_typ_files'),
+        toErrString
+    );
+}
+
 // ─── Export ───────────────────────────────────────────────────────────────────
 
 export function exportPdf(config: PdfExportConfig) {

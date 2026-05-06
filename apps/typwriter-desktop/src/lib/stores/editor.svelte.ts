@@ -1,6 +1,7 @@
 import { ResultAsync } from 'neverthrow';
 import {
     discardShadow,
+    formatTypstSource,
     readFile,
     saveFile,
     triggerPreview,
@@ -55,6 +56,8 @@ class EditorStore {
     );
 
     cursorJumpRequest = $state<{ tabId: string; offset: number } | null>(null);
+    contentSyncRequest = $state<{ tabId: string; content: string; version: number } | null>(null);
+    private _contentSyncVersion = 0;
 
     private _typingPreviewTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private _typingPreviewLastRun = new Map<string, number>();
@@ -212,6 +215,37 @@ class EditorStore {
         this._scheduleIdleSave(tab.id);
     }
 
+    formatActiveFile(): ResultAsync<void, string> {
+        const tab = this.activeTab;
+        if (!tab) {
+            return ResultAsync.fromSafePromise(Promise.resolve());
+        }
+        return this.formatTabById(tab.id);
+    }
+
+    formatTabById(tabId: string): ResultAsync<void, string> {
+        const tab = this.tabs.find((t) => t.id === tabId);
+        if (!tab || !tab.isEditable || !tab.relPath.endsWith('.typ')) {
+            return ResultAsync.fromSafePromise(Promise.resolve());
+        }
+        const original = tab.content;
+        return formatTypstSource(original).map((formatted) => {
+            if (formatted === original) {
+                return;
+            }
+            tab.content = formatted;
+            tab.hasUnsavedChanges = true;
+            this.contentSyncRequest = {
+                tabId: tab.id,
+                content: formatted,
+                version: ++this._contentSyncVersion,
+            };
+            updateFileContent(tab.absPath, formatted).mapErr((err) => {
+                logError('shadow write after format failed:', err);
+            });
+        });
+    }
+
     saveTabById(tabId: string): ResultAsync<void, string> {
         return ResultAsync.fromPromise(this.flushTab(tabId), (err) => String(err));
     }
@@ -231,6 +265,22 @@ class EditorStore {
         }
 
         this._clearIdleSave(tab.id);
+
+        if (tab.relPath.endsWith('.typ')) {
+            const formatResult = await formatTypstSource(tab.content);
+            if (formatResult.isOk()) {
+                if (formatResult.value !== tab.content) {
+                    tab.content = formatResult.value;
+                    this.contentSyncRequest = {
+                        tabId: tab.id,
+                        content: formatResult.value,
+                        version: ++this._contentSyncVersion,
+                    };
+                }
+            } else {
+                logError('format on save failed:', formatResult.error);
+            }
+        }
 
         const shadowResult = await updateFileContent(tab.absPath, tab.content);
         if (shadowResult.isErr()) {

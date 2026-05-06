@@ -20,6 +20,7 @@
       title: "Editor",
       bindings: [
         { keys: "Ctrl+S", description: "Save current file" },
+        { keys: "Shift+Alt+F", description: "Format current .typ file" },
         { keys: "Ctrl+F", description: "Open find panel" },
         { keys: "Ctrl+H", description: "Open find & replace panel" },
         { keys: "Esc", description: "Close search panel" },

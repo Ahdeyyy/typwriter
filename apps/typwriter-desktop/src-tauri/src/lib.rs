@@ -23,6 +23,7 @@ use commands::{
         update_file_content,
     },
     export::{export_pdf, export_png, export_svg},
+    format::{format_typst_file, format_typst_source, format_workspace_typ_files},
     logs::get_log_file_path,
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     workspace::{
@@ -135,6 +136,10 @@ pub fn run() {
             export_pdf,
             export_png,
             export_svg,
+            // format
+            format_typst_source,
+            format_typst_file,
+            format_workspace_typ_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
