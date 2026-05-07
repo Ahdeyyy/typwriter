@@ -5,7 +5,6 @@
   import { workspace } from "$lib/stores/workspace.svelte";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
 
   let dragTabId = $state<string | null>(null);
   let dropTargetId = $state<string | null>(null);
@@ -111,13 +110,13 @@
           <Tooltip.Root>
             <Tooltip.Trigger>
               {#snippet child({ props })}
-          <Button
+          <button
             {...props}
             {@attach (node) => {
               tabRefs.set(tab.id, node as HTMLButtonElement);
               return () => tabRefs.delete(tab.id);
             }}
-            variant="ghost"
+            type="button"
             class="chrome-tab {isActive ? 'active' : ''} {isDragging ? 'dragging' : ''} {isDropTarget && dropSide === 'left' ? 'drop-left' : ''} {isDropTarget && dropSide === 'right' ? 'drop-right' : ''}"
             draggable="true"
             ondragstart={(e: DragEvent) => handleDragStart(e, tab)}
@@ -149,7 +148,7 @@
             {#if i < editor.tabs.length - 1 && !isAdjacentToActive(i)}
               <span class="tab-separator"></span>
             {/if}
-          </Button>
+          </button>
               {/snippet}
             </Tooltip.Trigger>
             <Tooltip.Content>{tab.relPath}</Tooltip.Content>

@@ -111,9 +111,8 @@
 
           <!-- Errors -->
           {#each errors as diag}
-            <Button
-              variant="ghost"
-              class="group h-auto w-full items-start justify-start gap-2 rounded-none px-6 py-1.5 text-left text-sm font-normal {diag.range ? 'cursor-pointer' : 'cursor-default'}"
+            <button
+              class="group flex w-full items-start gap-2 rounded-none px-6 py-1.5 text-left text-sm font-normal hover:bg-muted hover:text-foreground {diag.range ? 'cursor-pointer' : 'cursor-default'}"
               onclick={() => void jumpToDiagnostic(diag)}
             >
               <HugeiconsIcon icon={MultiplicationSignCircleIcon} class="mt-0.5 size-3.5 shrink-0 text-destructive" />
@@ -130,14 +129,13 @@
                   <p class="text-xs italic text-muted-foreground group-hover:text-accent-foreground/80">Hint: {hint}</p>
                 {/each}
               </div>
-            </Button>
+            </button>
           {/each}
 
           <!-- Warnings -->
           {#each warnings as diag}
-            <Button
-              variant="ghost"
-              class="group h-auto w-full items-start justify-start gap-2 rounded-none px-6 py-1.5 text-left text-sm font-normal {diag.range ? 'cursor-pointer' : 'cursor-default'}"
+            <button
+              class="group flex w-full items-start gap-2 rounded-none px-6 py-1.5 text-left text-sm font-normal hover:bg-muted hover:text-foreground {diag.range ? 'cursor-pointer' : 'cursor-default'}"
               onclick={() => void jumpToDiagnostic(diag)}
             >
               <HugeiconsIcon icon={Alert01Icon} class="mt-0.5 size-3.5 shrink-0 text-yellow-500" />
@@ -154,7 +152,7 @@
                   <p class="text-xs italic text-muted-foreground group-hover:text-accent-foreground/80">Hint: {hint}</p>
                 {/each}
               </div>
-            </Button>
+            </button>
           {/each}
         {/each}
       </div>

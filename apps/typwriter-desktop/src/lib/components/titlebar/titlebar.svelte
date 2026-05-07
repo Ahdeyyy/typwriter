@@ -60,7 +60,7 @@
               size="icon"
               aria-label="Toggle sidebar"
               onclick={() => sidebarCtx.toggle()}
-              class="text-foreground/70 hover:bg-accent hover:text-accent-foreground {sidebarCtx.open ? 'bg-accent/30 text-foreground' : ''}"
+              class="text-foreground/60 hover:bg-accent hover:text-foreground {sidebarCtx.open ? 'bg-accent/30 text-foreground' : ''}"
             >
               <HugeiconsIcon icon={PanelLeftIcon} class="size-4" />
             </Button>
@@ -105,7 +105,7 @@
               disabled={previewPoppedOut}
               aria-label={previewVisible ? "Hide preview" : "Show preview"}
               onclick={() => onTogglePreview?.()}
-              class="text-foreground/70 hover:bg-accent hover:text-accent-foreground {previewVisible && !previewPoppedOut ? 'bg-accent/30 text-foreground' : ''}"
+              class="text-foreground/70 hover:bg-accent hover:text-foreground {previewVisible && !previewPoppedOut ? 'bg-accent/30 text-foreground' : ''}"
             >
               <HugeiconsIcon icon={EyeIcon} class="size-4" />
             </Button>
@@ -130,7 +130,7 @@
               aria-label="Pop out preview to a new window"
               disabled={previewPoppedOut}
               onclick={() => onPopoutPreview?.()}
-              class="text-foreground/70 hover:bg-accent hover:text-accent-foreground {previewPoppedOut ? 'bg-accent/30 text-foreground' : ''}"
+              class="text-foreground/70 hover:bg-accent hover:text-foreground {previewPoppedOut ? 'bg-accent/30 text-foreground' : ''}"
             >
               <HugeiconsIcon icon={LinkSquare01Icon} class="size-4" />
             </Button>
