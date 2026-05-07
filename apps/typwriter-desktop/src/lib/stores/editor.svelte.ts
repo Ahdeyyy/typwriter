@@ -197,6 +197,24 @@ class EditorStore {
         }
     }
 
+    async closeTabsToLeft(pivotId: string): Promise<void> {
+        const idx = this.tabs.findIndex((t) => t.id === pivotId);
+        if (idx <= 0) return;
+        const toClose = this.tabs.slice(0, idx).map((t) => t.id);
+        for (const id of toClose) {
+            await this.closeTab(id);
+        }
+    }
+
+    async closeTabsToRight(pivotId: string): Promise<void> {
+        const idx = this.tabs.findIndex((t) => t.id === pivotId);
+        if (idx === -1 || idx === this.tabs.length - 1) return;
+        const toClose = this.tabs.slice(idx + 1).map((t) => t.id);
+        for (const id of toClose) {
+            await this.closeTab(id);
+        }
+    }
+
     handleTabContentChange(tabId: string, content: string): void {
         const tab = this.tabs.find((t) => t.id === tabId);
         if (!tab || !tab.isEditable) {

@@ -161,6 +161,23 @@
           })}>
             Close Others
           </ContextMenu.Item>
+          <ContextMenu.Separator />
+          <ContextMenu.Item
+            disabled={i === 0}
+            onclick={() => void editor.closeTabsToLeft(tab.id).then(() => {
+              workspace.activeFilePath = editor.activeTab?.relPath ?? null;
+            })}
+          >
+            Close Tabs to the Left
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            disabled={i === editor.tabs.length - 1}
+            onclick={() => void editor.closeTabsToRight(tab.id).then(() => {
+              workspace.activeFilePath = editor.activeTab?.relPath ?? null;
+            })}
+          >
+            Close Tabs to the Right
+          </ContextMenu.Item>
         </ContextMenu.Content>
       </ContextMenu.Root>
     {/each}
