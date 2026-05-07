@@ -8,6 +8,16 @@
   let dragTabId = $state<string | null>(null);
   let dropTargetId = $state<string | null>(null);
   let dropSide = $state<"left" | "right" | null>(null);
+  let tabListEl = $state<HTMLDivElement | null>(null);
+  const tabRefs = new Map<string, HTMLButtonElement>();
+
+  $effect(() => {
+    const id = editor.activeTabId;
+    if (!id || !tabListEl) return;
+    const el = tabRefs.get(id);
+    if (!el) return;
+    el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  });
 
   async function activateTab(tab: TabInfo) {
     try {
@@ -89,7 +99,7 @@
 </script>
 
 <div class="tab-strip">
-  <div class="tab-list">
+  <div class="tab-list" bind:this={tabListEl}>
     {#each editor.tabs as tab, i (tab.id)}
       {@const isActive = editor.activeTabId === tab.id}
       {@const isDragging = dragTabId === tab.id}
@@ -97,6 +107,10 @@
       <ContextMenu.Root>
         <ContextMenu.Trigger>
           <button
+            {@attach (node) => {
+              tabRefs.set(tab.id, node as HTMLButtonElement);
+              return () => tabRefs.delete(tab.id);
+            }}
             class="chrome-tab"
             class:active={isActive}
             class:dragging={isDragging}

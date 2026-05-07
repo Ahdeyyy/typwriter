@@ -529,7 +529,9 @@
     };
   });
 
-  // ── Store → Editor: push externally-replaced content (e.g. format) into CM
+  // ── Store → Editor: push externally-replaced content (e.g. format) into CM.
+  // Preserve cursor by (line, column) — not byte offset — so reflows from the
+  // formatter don't drop the caret far from where the user was editing.
   $effect(() => {
     const req = editor.contentSyncRequest;
     if (!req) return;
@@ -537,12 +539,32 @@
     if (!view) return;
     const current = view.state.doc.toString();
     if (current === req.content) return;
+
+    const oldDoc = view.state.doc;
     const sel = view.state.selection.main;
-    const len = req.content.length;
+    const headLine = oldDoc.lineAt(sel.head);
+    const anchorLine = oldDoc.lineAt(sel.anchor);
+    const headLineNum = headLine.number;
+    const headCol = sel.head - headLine.from;
+    const anchorLineNum = anchorLine.number;
+    const anchorCol = sel.anchor - anchorLine.from;
+    const scrollTop = view.scrollDOM.scrollTop;
+
     view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: req.content },
-      selection: { anchor: Math.min(sel.anchor, len), head: Math.min(sel.head, len) },
+      changes: { from: 0, to: oldDoc.length, insert: req.content },
     });
+
+    const newDoc = view.state.doc;
+    const clampLine = (n: number) => Math.min(Math.max(n, 1), newDoc.lines);
+    const newHeadLine = newDoc.line(clampLine(headLineNum));
+    const newAnchorLine = newDoc.line(clampLine(anchorLineNum));
+    const newHead = Math.min(newHeadLine.from + headCol, newHeadLine.to);
+    const newAnchor = Math.min(newAnchorLine.from + anchorCol, newAnchorLine.to);
+
+    view.dispatch({
+      selection: { anchor: newAnchor, head: newHead },
+    });
+    view.scrollDOM.scrollTop = scrollTop;
   });
 
   // ── Preview → Editor: apply cursor jump requested by preview click
