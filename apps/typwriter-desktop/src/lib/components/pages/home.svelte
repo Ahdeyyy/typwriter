@@ -329,10 +329,11 @@
 
           <!-- Location picker -->
           <div class="flex flex-col gap-1.5">
-            <label class="text-sm font-medium">Location</label>
+            <label for="ws-location" class="text-sm font-medium">Location</label>
             <div class="flex gap-2">
               <Input
                 readonly
+                id="ws-location"
                 value={newWorkspaceParent}
                 placeholder="Select a folder…"
                 class="flex-1 cursor-default text-muted-foreground"
@@ -381,7 +382,7 @@
     <Button
       variant="link"
       size="sm"
-      class="gap-1.5 text-muted-foreground"
+      class="gap-1.5 text-muted-foreground cursor-pointer"
       onclick={() => openUrl("https://typst.app/docs/")}
     >
       <HugeiconsIcon icon={BookOpen01Icon} class="size-3.5" />
