@@ -52,7 +52,7 @@ pub struct CompileOutput {
 
 /// Run a full typst compilation against the provided world and return a
 /// structured result with the optional document and serialisable diagnostics.
-pub fn compile_document(world: &dyn World) -> CompileOutput {
+pub fn compile_document(world: &EditorWorld) -> CompileOutput {
     let result = typst::compile(world);
     let raw_warnings = result.warnings;
 
@@ -100,7 +100,7 @@ pub fn collect_workspace_diagnostics(
         let result = typst::compile::<PagedDocument>(&override_world);
 
         for diag in &result.warnings {
-            let sd = serialize_one(&override_world, diag);
+            let sd = serialize_one(world, diag);
             let key = dedup_key(&sd);
             if seen.insert(key) {
                 warnings.push(sd);
@@ -109,7 +109,7 @@ pub fn collect_workspace_diagnostics(
 
         if let Err(errs) = &result.output {
             for diag in errs {
-                let sd = serialize_one(&override_world, diag);
+                let sd = serialize_one(world, diag);
                 let key = dedup_key(&sd);
                 if seen.insert(key) {
                     errors.push(sd);
@@ -179,11 +179,11 @@ impl World for MainOverride<'_> {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-fn serialize_diags(world: &dyn World, diags: &[SourceDiagnostic]) -> Vec<SerializedDiagnostic> {
+fn serialize_diags(world: &EditorWorld, diags: &[SourceDiagnostic]) -> Vec<SerializedDiagnostic> {
     diags.iter().map(|d| serialize_one(world, d)).collect()
 }
 
-fn serialize_one(world: &dyn World, d: &SourceDiagnostic) -> SerializedDiagnostic {
+fn serialize_one(world: &EditorWorld, d: &SourceDiagnostic) -> SerializedDiagnostic {
     let (file_path, range) = resolve_span(world, d);
     SerializedDiagnostic {
         severity: match d.severity {
@@ -198,8 +198,12 @@ fn serialize_one(world: &dyn World, d: &SourceDiagnostic) -> SerializedDiagnosti
 }
 
 /// Try to resolve a diagnostic span to a file path + line/col range.
+///
+/// For workspace files the path is workspace-relative; for files inside a
+/// downloaded package, the path is resolved to the absolute on-disk location
+/// in the package cache so the editor can open the source.
 fn resolve_span(
-    world: &dyn World,
+    world: &EditorWorld,
     diag: &SourceDiagnostic,
 ) -> (Option<String>, Option<DiagnosticRange>) {
     let id = match diag.span.id() {
@@ -212,7 +216,14 @@ fn resolve_span(
         Err(_) => return (None, None),
     };
 
-    let file_path = id.vpath().as_rootless_path().to_str().map(String::from);
+    let file_path = if id.package().is_some() {
+        world
+            .id_to_path(id)
+            .ok()
+            .and_then(|p| p.to_str().map(String::from))
+    } else {
+        id.vpath().as_rootless_path().to_str().map(String::from)
+    };
 
     let range = source.range(diag.span).and_then(|r| {
         let lines = source.lines();
