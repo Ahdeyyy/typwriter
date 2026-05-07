@@ -241,12 +241,12 @@
           <li class="group relative">
             <Button
               variant="outline"
-              class="group/card h-auto w-full flex-col overflow-hidden rounded-md border border-border bg-card p-0 text-left font-normal hover:bg-accent"
+              class="group/card h-auto w-full flex-col gap-0 overflow-hidden rounded-md border border-border bg-card p-0 text-left font-normal hover:bg-accent hover:text-accent-foreground"
               onclick={() => handleOpenRecent(entry.path)}
               disabled={!fontsReady}
             >
               <!-- Thumbnail -->
-              <div class="flex h-28 w-full items-center justify-center overflow-hidden bg-muted">
+              <div class="flex h-28 w-full items-center justify-center overflow-hidden bg-muted group-hover/card:bg-accent">
                 {#if entry.thumbnail}
                   <img
                     src="data:image/png;base64,{entry.thumbnail}"
@@ -259,7 +259,7 @@
               </div>
 
               <!-- Details -->
-              <div class="min-w-0 w-full px-3 py-2">
+              <div class="min-w-0 w-full px-3 py-2 bg-card group-hover/card:bg-accent">
                 <p class="truncate text-sm font-medium text-foreground group-hover/card:text-accent-foreground">
                   {entry.name}
                 </p>
