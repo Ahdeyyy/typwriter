@@ -9,6 +9,7 @@
   } from "@hugeicons/core-free-icons";
   import { ChevronsUpDownIcon } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button/index.js";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import {
     workspace,
     basename,
@@ -467,42 +468,70 @@
   class="flex h-9 shrink-0 items-center justify-between border-b border-sidebar-border px-2 mb-1.5"
 >
   <div class="flex items-center gap-0.5 shrink-0">
-    <Button
-      variant="ghost"
-      size="icon"
-      title={anyFolderExpanded ? "Collapse all" : "Expand all"}
-      onclick={() => (anyFolderExpanded ? collapseAll() : expandAll())}
-    >
-      {#if anyFolderExpanded}
-        <HugeiconsIcon icon={UnfoldLessIcon} class="size-4" />
-      {:else}
-        <ChevronsUpDownIcon class="size-4" />
-      {/if}
-    </Button>
-    <Button
-      variant="ghost"
-      size="icon"
-      title="New file"
-      onclick={() => startRootCreate("file")}
-    >
-      <HugeiconsIcon icon={FilePlusIcon} class="size-4" />
-    </Button>
-    <Button
-      variant="ghost"
-      size="icon"
-      title="New folder"
-      onclick={() => startRootCreate("folder")}
-    >
-      <HugeiconsIcon icon={FolderAddIcon} class="size-4" />
-    </Button>
-    <Button
-      variant="ghost"
-      size="icon"
-      title="Import files to root"
-      onclick={importToRoot}
-    >
-      <HugeiconsIcon icon={FileImportIcon} class="size-4" />
-    </Button>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            variant="ghost"
+            size="icon"
+            onclick={() => (anyFolderExpanded ? collapseAll() : expandAll())}
+          >
+            {#if anyFolderExpanded}
+              <HugeiconsIcon icon={UnfoldLessIcon} class="size-4" />
+            {:else}
+              <ChevronsUpDownIcon class="size-4" />
+            {/if}
+          </Button>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.Content>{anyFolderExpanded ? "Collapse all" : "Expand all"}</Tooltip.Content>
+    </Tooltip.Root>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            variant="ghost"
+            size="icon"
+            onclick={() => startRootCreate("file")}
+          >
+            <HugeiconsIcon icon={FilePlusIcon} class="size-4" />
+          </Button>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.Content>New file</Tooltip.Content>
+    </Tooltip.Root>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            variant="ghost"
+            size="icon"
+            onclick={() => startRootCreate("folder")}
+          >
+            <HugeiconsIcon icon={FolderAddIcon} class="size-4" />
+          </Button>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.Content>New folder</Tooltip.Content>
+    </Tooltip.Root>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            variant="ghost"
+            size="icon"
+            onclick={importToRoot}
+          >
+            <HugeiconsIcon icon={FileImportIcon} class="size-4" />
+          </Button>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.Content>Import files to root</Tooltip.Content>
+    </Tooltip.Root>
   </div>
 </div>
 
@@ -558,52 +587,59 @@
     role="menu"
   >
     {#if menuIsDir}
-      <button
-        class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs outline-none hover:bg-accent hover:text-accent-foreground"
+      <Button
+        variant="ghost"
+        class="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-xs font-normal"
         onclick={() => menuCreateChild("file")}
       >
         New File
-      </button>
-      <button
-        class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs outline-none hover:bg-accent hover:text-accent-foreground"
+      </Button>
+      <Button
+        variant="ghost"
+        class="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-xs font-normal"
         onclick={() => menuCreateChild("folder")}
       >
         New Folder
-      </button>
-      <button
-        class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs outline-none hover:bg-accent hover:text-accent-foreground"
+      </Button>
+      <Button
+        variant="ghost"
+        class="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-xs font-normal"
         onclick={menuImport}
       >
         Import Files…
-      </button>
+      </Button>
       <div class="-mx-1 my-1 h-px bg-border"></div>
     {:else}
-      <button
-        class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs outline-none hover:bg-accent hover:text-accent-foreground"
+      <Button
+        variant="ghost"
+        class="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-xs font-normal"
         onclick={menuOpen}
       >
         Open
-      </button>
-      <button
-        class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs outline-none hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+      </Button>
+      <Button
+        variant="ghost"
+        class="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-xs font-normal"
         disabled={menuIsMain}
         onclick={menuSetMain}
       >
         Set as Main File
-      </button>
+      </Button>
       <div class="-mx-1 my-1 h-px bg-border"></div>
     {/if}
-    <button
-      class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs outline-none hover:bg-accent hover:text-accent-foreground"
+    <Button
+      variant="ghost"
+      class="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-xs font-normal"
       onclick={menuRename}
     >
       Rename
-    </button>
-    <button
-      class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs text-destructive outline-none hover:bg-destructive hover:text-destructive-foreground"
+    </Button>
+    <Button
+      variant="destructive"
+      class="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-xs font-normal"
       onclick={menuDelete}
     >
       Delete
-    </button>
+    </Button>
   </div>
 {/if}

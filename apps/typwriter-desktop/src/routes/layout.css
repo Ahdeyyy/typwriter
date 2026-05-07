@@ -198,6 +198,21 @@
     letter-spacing: var(--tracking-normal);
      @apply max-h-svh max-w-svw overscroll-none overflow-hidden;
       @apply h-screen;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Re-enable text selection where editing or reading is expected */
+  input,
+  textarea,
+  [contenteditable="true"],
+  [contenteditable=""],
+  .cm-content,
+  .cm-editor,
+  .allow-select,
+  .allow-select * {
+    user-select: text;
+    -webkit-user-select: text;
   }
 
   /*default scroll bar*/

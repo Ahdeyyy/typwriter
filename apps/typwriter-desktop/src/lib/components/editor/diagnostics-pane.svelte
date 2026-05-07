@@ -2,6 +2,8 @@
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Alert01Icon, MultiplicationSignCircleIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
   import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
@@ -77,13 +79,14 @@
         </span>
       {/if}
     </div>
-    <button
-      class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+    <Button
+      variant="ghost"
+      size="icon-xs"
       onclick={() => onclose ? onclose() : diagnostics.togglePane()}
       aria-label="Close problems pane"
     >
       <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
-    </button>
+    </Button>
   </div>
 
   <!-- Body -->
@@ -95,15 +98,22 @@
         {#each grouped as [filePath, { errors, warnings }]}
           <!-- File group header -->
           <div class="flex items-center gap-2 px-3 py-1 sticky top-0 bg-background/95 backdrop-blur-sm z-10 min-w-0">
-            <span class="truncate text-xs font-medium text-foreground shrink-0 max-w-[40%]" title={filePath}>{basename(filePath)}</span>
-            <span class="truncate text-[10px] text-muted-foreground min-w-0 flex-1" title={filePath}>{filePath}</span>
+            <Tooltip.Root>
+              <Tooltip.Trigger class="truncate text-xs font-medium text-foreground shrink-0 max-w-[40%]">{basename(filePath)}</Tooltip.Trigger>
+              <Tooltip.Content>{filePath}</Tooltip.Content>
+            </Tooltip.Root>
+            <Tooltip.Root>
+              <Tooltip.Trigger class="truncate text-[10px] text-muted-foreground min-w-0 flex-1 text-left">{filePath}</Tooltip.Trigger>
+              <Tooltip.Content>{filePath}</Tooltip.Content>
+            </Tooltip.Root>
             <span class="ml-auto shrink-0 tabular-nums text-xs text-muted-foreground">{errors.length + warnings.length}</span>
           </div>
 
           <!-- Errors -->
           {#each errors as diag}
-            <button
-              class="group flex w-full items-start gap-2 px-6 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors {diag.range ? 'cursor-pointer' : 'cursor-default'}"
+            <Button
+              variant="ghost"
+              class="group h-auto w-full items-start justify-start gap-2 rounded-none px-6 py-1.5 text-left text-sm font-normal {diag.range ? 'cursor-pointer' : 'cursor-default'}"
               onclick={() => void jumpToDiagnostic(diag)}
             >
               <HugeiconsIcon icon={MultiplicationSignCircleIcon} class="mt-0.5 size-3.5 shrink-0 text-destructive" />
@@ -120,13 +130,14 @@
                   <p class="text-xs italic text-muted-foreground group-hover:text-accent-foreground/80">Hint: {hint}</p>
                 {/each}
               </div>
-            </button>
+            </Button>
           {/each}
 
           <!-- Warnings -->
           {#each warnings as diag}
-            <button
-              class="group flex w-full items-start gap-2 px-6 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors {diag.range ? 'cursor-pointer' : 'cursor-default'}"
+            <Button
+              variant="ghost"
+              class="group h-auto w-full items-start justify-start gap-2 rounded-none px-6 py-1.5 text-left text-sm font-normal {diag.range ? 'cursor-pointer' : 'cursor-default'}"
               onclick={() => void jumpToDiagnostic(diag)}
             >
               <HugeiconsIcon icon={Alert01Icon} class="mt-0.5 size-3.5 shrink-0 text-yellow-500" />
@@ -143,7 +154,7 @@
                   <p class="text-xs italic text-muted-foreground group-hover:text-accent-foreground/80">Hint: {hint}</p>
                 {/each}
               </div>
-            </button>
+            </Button>
           {/each}
         {/each}
       </div>

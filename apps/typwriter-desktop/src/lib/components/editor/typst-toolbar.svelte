@@ -3,6 +3,7 @@
   import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/svelte";
   import { TextBoldIcon, TextItalicIcon, TextStrikethroughIcon,  CodeIcon } from "@hugeicons/core-free-icons";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
   import {
     toggleBold,
@@ -37,16 +38,16 @@
     <Tooltip.Root>
       <Tooltip.Trigger>
         {#snippet child({ props })}
-          <button
+          <Button
             {...props}
-            type="button"
+            variant="ghost"
+            size="icon-sm"
             class="tb-btn"
             onclick={() => dispatch(action.run)}
             aria-label={action.label}
           >
-            <!-- <action.icon size={14} weight="regular" /> -->
             <HugeiconsIcon icon={action.icon} size={14}/>
-          </button>
+          </Button>
         {/snippet}
       </Tooltip.Trigger>
       <Tooltip.Content side="bottom">

@@ -14,6 +14,7 @@
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import ModeSwitcher from "$lib/components/sidebar/mode-switcher.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
@@ -191,6 +192,7 @@
 
 </script>
 
+<Tooltip.Provider>
 <div class="flex h-full w-full flex-col">
   <Titlebar variant="minimal" title="Typwriter" />
   <main class="relative flex flex-1 flex-col items-center justify-center gap-5 p-4">
@@ -237,8 +239,9 @@
       <ul class="grid grid-cols-2 gap-2">
         {#each recentWorkspaces.slice(0, 6) as entry (entry.path)}
           <li class="group relative">
-            <button
-              class="group/card flex w-full flex-col overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:bg-accent disabled:pointer-events-none cursor-pointer disabled:opacity-50"
+            <Button
+              variant="outline"
+              class="group/card h-auto w-full flex-col overflow-hidden rounded-md border border-border bg-card p-0 text-left font-normal hover:bg-accent"
               onclick={() => handleOpenRecent(entry.path)}
               disabled={!fontsReady}
             >
@@ -256,7 +259,7 @@
               </div>
 
               <!-- Details -->
-              <div class="min-w-0 px-3 py-2">
+              <div class="min-w-0 w-full px-3 py-2">
                 <p class="truncate text-sm font-medium text-foreground group-hover/card:text-accent-foreground">
                   {entry.name}
                 </p>
@@ -264,17 +267,26 @@
                   {entry.path}
                 </p>
               </div>
-            </button>
+            </Button>
 
             <!-- Per-entry delete button -->
-            <button
-              class="absolute right-1.5 top-1.5 flex h-6 w-6 rounded-lg items-center justify-center bg-background text-muted-foreground opacity-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 group-hover:opacity-100 "
-              onclick={(e) => handleRemoveRecent(e, entry.path)}
-              title="Remove from recents"
-              aria-label="Remove {entry.name} from recents"
-            >
-              <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
-            </button>
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <Button
+                    {...props}
+                    variant="ghost"
+                    size="icon-sm"
+                    class="absolute right-1.5 top-1.5 rounded-lg bg-background text-muted-foreground opacity-0 hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 group-hover:opacity-100"
+                    onclick={(e) => handleRemoveRecent(e, entry.path)}
+                    aria-label="Remove {entry.name} from recents"
+                  >
+                    <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
+                  </Button>
+                {/snippet}
+              </Tooltip.Trigger>
+              <Tooltip.Content>Remove from recents</Tooltip.Content>
+            </Tooltip.Root>
           </li>
         {/each}
       </ul>
@@ -409,3 +421,4 @@
   </div>
   </main>
 </div>
+</Tooltip.Provider>

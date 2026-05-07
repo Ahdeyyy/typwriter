@@ -10,6 +10,7 @@
   } from "@hugeicons/core-free-icons";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
   import WindowControls from "./window-controls.svelte";
   import { platform } from "$lib/utils/platform";
 
@@ -53,18 +54,16 @@
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
-            <button
+            <Button
               {...props}
-              type="button"
+              variant="ghost"
+              size="icon"
               aria-label="Toggle sidebar"
               onclick={() => sidebarCtx.toggle()}
-              class="flex size-7 items-center justify-center rounded-md
-                     text-foreground/70 transition-colors
-                     hover:bg-accent hover:text-accent-foreground
-                     {sidebarCtx.open ? 'bg-accent/20 text-accent-foreground' : ''}"
+              class="text-foreground/70 hover:bg-accent hover:text-accent-foreground {sidebarCtx.open ? 'bg-accent/30 text-foreground' : ''}"
             >
               <HugeiconsIcon icon={PanelLeftIcon} class="size-4" />
-            </button>
+            </Button>
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="bottom">Toggle sidebar</Tooltip.Content>
@@ -99,20 +98,17 @@
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
-            <button
+            <Button
               {...props}
-              type="button"
+              variant="ghost"
+              size="icon"
               disabled={previewPoppedOut}
               aria-label={previewVisible ? "Hide preview" : "Show preview"}
               onclick={() => onTogglePreview?.()}
-              class="flex size-7 items-center justify-center rounded-md
-                     text-foreground/70 transition-colors
-                     hover:bg-accent hover:text-accent-foreground
-                     disabled:cursor-not-allowed disabled:opacity-50
-                     {previewVisible && !previewPoppedOut ? 'bg-accent/20 text-accent-foreground' : ''}"
+              class="text-foreground/70 hover:bg-accent hover:text-accent-foreground {previewVisible && !previewPoppedOut ? 'bg-accent/30 text-foreground' : ''}"
             >
               <HugeiconsIcon icon={EyeIcon} class="size-4" />
-            </button>
+            </Button>
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="bottom">
@@ -127,20 +123,17 @@
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
-            <button
+            <Button
               {...props}
-              type="button"
+              variant="ghost"
+              size="icon"
               aria-label="Pop out preview to a new window"
               disabled={previewPoppedOut}
               onclick={() => onPopoutPreview?.()}
-              class="flex size-7 items-center justify-center rounded-md
-                     text-foreground/70 transition-colors
-                     hover:bg-accent hover:text-accent-foreground
-                     disabled:cursor-not-allowed disabled:opacity-50
-                     {previewPoppedOut ? 'bg-accent/20 text-accent-foreground' : ''}"
+              class="text-foreground/70 hover:bg-accent hover:text-accent-foreground {previewPoppedOut ? 'bg-accent/30 text-foreground' : ''}"
             >
               <HugeiconsIcon icon={LinkSquare01Icon} class="size-4" />
-            </button>
+            </Button>
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="bottom">

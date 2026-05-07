@@ -10,6 +10,7 @@
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { page } from "$lib/stores/page.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
@@ -180,17 +181,14 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
-            <button
+            <Button
               {...props}
-              class="relative flex size-8 shrink-0 items-center justify-center rounded-md
-                     transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
-                     {sidebarCtx.open && activeSection === 'files'
-                       ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                       : 'text-sidebar-foreground/70'}"
+              variant="ghost"
+              class="relative size-8 shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground {sidebarCtx.open && activeSection === 'files' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/70'}"
               onclick={() => toggleSection("files")}
             >
               <HugeiconsIcon icon={Folder01Icon} class="size-4" />
-            </button>
+            </Button>
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="top">Files</Tooltip.Content>
@@ -200,13 +198,10 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
-            <button
+            <Button
               {...props}
-              class="relative flex size-8 shrink-0 items-center justify-center rounded-md
-                     transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
-                     {sidebarCtx.open && activeSection === 'diagnostics'
-                       ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                       : 'text-sidebar-foreground/70'}"
+              variant="ghost"
+              class="relative size-8 shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground {sidebarCtx.open && activeSection === 'diagnostics' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/70'}"
               onclick={() => toggleSection("diagnostics")}
             >
               <HugeiconsIcon
@@ -226,7 +221,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
                   {diagCount > 9 ? "9+" : diagCount}
                 </span>
               {/if}
-            </button>
+            </Button>
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="top">Diagnostics</Tooltip.Content>
@@ -236,15 +231,14 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
-            <button
+            <Button
               {...props}
-              class="flex size-8 shrink-0 items-center justify-center rounded-md
-                     text-sidebar-foreground/70 transition-colors
-                     hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              variant="ghost"
+              class="size-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               onclick={handleReturnHome}
             >
               <HugeiconsIcon icon={Home01Icon} class="size-4" />
-            </button>
+            </Button>
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="top">Home</Tooltip.Content>

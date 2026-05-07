@@ -13,6 +13,7 @@
   import { jumpFromClick, setVisiblePage } from "$lib/ipc/commands";
   import { emitPreviewSourceJump } from "$lib/ipc/events";
   import { Button } from "$lib/components/ui/button";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { logError } from "$lib/logger";
   import { toast } from "svelte-sonner";
 
@@ -275,29 +276,43 @@
   >
     <!-- Zoom controls -->
     <div class={isNarrow ? "flex items-center gap-0.5 w-full" : "flex items-center gap-0.5"}>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        title="Zoom out"
-        onclick={zoomOut}
-        disabled={preview.zoom <= 0.5}
-      >
-        <HugeiconsIcon icon={ZoomOutAreaIcon} class="size-3.5" />
-      </Button>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="icon-sm"
+              onclick={zoomOut}
+              disabled={preview.zoom <= 0.5}
+            >
+              <HugeiconsIcon icon={ZoomOutAreaIcon} class="size-3.5" />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content>Zoom out</Tooltip.Content>
+      </Tooltip.Root>
 
       <span class="w-12 text-center text-xs text-muted-foreground tabular-nums">
         {zoomLabel}
       </span>
 
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        title="Zoom in"
-        onclick={zoomIn}
-        disabled={preview.zoom >= 8.0}
-      >
-        <HugeiconsIcon icon={ZoomInAreaIcon} class="size-3.5" />
-      </Button>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="icon-sm"
+              onclick={zoomIn}
+              disabled={preview.zoom >= 8.0}
+            >
+              <HugeiconsIcon icon={ZoomInAreaIcon} class="size-3.5" />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content>Zoom in</Tooltip.Content>
+      </Tooltip.Root>
     </div>
 
     {#if !isNarrow}
@@ -313,15 +328,22 @@
       {/if}
 
       {#if preview.paginated && preview.totalPages > 0}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          title="Previous page"
-          onclick={prevPage}
-          disabled={visiblePage <= 0}
-        >
-          <HugeiconsIcon icon={ArrowLeft01Icon} class="size-3.5" />
-        </Button>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon-sm"
+                onclick={prevPage}
+                disabled={visiblePage <= 0}
+              >
+                <HugeiconsIcon icon={ArrowLeft01Icon} class="size-3.5" />
+              </Button>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content>Previous page</Tooltip.Content>
+        </Tooltip.Root>
       {/if}
 
       {#if preview.totalPages > 0}
@@ -331,57 +353,92 @@
       {/if}
 
       {#if preview.paginated && preview.totalPages > 0}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          title="Next page"
-          onclick={nextPage}
-          disabled={visiblePage >= preview.totalPages - 1}
-        >
-          <HugeiconsIcon icon={ArrowRight01Icon} class="size-3.5" />
-        </Button>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon-sm"
+                onclick={nextPage}
+                disabled={visiblePage >= preview.totalPages - 1}
+              >
+                <HugeiconsIcon icon={ArrowRight01Icon} class="size-3.5" />
+              </Button>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content>Next page</Tooltip.Content>
+        </Tooltip.Root>
       {/if}
 
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        title={preview.paginated ? "Switch to scroll view" : "Switch to paginated view"}
-        onclick={togglePaginated}
-        disabled={preview.totalPages === 0}
-        class={preview.paginated ? "text-accent-foreground bg-accent/20" : ""}
-      >
-        <HugeiconsIcon icon={preview.paginated ? Menu01Icon : File01Icon} class="size-3.5" />
-      </Button>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="icon-sm"
+              onclick={togglePaginated}
+              disabled={preview.totalPages === 0}
+              class={preview.paginated ? "bg-accent/30 text-foreground" : ""}
+            >
+              <HugeiconsIcon icon={preview.paginated ? Menu01Icon : File01Icon} class="size-3.5" />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content>{preview.paginated ? "Switch to scroll view" : "Switch to paginated view"}</Tooltip.Content>
+      </Tooltip.Root>
 
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        title="Export document"
-        onclick={() => (exportOpen = true)}
-        disabled={preview.totalPages === 0}
-      >
-        <HugeiconsIcon icon={Download01Icon} class="size-3.5" />
-      </Button>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="icon-sm"
+              onclick={() => (exportOpen = true)}
+              disabled={preview.totalPages === 0}
+            >
+              <HugeiconsIcon icon={Download01Icon} class="size-3.5" />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content>Export document</Tooltip.Content>
+      </Tooltip.Root>
 
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        title="Refresh preview"
-        onclick={refresh}
-      >
-        <HugeiconsIcon icon={Refresh01Icon} class="size-3.5" />
-      </Button>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="icon-sm"
+              onclick={refresh}
+            >
+              <HugeiconsIcon icon={Refresh01Icon} class="size-3.5" />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content>Refresh preview</Tooltip.Content>
+      </Tooltip.Root>
 
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        title={preview.presentationMode ? "Exit presentation mode" : "Presentation mode"}
-        onclick={togglePresentation}
-        disabled={preview.totalPages === 0}
-        class={preview.presentationMode ? "text-accent-foreground bg-accent/20" : ""}
-      >
-        <HugeiconsIcon icon={preview.presentationMode ? Cancel01Icon : PresentationBarChart01Icon} class="size-3.5" />
-      </Button>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="icon-sm"
+              onclick={togglePresentation}
+              disabled={preview.totalPages === 0}
+              class={preview.presentationMode ? "bg-accent/30 text-foreground" : ""}
+            >
+              <HugeiconsIcon icon={preview.presentationMode ? Cancel01Icon : PresentationBarChart01Icon} class="size-3.5" />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content>{preview.presentationMode ? "Exit presentation mode" : "Presentation mode"}</Tooltip.Content>
+      </Tooltip.Root>
     </div>
   </div>
   {/if}
@@ -390,18 +447,26 @@
   {#if preview.presentationMode}
     <div class="flex flex-1 items-center justify-center overflow-hidden bg-black">
       {#if committedPages[visiblePage]}
-        <button
-          class="block h-full w-full border-0 bg-transparent p-0"
-          title="Click to jump to source"
-          onclick={(e) => handlePageClick(e, visiblePage)}
-        >
-          <img
-            src="data:image/png;base64,{committedPages[visiblePage]}"
-            alt="Page {visiblePage + 1}"
-            draggable="false"
-            class="block h-full w-full object-cover"
-          />
-        </button>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <Button
+                {...props}
+                variant="ghost"
+                class="block h-full w-full rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
+                onclick={(e) => handlePageClick(e, visiblePage)}
+              >
+                <img
+                  src="data:image/png;base64,{committedPages[visiblePage]}"
+                  alt="Page {visiblePage + 1}"
+                  draggable="false"
+                  class="block h-full w-full object-cover"
+                />
+              </Button>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content>Click to jump to source</Tooltip.Content>
+        </Tooltip.Root>
       {/if}
     </div>
   {:else if preview.paginated}
@@ -420,18 +485,26 @@
           class="relative shrink-0 overflow-hidden rounded shadow-md"
         >
           {#if committedPages[visiblePage]}
-            <button
-              class="block border-0 bg-transparent p-0"
-              title="Click to jump to source"
-              onclick={(e) => handlePageClick(e, visiblePage)}
-            >
-              <img
-                src="data:image/png;base64,{committedPages[visiblePage]}"
-                alt="Page {visiblePage + 1}"
-                draggable="false"
-                class="block max-w-full"
-              />
-            </button>
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <Button
+                    {...props}
+                    variant="ghost"
+                    class="block h-auto rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
+                    onclick={(e) => handlePageClick(e, visiblePage)}
+                  >
+                    <img
+                      src="data:image/png;base64,{committedPages[visiblePage]}"
+                      alt="Page {visiblePage + 1}"
+                      draggable="false"
+                      class="block max-w-full"
+                    />
+                  </Button>
+                {/snippet}
+              </Tooltip.Trigger>
+              <Tooltip.Content>Click to jump to source</Tooltip.Content>
+            </Tooltip.Root>
           {:else}
             <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
           {/if}
@@ -460,18 +533,26 @@
             class="relative shrink-0 overflow-hidden rounded shadow-md"
           >
             {#if committedPages[i]}
-              <button
-                class="block border-0 bg-transparent p-0"
-                title="Click to jump to source"
-                onclick={(e) => handlePageClick(e, i)}
-              >
-                <img
-                  src="data:image/png;base64,{committedPages[i]}"
-                  alt="Page {i + 1}"
-                  draggable="false"
-                  class="block max-w-full"
-                />
-              </button>
+              <Tooltip.Root>
+                <Tooltip.Trigger>
+                  {#snippet child({ props })}
+                    <Button
+                      {...props}
+                      variant="ghost"
+                      class="block h-auto rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
+                      onclick={(e) => handlePageClick(e, i)}
+                    >
+                      <img
+                        src="data:image/png;base64,{committedPages[i]}"
+                        alt="Page {i + 1}"
+                        draggable="false"
+                        class="block max-w-full"
+                      />
+                    </Button>
+                  {/snippet}
+                </Tooltip.Trigger>
+                <Tooltip.Content>Click to jump to source</Tooltip.Content>
+              </Tooltip.Root>
             {:else}
               <!-- Placeholder while page is rendering -->
               <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>

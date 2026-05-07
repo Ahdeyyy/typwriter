@@ -4,6 +4,8 @@
   import { editor, type TabInfo } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
 
   let dragTabId = $state<string | null>(null);
   let dropTargetId = $state<string | null>(null);
@@ -106,25 +108,25 @@
       {@const isDropTarget = dropTargetId === tab.id}
       <ContextMenu.Root>
         <ContextMenu.Trigger>
-          <button
+          <Tooltip.Root>
+            <Tooltip.Trigger>
+              {#snippet child({ props })}
+          <Button
+            {...props}
             {@attach (node) => {
               tabRefs.set(tab.id, node as HTMLButtonElement);
               return () => tabRefs.delete(tab.id);
             }}
-            class="chrome-tab"
-            class:active={isActive}
-            class:dragging={isDragging}
-            class:drop-left={isDropTarget && dropSide === "left"}
-            class:drop-right={isDropTarget && dropSide === "right"}
+            variant="ghost"
+            class="chrome-tab {isActive ? 'active' : ''} {isDragging ? 'dragging' : ''} {isDropTarget && dropSide === 'left' ? 'drop-left' : ''} {isDropTarget && dropSide === 'right' ? 'drop-right' : ''}"
             draggable="true"
-            ondragstart={(e) => handleDragStart(e, tab)}
-            ondragover={(e) => handleDragOver(e, tab)}
-            ondragleave={(e) => handleDragLeave(e, tab)}
-            ondrop={(e) => handleDrop(e, tab)}
+            ondragstart={(e: DragEvent) => handleDragStart(e, tab)}
+            ondragover={(e: DragEvent) => handleDragOver(e, tab)}
+            ondragleave={(e: DragEvent) => handleDragLeave(e, tab)}
+            ondrop={(e: DragEvent) => handleDrop(e, tab)}
             ondragend={handleDragEnd}
             onclick={() => void activateTab(tab)}
-            onauxclick={(e) => void handleAuxClick(e, tab)}
-            title={tab.relPath}
+            onauxclick={(e: MouseEvent) => void handleAuxClick(e, tab)}
           >
             {#if tab.hasUnsavedChanges}
               <span class="unsaved-dot"></span>
@@ -147,7 +149,11 @@
             {#if i < editor.tabs.length - 1 && !isAdjacentToActive(i)}
               <span class="tab-separator"></span>
             {/if}
-          </button>
+          </Button>
+              {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Content>{tab.relPath}</Tooltip.Content>
+          </Tooltip.Root>
         </ContextMenu.Trigger>
 
         <ContextMenu.Content>
