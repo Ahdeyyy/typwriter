@@ -327,6 +327,25 @@ class EditorStore {
         }
 
         const newId = normalize(newRelPath);
+        if (newId === oldId) {
+            return;
+        }
+
+        const collidingIdx = this.tabs.findIndex((t) => t.id === newId && t.id !== oldId);
+        if (collidingIdx !== -1) {
+            const colliding = this.tabs[collidingIdx];
+            this._clearTimers(colliding.id);
+            if (colliding.viewMode === 'text') {
+                discardShadow(colliding.absPath).mapErr((err) =>
+                    logError('discardShadow error on collision close:', err)
+                );
+            }
+            this.tabs.splice(collidingIdx, 1);
+            if (this.activeTabId === colliding.id) {
+                this.activeTabId = oldId;
+            }
+        }
+
         this._moveTimerKey(this._typingPreviewTimers, oldId, newId);
         this._moveTimerKey(this._idleSaveTimers, oldId, newId);
 

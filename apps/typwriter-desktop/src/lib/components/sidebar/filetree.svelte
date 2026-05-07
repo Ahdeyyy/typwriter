@@ -1,38 +1,270 @@
 <script lang="ts">
+  import { onMount, onDestroy, tick } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { ArrowUpDownIcon, FilePlusIcon, FolderAddIcon, Search01Icon, Cancel01Icon, UnfoldLessIcon, UnfoldMoreIcon, UnfoldMoreDownIcon, UnfoldMoreFreeIcons, ChevronsUpDown } from "@hugeicons/core-free-icons";
-  import { ChevronsDownUp, ChevronsUpDownIcon } from "@lucide/svelte";
-  import { tick } from "svelte";
-  import { Input } from "$lib/components/ui/input/index.js";
+  import {
+    FilePlusIcon,
+    FolderAddIcon,
+    UnfoldLessIcon,
+    FileImportIcon,
+  } from "@hugeicons/core-free-icons";
+  import { ChevronsUpDownIcon } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button/index.js";
-  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
-  import { workspace, basename } from "$lib/stores/workspace.svelte";
-  import TreeNode from "./tree-node.svelte";
+  import {
+    workspace,
+    basename,
+    dirname,
+    type FileNode,
+  } from "$lib/stores/workspace.svelte";
+  import { editor } from "$lib/stores/editor.svelte";
   import { toast } from "svelte-sonner";
+  import { FileTree } from "@pierre/trees";
+  import type {
+    ContextMenuItem,
+    ContextMenuAnchorRect,
+    FileTreeDirectoryHandle,
+    FileTreeDropResult,
+    FileTreeItemHandle,
+    FileTreeRenameEvent,
+  } from "@pierre/trees";
 
-  // ─── Context-menu action deferral ──────────────────────────────────────────
+  function asDir(item: FileTreeItemHandle | null): FileTreeDirectoryHandle | null {
+    return item && item.isDirectory() ? (item as FileTreeDirectoryHandle) : null;
+  }
 
-  let pendingAction = $state<(() => void) | null>(null);
+  // ─── DOM mount / instance ────────────────────────────────────────────
 
-  function onMenuOpenChange(open: boolean) {
-    if (!open && pendingAction) {
-      const action = pendingAction;
-      pendingAction = null;
-      requestAnimationFrame(() => action());
+  let treeMount = $state<HTMLDivElement | null>(null);
+  let tree: FileTree | null = null;
+  let currentPaths: string[] = [];
+  let expandedDirs = $state(new Set<string>());
+
+  // Tracks placeholder paths created via `tree.add()` for context-menu
+  // creates so `onRename` can route them to `createFile/Folder` instead of
+  // `rename`.
+  const pendingCreatePaths = new Set<string>();
+
+  // ─── Path helpers ────────────────────────────────────────────────────
+
+  function flattenPaths(nodes: FileNode[], out: string[] = []): string[] {
+    for (const n of nodes) {
+      if (n.is_dir) {
+        out.push(`${n.path}/`);
+        flattenPaths(n.children, out);
+      } else {
+        out.push(n.path);
+      }
+    }
+    return out;
+  }
+
+  function dirPaths(paths: readonly string[]): string[] {
+    return paths.filter((p) => p.endsWith("/"));
+  }
+
+  function pathIsDir(path: string): boolean {
+    function walk(nodes: FileNode[]): boolean {
+      for (const n of nodes) {
+        if (n.path === path) return n.is_dir;
+        if (walk(n.children)) return true;
+      }
+      return false;
+    }
+    return walk(workspace.tree);
+  }
+
+  function stripSlash(p: string): string {
+    return p.endsWith("/") ? p.slice(0, -1) : p;
+  }
+
+  // ─── Sync expansion + active selection ───────────────────────────────
+
+  function captureExpandedFromTree(): string[] {
+    if (!tree) return [];
+    const result: string[] = [];
+    for (const p of dirPaths(currentPaths)) {
+      const dir = asDir(tree.getItem(p));
+      if (dir?.isExpanded()) result.push(p);
+    }
+    return result;
+  }
+
+  function refreshExpandedDirs(): void {
+    if (!tree) return;
+    const set = new Set<string>();
+    for (const p of dirPaths(currentPaths)) {
+      const dir = asDir(tree.getItem(p));
+      if (dir?.isExpanded()) set.add(p);
+    }
+    expandedDirs = set;
+  }
+
+  function pathsEqual(a: readonly string[], b: readonly string[]): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  // ─── Lifecycle ───────────────────────────────────────────────────────
+
+  function ancestorDirsOf(path: string): string[] {
+    const out: string[] = [];
+    const norm = path.replace(/\\/g, "/");
+    let i = norm.indexOf("/");
+    while (i !== -1) {
+      out.push(`${norm.slice(0, i)}/`);
+      i = norm.indexOf("/", i + 1);
+    }
+    return out;
+  }
+
+  function initialExpandedFromTabs(): string[] {
+    const set = new Set<string>();
+    for (const tab of editor.tabs) {
+      for (const dir of ancestorDirsOf(tab.relPath)) set.add(dir);
+    }
+    if (workspace.activeFilePath) {
+      for (const dir of ancestorDirsOf(workspace.activeFilePath)) set.add(dir);
+    }
+    return [...set];
+  }
+
+  onMount(() => {
+    if (!treeMount) return;
+    const initialPaths = flattenPaths(workspace.tree);
+    currentPaths = initialPaths;
+
+    tree = new FileTree({
+      paths: initialPaths,
+      icons: { set: "complete", colored: true },
+      search: true,
+      initialSelectedPaths: workspace.activeFilePath
+        ? [workspace.activeFilePath]
+        : [],
+      initialExpandedPaths: initialExpandedFromTabs(),
+      renderRowDecoration: ({ item }) => {
+        if (item.kind === "directory") return null;
+        if (workspace.mainFile === stripSlash(item.path)) {
+          return { text: "●", title: "Main file" };
+        }
+        return null;
+      },
+      dragAndDrop: {
+        canDrop: ({ target }) =>
+          target.kind === "directory" || target.kind === "root",
+        onDropComplete: handleDropComplete,
+        onDropError: (error) => toast.error(`Move failed: ${error}`),
+      },
+      renaming: {
+        onRename: handleRenameOrCreate,
+        onError: (error) => toast.error(`Rename failed: ${error}`),
+      },
+      composition: {
+        contextMenu: {
+          enabled: true,
+          triggerMode: "right-click",
+          onOpen: (item, ctx) => {
+            menuState = {
+              item,
+              rect: ctx.anchorRect,
+              close: ctx.close,
+            };
+          },
+          onClose: () => {
+            menuState = null;
+          },
+        },
+      },
+      unsafeCSS: `
+        [data-item-section="decoration"] span {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+          line-height: 1;
+          color: #f59e0b;
+        }
+        [data-file-tree-search-container] {
+          padding-bottom: var(--trees-item-row-gap);
+          border-bottom: 1px solid var(--trees-border-color);
+        }
+      `,
+      onSelectionChange: (paths) => {
+        if (paths.length !== 1) return;
+        const p = paths[0];
+        if (p.endsWith("/")) return;
+        if (pendingCreatePaths.has(p)) return;
+        if (p === workspace.activeFilePath) return;
+        workspace
+          .openFile(p)
+          .mapErr((err) => toast.error(`Failed to open file: ${err}`));
+      },
+    });
+
+    tree.render({ containerWrapper: treeMount });
+    tree.subscribe(refreshExpandedDirs);
+  });
+
+  onDestroy(() => {
+    tree?.cleanUp();
+    tree = null;
+  });
+
+  // ─── Reactivity: workspace.tree → pierre paths ───────────────────────
+
+  $effect(() => {
+    const newPaths = flattenPaths(workspace.tree);
+    if (!tree) return;
+    if (pathsEqual(newPaths, currentPaths)) return;
+
+    const expanded = captureExpandedFromTree();
+    currentPaths = newPaths;
+    tree.resetPaths(newPaths, { initialExpandedPaths: expanded });
+
+    if (workspace.activeFilePath) {
+      tree.getItem(workspace.activeFilePath)?.select();
+    }
+    refreshExpandedDirs();
+  });
+
+  $effect(() => {
+    const active = workspace.activeFilePath;
+    if (!tree || !active) return;
+    const selected = tree.getSelectedPaths();
+    if (selected.length === 1 && selected[0] === active) return;
+    tree.getItem(active)?.select();
+  });
+
+  // Re-render decorations when main file changes so the "main" marker moves.
+  $effect(() => {
+    workspace.mainFile;
+    if (!tree) return;
+    tree.setComposition(tree.getComposition());
+  });
+
+  // ─── Toolbar: expand / collapse all ──────────────────────────────────
+
+  const anyFolderExpanded = $derived(expandedDirs.size > 0);
+
+  function expandAll() {
+    if (!tree) return;
+    for (const p of dirPaths(currentPaths)) {
+      asDir(tree.getItem(p))?.expand();
     }
   }
 
-  // ─── Blur guard ────────────────────────────────────────────────────────────
-  // After an input is focused, ignore blur events for a short grace period
-  // to prevent bits-ui's focus restoration from cancelling the operation.
+  function collapseAll() {
+    if (!tree) return;
+    for (const p of dirPaths(currentPaths)) {
+      asDir(tree.getItem(p))?.collapse();
+    }
+  }
 
-  let blurGuardUntil = $state(0);
-
-  // ─── Root-level create ───────────────────────────────────────────────────────
+  // ─── Toolbar: root-level inline create ───────────────────────────────
 
   let creatingRoot = $state<"file" | "folder" | null>(null);
   let newRootName = $state("");
   let rootCreateInputEl = $state<HTMLInputElement | null>(null);
+  let blurGuardUntil = $state(0);
 
   async function startRootCreate(kind: "file" | "folder") {
     creatingRoot = kind;
@@ -46,12 +278,12 @@
     const name = newRootName.trim();
     const kind = creatingRoot;
     creatingRoot = null;
+    newRootName = "";
     if (!name || !workspace.rootPath || !kind) return;
-    const path = name;
     const result = await (kind === "folder"
-      ? workspace.createFolderAction(path)
-      : workspace.createFileAction(path));
-    result.mapErr(err => toast.error(`Create failed: ${err}`));
+      ? workspace.createFolderAction(name)
+      : workspace.createFileAction(name));
+    result.mapErr((err) => toast.error(`Create failed: ${err}`));
   }
 
   function cancelRootCreate() {
@@ -60,94 +292,196 @@
     newRootName = "";
   }
 
-  function handleRootCreateKey(e: KeyboardEvent) {
-    if (e.key === "Enter")  { e.preventDefault(); commitRootCreate(); }
-    if (e.key === "Escape") { e.preventDefault(); cancelRootCreate(); }
-  }
-
-  // ─── Import files ──────────────────────────────────────────────────────────
-
-  async function handleImportFiles() {
-    if (!workspace.rootPath) return;
+  async function importToRoot() {
     try {
-      await workspace.importFilesAction(workspace.rootPath);
+      await workspace.importFilesAction("");
     } catch (err) {
       toast.error(`Import failed: ${err}`);
     }
   }
 
-  // ─── Root drop target ─────────────────────────────────────────────────────
-
-  let rootDropTarget = $state(false);
-  let rootDragEnterCount = 0;
-
-  function onRootDragEnter(e: DragEvent) {
-    e.preventDefault();
-    rootDragEnterCount++;
-    if (rootDragEnterCount === 1) rootDropTarget = true;
-  }
-
-  function onRootDragOver(e: DragEvent) {
-    e.preventDefault();
-    e.dataTransfer && (e.dataTransfer.dropEffect = "move");
-  }
-
-  function onRootDragLeave() {
-    rootDragEnterCount--;
-    if (rootDragEnterCount <= 0) {
-      rootDragEnterCount = 0;
-      rootDropTarget = false;
+  function handleRootCreateKey(e: KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitRootCreate();
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cancelRootCreate();
     }
   }
 
-  async function onRootDrop(e: DragEvent) {
-    e.preventDefault();
-    rootDragEnterCount = 0;
-    rootDropTarget = false;
-    const src = workspace.dragSrcPath;
-    workspace.dragSrcPath = null;
-    if (!src || !workspace.rootPath) return;
-    // Already at root (relative path has no directory separator)
-    if (!src.includes('/')) return;
-    const dst = basename(src);
-    const srcIsDir = findIsDir(src);
-    const result = await workspace.moveAction(src, dst, srcIsDir);
-    result.mapErr(err => toast.error(`Move failed: ${err}`));
-  }
+  // ─── Drag & drop ─────────────────────────────────────────────────────
 
-  function findIsDir(path: string): boolean {
-    function walk(nodes: typeof workspace.tree): boolean {
-      for (const n of nodes) {
-        if (n.path === path) return n.is_dir;
-        if (n.is_dir && walk(n.children)) return true;
+  async function handleDropComplete(event: FileTreeDropResult) {
+    const { draggedPaths, target } = event;
+    if (!draggedPaths.length) return;
+
+    const targetDir =
+      target.kind === "root"
+        ? ""
+        : stripSlash(target.directoryPath ?? "");
+
+    for (const dragged of draggedPaths) {
+      const src = stripSlash(dragged);
+      const isDir = pathIsDir(src);
+      if (
+        isDir &&
+        targetDir &&
+        (targetDir === src || targetDir.startsWith(`${src}/`))
+      ) {
+        continue;
       }
-      return false;
+      const dst = targetDir ? `${targetDir}/${basename(src)}` : basename(src);
+      if (src === dst) continue;
+      const result = await workspace.moveAction(src, dst, isDir);
+      result.mapErr((err) => toast.error(`Move failed: ${err}`));
     }
-    return walk(workspace.tree);
+  }
+
+  // ─── Rename & create-via-rename ──────────────────────────────────────
+
+  async function handleRenameOrCreate(event: FileTreeRenameEvent) {
+    const sourcePath = event.sourcePath;
+    const destPath = event.destinationPath;
+    const newName = basename(stripSlash(destPath));
+    if (!newName) return;
+
+    if (pendingCreatePaths.has(sourcePath)) {
+      pendingCreatePaths.delete(sourcePath);
+      const parent = dirname(stripSlash(sourcePath));
+      const targetPath = parent ? `${parent}/${newName}` : newName;
+      const result = await (event.isFolder
+        ? workspace.createFolderAction(targetPath)
+        : workspace.createFileAction(targetPath));
+      result.mapErr((err) => toast.error(`Create failed: ${err}`));
+      return;
+    }
+
+    const src = stripSlash(sourcePath);
+    if (basename(src) === newName) return;
+    const result = await workspace.renameAction(src, newName);
+    result.mapErr((err) => toast.error(`Rename failed: ${err}`));
+  }
+
+  // ─── Context menu ────────────────────────────────────────────────────
+
+  type MenuState = {
+    item: ContextMenuItem;
+    rect: ContextMenuAnchorRect;
+    close: (options?: { restoreFocus?: boolean }) => void;
+  };
+  let menuState = $state<MenuState | null>(null);
+
+  function closeMenu(restoreFocus = true) {
+    menuState?.close({ restoreFocus });
+    menuState = null;
+  }
+
+  const menuPath = $derived(menuState ? stripSlash(menuState.item.path) : "");
+  const menuIsDir = $derived(menuState?.item.kind === "directory");
+  const menuIsMain = $derived(
+    menuState !== null &&
+      !menuIsDir &&
+      workspace.mainFile === menuPath,
+  );
+
+  function menuOpen() {
+    if (!menuState || menuIsDir) return;
+    const path = menuPath;
+    closeMenu();
+    workspace.openFile(path).mapErr((err) =>
+      toast.error(`Failed to open file: ${err}`),
+    );
+  }
+
+  function menuRename() {
+    if (!menuState || !tree) return;
+    const path = menuState.item.path;
+    closeMenu(false);
+    tree.startRenaming(path);
+  }
+
+  async function menuDelete() {
+    if (!menuState) return;
+    const isDir = menuIsDir;
+    const path = menuPath;
+    closeMenu();
+    const result = await (isDir
+      ? workspace.deleteFolderAction(path)
+      : workspace.deleteFileAction(path));
+    result.mapErr((err) => toast.error(`Delete failed: ${err}`));
+  }
+
+  async function menuSetMain() {
+    if (!menuState || menuIsDir) return;
+    const path = menuPath;
+    closeMenu();
+    const result = await workspace.setMainFileAction(path);
+    result.mapErr((err) => toast.error(`Set main file failed: ${err}`));
+  }
+
+  function menuCreateChild(kind: "file" | "folder") {
+    if (!menuState || !menuIsDir || !tree) return;
+    const dir = menuPath;
+    closeMenu(false);
+    startCreateInDir(dir, kind);
+  }
+
+  async function menuImport() {
+    if (!menuState || !menuIsDir) return;
+    const dir = menuPath;
+    closeMenu();
+    try {
+      await workspace.importFilesAction(dir);
+    } catch (err) {
+      toast.error(`Import failed: ${err}`);
+    }
+  }
+
+  async function startCreateInDir(dir: string, kind: "file" | "folder") {
+    if (!tree) return;
+    const dirHandle = asDir(tree.getItem(`${dir}/`));
+    if (dirHandle && !dirHandle.isExpanded()) dirHandle.expand();
+
+    const placeholderName = kind === "folder" ? "new-folder" : "new-file";
+    let placeholder = `${dir}/${placeholderName}${kind === "folder" ? "/" : ""}`;
+    let i = 1;
+    while (tree.getItem(placeholder)) {
+      placeholder = `${dir}/${placeholderName}-${i}${kind === "folder" ? "/" : ""}`;
+      i++;
+    }
+
+    pendingCreatePaths.add(placeholder);
+    tree.add(placeholder);
+    const started = tree.startRenaming(placeholder, { removeIfCanceled: true });
+    if (!started) {
+      pendingCreatePaths.delete(placeholder);
+      tree.remove(placeholder, { recursive: true });
+    }
   }
 </script>
 
-<!-- ─── Toolbar ─────────────────────────────────────────────────────────────── -->
-<div class="flex h-8 shrink-0 items-center justify-between border-b border-sidebar-border px-1">
-  <div class="flex items-center gap-0 shrink-0">
+<!-- ─── Toolbar ────────────────────────────────────────────────────── -->
+<div
+  class="flex h-9 shrink-0 items-center justify-between border-b border-sidebar-border px-2 mb-1.5"
+>
+  <div class="flex items-center gap-0.5 shrink-0">
     <Button
       variant="ghost"
-      size="icon-sm"
-      title={workspace.anyFolderExpanded ? "Collapse all" : "Expand all"}
-      onclick={() => workspace.anyFolderExpanded ? workspace.collapseAll() : workspace.expandAll()}
+      size="icon"
+      title={anyFolderExpanded ? "Collapse all" : "Expand all"}
+      onclick={() => (anyFolderExpanded ? collapseAll() : expandAll())}
     >
-      {#if workspace.anyFolderExpanded}
-
+      {#if anyFolderExpanded}
         <HugeiconsIcon icon={UnfoldLessIcon} class="size-4" />
-
       {:else}
-        <!-- <HugeiconsIcon icon={ChevronsUpDownI} class="size-7" /> -->
         <ChevronsUpDownIcon class="size-4" />
       {/if}
     </Button>
     <Button
       variant="ghost"
-      size="icon-sm"
+      size="icon"
       title="New file"
       onclick={() => startRootCreate("file")}
     >
@@ -155,95 +489,121 @@
     </Button>
     <Button
       variant="ghost"
-      size="icon-sm"
+      size="icon"
       title="New folder"
       onclick={() => startRootCreate("folder")}
     >
       <HugeiconsIcon icon={FolderAddIcon} class="size-4" />
     </Button>
+    <Button
+      variant="ghost"
+      size="icon"
+      title="Import files to root"
+      onclick={importToRoot}
+    >
+      <HugeiconsIcon icon={FileImportIcon} class="size-4" />
+    </Button>
   </div>
 </div>
 
-<!-- ─── Search bar ─────────────────────────────────────────────────────────── -->
-<div class="shrink-0 border-b border-sidebar-border px-2 py-1.5">
-  <div class="relative">
-    <HugeiconsIcon icon={Search01Icon} class="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
-    <Input
-      class="h-6 pl-6 pr-6 text-xs"
-      placeholder="Search files…"
-      bind:value={workspace.searchQuery}
+<!-- ─── Inline root create input ───────────────────────────────────── -->
+{#if creatingRoot}
+  <div class="shrink-0 border-b border-sidebar-border px-2 py-1">
+    <input
+      bind:this={rootCreateInputEl}
+      class="h-5 w-full rounded border border-input bg-background px-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+      placeholder={creatingRoot === "folder" ? "folder-name" : "file.typ"}
+      bind:value={newRootName}
+      onkeydown={handleRootCreateKey}
+      onblur={cancelRootCreate}
     />
-    {#if workspace.searchQuery}
-      <button
-        class="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-        onclick={() => (workspace.searchQuery = "")}
-        aria-label="Clear search"
-      >
-        <HugeiconsIcon icon={Cancel01Icon} class="size-3" />
-      </button>
-    {/if}
   </div>
-</div>
+{/if}
 
-<!-- ─── Root drop zone ─────────────────────────────────────────────────────── -->
+<!-- ─── Pierre tree mount ──────────────────────────────────────────── -->
 <div
-  class="relative flex-1 min-h-0 overflow-y-auto px-2"
-  ondragenter={onRootDragEnter}
-  ondragover={onRootDragOver}
-  ondragleave={onRootDragLeave}
-  ondrop={onRootDrop}
->
-  {#if rootDropTarget}
-    <div class="pointer-events-none absolute inset-0 z-10 rounded-sm bg-sidebar-primary/5"></div>
-  {/if}
-  <!-- Root-level context menu (empty area) -->
-  <ContextMenu.Root onOpenChange={onMenuOpenChange}>
-    <ContextMenu.Trigger class="block min-h-full">
-      <div
-        role="presentation"
-        class="py-1"
-        aria-label="File explorer"
+  bind:this={treeMount}
+  class="trees-host flex-1 min-h-0"
+  style:--trees-theme-sidebar-bg="var(--sidebar)"
+  style:--trees-theme-sidebar-fg="var(--sidebar-foreground)"
+  style:--trees-theme-sidebar-header-fg="var(--sidebar-foreground)"
+  style:--trees-theme-sidebar-border="var(--sidebar-border)"
+  style:--trees-theme-list-hover-bg="var(--sidebar-accent)"
+  style:--trees-theme-list-active-selection-bg="var(--sidebar-accent)"
+  style:--trees-theme-list-active-selection-fg="var(--sidebar-accent-foreground)"
+  style:--trees-theme-focus-ring="var(--sidebar-ring)"
+  style:--trees-theme-input-bg="var(--background)"
+  style:--trees-font-size="12px"
+  style:--trees-item-height="26px"
+  style:--trees-padding-inline="8px"
+  style:--trees-item-padding-x="6px"
+></div>
+
+<!-- ─── Custom context menu ────────────────────────────────────────── -->
+{#if menuState}
+  <div
+    class="fixed inset-0 z-40"
+    onclick={() => closeMenu()}
+    oncontextmenu={(e) => {
+      e.preventDefault();
+      closeMenu();
+    }}
+    role="presentation"
+  ></div>
+  <div
+    data-file-tree-context-menu-root="true"
+    class="fixed z-50 min-w-40 rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+    style:top="{menuState.rect.y + menuState.rect.height}px"
+    style:left="{menuState.rect.x}px"
+    role="menu"
+  >
+    {#if menuIsDir}
+      <button
+        class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs outline-none hover:bg-accent hover:text-accent-foreground"
+        onclick={() => menuCreateChild("file")}
       >
-        <!-- Root-level create input -->
-        {#if creatingRoot}
-          <div class="flex items-center gap-1 px-2 py-0.5">
-            <input
-              bind:this={rootCreateInputEl}
-              class="h-5 flex-1 rounded border border-input bg-background px-1 text-xs outline-none focus:ring-1 focus:ring-ring"
-              placeholder={creatingRoot === "folder" ? "folder-name" : "file.typ"}
-              bind:value={newRootName}
-              onkeydown={handleRootCreateKey}
-              onblur={cancelRootCreate}
-            />
-          </div>
-        {/if}
-
-        {#if workspace.filteredTree.length === 0 && !workspace.searchQuery}
-          <p class="px-3 py-4 text-xs text-muted-foreground">
-            No files in workspace.
-          </p>
-        {:else if workspace.filteredTree.length === 0}
-          <p class="px-3 py-4 text-xs text-muted-foreground">
-            No files match "{workspace.searchQuery}".
-          </p>
-        {:else}
-          {#each workspace.filteredTree as node (node.path)}
-            <TreeNode {node} depth={0} />
-          {/each}
-        {/if}
-      </div>
-    </ContextMenu.Trigger>
-
-    <ContextMenu.Content>
-      <ContextMenu.Item onclick={() => { pendingAction = () => startRootCreate("file"); }}>
         New File
-      </ContextMenu.Item>
-      <ContextMenu.Item onclick={() => { pendingAction = () => startRootCreate("folder"); }}>
+      </button>
+      <button
+        class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs outline-none hover:bg-accent hover:text-accent-foreground"
+        onclick={() => menuCreateChild("folder")}
+      >
         New Folder
-      </ContextMenu.Item>
-      <ContextMenu.Item onclick={handleImportFiles}>
+      </button>
+      <button
+        class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs outline-none hover:bg-accent hover:text-accent-foreground"
+        onclick={menuImport}
+      >
         Import Files…
-      </ContextMenu.Item>
-    </ContextMenu.Content>
-  </ContextMenu.Root>
-</div>
+      </button>
+      <div class="-mx-1 my-1 h-px bg-border"></div>
+    {:else}
+      <button
+        class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs outline-none hover:bg-accent hover:text-accent-foreground"
+        onclick={menuOpen}
+      >
+        Open
+      </button>
+      <button
+        class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs outline-none hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+        disabled={menuIsMain}
+        onclick={menuSetMain}
+      >
+        Set as Main File
+      </button>
+      <div class="-mx-1 my-1 h-px bg-border"></div>
+    {/if}
+    <button
+      class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs outline-none hover:bg-accent hover:text-accent-foreground"
+      onclick={menuRename}
+    >
+      Rename
+    </button>
+    <button
+      class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs text-destructive outline-none hover:bg-destructive hover:text-destructive-foreground"
+      onclick={menuDelete}
+    >
+      Delete
+    </button>
+  </div>
+{/if}

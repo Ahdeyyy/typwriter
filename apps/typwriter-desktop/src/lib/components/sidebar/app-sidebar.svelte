@@ -114,7 +114,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
 <Sidebar.Root collapsible="icon">
 
   <!-- ─── Header: recent projects dropdown ──────────────────────────────────── -->
-  <Sidebar.Header>
+  <Sidebar.Header class="border-b border-sidebar-border">
     <Sidebar.Menu>
       <Sidebar.MenuItem>
         <DropdownMenu.Root>
