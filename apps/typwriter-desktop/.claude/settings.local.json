@@ -28,7 +28,15 @@
       "Read(//c/Users/ahdey/projects/typwriter/node_modules/.bun/@hugeicons+svelte@1.1.2+d405b258e3abf470/node_modules/@hugeicons/svelte/dist/**)",
       "Bash(xargs wc *)",
       "WebSearch",
-      "Bash(ls -la C:\\\\\\\\Users\\\\\\\\ahdey\\\\\\\\projects\\\\\\\\typwriter\\\\\\\\apps\\\\\\\\typwriter-desktop\\\\\\\\node_modules\\\\\\\\@hugeicons\\\\\\\\core-free-icons\\\\\\\\lib)"
+      "Bash(ls -la C:\\\\\\\\Users\\\\\\\\ahdey\\\\\\\\projects\\\\\\\\typwriter\\\\\\\\apps\\\\\\\\typwriter-desktop\\\\\\\\node_modules\\\\\\\\@hugeicons\\\\\\\\core-free-icons\\\\\\\\lib)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl -s \"https://api.github.com/repos/michaellaszlo/cursor-maintenance/contents\")",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/michaellaszlo/cursor-maintenance/master/cursor_maintenance.js\" -o /tmp/cm.js)",
+      "Read(//tmp/**)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/michaellaszlo/cursor-maintenance/master/cursor_maintenance.js\" -o /c/temp/cm.js)",
+      "Read(//c/temp/**)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/michaellaszlo/cursor-maintenance/master/cursor_maintenance.js\" -o ./tmp_research/cm.js)"
     ]
   }
 }

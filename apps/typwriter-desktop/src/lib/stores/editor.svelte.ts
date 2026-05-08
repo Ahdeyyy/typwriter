@@ -229,8 +229,8 @@ class EditorStore {
             toast.error(`Shadow update failed for ${tab.name}: ${err}`);
         });
 
-        this._scheduleTypingPreview(tab.id);
-        this._scheduleIdleSave(tab.id);
+        this._scheduleTypingPreview(tab);
+        this._scheduleIdleSave(tab);
     }
 
     formatActiveFile(): ResultAsync<void, string> {
@@ -248,9 +248,10 @@ class EditorStore {
         }
         const original = tab.content;
         return formatTypstSource(original).map((formatted) => {
-            if (formatted === original) {
-                return;
-            }
+            // If the user typed while format was running, don't clobber
+            // their newer keystrokes with a stale formatted result.
+            if (tab.content !== original) return;
+            if (formatted === original) return;
             tab.content = formatted;
             tab.hasUnsavedChanges = true;
             this.contentSyncRequest = {
@@ -284,37 +285,26 @@ class EditorStore {
 
         this._clearIdleSave(tab.id);
 
-        if (tab.relPath.endsWith('.typ')) {
-            const formatResult = await formatTypstSource(tab.content);
-            if (formatResult.isOk()) {
-                if (formatResult.value !== tab.content) {
-                    tab.content = formatResult.value;
-                    this.contentSyncRequest = {
-                        tabId: tab.id,
-                        content: formatResult.value,
-                        version: ++this._contentSyncVersion,
-                    };
-                }
-            } else {
-                logError('format on save failed:', formatResult.error);
-            }
-        }
-
-        const shadowResult = await updateFileContent(tab.absPath, tab.content);
+        const contentToSave = tab.content;
+        const shadowResult = await updateFileContent(tab.absPath, contentToSave);
         if (shadowResult.isErr()) {
             const message = `Failed to stage ${tab.name}: ${shadowResult.error}`;
             toast.error(message);
             throw new Error(message);
         }
 
-        const saveResult = await saveFile(tab.absPath, tab.content);
+        const saveResult = await saveFile(tab.absPath, contentToSave);
         if (saveResult.isErr()) {
             const message = `Failed to save ${tab.name}: ${saveResult.error}`;
             toast.error(message);
             throw new Error(message);
         }
 
-        tab.hasUnsavedChanges = false;
+        // Don't clear the dirty flag if the user typed during the save —
+        // their newer content still needs to be persisted on the next pass.
+        if (tab.content === contentToSave) {
+            tab.hasUnsavedChanges = false;
+        }
     }
 
     async flushActiveTab(): Promise<void> {
@@ -400,14 +390,18 @@ class EditorStore {
         }
     }
 
-    private _scheduleTypingPreview(tabId: string): void {
+    // Note: closures below read `tab.id` at fire time (not a captured string)
+    // so a rename via updateTabPath — which mutates tab.id and re-keys the
+    // timer maps — still resolves to the live tab. Capturing tabId as a
+    // string would silently break auto-save and typing preview after rename.
+    private _scheduleTypingPreview(tab: TabInfo): void {
         const now = Date.now();
-        const lastRun = this._typingPreviewLastRun.get(tabId) ?? 0;
-        const existingTimer = this._typingPreviewTimers.get(tabId);
+        const lastRun = this._typingPreviewLastRun.get(tab.id) ?? 0;
+        const existingTimer = this._typingPreviewTimers.get(tab.id);
         const remaining = Math.max(0, TYPING_PREVIEW_INTERVAL - (now - lastRun));
 
         if (remaining === 0 && existingTimer === undefined) {
-            this._fireTypingPreview(tabId);
+            this._fireTypingPreview(tab);
             return;
         }
 
@@ -415,25 +409,24 @@ class EditorStore {
             return;
         }
 
-        this._typingPreviewTimers.set(tabId, setTimeout(() => {
-            this._typingPreviewTimers.delete(tabId);
-            this._fireTypingPreview(tabId);
+        this._typingPreviewTimers.set(tab.id, setTimeout(() => {
+            this._typingPreviewTimers.delete(tab.id);
+            this._fireTypingPreview(tab);
         }, remaining || TYPING_PREVIEW_INTERVAL));
     }
 
-    private _fireTypingPreview(tabId: string): void {
-        const tab = this.tabs.find((t) => t.id === tabId);
-        if (!tab || !tab.isEditable || !tab.hasUnsavedChanges) {
+    private _fireTypingPreview(tab: TabInfo): void {
+        if (!this.tabs.includes(tab) || !tab.isEditable || !tab.hasUnsavedChanges) {
             return;
         }
-        this._typingPreviewLastRun.set(tabId, Date.now());
+        this._typingPreviewLastRun.set(tab.id, Date.now());
         this._requestPreview('typing');
     }
 
-    private _scheduleIdleSave(tabId: string): void {
-        this._clearIdleSave(tabId);
-        this._idleSaveTimers.set(tabId, setTimeout(() => {
-            void this.flushTab(tabId).catch(() => {});
+    private _scheduleIdleSave(tab: TabInfo): void {
+        this._clearIdleSave(tab.id);
+        this._idleSaveTimers.set(tab.id, setTimeout(() => {
+            void this.flushTab(tab.id).catch(() => {});
         }, IDLE_SAVE_DELAY));
     }
 

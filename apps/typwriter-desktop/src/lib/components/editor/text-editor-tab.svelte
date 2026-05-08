@@ -530,42 +530,306 @@
   });
 
   // ── Store → Editor: push externally-replaced content (e.g. format) into CM.
-  // Preserve cursor by (line, column) — not byte offset — so reflows from the
-  // formatter don't drop the caret far from where the user was editing.
+  // Dispatch a minimal changeset (longest common prefix/suffix stripped) and
+  // explicitly compute the new cursor position. Relying on CodeMirror's default
+  // selection mapping is unsafe here: when the cursor sits at the trailing edge
+  // of a deletion (e.g. right after a trimmed trailing space at end-of-line),
+  // assoc=-1 maps it back to the change's `from`, which can be the top of the
+  // file if the formatter also touched leading content. See cursor maintenance:
+  // https://github.com/michaellaszlo/cursor-maintenance
   $effect(() => {
     const req = editor.contentSyncRequest;
     if (!req) return;
     const view = tabViews.get(req.tabId);
     if (!view) return;
-    const current = view.state.doc.toString();
-    if (current === req.content) return;
+    const oldText = view.state.doc.toString();
+    const newText = req.content;
+    if (oldText === newText) return;
 
-    const oldDoc = view.state.doc;
-    const sel = view.state.selection.main;
-    const headLine = oldDoc.lineAt(sel.head);
-    const anchorLine = oldDoc.lineAt(sel.anchor);
-    const headLineNum = headLine.number;
-    const headCol = sel.head - headLine.from;
-    const anchorLineNum = anchorLine.number;
-    const anchorCol = sel.anchor - anchorLine.from;
+    const maxLen = Math.min(oldText.length, newText.length);
+    let lcp = 0;
+    while (
+      lcp < maxLen &&
+      oldText.charCodeAt(lcp) === newText.charCodeAt(lcp)
+    ) {
+      lcp++;
+    }
+    let lcs = 0;
+    while (
+      lcs < maxLen - lcp &&
+      oldText.charCodeAt(oldText.length - 1 - lcs) ===
+        newText.charCodeAt(newText.length - 1 - lcs)
+    ) {
+      lcs++;
+    }
+
+    const oldEnd = oldText.length - lcs;
+    const newEnd = newText.length - lcs;
+    const oldCursor = view.state.selection.main.head;
+    const snapshot = captureCursorSnapshot(oldText, oldCursor);
+    const newCursor =
+      oldCursor <= lcp
+        ? oldCursor
+        : oldCursor >= oldEnd
+          ? oldCursor + (newText.length - oldText.length)
+          : applyCursorSnapshot(newText, snapshot);
+
     const scrollTop = view.scrollDOM.scrollTop;
-
     view.dispatch({
-      changes: { from: 0, to: oldDoc.length, insert: req.content },
-    });
-
-    const newDoc = view.state.doc;
-    const clampLine = (n: number) => Math.min(Math.max(n, 1), newDoc.lines);
-    const newHeadLine = newDoc.line(clampLine(headLineNum));
-    const newAnchorLine = newDoc.line(clampLine(anchorLineNum));
-    const newHead = Math.min(newHeadLine.from + headCol, newHeadLine.to);
-    const newAnchor = Math.min(newAnchorLine.from + anchorCol, newAnchorLine.to);
-
-    view.dispatch({
-      selection: { anchor: newAnchor, head: newHead },
+      changes: {
+        from: lcp,
+        to: oldEnd,
+        insert: newText.slice(lcp, newEnd),
+      },
+      selection: { anchor: newCursor },
+      scrollIntoView: false,
     });
     view.scrollDOM.scrollTop = scrollTop;
   });
+
+  // Retrospective cursor maintenance: outside the changed region, the cursor's
+  // offset shifts by the length delta. Inside the region, prefer a same-line
+  // column when the cursor is sitting in formatter-touched whitespace, then
+  // fall back to token anchoring. The whitespace case matters for trailing
+  // spaces: counting only non-whitespace characters can produce a target of 0
+  // and jump the cursor to the start of a large changed region.
+  function mapCursorThroughFormat(
+    oldText: string,
+    newText: string,
+    oldCursor: number,
+    lcp: number,
+    oldEnd: number,
+    newEnd: number,
+  ): number {
+    if (oldCursor <= lcp) return oldCursor;
+    if (oldCursor >= oldEnd) {
+      return oldCursor + (newText.length - oldText.length);
+    }
+
+    if (
+      isWhitespaceOnly(oldText, lcp, oldCursor) ||
+      isAfterTrailingHorizontalWhitespace(oldText, oldCursor)
+    ) {
+      return mapCursorByLineColumn(oldText, newText, oldCursor);
+    }
+
+    let target = 0;
+    for (let i = lcp; i < oldCursor; i++) {
+      if (!isWhitespace(oldText.charCodeAt(i))) target++;
+    }
+    let count = 0;
+    for (let i = lcp; i < newEnd; i++) {
+      if (count === target) return i;
+      if (!isWhitespace(newText.charCodeAt(i))) count++;
+    }
+    return newEnd;
+  }
+
+  function isWhitespaceOnly(text: string, from: number, to: number): boolean {
+    for (let i = from; i < to; i++) {
+      if (!isWhitespace(text.charCodeAt(i))) return false;
+    }
+    return true;
+  }
+
+  function isAfterTrailingHorizontalWhitespace(
+    text: string,
+    cursor: number,
+  ): boolean {
+    if (cursor === 0 || cursor > text.length) return false;
+    const previous = text.charCodeAt(cursor - 1);
+    if (previous !== 0x20 && previous !== 0x09) return false;
+    return cursor === text.length || text.charCodeAt(cursor) === 0x0a;
+  }
+
+  function mapCursorByLineColumn(
+    oldText: string,
+    newText: string,
+    oldCursor: number,
+  ): number {
+    const oldLineStart = oldText.lastIndexOf("\n", oldCursor - 1) + 1;
+    const oldColumn = oldCursor - oldLineStart;
+    const oldLine = countLineBreaks(oldText, 0, oldCursor);
+    const newLineStart = lineStartAt(newText, oldLine);
+    const newLineEnd = lineEndAt(newText, newLineStart);
+    return Math.min(newLineStart + oldColumn, newLineEnd);
+  }
+
+  function countLineBreaks(text: string, from: number, to: number): number {
+    let count = 0;
+    for (let i = from; i < to; i++) {
+      if (text.charCodeAt(i) === 0x0a) count++;
+    }
+    return count;
+  }
+
+  function lineStartAt(text: string, line: number): number {
+    let offset = 0;
+    for (let currentLine = 0; currentLine < line; currentLine++) {
+      const nextBreak = text.indexOf("\n", offset);
+      if (nextBreak === -1) return text.length;
+      offset = nextBreak + 1;
+    }
+    return offset;
+  }
+
+  function lineEndAt(text: string, lineStart: number): number {
+    const nextBreak = text.indexOf("\n", lineStart);
+    return nextBreak === -1 ? text.length : nextBreak;
+  }
+
+  function isWhitespace(code: number): boolean {
+    return code === 0x20 || code === 0x09 || code === 0x0a || code === 0x0d;
+  }
+
+  // ── Snapshot-based cursor maintenance.
+  // Capture the cursor's line/column plus the line text, the lines above and
+  // below, and a small window of characters on either side. After formatting,
+  // locate the best-matching line in the new text (using neighbour context),
+  // then locate the best offset within that line by matching the saved
+  // charsBehind suffix and charsAhead prefix.
+  interface CursorSnapshot {
+    line: number;
+    column: number;
+    lineText: string;
+    lineAbove: string | null;
+    lineBelow: string | null;
+    charsBehind: string;
+    charsAhead: string;
+  }
+
+  const SNAPSHOT_CONTEXT_LEN = 24;
+
+  function captureCursorSnapshot(text: string, cursor: number): CursorSnapshot {
+    const lineStart = text.lastIndexOf("\n", cursor - 1) + 1;
+    const nextBreak = text.indexOf("\n", cursor);
+    const lineEnd = nextBreak === -1 ? text.length : nextBreak;
+
+    const line = countLineBreaks(text, 0, cursor);
+    const column = cursor - lineStart;
+    const lineText = text.slice(lineStart, lineEnd);
+
+    let lineAbove: string | null = null;
+    if (lineStart > 0) {
+      const prevBreak = lineStart - 1;
+      const prevStart = text.lastIndexOf("\n", prevBreak - 1) + 1;
+      lineAbove = text.slice(prevStart, prevBreak);
+    }
+
+    let lineBelow: string | null = null;
+    if (lineEnd < text.length) {
+      const nextStart = lineEnd + 1;
+      const followingBreak = text.indexOf("\n", nextStart);
+      const nextEnd = followingBreak === -1 ? text.length : followingBreak;
+      lineBelow = text.slice(nextStart, nextEnd);
+    }
+
+    const charsBehind = text.slice(
+      Math.max(lineStart, cursor - SNAPSHOT_CONTEXT_LEN),
+      cursor,
+    );
+    const charsAhead = text.slice(
+      cursor,
+      Math.min(lineEnd, cursor + SNAPSHOT_CONTEXT_LEN),
+    );
+
+    return { line, column, lineText, lineAbove, lineBelow, charsBehind, charsAhead };
+  }
+
+  function applyCursorSnapshot(newText: string, snap: CursorSnapshot): number {
+    const lines: { start: number; end: number; text: string }[] = [];
+    let pos = 0;
+    while (true) {
+      const nl = newText.indexOf("\n", pos);
+      const end = nl === -1 ? newText.length : nl;
+      lines.push({ start: pos, end, text: newText.slice(pos, end) });
+      if (nl === -1) break;
+      pos = nl + 1;
+    }
+
+    const scoreLine = (idx: number): number => {
+      const candidate = lines[idx];
+      let score = 0;
+      if (candidate.text === snap.lineText) score += 1000;
+      else if (candidate.text.trim() === snap.lineText.trim()) score += 500;
+      else {
+        const prefix = commonPrefixLen(candidate.text, snap.lineText);
+        const suffix = commonSuffixLen(candidate.text, snap.lineText);
+        score += prefix + suffix;
+      }
+      if (
+        snap.lineAbove !== null &&
+        idx > 0 &&
+        lines[idx - 1].text === snap.lineAbove
+      ) {
+        score += 200;
+      }
+      if (
+        snap.lineBelow !== null &&
+        idx < lines.length - 1 &&
+        lines[idx + 1].text === snap.lineBelow
+      ) {
+        score += 200;
+      }
+      score -= Math.abs(idx - snap.line) * 2;
+      return score;
+    };
+
+    let bestIdx = Math.min(snap.line, lines.length - 1);
+    let bestScore = -Infinity;
+    for (let i = 0; i < lines.length; i++) {
+      const s = scoreLine(i);
+      if (s > bestScore) {
+        bestScore = s;
+        bestIdx = i;
+      }
+    }
+
+    const target = lines[bestIdx];
+    const lineStr = target.text;
+    const behind = snap.charsBehind;
+    const ahead = snap.charsAhead;
+
+    let bestOffset = Math.min(snap.column, lineStr.length);
+    let bestOffsetScore = -Infinity;
+
+    for (let off = 0; off <= lineStr.length; off++) {
+      const beforeSlice = lineStr.slice(Math.max(0, off - behind.length), off);
+      const afterSlice = lineStr.slice(
+        off,
+        Math.min(lineStr.length, off + ahead.length),
+      );
+      const beforeMatch = commonSuffixLen(beforeSlice, behind);
+      const afterMatch = commonPrefixLen(afterSlice, ahead);
+      const score =
+        beforeMatch * 3 + afterMatch * 3 - Math.abs(off - snap.column) * 0.1;
+      if (score > bestOffsetScore) {
+        bestOffsetScore = score;
+        bestOffset = off;
+      }
+    }
+
+    return target.start + bestOffset;
+  }
+
+  function commonPrefixLen(a: string, b: string): number {
+    const len = Math.min(a.length, b.length);
+    let i = 0;
+    while (i < len && a.charCodeAt(i) === b.charCodeAt(i)) i++;
+    return i;
+  }
+
+  function commonSuffixLen(a: string, b: string): number {
+    const len = Math.min(a.length, b.length);
+    let i = 0;
+    while (
+      i < len &&
+      a.charCodeAt(a.length - 1 - i) === b.charCodeAt(b.length - 1 - i)
+    ) {
+      i++;
+    }
+    return i;
+  }
 
   // ── Preview → Editor: apply cursor jump requested by preview click
   $effect(() => {
