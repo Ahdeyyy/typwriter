@@ -24,8 +24,7 @@ use commands::{
     },
     export::{export_pdf, export_png, export_svg},
     format::{
-        format_typst_cursor_laszlo, format_typst_cursor_line_column, format_typst_cursor_virtual,
-        format_typst_cursor_virtual_debug, format_typst_file, format_typst_source,
+        format_typst_cursor_virtual, format_typst_file, format_typst_source,
         format_workspace_typ_files,
     },
     logs::get_log_file_path,
@@ -143,9 +142,6 @@ pub fn run() {
             // format
             format_typst_source,
             format_typst_cursor_virtual,
-            format_typst_cursor_virtual_debug,
-            format_typst_cursor_laszlo,
-            format_typst_cursor_line_column,
             format_typst_file,
             format_workspace_typ_files,
         ])

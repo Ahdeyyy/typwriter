@@ -202,61 +202,19 @@ export interface FormatWithCursorResponse {
     cursor: number;
 }
 
-/** Cursor-maintenance strategy. Each value maps to an independent Rust
- * implementation in `commands/format.rs`; none of them falls back to another.
- *
- * - `'virtual'`     — splice a unique block-comment marker at the cursor,
- *                     format, locate the marker. Most accurate when typstyle
- *                     preserves the marker; clamps to the original byte
- *                     offset if the marker is lost.
- * - `'laszlo'`      — count non-whitespace chars before the cursor, then
- *                     place the cursor after the Nth non-ws char in the
- *                     formatted output. Robust against whitespace-only
- *                     edits (typstyle's main behaviour).
- * - `'lineColumn'`  — preserve (line, column-bytes) and clamp to the new
- *                     line's length. Cheap; loses the cursor on reflows. */
-export type CursorMaintenanceStrategy = 'virtual' | 'laszlo' | 'lineColumn';
-
-const CURSOR_STRATEGY_COMMAND: Record<CursorMaintenanceStrategy, string> = {
-    virtual: 'format_typst_cursor_virtual',
-    laszlo: 'format_typst_cursor_laszlo',
-    lineColumn: 'format_typst_cursor_line_column',
-};
-
-export interface VirtualDebugResponse {
-    /** Formatted text with the tw_cursor marker still embedded — inspect
-     *  this to see where typstyle placed the cursor anchor after reformatting. */
-    formatted_with_marker: string;
-    /** Formatted text with the marker stripped (same result as the regular virtual command). */
-    formatted: string;
-    /** New cursor offset (UTF-16 units). */
-    cursor: number;
-    /** The exact marker string that was spliced in. */
-    marker: string;
-    /** true if the marker survived formatting exactly once; false means it was lost or duplicated. */
-    marker_found: boolean;
-}
-
-/** Debug variant of the virtual strategy: returns the formatted text WITH the
- *  cursor marker still embedded so you can see exactly where it landed. */
-export function formatTypstCursorVirtualDebug(source: string, cursor: number) {
-    return ResultAsync.fromPromise(
-        invoke<VirtualDebugResponse>('format_typst_cursor_virtual_debug', { source, cursor }),
-        toErrString
-    );
-}
-
 /** Format a Typst source string while tracking the cursor through the rewrite.
+ *
+ * Uses the virtual-marker strategy: a unique block-comment marker is spliced
+ * at the cursor, the marked source is formatted, and the marker's new offset
+ * is read back. If the marker is lost or duplicated post-format, the cursor
+ * clamps to its original byte offset.
+ *
  * `cursor` is a UTF-16 code-unit offset (CodeMirror's units). All cursor
  * maintenance happens in Rust on UTF-8 byte offsets; only the IPC boundary
  * speaks UTF-16. */
-export function formatTypstSourceWithCursor(
-    source: string,
-    cursor: number,
-    strategy: CursorMaintenanceStrategy = 'laszlo',
-) {
+export function formatTypstSourceWithCursor(source: string, cursor: number) {
     return ResultAsync.fromPromise(
-        invoke<FormatWithCursorResponse>(CURSOR_STRATEGY_COMMAND[strategy], { source, cursor }),
+        invoke<FormatWithCursorResponse>('format_typst_cursor_virtual', { source, cursor }),
         toErrString
     );
 }

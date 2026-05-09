@@ -62,7 +62,7 @@
     <Button
       aria-label="Close window"
       onclick={close}
-      class="flex size-3 items-center justify-center rounded-full bg-[#ff5f57] text-black/60 ring-1 ring-inset ring-black/10 transition-colors hover:bg-[#ff5f57] [&_svg:not([class*='size-'])]:size-2"
+      class="flex size-3 items-center justify-center rounded-full bg-[#ff5f57] text-black/60 ring-1 ring-inset ring-black/10 transition-colors hover:bg-destructive [&_svg:not([class*='size-'])]:size-2"
     >
       <HugeiconsIcon
         icon={MultiplicationSignIcon}
@@ -118,7 +118,7 @@
       variant="ghost"
       aria-label="Close window"
       onclick={close}
-      class="flex h-full w-11 items-center justify-center rounded-none text-foreground/70 hover:bg-destructive hover:text-destructive-foreground [&_svg:not([class*='size-'])]:size-3.5"
+      class="flex h-full w-11 items-center justify-center rounded-none text-foreground/70 hover:bg-destructive hover:text-white dark:hover:bg-destructive dark:hover:text-white [&_svg:not([class*='size-'])]:size-3.5"
     >
       <HugeiconsIcon icon={MultiplicationSignIcon} class="size-3.5" />
     </Button>

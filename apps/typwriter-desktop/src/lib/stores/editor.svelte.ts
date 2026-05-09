@@ -1,7 +1,6 @@
 import { ResultAsync } from 'neverthrow';
 import {
     discardShadow,
-    formatTypstCursorVirtualDebug,
     formatTypstSource,
     formatTypstSourceWithCursor,
     readFile,
@@ -273,55 +272,11 @@ class EditorStore {
         };
 
         // Cursor maintenance runs in Rust on UTF-8 bytes; the IPC boundary
-        // is the only place we deal in UTF-16. Laszlo (count non-whitespace
-        // chars before the cursor, find the same count in the formatted
-        // text) survives typstyle's whitespace-only edits — including the
-        // trailing-space-at-EOL case where the marker-based 'virtual'
-        // strategy can lose the cursor.
+        // is the only place we deal in UTF-16.
         if (typeof cursor === 'number' && cursor >= 0) {
-            console.log('[format:debug] input cursor_utf16=%d source_len=%d', cursor, original.length);
-            return ResultAsync.fromPromise(
-                (async () => {
-                    const [laszlo, virtual_, lineCol, virtualDbg] = await Promise.all([
-                        formatTypstSourceWithCursor(original, cursor, 'laszlo'),
-                        formatTypstSourceWithCursor(original, cursor, 'virtual'),
-                        formatTypstSourceWithCursor(original, cursor, 'lineColumn'),
-                        formatTypstCursorVirtualDebug(original, cursor),
-                    ]);
-                    console.log(
-                        '[format:debug] laszlo=%s  virtual=%s  lineCol=%s',
-                        laszlo.isOk() ? laszlo.value.cursor : `ERR(${laszlo.error})`,
-                        virtual_.isOk() ? virtual_.value.cursor : `ERR(${virtual_.error})`,
-                        lineCol.isOk() ? lineCol.value.cursor : `ERR(${lineCol.error})`,
-                    );
-                    if (virtualDbg.isOk()) {
-                        const d = virtualDbg.value;
-                        const NOT_FOUND = 4294967295; // u32::MAX
-                        console.group('[format:debug:virtual] marker=%s  found=%s', d.marker, d.marker_found);
-                        console.log(
-                            'BEFORE format → utf16=%d  byte=%d  line=%d  col=%d',
-                            d.marker_utf16_before, d.marker_byte_before,
-                            d.marker_line_before, d.marker_col_before,
-                        );
-                        if (d.marker_found) {
-                            console.log(
-                                'AFTER  format → utf16=%d  byte=%d  line=%d  col=%d  (cursor after strip=%d)',
-                                d.marker_utf16_after, d.marker_byte_after,
-                                d.marker_line_after, d.marker_col_after, d.cursor,
-                            );
-                        } else {
-                            console.warn('AFTER  format → marker LOST (clamped cursor=%d)', d.cursor);
-                        }
-                        console.log('formatted_with_marker:\n%s', d.formatted_with_marker);
-                        console.groupEnd();
-                    } else {
-                        console.warn('[format:debug:virtual] error:', virtualDbg.error);
-                    }
-                    if (laszlo.isErr()) throw new Error(laszlo.error);
-                    applyResult(laszlo.value.formatted, laszlo.value.cursor);
-                })(),
-                (err) => String(err),
-            );
+            return formatTypstSourceWithCursor(original, cursor).map((res) => {
+                applyResult(res.formatted, res.cursor);
+            });
         }
         return formatTypstSource(original).map((formatted) => {
             applyResult(formatted, undefined);

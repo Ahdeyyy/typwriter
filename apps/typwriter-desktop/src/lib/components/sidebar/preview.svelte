@@ -380,7 +380,7 @@
               size="icon-sm"
               onclick={togglePaginated}
               disabled={preview.totalPages === 0}
-              class={preview.paginated ? "bg-accent/30 text-foreground" : ""}
+              class={preview.paginated ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground" : ""}
             >
               <HugeiconsIcon icon={preview.paginated ? Menu01Icon : File01Icon} class="size-3.5" />
             </Button>
@@ -431,7 +431,7 @@
               size="icon-sm"
               onclick={togglePresentation}
               disabled={preview.totalPages === 0}
-              class={preview.presentationMode ? "bg-accent/30 text-foreground" : ""}
+              class={preview.presentationMode ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground" : ""}
             >
               <HugeiconsIcon icon={preview.presentationMode ? Cancel01Icon : PresentationBarChart01Icon} class="size-3.5" />
             </Button>
@@ -447,26 +447,18 @@
   {#if preview.presentationMode}
     <div class="flex flex-1 items-center justify-center overflow-hidden bg-black">
       {#if committedPages[visiblePage]}
-        <Tooltip.Root>
-          <Tooltip.Trigger>
-            {#snippet child({ props })}
-              <Button
-                {...props}
-                variant="ghost"
-                class="block h-full w-full rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
-                onclick={(e) => handlePageClick(e, visiblePage)}
-              >
-                <img
-                  src="data:image/png;base64,{committedPages[visiblePage]}"
-                  alt="Page {visiblePage + 1}"
-                  draggable="false"
-                  class="block h-full w-full object-cover"
-                />
-              </Button>
-            {/snippet}
-          </Tooltip.Trigger>
-          <Tooltip.Content>Click to jump to source</Tooltip.Content>
-        </Tooltip.Root>
+        <Button
+          variant="ghost"
+          class="block h-full w-full rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
+          onclick={(e) => handlePageClick(e, visiblePage)}
+        >
+          <img
+            src="data:image/png;base64,{committedPages[visiblePage]}"
+            alt="Page {visiblePage + 1}"
+            draggable="false"
+            class="block h-full w-full object-cover"
+          />
+        </Button>
       {/if}
     </div>
   {:else if preview.paginated}
@@ -485,26 +477,18 @@
           class="relative shrink-0 overflow-hidden rounded shadow-md"
         >
           {#if committedPages[visiblePage]}
-            <Tooltip.Root>
-              <Tooltip.Trigger>
-                {#snippet child({ props })}
-                  <Button
-                    {...props}
-                    variant="ghost"
-                    class="block h-auto rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
-                    onclick={(e) => handlePageClick(e, visiblePage)}
-                  >
-                    <img
-                      src="data:image/png;base64,{committedPages[visiblePage]}"
-                      alt="Page {visiblePage + 1}"
-                      draggable="false"
-                      class="block max-w-full"
-                    />
-                  </Button>
-                {/snippet}
-              </Tooltip.Trigger>
-              <Tooltip.Content>Click to jump to source</Tooltip.Content>
-            </Tooltip.Root>
+            <Button
+              variant="ghost"
+              class="block h-auto rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
+              onclick={(e) => handlePageClick(e, visiblePage)}
+            >
+              <img
+                src="data:image/png;base64,{committedPages[visiblePage]}"
+                alt="Page {visiblePage + 1}"
+                draggable="false"
+                class="block max-w-full"
+              />
+            </Button>
           {:else}
             <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
           {/if}
@@ -533,26 +517,18 @@
             class="relative shrink-0 overflow-hidden rounded shadow-md"
           >
             {#if committedPages[i]}
-              <Tooltip.Root>
-                <Tooltip.Trigger>
-                  {#snippet child({ props })}
-                    <Button
-                      {...props}
-                      variant="ghost"
-                      class="block h-auto rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
-                      onclick={(e) => handlePageClick(e, i)}
-                    >
-                      <img
-                        src="data:image/png;base64,{committedPages[i]}"
-                        alt="Page {i + 1}"
-                        draggable="false"
-                        class="block max-w-full"
-                      />
-                    </Button>
-                  {/snippet}
-                </Tooltip.Trigger>
-                <Tooltip.Content>Click to jump to source</Tooltip.Content>
-              </Tooltip.Root>
+              <Button
+                variant="ghost"
+                class="block h-auto rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
+                onclick={(e) => handlePageClick(e, i)}
+              >
+                <img
+                  src="data:image/png;base64,{committedPages[i]}"
+                  alt="Page {i + 1}"
+                  draggable="false"
+                  class="block max-w-full"
+                />
+              </Button>
             {:else}
               <!-- Placeholder while page is rendering -->
               <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>

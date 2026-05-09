@@ -92,7 +92,7 @@
       <!-- Search row -->
       <div class="flex items-center gap-1">
         <div
-          class="input-wrap flex h-6 items-center rounded border border-input bg-background focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/50"
+          class="input-wrap flex h-8 items-center rounded border border-input bg-background focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/50"
           class:!border-destructive={editorSearch.regexError || noResults}
         >
           <input
@@ -102,7 +102,7 @@
             bind:value={editorSearch.query}
             oninput={() => editorSearch.applyQuery()}
             onkeydown={onSearchKey}
-            class="h-full w-56 bg-transparent px-2 text-xs outline-none"
+            class="h-full w-80 bg-transparent px-2.5 text-sm outline-none"
             spellcheck="false"
             aria-label="Find"
           />
@@ -177,7 +177,7 @@
                 disabled={!editorSearch.query || editorSearch.totalMatches === 0}
                 aria-label="Previous Match"
               >
-                <HugeiconsIcon icon={ArrowUp01Icon} class="size-3.5" />
+                <HugeiconsIcon icon={ArrowUp01Icon} class="size-3" />
               </Button>
             {/snippet}
           </Tooltip.Trigger>
@@ -194,7 +194,7 @@
                 disabled={!editorSearch.query || editorSearch.totalMatches === 0}
                 aria-label="Next Match"
               >
-                <HugeiconsIcon icon={ArrowDown01Icon} class="size-3.5" />
+                <HugeiconsIcon icon={ArrowDown01Icon} class="size-3" />
               </Button>
             {/snippet}
           </Tooltip.Trigger>
@@ -210,7 +210,7 @@
                 onclick={() => editorSearch.closePanel()}
                 aria-label="Close"
               >
-                <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
+                <HugeiconsIcon icon={Cancel01Icon} class="size-3" />
               </Button>
             {/snippet}
           </Tooltip.Trigger>
@@ -221,7 +221,7 @@
       {#if editorSearch.replaceVisible}
         <div class="flex items-center gap-1">
           <div
-            class="input-wrap flex h-6 items-center rounded border border-input bg-background focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/50"
+            class="input-wrap flex h-8 items-center rounded border border-input bg-background focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/50"
           >
             <input
               bind:this={replaceInput}
@@ -231,7 +231,7 @@
               oninput={(e) =>
                 editorSearch.setReplace((e.target as HTMLInputElement).value)}
               onkeydown={onReplaceKey}
-              class="h-full w-56 bg-transparent px-2 text-xs outline-none"
+              class="h-full w-80 bg-transparent px-2.5 text-sm outline-none"
               spellcheck="false"
               aria-label="Replace"
             />
@@ -247,7 +247,7 @@
                   disabled={!editorSearch.query || editorSearch.totalMatches === 0}
                   aria-label="Replace"
                 >
-                  <HugeiconsIcon icon={RotateClockwiseIcon} class="size-3.5" />
+                  <HugeiconsIcon icon={RotateClockwiseIcon} class="size-3" />
                 </Button>
               {/snippet}
             </Tooltip.Trigger>
@@ -264,7 +264,7 @@
                   disabled={!editorSearch.query || editorSearch.totalMatches === 0}
                   aria-label="Replace All"
                 >
-                  <HugeiconsIcon icon={ReplaceAllIcon} class="size-3.5" />
+                  <HugeiconsIcon icon={ReplaceAllIcon} class="size-3" />
                 </Button>
               {/snippet}
             </Tooltip.Trigger>
@@ -301,11 +301,10 @@
     color: var(--accent-foreground);
   }
 
-  .opt-btn.active {
-    background-color: color-mix(in srgb, var(--primary) 18%, transparent);
-    color: var(--primary);
-    box-shadow: inset 0 0 0 1px
-      color-mix(in srgb, var(--primary) 35%, transparent);
+  :global(.opt-btn.active),
+  :global(.opt-btn.active:hover) {
+    background-color: color-mix(in srgb, var(--accent) 60%, transparent);
+    color: var(--accent-foreground);
   }
 
   .action-btn {
@@ -313,8 +312,8 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    height: 1.5rem;
-    width: 1.5rem;
+    height: 1.25rem;
+    width: 1.25rem;
     border-radius: 3px;
     color: var(--foreground);
     transition: background-color 120ms;
