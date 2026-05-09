@@ -97,6 +97,19 @@
     const activeIdx = editor.tabs.findIndex((t) => t.id === editor.activeTabId);
     return index === activeIdx || index === activeIdx - 1 || index === activeIdx + 1;
   }
+
+  const tabDisplayNames = $derived((() => {
+    const counts = new Map<string, number>();
+    for (const t of editor.tabs) counts.set(t.name, (counts.get(t.name) ?? 0) + 1);
+    return new Map(editor.tabs.map((t) => {
+      if ((counts.get(t.name) ?? 0) > 1) {
+        const parts = t.relPath.split('/');
+        const label = parts.length > 1 ? `${parts[parts.length - 2]}/${t.name}` : t.name;
+        return [t.id, label] as [string, string];
+      }
+      return [t.id, t.name] as [string, string];
+    }));
+  })());
 </script>
 
 <div class="tab-strip">
@@ -131,7 +144,7 @@
               <span class="unsaved-dot"></span>
             {/if}
 
-            <span class="tab-name">{tab.name}</span>
+            <span class="tab-name">{tabDisplayNames.get(tab.id) ?? tab.name}</span>
 
             <span
               role="button"

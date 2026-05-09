@@ -85,7 +85,8 @@ impl EditorWorld {
     }
 
     pub fn new(root: PathBuf, app_handle: AppHandle) -> Self {
-        let user_agent = "typwriter-app/0.6.1".to_string();
+        let pkg = app_handle.package_info();
+        let user_agent = format!("{}/{}", pkg.name, pkg.version);
         let downloader = Downloader::new(user_agent.clone());
         let package_storage = PackageStorage::new(
             default_package_cache_path(),
