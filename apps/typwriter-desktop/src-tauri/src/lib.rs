@@ -23,7 +23,11 @@ use commands::{
         update_file_content,
     },
     export::{export_pdf, export_png, export_svg},
-    format::{format_typst_file, format_typst_source, format_workspace_typ_files},
+    format::{
+        format_typst_cursor_laszlo, format_typst_cursor_line_column, format_typst_cursor_virtual,
+        format_typst_cursor_virtual_debug, format_typst_file, format_typst_source,
+        format_workspace_typ_files,
+    },
     logs::get_log_file_path,
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     workspace::{
@@ -138,6 +142,10 @@ pub fn run() {
             export_svg,
             // format
             format_typst_source,
+            format_typst_cursor_virtual,
+            format_typst_cursor_virtual_debug,
+            format_typst_cursor_laszlo,
+            format_typst_cursor_line_column,
             format_typst_file,
             format_workspace_typ_files,
         ])
