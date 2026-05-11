@@ -47,8 +47,6 @@ tauri-plugin-updater = "2"
 
 # Mobile cross-compilation can't find a system OpenSSL; build it from source
 # via typst-kit's vendor-openssl feature.
-[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
-typst-kit = { version = "0.14.2", features = ["embed-fonts", "packages", "vendor-openssl"] }
-typst-ide = { version = "0.14.2", features = ["vendor-openssl"] }
+[target.'cfg(any(target_os = "android"))'.dependencies]
 # Force vendored OpenSSL for all transitive consumers (e.g. typst-ide) on mobile.
-openssl = { version = "0.10", features = ["vendored"] }
+openssl = { version = "*", features = ["vendored"] }
