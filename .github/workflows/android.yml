@@ -1,0 +1,84 @@
+name: "android-build"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "apps/typwriter-web/**"
+
+jobs:
+  build-android:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+
+    env:
+      NDK_VERSION: "26.3.11579264"
+      JAVA_VERSION: "17"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-34 build-tools;34.0.0"
+
+      - name: Setup Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+          add-to-path: false
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Rust stable + Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./apps/typwriter-desktop/src-tauri -> target"
+          key: android
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Initialize Tauri Android project
+        working-directory: apps/typwriter-desktop
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          if [ ! -d "src-tauri/gen/android" ]; then
+            bunx tauri android init
+          fi
+
+      - name: Build Android APK
+        working-directory: apps/typwriter-desktop
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: bunx tauri android build --apk --split-per-abi
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: typwriter-android-apk
+          path: |
+            apps/typwriter-desktop/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 30
