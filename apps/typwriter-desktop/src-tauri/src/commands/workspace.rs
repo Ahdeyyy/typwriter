@@ -1,9 +1,12 @@
 use std::{fs, path::PathBuf, sync::Arc, time::Instant};
 
 use log::{error, info};
-use tauri::State;
+use serde::Serialize;
+use tauri::{AppHandle, Manager, State};
 
 use crate::workspace::{FileTreeEntry, RecentWorkspaceEntry, WorkspaceState};
+
+const MOBILE_WORKSPACES_DIR: &str = "Typwriter";
 
 #[tauri::command]
 pub fn open_folder(
@@ -315,4 +318,61 @@ pub fn create_workspace(parent_path: String, name: String) -> Result<String, Str
         t.elapsed().as_secs_f64() * 1000.0
     );
     Ok(path_str)
+}
+
+#[derive(Serialize)]
+pub struct MobileWorkspaceEntry {
+    pub name: String,
+    pub path: String,
+}
+
+fn resolve_mobile_workspaces_root(app: &AppHandle) -> Result<PathBuf, String> {
+    let documents = app
+        .path()
+        .document_dir()
+        .map_err(|e| format!("Failed to resolve documents dir: {e}"))?;
+    let root = documents.join(MOBILE_WORKSPACES_DIR);
+    fs::create_dir_all(&root)
+        .map_err(|e| format!("Failed to create mobile workspaces dir: {e}"))?;
+    Ok(root)
+}
+
+/// Mobile flow: return the auto-managed root where workspaces live.
+/// On Android/iOS this is `<documents>/Typwriter/`. The directory is created
+/// on demand. Desktop callers may also use this if they want the same dir.
+#[tauri::command]
+pub fn get_mobile_workspaces_dir(app: AppHandle) -> Result<String, String> {
+    let root = resolve_mobile_workspaces_root(&app)?;
+    Ok(root.to_string_lossy().into_owned())
+}
+
+/// Mobile flow: list the immediate subdirectories of the mobile workspaces
+/// root. Each entry is a workspace candidate (whether or not it has a
+/// `.typwriter/` metadata dir — `open_folder` will create one if missing).
+#[tauri::command]
+pub fn list_mobile_workspaces(app: AppHandle) -> Result<Vec<MobileWorkspaceEntry>, String> {
+    let root = resolve_mobile_workspaces_root(&app)?;
+
+    let mut entries: Vec<MobileWorkspaceEntry> = Vec::new();
+    let read_dir = fs::read_dir(&root)
+        .map_err(|e| format!("Failed to read mobile workspaces dir: {e}"))?;
+
+    for entry in read_dir.flatten() {
+        let file_type = match entry.file_type() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+        let path = entry.path().to_string_lossy().into_owned();
+        entries.push(MobileWorkspaceEntry { name, path });
+    }
+
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(entries)
 }

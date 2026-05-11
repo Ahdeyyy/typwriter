@@ -1,123 +1,24 @@
 <script lang="ts">
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Cancel01Icon } from "@hugeicons/core-free-icons";
-  import { editor, type TabInfo } from "$lib/stores/editor.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
+  import { editor } from "$lib/stores/editor.svelte";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { TabBarController } from "./tab-bar-controller.svelte";
 
-  let dragTabId = $state<string | null>(null);
-  let dropTargetId = $state<string | null>(null);
-  let dropSide = $state<"left" | "right" | null>(null);
-  let tabListEl = $state<HTMLDivElement | null>(null);
-  const tabRefs = new Map<string, HTMLButtonElement>();
+  const ctrl = new TabBarController();
 
   $effect(() => {
-    const id = editor.activeTabId;
-    if (!id || !tabListEl) return;
-    const el = tabRefs.get(id);
-    if (!el) return;
-    el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    ctrl.scrollActiveIntoView();
   });
-
-  async function activateTab(tab: TabInfo) {
-    try {
-      await editor.activateTab(tab.id);
-      workspace.activeFilePath = tab.relPath;
-    } catch {}
-  }
-
-  async function closeTab(e: MouseEvent, tab: TabInfo) {
-    e.stopPropagation();
-    try {
-      const closed = await editor.closeTab(tab.id);
-      if (!closed) return;
-      workspace.activeFilePath = editor.activeTab?.relPath ?? null;
-    } catch {}
-  }
-
-  async function handleAuxClick(e: MouseEvent, tab: TabInfo) {
-    if (e.button === 1) {
-      e.preventDefault();
-      try {
-        const closed = await editor.closeTab(tab.id);
-        if (!closed) return;
-        workspace.activeFilePath = editor.activeTab?.relPath ?? null;
-      } catch {}
-    }
-  }
-
-  function handleDragStart(e: DragEvent, tab: TabInfo) {
-    dragTabId = tab.id;
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", tab.id);
-    }
-  }
-
-  function handleDragOver(e: DragEvent, tab: TabInfo) {
-    if (!dragTabId || dragTabId === tab.id) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    dropTargetId = tab.id;
-    dropSide = e.clientX < rect.left + rect.width / 2 ? "left" : "right";
-  }
-
-  function handleDragLeave(_e: DragEvent, tab: TabInfo) {
-    if (dropTargetId === tab.id) {
-      dropTargetId = null;
-      dropSide = null;
-    }
-  }
-
-  function handleDrop(e: DragEvent, tab: TabInfo) {
-    e.preventDefault();
-    if (!dragTabId || dragTabId === tab.id) return;
-    const fromIdx = editor.tabs.findIndex((t) => t.id === dragTabId);
-    const toIdx = editor.tabs.findIndex((t) => t.id === tab.id);
-    if (fromIdx === -1 || toIdx === -1) return;
-    const [moved] = editor.tabs.splice(fromIdx, 1);
-    let insertIdx = editor.tabs.findIndex((t) => t.id === tab.id);
-    if (dropSide === "right") insertIdx += 1;
-    editor.tabs.splice(insertIdx, 0, moved);
-    dragTabId = null;
-    dropTargetId = null;
-    dropSide = null;
-    workspace.schedulePersistTabs();
-  }
-
-  function handleDragEnd() {
-    dragTabId = null;
-    dropTargetId = null;
-    dropSide = null;
-  }
-
-  function isAdjacentToActive(index: number): boolean {
-    const activeIdx = editor.tabs.findIndex((t) => t.id === editor.activeTabId);
-    return index === activeIdx || index === activeIdx - 1 || index === activeIdx + 1;
-  }
-
-  const tabDisplayNames = $derived((() => {
-    const counts = new Map<string, number>();
-    for (const t of editor.tabs) counts.set(t.name, (counts.get(t.name) ?? 0) + 1);
-    return new Map(editor.tabs.map((t) => {
-      if ((counts.get(t.name) ?? 0) > 1) {
-        const parts = t.relPath.split('/');
-        const label = parts.length > 1 ? `${parts[parts.length - 2]}/${t.name}` : t.name;
-        return [t.id, label] as [string, string];
-      }
-      return [t.id, t.name] as [string, string];
-    }));
-  })());
 </script>
 
 <div class="tab-strip">
-  <div class="tab-list" bind:this={tabListEl}>
+  <div class="tab-list" bind:this={ctrl.tabListEl}>
     {#each editor.tabs as tab, i (tab.id)}
       {@const isActive = editor.activeTabId === tab.id}
-      {@const isDragging = dragTabId === tab.id}
-      {@const isDropTarget = dropTargetId === tab.id}
+      {@const isDragging = ctrl.dragTabId === tab.id}
+      {@const isDropTarget = ctrl.dropTargetId === tab.id}
       <ContextMenu.Root>
         <ContextMenu.Trigger>
           <Tooltip.Root>
@@ -125,40 +26,37 @@
               {#snippet child({ props })}
           <button
             {...props}
-            {@attach (node) => {
-              tabRefs.set(tab.id, node as HTMLButtonElement);
-              return () => tabRefs.delete(tab.id);
-            }}
+            {@attach (node) => ctrl.registerTab(tab.id, node as HTMLButtonElement)}
             type="button"
-            class="chrome-tab {isActive ? 'active' : ''} {isDragging ? 'dragging' : ''} {isDropTarget && dropSide === 'left' ? 'drop-left' : ''} {isDropTarget && dropSide === 'right' ? 'drop-right' : ''}"
+            class="chrome-tab {isActive ? 'active' : ''} {isDragging ? 'dragging' : ''} {isDropTarget && ctrl.dropSide === 'left' ? 'drop-left' : ''} {isDropTarget && ctrl.dropSide === 'right' ? 'drop-right' : ''}"
             draggable="true"
-            ondragstart={(e: DragEvent) => handleDragStart(e, tab)}
-            ondragover={(e: DragEvent) => handleDragOver(e, tab)}
-            ondragleave={(e: DragEvent) => handleDragLeave(e, tab)}
-            ondrop={(e: DragEvent) => handleDrop(e, tab)}
-            ondragend={handleDragEnd}
-            onclick={() => void activateTab(tab)}
-            onauxclick={(e: MouseEvent) => void handleAuxClick(e, tab)}
+            ondragstart={(e: DragEvent) => ctrl.handleDragStart(e, tab)}
+            ondragover={(e: DragEvent) => ctrl.handleDragOver(e, tab)}
+            ondragleave={() => ctrl.handleDragLeave(tab)}
+            ondrop={(e: DragEvent) => ctrl.handleDrop(e, tab)}
+            ondragend={() => ctrl.handleDragEnd()}
+            onclick={() => void ctrl.activateTab(tab)}
+            onauxclick={(e: MouseEvent) => void ctrl.handleAuxClick(e, tab)}
           >
             {#if tab.hasUnsavedChanges}
               <span class="unsaved-dot"></span>
             {/if}
 
-            <span class="tab-name">{tabDisplayNames.get(tab.id) ?? tab.name}</span>
+            <span class="tab-name">{ctrl.tabDisplayNames.get(tab.id) ?? tab.name}</span>
 
             <span
               role="button"
               tabindex="-1"
               class="close-btn"
-              onclick={(e) => void closeTab(e, tab)}
-              onkeydown={(e) => { if (e.key === 'Enter') void closeTab(e as unknown as MouseEvent, tab); }}
+              onclick={(e) => void ctrl.closeTab(tab, e)}
+              onkeydown={(e) => { if (e.key === 'Enter') void ctrl.closeTab(tab, e); }}
               aria-label="Close {tab.name}"
             >
               <HugeiconsIcon icon={Cancel01Icon} class="size-3" />
             </span>
 
             <!-- Separator between inactive tabs (hidden next to active tab) -->
-            {#if i < editor.tabs.length - 1 && !isAdjacentToActive(i)}
+            {#if i < editor.tabs.length - 1 && !ctrl.isAdjacentToActive(i)}
               <span class="tab-separator"></span>
             {/if}
           </button>
@@ -169,30 +67,22 @@
         </ContextMenu.Trigger>
 
         <ContextMenu.Content>
-          <ContextMenu.Item onclick={() => void editor.closeTab(tab.id).then(() => {
-            workspace.activeFilePath = editor.activeTab?.relPath ?? null;
-          })}>
+          <ContextMenu.Item onclick={() => void ctrl.closeTab(tab)}>
             Close
           </ContextMenu.Item>
-          <ContextMenu.Item onclick={() => void editor.closeOtherTabs(tab.id).then(() => {
-            workspace.activeFilePath = editor.activeTab?.relPath ?? null;
-          })}>
+          <ContextMenu.Item onclick={() => void ctrl.closeOthers(tab)}>
             Close Others
           </ContextMenu.Item>
           <ContextMenu.Separator />
           <ContextMenu.Item
             disabled={i === 0}
-            onclick={() => void editor.closeTabsToLeft(tab.id).then(() => {
-              workspace.activeFilePath = editor.activeTab?.relPath ?? null;
-            })}
+            onclick={() => void ctrl.closeToLeft(tab)}
           >
             Close Tabs to the Left
           </ContextMenu.Item>
           <ContextMenu.Item
             disabled={i === editor.tabs.length - 1}
-            onclick={() => void editor.closeTabsToRight(tab.id).then(() => {
-              workspace.activeFilePath = editor.activeTab?.relPath ?? null;
-            })}
+            onclick={() => void ctrl.closeToRight(tab)}
           >
             Close Tabs to the Right
           </ContextMenu.Item>

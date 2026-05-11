@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import { page } from "@/stores/page.svelte";
   import Button from "../ui/button/button.svelte";
-  import { getRecentWorkspaces, createWorkspace, isFontsLoaded, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath } from "$lib/ipc/commands";
+  import { getRecentWorkspaces, createWorkspace, isFontsLoaded, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath, getMobileWorkspacesDir, listMobileWorkspaces, type MobileWorkspaceEntry } from "$lib/ipc/commands";
   import { onAppFontsLoaded, type UnlistenFn } from "$lib/ipc/events";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
@@ -18,6 +18,7 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import ModeSwitcher from "$lib/components/sidebar/mode-switcher.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
+  import { platform } from "$lib/stores/platform.svelte";
 
   let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
   let loading = $state(true);
@@ -29,6 +30,11 @@
   let newWorkspaceName = $state("");
   let newWorkspaceParent = $state("");
   let newWorkspaceCreating = $state(false);
+
+  // Mobile: pick from a list of existing workspaces in the auto-managed dir.
+  let mobilePickerOpen = $state(false);
+  let mobileWorkspaces = $state<MobileWorkspaceEntry[]>([]);
+  let mobileWorkspacesLoading = $state(false);
 
   // ── Font readiness ──────────────────────────────────────────────────────────
 
@@ -111,6 +117,22 @@
   }
 
   async function handleOpenNew() {
+    if (platform.isMobile) {
+      // Mobile: no OS folder picker — list workspaces in the auto-managed dir.
+      mobilePickerOpen = true;
+      mobileWorkspacesLoading = true;
+      const result = await listMobileWorkspaces();
+      mobileWorkspacesLoading = false;
+      result.match(
+        (entries) => { mobileWorkspaces = entries; },
+        (err) => {
+          logError("Failed to list mobile workspaces:", err);
+          toast.error(`Failed to list workspaces: ${err}`);
+        },
+      );
+      return;
+    }
+
     const selected = await openDialog({ directory: true, multiple: false });
     if (!selected) return;
 
@@ -125,11 +147,47 @@
   }
 
   async function handleSelectParentFolder() {
+    if (platform.isMobile) {
+      const result = await getMobileWorkspacesDir();
+      result.match(
+        (dir) => { newWorkspaceParent = dir; },
+        (err) => {
+          logError("Failed to resolve mobile workspaces dir:", err);
+          toast.error(`Failed to resolve workspaces folder: ${err}`);
+        },
+      );
+      return;
+    }
+
     const selected = await openDialog({ directory: true, multiple: false });
     if (selected) {
       newWorkspaceParent = selected;
     }
   }
+
+  async function handlePickMobileWorkspace(path: string) {
+    mobilePickerOpen = false;
+    const result = await workspace.init(path);
+    result.match(
+      () => { page.navigate("workspace"); },
+      (err) => {
+        logError("Failed to open workspace:", err);
+        toast.error(`Failed to open workspace: ${err}`);
+      },
+    );
+  }
+
+  // On mobile, auto-fill the parent folder when the New Workspace dialog opens.
+  $effect(() => {
+    if (newWorkspaceOpen && platform.isMobile && !newWorkspaceParent) {
+      getMobileWorkspacesDir().then((res) => {
+        res.match(
+          (dir) => { newWorkspaceParent = dir; },
+          (err) => logError("Failed to resolve mobile workspaces dir:", err),
+        );
+      });
+    }
+  });
 
   async function handleCreateWorkspace() {
     if (!newWorkspaceName.trim()) {
@@ -196,9 +254,11 @@
 <div class="flex h-full w-full flex-col">
   <Titlebar variant="minimal" title="Typwriter" />
   <main class="relative flex flex-1 flex-col items-center justify-center gap-5 p-4">
-    <div class="absolute right-3 top-3">
-      <ModeSwitcher />
-    </div>
+    {#if !platform.isMobile}
+      <div class="absolute right-3 top-3">
+        <ModeSwitcher />
+      </div>
+    {/if}
   <!-- Recent workspaces -->
   <section class="w-full max-w-3xl">
     <div class="mb-4 flex items-center justify-between gap-3">
@@ -206,7 +266,7 @@
         Recent Workspaces
       </h2>
       <div class="flex items-center gap-2">
-        {#if recentWorkspaces.length > 0}
+        {#if recentWorkspaces.length > 0 && !platform.isMobile}
           <Button
             variant="ghost"
             size="sm"
@@ -222,7 +282,7 @@
 
     <!-- Heuristic min-height keeps items below in a stable position regardless
          of how many recents are listed. Calc: 3 rows × ~10.5rem card + 2 × 0.5rem gap. -->
-    <div class="min-h-[32.5rem]">
+    <div class={platform.isMobile ? "" : "min-h-[32.5rem]"}>
     {#if loading}
       <div class="flex items-center justify-center py-8">
         <span class="text-sm text-muted-foreground">Loading…</span>
@@ -235,6 +295,34 @@
           No recent workspaces. Open a folder to get started.
         </p>
       </div>
+    {:else if platform.isMobile}
+      <ul class="flex flex-col gap-1.5">
+        {#each recentWorkspaces.slice(0, 6) as entry (entry.path)}
+          <li class="group relative">
+            <Button
+              variant="outline"
+              class="h-auto w-full justify-start gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-left font-normal hover:bg-accent hover:text-accent-foreground"
+              onclick={() => handleOpenRecent(entry.path)}
+              disabled={!fontsReady}
+            >
+              <HugeiconsIcon icon={Folder01Icon} class="size-5 shrink-0 text-muted-foreground" />
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-medium text-foreground">{entry.name}</p>
+                <p class="truncate text-xs text-muted-foreground">{entry.path}</p>
+              </div>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg bg-background text-muted-foreground hover:bg-destructive hover:text-destructive-foreground"
+              onclick={(e) => handleRemoveRecent(e, entry.path)}
+              aria-label="Remove {entry.name} from recents"
+            >
+              <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
+            </Button>
+          </li>
+        {/each}
+      </ul>
     {:else}
       <ul class="grid grid-cols-2 gap-2">
         {#each recentWorkspaces.slice(0, 6) as entry (entry.path)}
@@ -309,8 +397,12 @@
         <Dialog.Header>
           <Dialog.Title>New Workspace</Dialog.Title>
           <Dialog.Description>
-            Choose a location and name for your new workspace. A folder with a
-            <code>.typwriter</code> metadata directory will be created inside.
+            {#if platform.isMobile}
+              Name your new workspace. It will be created in the Typwriter folder inside Documents.
+            {:else}
+              Choose a location and name for your new workspace. A folder with a
+              <code>.typwriter</code> metadata directory will be created inside.
+            {/if}
           </Dialog.Description>
         </Dialog.Header>
 
@@ -327,33 +419,39 @@
             />
           </div>
 
-          <!-- Location picker -->
-          <div class="flex flex-col gap-1.5">
-            <label for="ws-location" class="text-sm font-medium">Location</label>
-            <div class="flex gap-2">
-              <Input
-                readonly
-                id="ws-location"
-                value={newWorkspaceParent}
-                placeholder="Select a folder…"
-                class="flex-1 cursor-default text-muted-foreground"
-                disabled={newWorkspaceCreating}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onclick={handleSelectParentFolder}
-                disabled={newWorkspaceCreating}
-              >
-                Browse
-              </Button>
+          {#if !platform.isMobile}
+            <!-- Location picker (desktop only) -->
+            <div class="flex flex-col gap-1.5">
+              <label for="ws-location" class="text-sm font-medium">Location</label>
+              <div class="flex gap-2">
+                <Input
+                  readonly
+                  id="ws-location"
+                  value={newWorkspaceParent}
+                  placeholder="Select a folder…"
+                  class="flex-1 cursor-default text-muted-foreground"
+                  disabled={newWorkspaceCreating}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onclick={handleSelectParentFolder}
+                  disabled={newWorkspaceCreating}
+                >
+                  Browse
+                </Button>
+              </div>
+              {#if newWorkspaceParent && newWorkspaceName.trim()}
+                <p class="text-xs text-muted-foreground">
+                  Will create: {newWorkspaceParent}/{newWorkspaceName.trim()}
+                </p>
+              {/if}
             </div>
-            {#if newWorkspaceParent && newWorkspaceName.trim()}
-              <p class="text-xs text-muted-foreground">
-                Will create: {newWorkspaceParent}/{newWorkspaceName.trim()}
-              </p>
-            {/if}
-          </div>
+          {:else if newWorkspaceParent && newWorkspaceName.trim()}
+            <p class="text-xs text-muted-foreground">
+              Will create: {newWorkspaceParent}/{newWorkspaceName.trim()}
+            </p>
+          {/if}
         </div>
 
         <Dialog.Footer>
@@ -389,37 +487,85 @@
       Typst Docs
     </Button>
 
-    <Button
-      variant="link"
-      size="sm"
-      class="gap-1.5 text-muted-foreground"
-      onclick={() => updater.checkManual()}
-      disabled={updater.checking || updater.downloading}
-    >
-      <HugeiconsIcon icon={Refresh01Icon} class="size-3.5 {updater.checking ? 'animate-spin' : ''}" />
-      Check for Updates
-    </Button>
+    {#if platform.isMobile}
+      <ModeSwitcher />
+    {:else}
+      <Button
+        variant="link"
+        size="sm"
+        class="gap-1.5 text-muted-foreground"
+        onclick={() => updater.checkManual()}
+        disabled={updater.checking || updater.downloading}
+      >
+        <HugeiconsIcon icon={Refresh01Icon} class="size-3.5 {updater.checking ? 'animate-spin' : ''}" />
+        Check for Updates
+      </Button>
 
-    <Button
-      variant="link"
-      size="sm"
-      class="gap-1.5 text-muted-foreground"
-      onclick={handleOpenLogsFile}
-    >
-      <HugeiconsIcon icon={File01Icon} class="size-3.5" />
-      Open Logs File
-    </Button>
+      <Button
+        variant="link"
+        size="sm"
+        class="gap-1.5 text-muted-foreground"
+        onclick={handleOpenLogsFile}
+      >
+        <HugeiconsIcon icon={File01Icon} class="size-3.5" />
+        Open Logs File
+      </Button>
 
-    <Button
-      variant="link"
-      size="sm"
-      class="gap-1.5 text-muted-foreground"
-      onclick={() => page.navigate("keymaps")}
-    >
-      <HugeiconsIcon icon={KeyboardIcon} class="size-3.5" />
-      Keymaps
-    </Button>
+      <Button
+        variant="link"
+        size="sm"
+        class="gap-1.5 text-muted-foreground"
+        onclick={() => page.navigate("keymaps")}
+      >
+        <HugeiconsIcon icon={KeyboardIcon} class="size-3.5" />
+        Keymaps
+      </Button>
+    {/if}
   </div>
   </main>
+
+  <!-- Mobile: open-folder picker over the auto-managed workspaces dir -->
+  <Dialog.Root bind:open={mobilePickerOpen}>
+    <Dialog.Content class="sm:max-w-md">
+      <Dialog.Header>
+        <Dialog.Title>Open Workspace</Dialog.Title>
+        <Dialog.Description>
+          Workspaces stored in the Typwriter folder inside Documents.
+        </Dialog.Description>
+      </Dialog.Header>
+
+      <div class="flex max-h-[50vh] flex-col gap-1.5 overflow-y-auto py-2">
+        {#if mobileWorkspacesLoading}
+          <p class="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+        {:else if mobileWorkspaces.length === 0}
+          <p class="py-6 text-center text-sm text-muted-foreground">
+            No workspaces yet. Create one with “New Workspace”.
+          </p>
+        {:else}
+          {#each mobileWorkspaces as entry (entry.path)}
+            <Button
+              variant="outline"
+              class="h-auto w-full justify-start gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-left font-normal hover:bg-accent hover:text-accent-foreground"
+              onclick={() => handlePickMobileWorkspace(entry.path)}
+            >
+              <HugeiconsIcon icon={Folder01Icon} class="size-5 shrink-0 text-muted-foreground" />
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-medium text-foreground">{entry.name}</p>
+                <p class="truncate text-xs text-muted-foreground">{entry.path}</p>
+              </div>
+            </Button>
+          {/each}
+        {/if}
+      </div>
+
+      <Dialog.Footer>
+        <Dialog.Close>
+          {#snippet child({ props })}
+            <Button {...props} variant="ghost">Cancel</Button>
+          {/snippet}
+        </Dialog.Close>
+      </Dialog.Footer>
+    </Dialog.Content>
+  </Dialog.Root>
 </div>
 </Tooltip.Provider>

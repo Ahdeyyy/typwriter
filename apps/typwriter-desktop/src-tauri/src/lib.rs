@@ -31,9 +31,9 @@ use commands::{
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
-        delete_folder, get_file_tree, get_recent_workspaces, import_files, move_file, move_folder,
-        get_workspace_tabs, open_folder, remove_recent_workspace, rename_file,
-        save_workspace_tabs, set_main_file,
+        delete_folder, get_file_tree, get_mobile_workspaces_dir, get_recent_workspaces,
+        import_files, list_mobile_workspaces, move_file, move_folder, get_workspace_tabs,
+        open_folder, remove_recent_workspace, rename_file, save_workspace_tabs, set_main_file,
     },
 };
 
@@ -101,6 +101,8 @@ pub fn run() {
             // workspace / file-system
             open_folder,
             create_workspace,
+            get_mobile_workspaces_dir,
+            list_mobile_workspaces,
             set_main_file,
             get_file_tree,
             get_recent_workspaces,

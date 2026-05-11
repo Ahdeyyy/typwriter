@@ -27,6 +27,22 @@ export function createWorkspace(parentPath: string, name: string) {
     return ResultAsync.fromPromise(invoke<string>('create_workspace', { parentPath, name }), toErrString);
 }
 
+export interface MobileWorkspaceEntry {
+    name: string;
+    path: string;
+}
+
+export function getMobileWorkspacesDir() {
+    return ResultAsync.fromPromise(invoke<string>('get_mobile_workspaces_dir'), toErrString);
+}
+
+export function listMobileWorkspaces() {
+    return ResultAsync.fromPromise(
+        invoke<MobileWorkspaceEntry[]>('list_mobile_workspaces'),
+        toErrString
+    );
+}
+
 export function setMainFile(path: string) {
     return ResultAsync.fromPromise(invoke<void>('set_main_file', { path }), toErrString);
 }

@@ -2,10 +2,12 @@
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { FileCodeIcon, BlockedIcon } from "@hugeicons/core-free-icons";
   import TabBar from "$lib/components/editor/tab-bar.svelte";
+  import TabBarMobile from "$lib/components/editor/tab-bar.mobile.svelte";
   import TextEditorTab from "$lib/components/editor/text-editor-tab.svelte";
   import SearchPanel from "$lib/components/editor/search-panel.svelte";
   import TypstToolbar from "$lib/components/editor/typst-toolbar.svelte";
   import { editor } from "$lib/stores/editor.svelte";
+  import { platform } from "$lib/stores/platform.svelte";
 
   const isTypstActive = $derived(
     editor.activeTab?.viewMode === "text" &&
@@ -14,12 +16,12 @@
   );
 </script>
 
-<div class="flex h-full flex-col bg-background">
-  {#if editor.tabs.length > 0}
+<div class="flex h-full flex-col bg-background {platform.isMobile ? 'pt-[calc(env(safe-area-inset-top)+3rem)]' : ''}">
+  {#if editor.tabs.length > 0 && !platform.isMobile}
     <TabBar />
   {/if}
 
-  {#if isTypstActive}
+  {#if isTypstActive && !platform.isMobile}
     <TypstToolbar />
   {/if}
 
@@ -58,4 +60,8 @@
       </div>
     {/if}
   </div>
+
+  {#if editor.tabs.length > 0 && platform.isMobile}
+    <TabBarMobile />
+  {/if}
 </div>

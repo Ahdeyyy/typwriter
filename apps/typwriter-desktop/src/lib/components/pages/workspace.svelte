@@ -2,15 +2,20 @@
   import { onMount, onDestroy } from "svelte";
   import * as Resizable from "$lib/components/ui/resizable/index.js";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
+  import { Button } from "$lib/components/ui/button";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { FileCodeIcon, EyeIcon } from "@hugeicons/core-free-icons";
   import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
   import AppSidebar from "$lib/components/sidebar/app-sidebar.svelte";
   import Preview from "$lib/components/sidebar/preview.svelte";
+  import PreviewMobile from "$lib/components/sidebar/preview.mobile.svelte";
   import EditorPane from "$lib/components/editor/editor-pane.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";
+  import { platform } from "$lib/stores/platform.svelte";
   import { workspace, basename } from "$lib/stores/workspace.svelte";
   import { onPreviewSourceJump } from "$lib/ipc/events";
   import { logError } from "$lib/logger";
@@ -18,6 +23,7 @@
   const PREVIEW_WINDOW_LABEL = "preview";
 
   let previewVisible = $state(true);
+  let mobileView = $state<"editor" | "preview">("editor");
 
   const paneVisible = $derived(previewVisible && !preview.poppedOut);
 
@@ -139,22 +145,53 @@
 
   <div class="flex min-h-0 w-full flex-1">
     <AppSidebar />
-    <main class="flex h-full min-w-0 flex-1 overflow-hidden">
-      <Resizable.PaneGroup direction="horizontal" class="h-full w-full">
-        <Resizable.Pane defaultSize={paneVisible ? 60 : 100} minSize={30}>
-          <EditorPane />
-        </Resizable.Pane>
+    <main class="relative flex h-full min-w-0 flex-1 overflow-hidden">
+      {#if platform.isMobile}
+        <!-- Floating sidebar trigger (top-left) -->
+        <div class="absolute left-2 top-2 z-20">
+          <Sidebar.Trigger class="bg-background/80 backdrop-blur shadow-sm" />
+        </div>
 
-        {#if paneVisible}
-          <Resizable.Handle />
+        <!-- Floating view toggle (top-right) -->
+        <div class="absolute right-2 top-2 z-20">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            class="bg-background/80 backdrop-blur shadow-sm"
+            onclick={() => (mobileView = mobileView === "editor" ? "preview" : "editor")}
+            aria-label={mobileView === "editor" ? "Show preview" : "Show editor"}
+          >
+            <HugeiconsIcon
+              icon={mobileView === "editor" ? EyeIcon : FileCodeIcon}
+              class="size-4"
+            />
+          </Button>
+        </div>
 
-          <Resizable.Pane defaultSize={40} minSize={30} maxSize={60}>
-            <div class="h-full border-l border-border bg-background">
-              <Preview onPresentationMode={openPresentationMode} />
-            </div>
+        <div class="h-full w-full">
+          {#if mobileView === "editor"}
+            <EditorPane />
+          {:else}
+            <PreviewMobile />
+          {/if}
+        </div>
+      {:else}
+        <Resizable.PaneGroup direction="horizontal" class="h-full w-full">
+          <Resizable.Pane defaultSize={paneVisible ? 60 : 100} minSize={30}>
+            <EditorPane />
           </Resizable.Pane>
-        {/if}
-      </Resizable.PaneGroup>
+
+          {#if paneVisible}
+            <Resizable.Handle />
+
+            <Resizable.Pane defaultSize={40} minSize={30} maxSize={60}>
+              <div class="h-full border-l border-border bg-background">
+                <Preview onPresentationMode={openPresentationMode} />
+              </div>
+            </Resizable.Pane>
+          {/if}
+        </Resizable.PaneGroup>
+      {/if}
     </main>
   </div>
 </Sidebar.Provider>

@@ -15,8 +15,6 @@
         "title": "Typwriter",
         "width": 850,
         "height": 650,
-        "minWidth": 850,
-        "minHeight": 650,
         "maximized": true,
         "dragDropEnabled": false,
         "decorations": false,

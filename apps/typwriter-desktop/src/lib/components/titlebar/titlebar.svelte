@@ -13,6 +13,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import WindowControls from "./window-controls.svelte";
   import { platform } from "$lib/utils/platform";
+  import { platform as device } from "$lib/stores/platform.svelte";
 
   type Props = {
     variant?: "workspace" | "minimal";
@@ -39,6 +40,7 @@
   const isMac = platform === "macos";
 </script>
 
+{#if !device.isMobile}
 <div
   data-tauri-drag-region
   class="relative flex h-9 w-full shrink-0 select-none items-center
@@ -149,3 +151,4 @@
     {/if}
   </div>
 </div>
+{/if}
