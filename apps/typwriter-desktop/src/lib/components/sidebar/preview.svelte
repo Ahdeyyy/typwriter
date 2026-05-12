@@ -206,7 +206,7 @@
       {#if ctrl.committedPages[ctrl.visiblePage]}
         <Button
           variant="ghost"
-          class="block h-full w-full rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
+          class="block h-full md:h-full w-full rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
           onclick={(e) => ctrl.handlePageClick(e, ctrl.visiblePage)}
         >
           <img
@@ -236,7 +236,7 @@
           {#if ctrl.committedPages[ctrl.visiblePage]}
             <Button
               variant="ghost"
-              class="block h-auto rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
+              class="block h-auto md:h-auto rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
               onclick={(e) => ctrl.handlePageClick(e, ctrl.visiblePage)}
             >
               <img
@@ -276,7 +276,7 @@
             {#if ctrl.committedPages[i]}
               <Button
                 variant="ghost"
-                class="block h-auto rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
+                class="block h-auto md:h-auto rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
                 onclick={(e) => ctrl.handlePageClick(e, i)}
               >
                 <img

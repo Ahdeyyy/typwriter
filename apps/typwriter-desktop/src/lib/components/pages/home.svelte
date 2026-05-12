@@ -10,6 +10,7 @@
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, File01Icon, KeyboardIcon } from "@hugeicons/core-free-icons";
   import { openUrl, openPath } from "@tauri-apps/plugin-opener";
+  import { documentDir } from "@tauri-apps/api/path";
   import { updater } from "$lib/stores/updater.svelte";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
@@ -36,12 +37,34 @@
   let mobileWorkspaces = $state<MobileWorkspaceEntry[]>([]);
   let mobileWorkspacesLoading = $state(false);
 
+  // Mobile: documents-dir prefix used to shorten display paths.
+  let documentsDirPrefix = $state("");
+
+  function displayPath(path: string): string {
+    if (!platform.isMobile || !documentsDirPrefix) return path;
+    const normalized = path.replace(/\\/g, "/");
+    const prefix = documentsDirPrefix.replace(/\\/g, "/").replace(/\/$/, "");
+    if (normalized.startsWith(prefix + "/")) {
+      return normalized.slice(prefix.length + 1);
+    }
+    if (normalized === prefix) return "";
+    return path;
+  }
+
   // ── Font readiness ──────────────────────────────────────────────────────────
 
   let unlistenFonts: UnlistenFn | null = null;
 
   onMount(async () => {
     loadRecent();
+
+    if (platform.isMobile) {
+      try {
+        documentsDirPrefix = await documentDir();
+      } catch (err) {
+        logError("Failed to resolve documents dir:", err);
+      }
+    }
 
     // Check if fonts already loaded (handles race condition)
     const ready = await isFontsLoaded();
@@ -301,14 +324,14 @@
           <li class="group relative">
             <Button
               variant="outline"
-              class="h-auto w-full justify-start gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-left font-normal hover:bg-accent hover:text-accent-foreground"
+              class="h-auto md:h-auto w-full justify-start gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-left font-normal hover:bg-accent hover:text-accent-foreground"
               onclick={() => handleOpenRecent(entry.path)}
               disabled={!fontsReady}
             >
               <HugeiconsIcon icon={Folder01Icon} class="size-5 shrink-0 text-muted-foreground" />
               <div class="min-w-0 flex-1">
                 <p class="truncate text-sm font-medium text-foreground">{entry.name}</p>
-                <p class="truncate text-xs text-muted-foreground">{entry.path}</p>
+                <p class="truncate text-xs text-muted-foreground">{displayPath(entry.path)}</p>
               </div>
             </Button>
             <Button
@@ -326,56 +349,46 @@
     {:else}
       <ul class="grid grid-cols-2 gap-2">
         {#each recentWorkspaces.slice(0, 6) as entry (entry.path)}
-          <li class="group relative">
-            <Button
-              variant="outline"
-              class="group/card h-auto w-full flex-col gap-0 overflow-hidden rounded-md border border-border bg-card p-0 text-left font-normal hover:bg-accent hover:text-accent-foreground"
-              onclick={() => handleOpenRecent(entry.path)}
-              disabled={!fontsReady}
-            >
-              <!-- Thumbnail -->
-              <div class="flex h-28 w-full items-center justify-center overflow-hidden bg-muted group-hover/card:bg-accent">
-                {#if entry.thumbnail}
-                  <img
-                    src="data:image/png;base64,{entry.thumbnail}"
-                    alt="{entry.name} preview"
-                    class="h-full w-full object-cover object-top"
-                  />
-                {:else}
-                  <HugeiconsIcon icon={Folder01Icon} class="h-8 w-8 text-muted-foreground" />
-                {/if}
-              </div>
+            <li class="group relative">
+                       <button
+                         class="group/card flex w-full flex-col overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:bg-accent disabled:pointer-events-none cursor-pointer disabled:opacity-50"
+                         onclick={() => handleOpenRecent(entry.path)}
+                         disabled={!fontsReady}
+                       >
+                         <!-- Thumbnail -->
+                         <div class="flex h-28 w-full items-center justify-center overflow-hidden bg-muted">
+                           {#if entry.thumbnail}
+                             <img
+                               src="data:image/png;base64,{entry.thumbnail}"
+                               alt="{entry.name} preview"
+                               class="h-full w-full object-cover object-top"
+                             />
+                           {:else}
+                             <HugeiconsIcon icon={Folder01Icon} class="h-8 w-8 text-muted-foreground" />
+                           {/if}
+                         </div>
 
-              <!-- Details -->
-              <div class="min-w-0 w-full px-3 py-2 bg-card group-hover/card:bg-accent">
-                <p class="truncate text-sm font-medium text-foreground group-hover/card:text-accent-foreground">
-                  {entry.name}
-                </p>
-                <p class="truncate text-xs text-muted-foreground group-hover/card:text-accent-foreground/70">
-                  {entry.path}
-                </p>
-              </div>
-            </Button>
+                         <!-- Details -->
+                         <div class="min-w-0 px-3 py-2">
+                           <p class="truncate text-sm font-medium text-foreground group-hover/card:text-accent-foreground">
+                             {entry.name}
+                           </p>
+                           <p class="truncate text-xs text-muted-foreground group-hover/card:text-accent-foreground/70">
+                             {entry.path}
+                           </p>
+                         </div>
+                       </button>
 
-            <!-- Per-entry delete button -->
-            <Tooltip.Root>
-              <Tooltip.Trigger>
-                {#snippet child({ props })}
-                  <Button
-                    {...props}
-                    variant="ghost"
-                    size="icon-sm"
-                    class="absolute right-1.5 top-1.5 rounded-lg bg-background text-muted-foreground opacity-0 hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 group-hover:opacity-100"
-                    onclick={(e) => handleRemoveRecent(e, entry.path)}
-                    aria-label="Remove {entry.name} from recents"
-                  >
-                    <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
-                  </Button>
-                {/snippet}
-              </Tooltip.Trigger>
-              <Tooltip.Content>Remove from recents</Tooltip.Content>
-            </Tooltip.Root>
-          </li>
+                       <!-- Per-entry delete button -->
+                       <button
+                         class="absolute right-1.5 top-1.5 flex h-6 w-6 rounded-lg items-center justify-center bg-background text-muted-foreground opacity-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 group-hover:opacity-100 "
+                         onclick={(e) => handleRemoveRecent(e, entry.path)}
+                         title="Remove from recents"
+                         aria-label="Remove {entry.name} from recents"
+                       >
+                         <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
+                       </button>
+                     </li>
         {/each}
       </ul>
     {/if}
@@ -443,7 +456,7 @@
               </div>
               {#if newWorkspaceParent && newWorkspaceName.trim()}
                 <p class="text-xs text-muted-foreground">
-                  Will create: {newWorkspaceParent}/{newWorkspaceName.trim()}
+                  Will create: {displayPath(newWorkspaceParent)}/{newWorkspaceName.trim()}
                 </p>
               {/if}
             </div>
@@ -545,13 +558,13 @@
           {#each mobileWorkspaces as entry (entry.path)}
             <Button
               variant="outline"
-              class="h-auto w-full justify-start gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-left font-normal hover:bg-accent hover:text-accent-foreground"
+              class="h-auto md:h-auto w-full justify-start gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-left font-normal hover:bg-accent hover:text-accent-foreground"
               onclick={() => handlePickMobileWorkspace(entry.path)}
             >
               <HugeiconsIcon icon={Folder01Icon} class="size-5 shrink-0 text-muted-foreground" />
               <div class="min-w-0 flex-1">
                 <p class="truncate text-sm font-medium text-foreground">{entry.name}</p>
-                <p class="truncate text-xs text-muted-foreground">{entry.path}</p>
+                <p class="truncate text-xs text-muted-foreground">{displayPath(entry.path)}</p>
               </div>
             </Button>
           {/each}
