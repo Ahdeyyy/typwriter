@@ -17,6 +17,7 @@
     type FileNode,
   } from "$lib/stores/workspace.svelte";
   import { editor } from "$lib/stores/editor.svelte";
+  import { platform } from "$lib/stores/platform.svelte";
   import { toast } from "svelte-sonner";
   import { FileTree } from "@pierre/trees";
   import type {
@@ -162,7 +163,8 @@
       composition: {
         contextMenu: {
           enabled: true,
-          triggerMode: "right-click",
+          triggerMode: platform.isMobile ? "both" : "right-click",
+          buttonVisibility: platform.isMobile ? "always" : "when-needed",
           onOpen: (item, ctx) => {
             menuState = {
               item,
@@ -240,6 +242,21 @@
     workspace.mainFile;
     if (!tree) return;
     tree.setComposition(tree.getComposition());
+  });
+
+  // Update context-menu trigger mode when viewport switches between mobile and desktop.
+  $effect(() => {
+    const isMobile = platform.isMobile;
+    if (!tree) return;
+    const current = tree.getComposition() ?? {};
+    tree.setComposition({
+      ...current,
+      contextMenu: {
+        ...(current.contextMenu ?? {}),
+        triggerMode: isMobile ? "both" : "right-click",
+        buttonVisibility: isMobile ? "always" : "when-needed",
+      },
+    });
   });
 
   // ─── Toolbar: expand / collapse all ──────────────────────────────────

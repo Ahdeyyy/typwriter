@@ -16,7 +16,7 @@
   );
 </script>
 
-<div class="flex h-full flex-col bg-background {platform.isMobile ? 'pt-[calc(env(safe-area-inset-top)+3rem)]' : ''}">
+<div class="flex h-full flex-col bg-background {platform.isMobile ? 'pt-12 pb-2' : ''}">
   {#if editor.tabs.length > 0 && !platform.isMobile}
     <TabBar />
   {/if}

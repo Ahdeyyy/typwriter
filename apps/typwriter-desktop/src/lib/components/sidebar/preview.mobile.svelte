@@ -25,7 +25,7 @@
   $effect(() => ctrl.clampVisiblePageEffect());
 </script>
 
-<div class="flex h-full flex-col bg-background text-foreground">
+<div class="flex h-full flex-col bg-background text-foreground pt-12">
   <!-- Compact mobile toolbar — single row, no tooltips, no presentation mode -->
   <div class="flex h-10 shrink-0 items-center gap-1 border-b border-border px-2 overflow-x-auto">
     <Button

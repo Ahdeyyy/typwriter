@@ -54,7 +54,7 @@
 				<Sheet.Title>Sidebar</Sheet.Title>
 				<Sheet.Description>Displays the mobile sidebar.</Sheet.Description>
 			</Sheet.Header>
-			<div class="flex h-full w-full flex-col">
+			<div class="flex h-full w-full flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
 				{@render children?.()}
 			</div>
 		</Sheet.Content>

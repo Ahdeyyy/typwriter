@@ -34,7 +34,7 @@
   });
 </script>
 
-<section class="w-100svw h-100svh">
+<section class="h-full w-full">
   <svelte:boundary>
     {#if isPreviewWindow}
       <PreviewWindow {autoPresent} />

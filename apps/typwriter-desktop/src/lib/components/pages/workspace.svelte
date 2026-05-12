@@ -132,7 +132,7 @@
   });
 </script>
 
-<Sidebar.Provider class="has-titlebar h-screen w-screen flex-col overflow-hidden">
+<Sidebar.Provider class="has-titlebar h-full w-full min-h-0 flex-col overflow-hidden">
   <Titlebar
     variant="workspace"
     title={workspaceName}
@@ -149,14 +149,17 @@
       {#if platform.isMobile}
         <!-- Floating sidebar trigger (top-left) -->
         <div class="absolute left-2 top-2 z-20">
-          <Sidebar.Trigger class="bg-background/80 backdrop-blur shadow-sm" />
+          <Sidebar.Trigger
+            size="icon-lg"
+            class="bg-background/80 backdrop-blur shadow-sm"
+          />
         </div>
 
         <!-- Floating view toggle (top-right) -->
         <div class="absolute right-2 top-2 z-20">
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-lg"
             class="bg-background/80 backdrop-blur shadow-sm"
             onclick={() => (mobileView = mobileView === "editor" ? "preview" : "editor")}
             aria-label={mobileView === "editor" ? "Show preview" : "Show editor"}
