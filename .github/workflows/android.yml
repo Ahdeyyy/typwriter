@@ -44,6 +44,32 @@ jobs:
           ndk-version: r26d
           add-to-path: false
 
+      - name: Create per-target NDK tool shims for openssl-src
+        # openssl-src hardcodes per-target tool names like
+        # `aarch64-linux-android-ranlib` that NDK r23+ no longer ships
+        # (everything is unified under `llvm-ar` / `llvm-ranlib`).
+        # The Android SDK-installed NDK (which gradle picks up) is at
+        # $ANDROID_HOME/ndk/<ver>; shim both that and setup-ndk's copy.
+        run: |
+          set -eux
+          shim() {
+            local bin_dir="$1"
+            [ -d "$bin_dir" ] || return 0
+            for triple in aarch64-linux-android armv7a-linux-androideabi \
+                          arm-linux-androideabi i686-linux-android \
+                          x86_64-linux-android; do
+              for tool in ar ranlib nm strip ld as objcopy objdump readelf; do
+                src="$bin_dir/llvm-$tool"
+                dst="$bin_dir/${triple}-${tool}"
+                [ -e "$src" ] && [ ! -e "$dst" ] && ln -s "llvm-$tool" "$dst" || true
+              done
+            done
+          }
+          for ndk in "$ANDROID_HOME"/ndk/*; do
+            shim "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          done
+          shim "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
 
@@ -78,22 +104,21 @@ jobs:
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           NODE_OPTIONS: --max-old-space-size=4096
-          # Vendored openssl-src is built via the `cc` crate; point it at the
-          # NDK clang for each Android target so it cross-compiles correctly.
-          # CC_aarch64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
-          # CC_armv7-linux-androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi24-clang
-          # CC_i686-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android24-clang
-          # CC_x86_64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang
-          # AR_aarch64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
-          # AR_armv7-linux-androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
-          # AR_i686-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
-          # AR_x86_64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
-          # # NDK r26d unifies tools under llvm-ranlib; openssl-src's Makefile
-          # # otherwise tries a bare per-target ranlib name that doesn't exist.
-          # RANLIB_aarch64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
-          # RANLIB_armv7-linux-androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
-          # RANLIB_i686-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
-          # RANLIB_x86_64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
+          # Vendored openssl-src shells out to per-target tools that don't
+          # exist in NDK r26d (which unifies them under llvm-*); point each
+          # target at the NDK clang/ar/ranlib so cross-compilation succeeds.
+          CC_aarch64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+          CC_armv7-linux-androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi24-clang
+          CC_i686-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android24-clang
+          CC_x86_64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang
+          AR_aarch64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+          AR_armv7-linux-androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+          AR_i686-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+          AR_x86_64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+          RANLIB_aarch64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
+          RANLIB_armv7-linux-androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
+          RANLIB_i686-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
+          RANLIB_x86_64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
         run: bunx tauri android build --apk --split-per-abi
 
       - name: Upload APKs
