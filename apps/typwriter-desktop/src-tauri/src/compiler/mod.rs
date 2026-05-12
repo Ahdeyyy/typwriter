@@ -513,13 +513,37 @@ impl PreviewPipeline {
         let t = Instant::now();
         info!("export_pdf: path={:?}", config.path);
 
+        let path = config.path.clone();
+        let bytes = self.export_pdf_bytes(config)?;
+
+        std::fs::write(&path, &bytes).map_err(|e| {
+            error!(
+                "export_pdf: write failed path={:?} err=\"{e}\" ({:.1}ms)",
+                path,
+                t.elapsed().as_secs_f64() * 1000.0
+            );
+            e.to_string()
+        })?;
+
+        info!(
+            "export_pdf: ok - {} bytes ({:.1}ms)",
+            bytes.len(),
+            t.elapsed().as_secs_f64() * 1000.0
+        );
+        Ok(())
+    }
+
+    /// Generate the PDF bytes for the last compiled document. The destination
+    /// path inside `config` is ignored — callers handle the write themselves
+    /// (e.g. android-fs on Android, std::fs::write on desktop).
+    pub fn export_pdf_bytes(&self, config: PdfExportConfig) -> Result<Vec<u8>, String> {
         let doc = self
             .last_document
             .lock()
             .as_ref()
             .ok_or_else(|| {
                 let e = "No compiled document available";
-                error!("export_pdf: err=\"{e}\"");
+                error!("export_pdf_bytes: err=\"{e}\"");
                 e.to_string()
             })?
             .clone();
@@ -537,34 +561,15 @@ impl PreviewPipeline {
             tagged: true,
         };
 
-        let bytes = typst_pdf::pdf(&doc, &options).map_err(|e| {
+        typst_pdf::pdf(&doc, &options).map_err(|e| {
             let msg = e
                 .iter()
                 .map(|d| d.message.to_string())
                 .collect::<Vec<_>>()
                 .join("; ");
-            error!(
-                "export_pdf: pdf generation failed err=\"{msg}\" ({:.1}ms)",
-                t.elapsed().as_secs_f64() * 1000.0
-            );
+            error!("export_pdf_bytes: pdf generation failed err=\"{msg}\"");
             msg
-        })?;
-
-        std::fs::write(&config.path, &bytes).map_err(|e| {
-            error!(
-                "export_pdf: write failed path={:?} err=\"{e}\" ({:.1}ms)",
-                config.path,
-                t.elapsed().as_secs_f64() * 1000.0
-            );
-            e.to_string()
-        })?;
-
-        info!(
-            "export_pdf: ok - {} bytes ({:.1}ms)",
-            bytes.len(),
-            t.elapsed().as_secs_f64() * 1000.0
-        );
-        Ok(())
+        })
     }
 
     pub fn export_png(&self, config: PngExportConfig) -> Result<(), String> {
@@ -574,21 +579,8 @@ impl PreviewPipeline {
             config.dir, config.scale, config.prefix
         );
 
-        let doc = self
-            .last_document
-            .lock()
-            .as_ref()
-            .ok_or_else(|| {
-                let e = "No compiled document available";
-                error!("export_png: err=\"{e}\"");
-                e.to_string()
-            })?
-            .clone();
-
-        let scale = config.scale.unwrap_or(2.0);
-        let prefix = config.prefix.as_deref().unwrap_or("page");
-        let dir = std::path::Path::new(&config.dir);
-        std::fs::create_dir_all(dir).map_err(|e| {
+        let dir_path = std::path::Path::new(&config.dir).to_path_buf();
+        std::fs::create_dir_all(&dir_path).map_err(|e| {
             error!(
                 "export_png: create_dir_all failed dir={:?} err=\"{e}\"",
                 config.dir
@@ -596,30 +588,59 @@ impl PreviewPipeline {
             e.to_string()
         })?;
 
-        let indices: Vec<usize> = match &config.page_range {
-            Some(s) if !s.trim().is_empty() => parse_page_indices(s, doc.pages.len())?,
-            _ => (0..doc.pages.len()).collect(),
-        };
-
-        for &i in &indices {
-            let page = &doc.pages[i];
-            let png = render_page(page, scale).map_err(|e| {
-                error!("export_png: render failed page={i} err=\"{e}\"");
-                e
-            })?;
-            let filename = format!("{}-{}.png", prefix, i + 1);
-            std::fs::write(dir.join(&filename), png).map_err(|e| {
+        let pages = self.export_png_pages(config)?;
+        let count = pages.len();
+        for (filename, bytes) in pages {
+            std::fs::write(dir_path.join(&filename), &bytes).map_err(|e| {
                 error!("export_png: write failed file={filename:?} err=\"{e}\"");
                 e.to_string()
             })?;
         }
 
         info!(
-            "export_png: ok - {} page(s) ({:.1}ms)",
-            indices.len(),
+            "export_png: ok - {count} page(s) ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
         );
         Ok(())
+    }
+
+    /// Render the selected pages of the last compiled document as PNG bytes.
+    /// Returns `(filename, bytes)` pairs. Destination handling (filesystem vs.
+    /// android-fs) is the caller's responsibility.
+    pub fn export_png_pages(
+        &self,
+        config: PngExportConfig,
+    ) -> Result<Vec<(String, Vec<u8>)>, String> {
+        let doc = self
+            .last_document
+            .lock()
+            .as_ref()
+            .ok_or_else(|| {
+                let e = "No compiled document available";
+                error!("export_png_pages: err=\"{e}\"");
+                e.to_string()
+            })?
+            .clone();
+
+        let scale = config.scale.unwrap_or(2.0);
+        let prefix = config.prefix.as_deref().unwrap_or("page").to_string();
+
+        let indices: Vec<usize> = match &config.page_range {
+            Some(s) if !s.trim().is_empty() => parse_page_indices(s, doc.pages.len())?,
+            _ => (0..doc.pages.len()).collect(),
+        };
+
+        let mut out = Vec::with_capacity(indices.len());
+        for &i in &indices {
+            let page = &doc.pages[i];
+            let png = render_page(page, scale).map_err(|e| {
+                error!("export_png_pages: render failed page={i} err=\"{e}\"");
+                e
+            })?;
+            let filename = format!("{}-{}.png", prefix, i + 1);
+            out.push((filename, png));
+        }
+        Ok(out)
     }
 
     pub fn export_svg(&self, config: SvgExportConfig) -> Result<(), String> {
@@ -629,20 +650,8 @@ impl PreviewPipeline {
             config.dir, config.prefix
         );
 
-        let doc = self
-            .last_document
-            .lock()
-            .as_ref()
-            .ok_or_else(|| {
-                let e = "No compiled document available";
-                error!("export_svg: err=\"{e}\"");
-                e.to_string()
-            })?
-            .clone();
-
-        let prefix = config.prefix.as_deref().unwrap_or("page");
-        let dir = std::path::Path::new(&config.dir);
-        std::fs::create_dir_all(dir).map_err(|e| {
+        let dir_path = std::path::Path::new(&config.dir).to_path_buf();
+        std::fs::create_dir_all(&dir_path).map_err(|e| {
             error!(
                 "export_svg: create_dir_all failed dir={:?} err=\"{e}\"",
                 config.dir
@@ -650,26 +659,54 @@ impl PreviewPipeline {
             e.to_string()
         })?;
 
-        let indices: Vec<usize> = match &config.page_range {
-            Some(s) if !s.trim().is_empty() => parse_page_indices(s, doc.pages.len())?,
-            _ => (0..doc.pages.len()).collect(),
-        };
-
-        for &i in &indices {
-            let page = &doc.pages[i];
-            let svg = typst_svg::svg(page);
-            let filename = format!("{}-{}.svg", prefix, i + 1);
-            std::fs::write(dir.join(&filename), svg.as_str()).map_err(|e| {
+        let pages = self.export_svg_pages(config)?;
+        let count = pages.len();
+        for (filename, bytes) in pages {
+            std::fs::write(dir_path.join(&filename), &bytes).map_err(|e| {
                 error!("export_svg: write failed file={filename:?} err=\"{e}\"");
                 e.to_string()
             })?;
         }
 
         info!(
-            "export_svg: ok - {} page(s) ({:.1}ms)",
-            indices.len(),
+            "export_svg: ok - {count} page(s) ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
         );
         Ok(())
+    }
+
+    /// Render the selected pages of the last compiled document as SVG bytes.
+    /// Returns `(filename, bytes)` pairs. Destination handling (filesystem vs.
+    /// android-fs) is the caller's responsibility.
+    pub fn export_svg_pages(
+        &self,
+        config: SvgExportConfig,
+    ) -> Result<Vec<(String, Vec<u8>)>, String> {
+        let doc = self
+            .last_document
+            .lock()
+            .as_ref()
+            .ok_or_else(|| {
+                let e = "No compiled document available";
+                error!("export_svg_pages: err=\"{e}\"");
+                e.to_string()
+            })?
+            .clone();
+
+        let prefix = config.prefix.as_deref().unwrap_or("page").to_string();
+
+        let indices: Vec<usize> = match &config.page_range {
+            Some(s) if !s.trim().is_empty() => parse_page_indices(s, doc.pages.len())?,
+            _ => (0..doc.pages.len()).collect(),
+        };
+
+        let mut out = Vec::with_capacity(indices.len());
+        for &i in &indices {
+            let page = &doc.pages[i];
+            let svg = typst_svg::svg(page);
+            let filename = format!("{}-{}.svg", prefix, i + 1);
+            out.push((filename, svg.into_bytes()));
+        }
+        Ok(out)
     }
 }

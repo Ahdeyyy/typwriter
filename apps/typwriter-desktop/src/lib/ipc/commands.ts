@@ -83,6 +83,28 @@ export function importFiles(sources: string[], destDir: string) {
     return ResultAsync.fromPromise(invoke<void>('import_files', { sources, destDir }), toErrString);
 }
 
+/** Android-only: import files via FileUris returned by `AndroidFs.showOpenFilePicker`. */
+export function importFilesFromUris(
+    sources: { uri: string; documentTopTreeUri: string | null }[],
+    destDir: string
+) {
+    return ResultAsync.fromPromise(
+        invoke<void>('import_files_from_uris', { sources, destDir }),
+        toErrString
+    );
+}
+
+/** Android-only: copy the whole workspace into a directory URI obtained from
+ *  `AndroidFs.showOpenDirPicker`. Resolves to the number of files copied. */
+export function exportWorkspaceToDirUri(
+    dirUri: { uri: string; documentTopTreeUri: string | null }
+) {
+    return ResultAsync.fromPromise(
+        invoke<number>('export_workspace_to_dir_uri', { dirUri }),
+        toErrString
+    );
+}
+
 export function getRecentWorkspaces() {
     return ResultAsync.fromPromise(
         invoke<RecentWorkspaceEntry[]>('get_recent_workspaces'),
@@ -252,12 +274,47 @@ export function exportPdf(config: PdfExportConfig) {
     return ResultAsync.fromPromise(invoke<void>('export_pdf', { config }), toErrString);
 }
 
+/** Android-only: export PDF to a FileUri returned by `AndroidFs.showSaveFilePicker`. */
+export function exportPdfToUri(
+    fileUri: { uri: string; documentTopTreeUri: string | null },
+    config: PdfExportConfig
+) {
+    return ResultAsync.fromPromise(
+        invoke<void>('export_pdf_to_uri', { fileUri, config }),
+        toErrString
+    );
+}
+
 export function exportPng(config: PngExportConfig) {
     return ResultAsync.fromPromise(invoke<void>('export_png', { config }), toErrString);
 }
 
+/** Android-only: export PNG pages into a directory URI obtained from
+ *  `AndroidFs.showOpenDirPicker`. */
+export function exportPngToDirUri(
+    dirUri: { uri: string; documentTopTreeUri: string | null },
+    config: PngExportConfig
+) {
+    return ResultAsync.fromPromise(
+        invoke<void>('export_png_to_dir_uri', { dirUri, config }),
+        toErrString
+    );
+}
+
 export function exportSvg(config: SvgExportConfig) {
     return ResultAsync.fromPromise(invoke<void>('export_svg', { config }), toErrString);
+}
+
+/** Android-only: export SVG pages into a directory URI obtained from
+ *  `AndroidFs.showOpenDirPicker`. */
+export function exportSvgToDirUri(
+    dirUri: { uri: string; documentTopTreeUri: string | null },
+    config: SvgExportConfig
+) {
+    return ResultAsync.fromPromise(
+        invoke<void>('export_svg_to_dir_uri', { dirUri, config }),
+        toErrString
+    );
 }
 
 // ─── App init ─────────────────────────────────────────────────────────────────

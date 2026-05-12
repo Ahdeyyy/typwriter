@@ -1,5 +1,6 @@
 import { editor, type TabInfo } from "$lib/stores/editor.svelte";
 import { workspace } from "$lib/stores/workspace.svelte";
+import { logError } from "$lib/logger";
 
 export class TabBarController {
   // Drag-drop state (desktop only)
@@ -44,7 +45,9 @@ export class TabBarController {
     try {
       await editor.activateTab(tab.id);
       workspace.activeFilePath = tab.relPath;
-    } catch {}
+    } catch (err) {
+      logError("activateTab failed:", err);
+    }
   }
 
   async closeTab(tab: TabInfo, e?: Event) {
@@ -53,7 +56,9 @@ export class TabBarController {
       const closed = await editor.closeTab(tab.id);
       if (!closed) return;
       workspace.activeFilePath = editor.activeTab?.relPath ?? null;
-    } catch {}
+    } catch (err) {
+      logError("closeTab failed:", err);
+    }
   }
 
   async handleAuxClick(e: MouseEvent, tab: TabInfo) {
@@ -66,21 +71,27 @@ export class TabBarController {
     try {
       await editor.closeOtherTabs(tab.id);
       workspace.activeFilePath = editor.activeTab?.relPath ?? null;
-    } catch {}
+    } catch (err) {
+      logError("closeOtherTabs failed:", err);
+    }
   }
 
   async closeToLeft(tab: TabInfo) {
     try {
       await editor.closeTabsToLeft(tab.id);
       workspace.activeFilePath = editor.activeTab?.relPath ?? null;
-    } catch {}
+    } catch (err) {
+      logError("closeTabsToLeft failed:", err);
+    }
   }
 
   async closeToRight(tab: TabInfo) {
     try {
       await editor.closeTabsToRight(tab.id);
       workspace.activeFilePath = editor.activeTab?.relPath ?? null;
-    } catch {}
+    } catch (err) {
+      logError("closeTabsToRight failed:", err);
+    }
   }
 
   isAdjacentToActive(index: number): boolean {

@@ -3,6 +3,7 @@ use std::{fs, path::PathBuf, sync::Arc, time::Instant};
 use log::{error, info};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_android_fs::{api::api_sync::AndroidFs, AndroidFsExt, FileUri};
 
 use crate::workspace::{FileTreeEntry, RecentWorkspaceEntry, WorkspaceState};
 
@@ -242,6 +243,65 @@ pub fn import_files(
     result
 }
 
+/// Android: import files chosen via `AndroidFs.showOpenFilePicker` (which
+/// returns content:// URIs that std::fs cannot read). Reads each URI through
+/// android-fs, then writes the bytes into `dest_dir` using the file's display
+/// name as the destination filename.
+#[tauri::command]
+pub fn import_files_from_uris(
+    sources: Vec<FileUri>,
+    dest_dir: String,
+    workspace: State<'_, Arc<WorkspaceState>>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let t = Instant::now();
+    info!(
+        "import_files_from_uris: dest_dir={dest_dir:?} count={}",
+        sources.len()
+    );
+
+    let dest = workspace.resolve_path(&dest_dir)?;
+    if !dest.is_dir() {
+        let e = format!("{} is not a directory", dest.display());
+        error!("import_files_from_uris: err=\"{e}\"");
+        return Err(e);
+    }
+
+    let api = app.android_fs();
+    for uri in &sources {
+        let name = api.get_name(uri).map_err(|e| {
+            error!("import_files_from_uris: get_name failed err=\"{e}\"");
+            e.to_string()
+        })?;
+        let dst_path = dest.join(&name);
+        if dst_path.exists() {
+            let e = format!("File already exists: {}", dst_path.display());
+            error!("import_files_from_uris: err=\"{e}\"");
+            return Err(e);
+        }
+        let bytes = api.read(uri).map_err(|e| {
+            error!("import_files_from_uris: read failed uri={:?} err=\"{e}\"", uri.uri);
+            e.to_string()
+        })?;
+        fs::write(&dst_path, &bytes).map_err(|e| {
+            error!("import_files_from_uris: write failed dst={dst_path:?} err=\"{e}\"");
+            e.to_string()
+        })?;
+        info!(
+            "import_files_from_uris: imported {} ({} bytes) -> {:?}",
+            name,
+            bytes.len(),
+            dst_path
+        );
+    }
+
+    info!(
+        "import_files_from_uris: ok ({:.1}ms)",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
+    Ok(())
+}
+
 #[tauri::command]
 pub fn get_recent_workspaces(
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -344,6 +404,78 @@ fn resolve_mobile_workspaces_root(app: &AppHandle) -> Result<PathBuf, String> {
 pub fn get_mobile_workspaces_dir(app: AppHandle) -> Result<String, String> {
     let root = resolve_mobile_workspaces_root(&app)?;
     Ok(root.to_string_lossy().into_owned())
+}
+
+/// Android-only: copy the entire currently-open workspace into a directory
+/// chosen via `AndroidFs.showOpenDirPicker`. Visible files and directories are
+/// copied recursively (hidden entries starting with `.` are skipped, matching
+/// the file-tree view). Files are read with `std::fs` and written through
+/// android-fs since the destination is a SAF tree URI.
+#[tauri::command]
+pub fn export_workspace_to_dir_uri(
+    dir_uri: FileUri,
+    workspace: State<'_, Arc<WorkspaceState>>,
+    app: AppHandle,
+) -> Result<u32, String> {
+    let t = Instant::now();
+    info!("export_workspace_to_dir_uri: uri={:?}", dir_uri.uri);
+
+    let root = workspace
+        .root
+        .read()
+        .clone()
+        .ok_or_else(|| "No workspace open".to_string())?;
+
+    let api = app.android_fs();
+    let mut count: u32 = 0;
+    copy_dir_to_uri(&api, &root, &PathBuf::new(), &dir_uri, &mut count).map_err(|e| {
+        error!("export_workspace_to_dir_uri: failed err=\"{e}\"");
+        e
+    })?;
+
+    info!(
+        "export_workspace_to_dir_uri: ok - {count} file(s) ({:.1}ms)",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
+    Ok(count)
+}
+
+fn copy_dir_to_uri<R: tauri::Runtime>(
+    api: &AndroidFs<R>,
+    src_root: &PathBuf,
+    rel_dir: &PathBuf,
+    dest_uri: &FileUri,
+    count: &mut u32,
+) -> Result<(), String> {
+    let src_dir = src_root.join(rel_dir);
+    let entries = fs::read_dir(&src_dir)
+        .map_err(|e| format!("Failed to read {}: {e}", src_dir.display()))?;
+
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+        let file_type = match entry.file_type() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let rel_path = rel_dir.join(&name);
+
+        if file_type.is_dir() {
+            copy_dir_to_uri(api, src_root, &rel_path, dest_uri, count)?;
+        } else if file_type.is_file() {
+            let bytes = fs::read(entry.path())
+                .map_err(|e| format!("Failed to read {}: {e}", entry.path().display()))?;
+            let file_uri = api
+                .create_new_file(dest_uri, &rel_path, None)
+                .map_err(|e| format!("Failed to create {}: {e}", rel_path.display()))?;
+            api.write(&file_uri, &bytes)
+                .map_err(|e| format!("Failed to write {}: {e}", rel_path.display()))?;
+            *count += 1;
+        }
+    }
+    Ok(())
 }
 
 /// Mobile flow: list the immediate subdirectories of the mobile workspaces
