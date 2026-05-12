@@ -15,7 +15,7 @@ jobs:
       contents: read
 
     env:
-      NDK_VERSION: "26.3.11579264"
+      NDK_VERSION: "29.0.14206865"
       JAVA_VERSION: "17"
 
     steps:
@@ -106,6 +106,51 @@ jobs:
           if [ ! -d "src-tauri/gen/android" ]; then
             bunx tauri android init
           fi
+
+      - name: Setup Android signing
+        working-directory: apps/typwriter-desktop
+        run: |
+          set -eux
+          cd src-tauri/gen/android
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > keystore.properties
+          echo "password=${{ secrets.ANDROID_KEY_PASSWORD }}" >> keystore.properties
+          base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/keystore.jks
+          echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/build.gradle.kts")
+          s = p.read_text()
+
+          imports = 'import java.io.FileInputStream\nimport java.util.Properties\n'
+          if 'import java.util.Properties' not in s:
+              s = imports + s
+
+          block = '''    signingConfigs {
+                  create("release") {
+                      val keystorePropertiesFile = rootProject.file("keystore.properties")
+                      val keystoreProperties = Properties()
+                      if (keystorePropertiesFile.exists()) {
+                          keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+                      }
+                      keyAlias = keystoreProperties["keyAlias"] as String
+                      keyPassword = keystoreProperties["password"] as String
+                      storeFile = file(keystoreProperties["storeFile"] as String)
+                      storePassword = keystoreProperties["password"] as String
+                  }
+              }
+
+              buildTypes {'''
+          if 'signingConfigs {' not in s:
+              s = s.replace('    buildTypes {', block, 1)
+
+          s = s.replace(
+              'signingConfig = signingConfigs.getByName("debug")',
+              'signingConfig = signingConfigs.getByName("release")',
+          )
+          p.write_text(s)
+          PY
+          cat app/build.gradle.kts
 
       - name: Build Android APK
         working-directory: apps/typwriter-desktop

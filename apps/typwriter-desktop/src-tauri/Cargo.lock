@@ -6680,6 +6680,7 @@ dependencies = [
  "log",
  "lru",
  "notify",
+ "openssl",
  "parking_lot",
  "png 0.18.1",
  "rayon",
