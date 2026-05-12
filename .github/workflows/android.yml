@@ -48,8 +48,9 @@ jobs:
         # openssl-src hardcodes per-target tool names like
         # `aarch64-linux-android-ranlib` that NDK r23+ no longer ships
         # (everything is unified under `llvm-ar` / `llvm-ranlib`).
-        # The Android SDK-installed NDK (which gradle picks up) is at
-        # $ANDROID_HOME/ndk/<ver>; shim both that and setup-ndk's copy.
+        # Shim every NDK install on the runner and export the bin dir of
+        # the SDK-installed NDK (the one gradle actually uses) on PATH so
+        # /bin/sh can resolve the tool names openssl-src invokes by name.
         run: |
           set -eux
           shim() {
@@ -65,10 +66,19 @@ jobs:
               done
             done
           }
+          sdk_ndk_bin=""
           for ndk in "$ANDROID_HOME"/ndk/*; do
-            shim "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+            bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+            shim "$bin"
+            sdk_ndk_bin="$bin"
           done
           shim "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          # Expose the SDK-installed NDK bin dir on PATH for later steps so
+          # /bin/sh inside openssl's Makefile can find the shimmed tools.
+          if [ -n "$sdk_ndk_bin" ]; then
+            echo "$sdk_ndk_bin" >> "$GITHUB_PATH"
+          fi
+          echo "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
 
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
