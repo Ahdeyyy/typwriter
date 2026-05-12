@@ -322,6 +322,10 @@ impl WorkspaceState {
 
     /// Resolve a workspace-relative string path to an absolute PathBuf.
     /// If `path` is already absolute it is returned as-is.
+    pub fn resolve_path(&self, path: &str) -> Result<PathBuf, String> {
+        self.resolve(path)
+    }
+
     fn resolve(&self, path: &str) -> Result<PathBuf, String> {
         let p = PathBuf::from(path);
         if p.is_absolute() {

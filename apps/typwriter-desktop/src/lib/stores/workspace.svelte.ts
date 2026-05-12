@@ -7,6 +7,7 @@ import {
     getFileTree,
     getWorkspaceTabs,
     importFiles,
+    importFilesFromUris,
     moveFile,
     moveFolder,
     openFolder,
@@ -16,6 +17,8 @@ import {
     triggerPreview,
 } from '$lib/ipc/commands';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { AndroidFs } from 'tauri-plugin-android-fs-api';
+import { platform } from './platform.svelte';
 import { onWorkspaceFilesChanged, type UnlistenFn } from '$lib/ipc/events';
 import type { FileTreeEntry } from '$lib/types';
 import { logError } from '$lib/logger';
@@ -437,18 +440,31 @@ class WorkspaceStore {
     }
 
     async importFilesAction(destDir: string): Promise<void> {
-        const selected = await openDialog({ multiple: true, directory: false });
-        if (!selected) {
-            return;
-        }
-        const paths = Array.isArray(selected) ? selected : [selected];
-        if (paths.length === 0) {
-            return;
-        }
-
-        const result = await importFiles(paths, this.toAbs(destDir));
-        if (result.isErr()) {
-            throw new Error(result.error);
+        if (platform.isMobile) {
+            // Android: tauri-plugin-dialog's open dialog crashes the activity
+            // under scoped storage. Use the SAF picker to obtain content://
+            // URIs, then copy them through android-fs on the Rust side.
+            const uris = await AndroidFs.showOpenFilePicker({ multiple: true });
+            if (!uris || uris.length === 0) {
+                return;
+            }
+            const result = await importFilesFromUris(uris, this.toAbs(destDir));
+            if (result.isErr()) {
+                throw new Error(result.error);
+            }
+        } else {
+            const selected = await openDialog({ multiple: true, directory: false });
+            if (!selected) {
+                return;
+            }
+            const paths = Array.isArray(selected) ? selected : [selected];
+            if (paths.length === 0) {
+                return;
+            }
+            const result = await importFiles(paths, this.toAbs(destDir));
+            if (result.isErr()) {
+                throw new Error(result.error);
+            }
         }
 
         const refreshResult = await this.refreshTree();

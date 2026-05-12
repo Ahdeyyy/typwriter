@@ -22,7 +22,10 @@ use commands::{
         discard_shadow, get_completions, get_definitions, get_tooltip, read_file, save_file,
         update_file_content,
     },
-    export::{export_pdf, export_png, export_svg},
+    export::{
+        export_pdf, export_pdf_to_uri, export_png, export_png_to_dir_uri, export_svg,
+        export_svg_to_dir_uri,
+    },
     format::{
         format_typst_cursor_virtual, format_typst_file, format_typst_source,
         format_workspace_typ_files,
@@ -31,9 +34,10 @@ use commands::{
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
-        delete_folder, get_file_tree, get_mobile_workspaces_dir, get_recent_workspaces,
-        import_files, list_mobile_workspaces, move_file, move_folder, get_workspace_tabs,
-        open_folder, remove_recent_workspace, rename_file, save_workspace_tabs, set_main_file,
+        delete_folder, export_workspace_to_dir_uri, get_file_tree, get_mobile_workspaces_dir,
+        get_recent_workspaces, get_workspace_tabs, import_files, import_files_from_uris,
+        list_mobile_workspaces, move_file, move_folder, open_folder, remove_recent_workspace,
+        rename_file, save_workspace_tabs, set_main_file,
     },
 };
 
@@ -50,7 +54,9 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
     builder
+        .plugin(tauri_plugin_android_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -122,6 +128,8 @@ pub fn run() {
             move_file,
             move_folder,
             import_files,
+            import_files_from_uris,
+            export_workspace_to_dir_uri,
             // editor buffer + IDE features
             read_file,
             update_file_content,
@@ -143,8 +151,11 @@ pub fn run() {
             get_log_file_path,
             // export
             export_pdf,
+            export_pdf_to_uri,
             export_png,
+            export_png_to_dir_uri,
             export_svg,
+            export_svg_to_dir_uri,
             // format
             format_typst_source,
             format_typst_cursor_virtual,

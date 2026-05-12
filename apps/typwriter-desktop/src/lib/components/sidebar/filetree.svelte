@@ -6,7 +6,10 @@
     FolderAddIcon,
     UnfoldLessIcon,
     FileImportIcon,
+    FileExportIcon,
   } from "@hugeicons/core-free-icons";
+  import { AndroidFs } from "tauri-plugin-android-fs-api";
+  import { exportWorkspaceToDirUri } from "$lib/ipc/commands";
   import { ChevronsUpDownIcon } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
@@ -318,6 +321,31 @@
     }
   }
 
+  let exportingWorkspace = $state(false);
+
+  async function exportWorkspace() {
+    if (exportingWorkspace) return;
+    exportingWorkspace = true;
+    try {
+      const dirUri = await AndroidFs.showOpenDirPicker();
+      if (!dirUri) return;
+      const toastId = toast.loading("Exporting workspace…");
+      const result = await exportWorkspaceToDirUri(dirUri);
+      toast.dismiss(toastId);
+      result.match(
+        (count) =>
+          toast.success(
+            `Exported ${count} file${count === 1 ? "" : "s"} to selected folder`,
+          ),
+        (err) => toast.error(`Export failed: ${err}`),
+      );
+    } catch (err) {
+      toast.error(`Export failed: ${err}`);
+    } finally {
+      exportingWorkspace = false;
+    }
+  }
+
   function handleRootCreateKey(e: KeyboardEvent) {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -549,6 +577,24 @@
       </Tooltip.Trigger>
       <Tooltip.Content>Import files to root</Tooltip.Content>
     </Tooltip.Root>
+    {#if platform.isMobile}
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="icon"
+              onclick={exportWorkspace}
+              disabled={exportingWorkspace}
+            >
+              <HugeiconsIcon icon={FileExportIcon} class="size-4" />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content>Export workspace…</Tooltip.Content>
+      </Tooltip.Root>
+    {/if}
   </div>
 </div>
 
