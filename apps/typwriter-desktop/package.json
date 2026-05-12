@@ -39,11 +39,13 @@
     "@tauri-apps/plugin-dialog": "~2",
     "@tauri-apps/plugin-log": "~2",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-os": "~2",
     "@tauri-apps/plugin-store": "~2",
     "@tauri-apps/plugin-updater": "~2",
     "codemirror": "^6.0.2",
     "neverthrow": "^8.2.0",
     "runed": "^0.37.1",
+    "tauri-plugin-android-fs-api": "28.1.0",
     "thememirror": "^2.0.1"
   },
   "devDependencies": {
