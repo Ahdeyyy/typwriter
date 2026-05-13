@@ -74,6 +74,7 @@
   import { ayuLight } from "thememirror";
   import { indentationMarkers } from "@replit/codemirror-indentation-markers";
   import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
+  import { platform } from "$lib/stores/platform.svelte";
   import { logError } from "$lib/logger";
 
 
@@ -268,7 +269,7 @@
       // Language extension chosen by file extension; null = plain text
       ...(langExt ? [langExt] : []),
       ...(isTypst ? [typstCommentDecorations, typstSpellcheck, keymap.of(typstKeymap)] : []),
-      indentationMarkers(),
+      ...(platform.isMobile ? [] : [indentationMarkers()]),
       // Custom Svelte search panel — provide an empty CM panel so the
       // search extension's state is initialized but its UI is suppressed.
       search({
@@ -415,6 +416,35 @@
           border: "1px solid var(--border)",
           borderRadius: "calc(var(--radius) - 1px)",
           margin: "0.25rem",
+        },
+        ".cm-tooltip.cm-tooltip-lint": {
+          backgroundColor: "var(--popover)",
+          color: "var(--popover-foreground)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+          boxShadow: "var(--shadow-md)",
+          padding: "0",
+          maxWidth: "32rem",
+        },
+        ".cm-tooltip.cm-tooltip-lint .cm-diagnostic": {
+          color: "var(--popover-foreground)",
+          padding: "0.375rem 0.5rem",
+          fontFamily: "var(--font-sans)",
+          fontSize: "12px",
+          lineHeight: "1.45",
+          borderLeft: "3px solid transparent",
+        },
+        ".cm-tooltip.cm-tooltip-lint .cm-diagnostic-error": {
+          borderLeftColor: "var(--destructive)",
+        },
+        ".cm-tooltip.cm-tooltip-lint .cm-diagnostic-warning": {
+          borderLeftColor: "#f59e0b",
+        },
+        ".cm-tooltip.cm-tooltip-lint .cm-diagnostic-info": {
+          borderLeftColor: "var(--ring)",
+        },
+        ".cm-diagnosticText": {
+          whiteSpace: "pre-wrap",
         },
       }),
     ];

@@ -14,6 +14,7 @@
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { page } from "$lib/stores/page.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { platform } from "$lib/stores/platform.svelte";
   import { getRecentWorkspaces } from "$lib/ipc/commands";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
@@ -63,14 +64,20 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
   );
 
   onMount(async () => {
-    const icon = await defaultWindowIcon();
-    if (icon) {
-      const size = await icon.size()
-      const htmlImage = new Image(size.width, size.height)
-      const bytes = await icon.rgba()
-      htmlImage.src = createImageUrlFromRgba(bytes, size.width, size.height)
-      iconImage = htmlImage;
-      await icon.close()
+    if (platform.isDesktop) {
+      try {
+        const icon = await defaultWindowIcon();
+        if (icon) {
+          const size = await icon.size();
+          const htmlImage = new Image(size.width, size.height);
+          const bytes = await icon.rgba();
+          htmlImage.src = createImageUrlFromRgba(bytes, size.width, size.height);
+          iconImage = htmlImage;
+          await icon.close();
+        }
+      } catch (err) {
+        logError("defaultWindowIcon failed:", err);
+      }
     }
     const result = await getRecentWorkspaces();
     result.match(
@@ -134,7 +141,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
                 </div>
                 <div class="flex min-w-0 flex-col gap-0.5 leading-none">
                   <span class="truncate font-semibold">{workspaceName}</span>
-                  <span class="truncate text-[10px] opacity-50">{workspace.rootPath ?? ""}</span>
+                  <span class="truncate text-[10px] opacity-50">{platform.displayPath(workspace.rootPath ?? "")}</span>
                 </div>
                 <HugeiconsIcon icon={ArrowDown01Icon} class="ml-auto size-4 shrink-0 opacity-50" />
               </Sidebar.MenuButton>
@@ -153,7 +160,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
                 >
                   <span class="font-medium">{recent.name}</span>
                   <span class="text-muted-foreground max-w-full truncate text-[10px]">
-                    {recent.path}
+                    {platform.displayPath(recent.path)}
                   </span>
                 </DropdownMenu.Item>
               {/each}

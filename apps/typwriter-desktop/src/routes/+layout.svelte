@@ -6,8 +6,8 @@
   import { installGlobalErrorLogging } from "$lib/logger";
   import { updater } from "$lib/stores/updater.svelte";
   import { mode, ModeWatcher } from "mode-watcher";
-  import {app,window} from "@tauri-apps/api"
-    import { Effect } from "@tauri-apps/api/window";
+  import { app } from "@tauri-apps/api"
+  import { platform } from "$lib/stores/platform.svelte";
 
   const darkBackground = "#0a0a0a"
 
@@ -19,7 +19,9 @@
   });
 
   onMount(async () => {
-    app.setTheme(mode.current === "dark" ? "dark": "light")
+    if (platform.isDesktop) {
+      app.setTheme(mode.current === "dark" ? "dark" : "light");
+    }
     updater.checkPassive();
   });
 </script>

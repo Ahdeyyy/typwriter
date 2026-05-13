@@ -13,6 +13,8 @@
   import { ChevronsUpDownIcon } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
   import {
     workspace,
     basename,
@@ -287,12 +289,63 @@
   let rootCreateInputEl = $state<HTMLInputElement | null>(null);
   let blurGuardUntil = $state(0);
 
+  // Mobile-only: shadcn Dialog state for create operations. The inline
+  // rename UI used by @pierre/trees doesn't handle the mobile keyboard
+  // reliably, so on mobile we collect the name in a dialog and call the
+  // workspace actions directly.
+  let mobileDialogOpen = $state(false);
+  let mobileDialogKind = $state<"file" | "folder">("file");
+  let mobileDialogParent = $state(""); // "" = workspace root
+  let mobileDialogName = $state("");
+  let mobileDialogSubmitting = $state(false);
+
   async function startRootCreate(kind: "file" | "folder") {
+    if (platform.isMobile) {
+      openMobileCreateDialog("", kind);
+      return;
+    }
     creatingRoot = kind;
     newRootName = "";
     await tick();
     blurGuardUntil = Date.now() + 80;
     rootCreateInputEl?.focus();
+  }
+
+  function openMobileCreateDialog(parent: string, kind: "file" | "folder") {
+    mobileDialogKind = kind;
+    mobileDialogParent = parent;
+    mobileDialogName = "";
+    mobileDialogOpen = true;
+  }
+
+  async function submitMobileCreate() {
+    if (mobileDialogSubmitting) return;
+    const name = mobileDialogName.trim();
+    if (!name || !workspace.rootPath) return;
+    const kind = mobileDialogKind;
+    const parent = mobileDialogParent;
+    const targetPath = parent ? `${parent}/${name}` : name;
+
+    mobileDialogSubmitting = true;
+    const result = await (kind === "folder"
+      ? workspace.createFolderAction(targetPath)
+      : workspace.createFileAction(targetPath));
+    mobileDialogSubmitting = false;
+
+    result.match(
+      () => {
+        mobileDialogOpen = false;
+        mobileDialogName = "";
+      },
+      (err) => toast.error(`Create failed: ${err}`),
+    );
+  }
+
+  function handleMobileDialogKey(e: KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submitMobileCreate();
+    }
   }
 
   async function commitRootCreate() {
@@ -431,6 +484,7 @@
       !menuIsDir &&
       workspace.mainFile === menuPath,
   );
+  const menuIsTyp = $derived(!menuIsDir && menuPath.endsWith(".typ"));
 
   function menuOpen() {
     if (!menuState || menuIsDir) return;
@@ -467,6 +521,37 @@
     result.mapErr((err) => toast.error(`Set main file failed: ${err}`));
   }
 
+  async function menuFormat() {
+    if (!menuState || menuIsDir) return;
+    const path = menuPath;
+    closeMenu();
+    if (!path.endsWith(".typ")) return;
+    const openResult = await workspace.openFile(path);
+    if (openResult.isErr()) {
+      toast.error(`Failed to open file: ${openResult.error}`);
+      return;
+    }
+    const tabId = editor.activeTabId;
+    if (!tabId) return;
+    const result = await editor.formatTabById(tabId);
+    result.mapErr((err) => toast.error(`Format failed: ${err}`));
+  }
+
+  async function menuSave() {
+    if (!menuState || menuIsDir) return;
+    const path = menuPath;
+    closeMenu();
+    const openResult = await workspace.openFile(path);
+    if (openResult.isErr()) {
+      toast.error(`Failed to open file: ${openResult.error}`);
+      return;
+    }
+    const tabId = editor.activeTabId;
+    if (!tabId) return;
+    const result = await editor.saveTabById(tabId);
+    result.mapErr((err) => toast.error(`Save failed: ${err}`));
+  }
+
   function menuCreateChild(kind: "file" | "folder") {
     if (!menuState || !menuIsDir || !tree) return;
     const dir = menuPath;
@@ -489,6 +574,11 @@
     if (!tree) return;
     const dirHandle = asDir(tree.getItem(`${dir}/`));
     if (dirHandle && !dirHandle.isExpanded()) dirHandle.expand();
+
+    if (platform.isMobile) {
+      openMobileCreateDialog(dir, kind);
+      return;
+    }
 
     const placeholderName = kind === "folder" ? "new-folder" : "new-file";
     let placeholder = `${dir}/${placeholderName}${kind === "folder" ? "/" : ""}`;
@@ -683,6 +773,21 @@
       <Button
         variant="ghost"
         class="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-xs font-normal"
+        onclick={menuSave}
+      >
+        Save Document
+      </Button>
+      <Button
+        variant="ghost"
+        class="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-xs font-normal"
+        disabled={!menuIsTyp}
+        onclick={menuFormat}
+      >
+        Format Document
+      </Button>
+      <Button
+        variant="ghost"
+        class="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-xs font-normal"
         disabled={menuIsMain}
         onclick={menuSetMain}
       >
@@ -706,3 +811,45 @@
     </Button>
   </div>
 {/if}
+
+<!-- ─── Mobile create dialog ───────────────────────────────────────── -->
+<Dialog.Root bind:open={mobileDialogOpen}>
+  <Dialog.Content class="sm:max-w-md">
+    <Dialog.Header>
+      <Dialog.Title>
+        {mobileDialogKind === "folder" ? "New Folder" : "New File"}
+      </Dialog.Title>
+      <Dialog.Description>
+        {mobileDialogParent
+          ? `Inside ${mobileDialogParent}`
+          : "At workspace root"}
+      </Dialog.Description>
+    </Dialog.Header>
+
+    <div class="py-2">
+      <Input
+        autofocus
+        placeholder={mobileDialogKind === "folder" ? "folder-name" : "file.typ"}
+        bind:value={mobileDialogName}
+        onkeydown={handleMobileDialogKey}
+        disabled={mobileDialogSubmitting}
+      />
+    </div>
+
+    <Dialog.Footer>
+      <Dialog.Close>
+        {#snippet child({ props })}
+          <Button {...props} variant="ghost" disabled={mobileDialogSubmitting}>
+            Cancel
+          </Button>
+        {/snippet}
+      </Dialog.Close>
+      <Button
+        onclick={submitMobileCreate}
+        disabled={mobileDialogSubmitting || !mobileDialogName.trim()}
+      >
+        {mobileDialogSubmitting ? "Creating…" : "Create"}
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>

@@ -1,54 +1,49 @@
-// Platform detection.
-//
-// Two detection modes are supported:
-//   - "viewport" (default): treat <768px viewports as mobile. Useful during
-//     dev because resizing the desktop window flips the layout, so mobile
-//     work can be done without an emulator.
-//   - "tauri": ask `@tauri-apps/plugin-os` what OS we're running on, and
-//     classify android/ios as mobile. Use this once the Android build is
-//     stable enough that real-device behavior is the source of truth.
-//
-// Switch via the `VITE_PLATFORM_MODE` env var (set in `.env` or the shell).
+// Platform detection. Uses `@tauri-apps/plugin-os` to identify the host OS
+// and classifies android/ios as mobile.
 
 import { platform as tauriPlatform } from "@tauri-apps/plugin-os";
-
-const MOBILE_MAX_WIDTH = 768;
-
-type Mode = "viewport" | "tauri";
-const MODE: Mode =
-  (import.meta.env.VITE_PLATFORM_MODE as Mode | undefined) ?? "viewport";
+import { documentDir } from "@tauri-apps/api/path";
 
 class PlatformStore {
-  width = $state(typeof window !== "undefined" ? window.innerWidth : 1024);
-  os = $state<string | null>(null);
+  os = $state<string>("unknown");
+  documentsDirPrefix = $state("");
 
-  isMobile = $derived(
-    MODE === "tauri"
-      ? this.os === "android" || this.os === "ios"
-      : this.width < MOBILE_MAX_WIDTH,
-  );
+  isMobile = $derived(this.os === "android" || this.os === "ios");
   isDesktop = $derived(!this.isMobile);
-  mode = MODE;
 
   constructor() {
     if (typeof window === "undefined") return;
 
-    if (MODE === "viewport") {
-      window.addEventListener("resize", () => {
-        this.width = window.innerWidth;
-      });
-    } else {
-      // Resolve the OS once on startup; it doesn't change at runtime.
-      tauriPlatform()
-        .then((os) => {
-          this.os = os;
-        })
-        .catch(() => {
-          // Plugin unavailable (e.g. running outside Tauri); fall back to
-          // viewport so the UI doesn't get stuck in an indeterminate state.
-          this.os = "unknown";
-        });
+    try {
+      this.os = tauriPlatform();
+    } catch {
+      this.os = "unknown";
     }
+
+    this.loadDocumentsDirPrefix();
+  }
+
+  private loadDocumentsDirPrefix() {
+    documentDir()
+      .then((dir) => {
+        this.documentsDirPrefix = dir;
+      })
+      .catch(() => {});
+  }
+
+  /** Strip the `<documents>/` prefix from a path when on mobile so the
+   *  user sees a workspace-relative path instead of the long app-private
+   *  external-storage path. */
+  displayPath(path: string): string {
+    if (!path) return path;
+    if (!this.isMobile || !this.documentsDirPrefix) return path;
+    const normalized = path.replace(/\\/g, "/");
+    const prefix = this.documentsDirPrefix.replace(/\\/g, "/").replace(/\/$/, "");
+    if (normalized.startsWith(prefix + "/")) {
+      return normalized.slice(prefix.length + 1);
+    }
+    if (normalized === prefix) return "";
+    return path;
   }
 }
 

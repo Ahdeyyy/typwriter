@@ -5,8 +5,12 @@
 
   import { Window } from "@tauri-apps/api/window";
   import { watch } from "runed";
+  import { platform } from "@/stores/platform.svelte";
 
-  const window = Window.getCurrent();
+  // The @tauri-apps/api/window plugin isn't wired up on Android. Resolve the
+  // current window lazily on desktop only so module-evaluation doesn't blow
+  // up on mobile.
+  const win = platform.isDesktop ? Window.getCurrent() : null;
 
   const searchParams =
     typeof globalThis.window !== "undefined"
@@ -30,13 +34,13 @@
   });
 
   watch(() => title, (newTitle) => {
-    window.setTitle(newTitle);
+    win?.setTitle(newTitle);
   });
 </script>
 
 <section class="h-full w-full">
   <svelte:boundary>
-    {#if isPreviewWindow}
+    {#if isPreviewWindow && platform.isDesktop}
       <PreviewWindow {autoPresent} />
     {:else}
       <page.current.component />

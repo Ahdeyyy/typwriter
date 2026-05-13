@@ -38,6 +38,7 @@
   let sourceJumpUnlisten: (() => void) | null = null;
 
   async function openPreviewPopout(presentAfterOpen = false) {
+    if (!platform.isDesktop) return;
     if (preview.poppedOut) return;
 
     const existing = await WebviewWindow.getByLabel(PREVIEW_WINDOW_LABEL);
@@ -105,22 +106,24 @@
       })
       .mapErr((err) => logError("preview source-jump listener failed:", err));
 
-    WebviewWindow.getByLabel(PREVIEW_WINDOW_LABEL)
-      .then((existing) => {
-        if (!existing) return;
-        preview.poppedOut = true;
-        existing
-          .onCloseRequested(() => {
-            preview.poppedOut = false;
-            popoutCloseUnlisten?.();
-            popoutCloseUnlisten = null;
-          })
-          .then((unlisten) => {
-            popoutCloseUnlisten = unlisten;
-          })
-          .catch((err) => logError("preview popout close listener failed:", err));
-      })
-      .catch((err) => logError("preview popout lookup failed:", err));
+    if (platform.isDesktop) {
+      WebviewWindow.getByLabel(PREVIEW_WINDOW_LABEL)
+        .then((existing) => {
+          if (!existing) return;
+          preview.poppedOut = true;
+          existing
+            .onCloseRequested(() => {
+              preview.poppedOut = false;
+              popoutCloseUnlisten?.();
+              popoutCloseUnlisten = null;
+            })
+            .then((unlisten) => {
+              popoutCloseUnlisten = unlisten;
+            })
+            .catch((err) => logError("preview popout close listener failed:", err));
+        })
+        .catch((err) => logError("preview popout lookup failed:", err));
+    }
   });
   onDestroy(() => {
     diagnostics.destroy();

@@ -10,7 +10,6 @@
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, File01Icon, KeyboardIcon } from "@hugeicons/core-free-icons";
   import { openUrl, openPath } from "@tauri-apps/plugin-opener";
-  import { documentDir } from "@tauri-apps/api/path";
   import { updater } from "$lib/stores/updater.svelte";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
@@ -37,19 +36,7 @@
   let mobileWorkspaces = $state<MobileWorkspaceEntry[]>([]);
   let mobileWorkspacesLoading = $state(false);
 
-  // Mobile: documents-dir prefix used to shorten display paths.
-  let documentsDirPrefix = $state("");
-
-  function displayPath(path: string): string {
-    if (!platform.isMobile || !documentsDirPrefix) return path;
-    const normalized = path.replace(/\\/g, "/");
-    const prefix = documentsDirPrefix.replace(/\\/g, "/").replace(/\/$/, "");
-    if (normalized.startsWith(prefix + "/")) {
-      return normalized.slice(prefix.length + 1);
-    }
-    if (normalized === prefix) return "";
-    return path;
-  }
+  const displayPath = (path: string) => platform.displayPath(path);
 
   // ── Font readiness ──────────────────────────────────────────────────────────
 
@@ -57,14 +44,6 @@
 
   onMount(async () => {
     loadRecent();
-
-    if (platform.isMobile) {
-      try {
-        documentsDirPrefix = await documentDir();
-      } catch (err) {
-        logError("Failed to resolve documents dir:", err);
-      }
-    }
 
     // Check if fonts already loaded (handles race condition)
     const ready = await isFontsLoaded();

@@ -14,6 +14,8 @@ use std::{
     time::Instant,
 };
 use tauri::AppHandle;
+#[cfg(any(target_os = "android", target_os = "ios"))]
+use tauri::Manager;
 use typst::{
     diag::{FileError, FileResult},
     foundations::{Bytes, Datetime},
@@ -84,13 +86,44 @@ impl EditorWorld {
         FileId::new(None, VirtualPath::new("main.typ"))
     }
 
+    /// Resolve the directory where downloaded packages should be cached and
+    /// stored. On Android/iOS, both the cache and the package directory live
+    /// at `<documents>/Typwriter/Packages` (app-private external storage),
+    /// since the typst_kit defaults point at OS dirs that aren't writable
+    /// under scoped storage. On desktop, fall back to the typst_kit
+    /// defaults so packages are shared with other Typst tooling.
+    fn packages_dir(app_handle: &AppHandle) -> (Option<PathBuf>, Option<PathBuf>) {
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        {
+            let dir = app_handle
+                .path()
+                .document_dir()
+                .ok()
+                .map(|d| d.join("Typwriter").join("Packages"));
+            if let Some(d) = &dir {
+                let _ = std::fs::create_dir_all(d);
+            }
+            (dir.clone(), dir)
+        }
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            let _ = app_handle;
+            (default_package_cache_path(), default_package_path())
+        }
+    }
+
     pub fn new(root: PathBuf, app_handle: AppHandle) -> Self {
         let pkg = app_handle.package_info();
         let user_agent = format!("{}/{}", pkg.name, pkg.version);
         let downloader = Downloader::new(user_agent.clone());
+        let (cache_dir, package_dir) = Self::packages_dir(&app_handle);
+        info!(
+            "EditorWorld: packages cache={:?} packages={:?}",
+            cache_dir, package_dir
+        );
         let package_storage = PackageStorage::new(
-            default_package_cache_path(),
-            default_package_path(),
+            cache_dir,
+            package_dir,
             Downloader::new(user_agent),
         );
         Self {

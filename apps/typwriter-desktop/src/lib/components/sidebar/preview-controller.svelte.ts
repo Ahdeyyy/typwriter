@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "svelte-sonner";
 
 import { preview } from "$lib/stores/preview.svelte";
+import { platform } from "$lib/stores/platform.svelte";
 import { editor } from "$lib/stores/editor.svelte";
 import { workspace } from "$lib/stores/workspace.svelte";
 import { jumpFromClick, setVisiblePage } from "$lib/ipc/commands";
@@ -37,6 +38,7 @@ export class PreviewController {
   constructor(opts: PreviewControllerOptions = {}) {
     this.onPresentationMode = opts.onPresentationMode;
     this.isPopout = (() => {
+      if (!platform.isDesktop) return false;
       try {
         return getCurrentWindow().label === "preview";
       } catch {
