@@ -8,7 +8,6 @@
 
 use std::{path::Path, sync::Arc, time::Instant};
 
-use base64::Engine;
 use ecow::EcoString;
 use log::{debug, error, info, warn};
 use serde::Serialize;
@@ -134,14 +133,15 @@ pub enum JumpResponse {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FileContentResponse {
     Text { content: String },
-    Image { base64: String, mime: String },
+    Image { path: String, mime: String },
     Unsupported,
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
 /// Read a file from disk and return its content.
-/// Text files are returned as UTF-8 strings; image files are base64-encoded.
+/// Text files are returned as UTF-8 strings; image files are returned as paths
+/// that the frontend can convert into Tauri asset URLs.
 #[tauri::command]
 pub fn read_file(path: String) -> Result<FileContentResponse, String> {
     let t = Instant::now();
@@ -169,22 +169,20 @@ pub fn read_file(path: String) -> Result<FileContentResponse, String> {
     };
 
     if let Some(mime) = mime {
-        // Image / binary → base64
-        let bytes = std::fs::read(abs).map_err(|e| {
+        let metadata = std::fs::metadata(abs).map_err(|e| {
             error!(
-                "read_file: io error reading image path={path:?} err=\"{e}\" ({:.1}ms)",
+                "read_file: io error reading image metadata path={path:?} err=\"{e}\" ({:.1}ms)",
                 t.elapsed().as_secs_f64() * 1000.0
             );
             e.to_string()
         })?;
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
         info!(
             "read_file: ok image mime={mime} bytes={} ({:.1}ms)",
-            bytes.len(),
+            metadata.len(),
             t.elapsed().as_secs_f64() * 1000.0
         );
         return Ok(FileContentResponse::Image {
-            base64: b64,
+            path: abs.to_string_lossy().into_owned(),
             mime: mime.to_string(),
         });
     }

@@ -37,6 +37,9 @@ pub fn set_main_file(
 ) -> Result<(), String> {
     let t = Instant::now();
     info!("set_main_file: path={path:?}");
+    if PathBuf::from(&path).is_absolute() {
+        return Err("set_main_file expects a workspace-relative path".into());
+    }
     let result = workspace.set_main_file(PathBuf::from(&path));
     match &result {
         Ok(_) => info!(
@@ -280,7 +283,10 @@ pub fn import_files_from_uris(
             return Err(e);
         }
         let bytes = api.read(uri).map_err(|e| {
-            error!("import_files_from_uris: read failed uri={:?} err=\"{e}\"", uri.uri);
+            error!(
+                "import_files_from_uris: read failed uri={:?} err=\"{e}\"",
+                uri.uri
+            );
             e.to_string()
         })?;
         fs::write(&dst_path, &bytes).map_err(|e| {
@@ -448,10 +454,17 @@ fn copy_dir_to_uri<R: tauri::Runtime>(
     count: &mut u32,
 ) -> Result<(), String> {
     let src_dir = src_root.join(rel_dir);
-    let entries = fs::read_dir(&src_dir)
-        .map_err(|e| format!("Failed to read {}: {e}", src_dir.display()))?;
+    let entries =
+        fs::read_dir(&src_dir).map_err(|e| format!("Failed to read {}: {e}", src_dir.display()))?;
 
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                log::warn!("copy_dir_to_uri: skipped entry in {src_dir:?} err=\"{err}\"");
+                continue;
+            }
+        };
         let name = entry.file_name().to_string_lossy().into_owned();
         if name.starts_with('.') {
             continue;
@@ -486,10 +499,17 @@ pub fn list_mobile_workspaces(app: AppHandle) -> Result<Vec<MobileWorkspaceEntry
     let root = resolve_mobile_workspaces_root(&app)?;
 
     let mut entries: Vec<MobileWorkspaceEntry> = Vec::new();
-    let read_dir = fs::read_dir(&root)
-        .map_err(|e| format!("Failed to read mobile workspaces dir: {e}"))?;
+    let read_dir =
+        fs::read_dir(&root).map_err(|e| format!("Failed to read mobile workspaces dir: {e}"))?;
 
-    for entry in read_dir.flatten() {
+    for entry in read_dir {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                log::warn!("list_mobile_workspaces: skipped entry in {root:?} err=\"{err}\"");
+                continue;
+            }
+        };
         let file_type = match entry.file_type() {
             Ok(t) => t,
             Err(_) => continue,

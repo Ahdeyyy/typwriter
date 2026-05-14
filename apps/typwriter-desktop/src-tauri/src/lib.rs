@@ -84,6 +84,7 @@ pub fn run() {
             });
             let world = Arc::new(EditorWorld::new(root, handle.clone()));
             let pipeline = Arc::new(PreviewPipeline::new(world.clone(), handle.clone()));
+            pipeline.start_worker();
             let workspace = Arc::new(WorkspaceState::new(
                 world.clone(),
                 pipeline.clone(),

@@ -3,25 +3,16 @@
   import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
   import { Select } from "bits-ui";
   import { toast } from "svelte-sonner";
-  import {
-    open as openDialog,
-    save as saveDialog,
-  } from "@tauri-apps/plugin-dialog";
-  import { AndroidFs } from "tauri-plugin-android-fs-api";
 
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import {
-    exportPdf,
-    exportPdfToUri,
-    exportPng,
-    exportPngToDirUri,
-    exportSvg,
-    exportSvgToDirUri,
-  } from "$lib/ipc/commands";
+    exportPdfWithPicker,
+    exportPngWithPicker,
+    exportSvgWithPicker,
+  } from "$lib/services/export-service";
   import { workspace } from "$lib/stores/workspace.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
 
   // ── Props ────────────────────────────────────────────────────────────────
 
@@ -103,151 +94,47 @@
           ? workspace.mainFile.replace(/\.typ$/, ".pdf")
           : "document.pdf";
 
-        if (platform.isMobile) {
-          // Android: tauri-plugin-dialog's save dialog returns a path that
-          // std::fs::write cannot reach under scoped storage. Use the SAF
-          // picker to obtain a content:// URI, then write through android-fs.
-          const fileUri = await AndroidFs.showSaveFilePicker(
-            mainName,
-            "application/pdf",
-          );
-          if (!fileUri) {
-            exporting = false;
-            return;
-          }
-
-          const result = await exportPdfToUri(fileUri, {
-            // path is unused on the Rust side for this command, but the type
-            // requires a non-null string.
-            path: "",
-            title: pdfTitle || null,
-            author: pdfAuthor || null,
-            pdf_standard: pdfStandard !== "1.7" ? pdfStandard : null,
-            include_date: pdfIncludeDate,
-          });
-          result.match(
-            () => {
-              toast.success("PDF exported successfully");
-              open = false;
-            },
-            (err) => toast.error(`Export failed: ${err}`),
-          );
-        } else {
-          const path = await saveDialog({
-            title: "Export PDF",
-            defaultPath: mainName,
-            filters: [{ name: "PDF", extensions: ["pdf"] }],
-          });
-          if (!path) {
-            exporting = false;
-            return;
-          }
-
-          const result = await exportPdf({
-            path,
-            title: pdfTitle || null,
-            author: pdfAuthor || null,
-            pdf_standard: pdfStandard !== "1.7" ? pdfStandard : null,
-            include_date: pdfIncludeDate,
-          });
-          result.match(
-            () => {
-              toast.success("PDF exported successfully");
-              open = false;
-            },
-            (err) => toast.error(`Export failed: ${err}`),
-          );
-        }
+        const result = await exportPdfWithPicker(mainName, {
+          title: pdfTitle || null,
+          author: pdfAuthor || null,
+          pdf_standard: pdfStandard !== "1.7" ? pdfStandard : null,
+          include_date: pdfIncludeDate,
+        });
+        if (!result) return;
+        result.match(
+          () => {
+            toast.success("PDF exported successfully");
+            open = false;
+          },
+          (err) => toast.error(`Export failed: ${err}`),
+        );
       } else if (format === "png") {
-        if (platform.isMobile) {
-          const dirUri = await AndroidFs.showOpenDirPicker();
-          if (!dirUri) {
-            exporting = false;
-            return;
-          }
-          const result = await exportPngToDirUri(dirUri, {
-            // dir is ignored on the Rust side for this command, but the type
-            // requires a non-null string.
-            dir: "",
-            scale: pngScale,
-            prefix: filePrefix || "page",
-            page_range: pageRange,
-          });
-          result.match(
-            () => {
-              toast.success("PNG images exported successfully");
-              open = false;
-            },
-            (err) => toast.error(`Export failed: ${err}`),
-          );
-        } else {
-          const dir = await openDialog({
-            directory: true,
-            title: "Select PNG output folder",
-          });
-          if (!dir) {
-            exporting = false;
-            return;
-          }
-
-          const result = await exportPng({
-            dir: Array.isArray(dir) ? dir[0] : dir,
-            scale: pngScale,
-            prefix: filePrefix || "page",
-            page_range: pageRange,
-          });
-          result.match(
-            () => {
-              toast.success("PNG images exported successfully");
-              open = false;
-            },
-            (err) => toast.error(`Export failed: ${err}`),
-          );
-        }
+        const result = await exportPngWithPicker({
+          scale: pngScale,
+          prefix: filePrefix || "page",
+          page_range: pageRange,
+        });
+        if (!result) return;
+        result.match(
+          () => {
+            toast.success("PNG images exported successfully");
+            open = false;
+          },
+          (err) => toast.error(`Export failed: ${err}`),
+        );
       } else {
-        if (platform.isMobile) {
-          const dirUri = await AndroidFs.showOpenDirPicker();
-          if (!dirUri) {
-            exporting = false;
-            return;
-          }
-          const result = await exportSvgToDirUri(dirUri, {
-            // dir is ignored on the Rust side for this command, but the type
-            // requires a non-null string.
-            dir: "",
-            prefix: filePrefix || "page",
-            page_range: pageRange,
-          });
-          result.match(
-            () => {
-              toast.success("SVG files exported successfully");
-              open = false;
-            },
-            (err) => toast.error(`Export failed: ${err}`),
-          );
-        } else {
-          const dir = await openDialog({
-            directory: true,
-            title: "Select SVG output folder",
-          });
-          if (!dir) {
-            exporting = false;
-            return;
-          }
-
-          const result = await exportSvg({
-            dir: Array.isArray(dir) ? dir[0] : dir,
-            prefix: filePrefix || "page",
-            page_range: pageRange,
-          });
-          result.match(
-            () => {
-              toast.success("SVG files exported successfully");
-              open = false;
-            },
-            (err) => toast.error(`Export failed: ${err}`),
-          );
-        }
+        const result = await exportSvgWithPicker({
+          prefix: filePrefix || "page",
+          page_range: pageRange,
+        });
+        if (!result) return;
+        result.match(
+          () => {
+            toast.success("SVG files exported successfully");
+            open = false;
+          },
+          (err) => toast.error(`Export failed: ${err}`),
+        );
       }
     } catch (err) {
       toast.error(`Export failed: ${err}`);

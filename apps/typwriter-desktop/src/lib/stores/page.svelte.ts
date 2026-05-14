@@ -2,12 +2,13 @@
 import Home from "$lib/components/pages/home.svelte"
 import Workspace from "$lib/components/pages/workspace.svelte"
 import Keymaps from "$lib/components/pages/keymaps.svelte"
+import type { Component } from "svelte"
 
 type PageName = "home" | "workspace" | "keymaps"
 
 type PageDefinition = {
     name: PageName
-    component: typeof Home
+    component: Component
 }
 
 export const pages = {

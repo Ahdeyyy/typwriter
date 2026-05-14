@@ -8,8 +8,6 @@
     FileImportIcon,
     FileExportIcon,
   } from "@hugeicons/core-free-icons";
-  import { AndroidFs } from "tauri-plugin-android-fs-api";
-  import { exportWorkspaceToDirUri } from "$lib/ipc/commands";
   import { ChevronsUpDownIcon } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
@@ -23,6 +21,7 @@
   } from "$lib/stores/workspace.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { platform } from "$lib/stores/platform.svelte";
+  import { exportWorkspaceWithPicker } from "$lib/services/export-service";
   import { toast } from "svelte-sonner";
   import { FileTree } from "@pierre/trees";
   import type {
@@ -380,11 +379,10 @@
     if (exportingWorkspace) return;
     exportingWorkspace = true;
     try {
-      const dirUri = await AndroidFs.showOpenDirPicker();
-      if (!dirUri) return;
       const toastId = toast.loading("Exporting workspace…");
-      const result = await exportWorkspaceToDirUri(dirUri);
+      const result = await exportWorkspaceWithPicker();
       toast.dismiss(toastId);
+      if (!result) return;
       result.match(
         (count) =>
           toast.success(

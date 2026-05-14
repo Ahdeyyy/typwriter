@@ -12,7 +12,7 @@
     Copy01Icon,
     CopyIcon,
   } from "@hugeicons/core-free-icons";
-  import { platform } from "$lib/utils/platform";
+  import { platform } from "$lib/stores/platform.svelte";
   import { logError } from "$lib/logger";
   import { Button } from "$lib/components/ui/button/index.js";
 
@@ -56,7 +56,7 @@
   }
 </script>
 
-{#if platform === "macos"}
+{#if platform.isMac}
   <!-- Traffic-light style buttons (left side) -->
   <div class="group/traffic flex items-center gap-2 px-1">
     <Button

@@ -6,8 +6,6 @@ import {
     deleteFolder,
     getFileTree,
     getWorkspaceTabs,
-    importFiles,
-    importFilesFromUris,
     moveFile,
     moveFolder,
     openFolder,
@@ -16,13 +14,11 @@ import {
     setMainFile,
     triggerPreview,
 } from '$lib/ipc/commands';
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
-import { AndroidFs } from 'tauri-plugin-android-fs-api';
-import { platform } from './platform.svelte';
 import { onWorkspaceFilesChanged, type UnlistenFn } from '$lib/ipc/events';
 import type { FileTreeEntry } from '$lib/types';
 import { logError } from '$lib/logger';
 import { editor } from './editor.svelte';
+import { importFilesToWorkspace } from '$lib/services/workspace-file-service';
 
 export interface FileNode {
     name: string;
@@ -137,7 +133,7 @@ function rewritePath(path: string, src: string, dst: string, isDir: boolean): st
 }
 
 class WorkspaceStore {
-    tree = $state<FileNode[]>([]);
+    tree = $state.raw<FileNode[]>([]);
     rootPath = $state<string | null>(null);
     mainFile = $state<string | null>(null);
     activeFilePath = $state<string | null>(null);
@@ -282,7 +278,7 @@ class WorkspaceStore {
             return ResultAsync.fromPromise(Promise.reject(onlyTypError.error), () => onlyTypError.error);
         }
 
-        return setMainFile(this.toAbs(path))
+        return setMainFile(normalize(path))
             .andThen(() => triggerPreview('main_file'))
             .map(() => {
                 this.mainFile = normalize(path);
@@ -290,11 +286,11 @@ class WorkspaceStore {
     }
 
     createFileAction(path: string): ResultAsync<void, string> {
-        return createFile(this.toAbs(path)).andThen(() => this.refreshTree());
+        return createFile(normalize(path)).andThen(() => this.refreshTree());
     }
 
     createFolderAction(path: string): ResultAsync<void, string> {
-        return createFolder(this.toAbs(path)).andThen(() => this.refreshTree());
+        return createFolder(normalize(path)).andThen(() => this.refreshTree());
     }
 
     deleteFileAction(path: string): ResultAsync<void, string> {
@@ -302,7 +298,7 @@ class WorkspaceStore {
     }
 
     private async _deleteFile(path: string): Promise<void> {
-        const result = await deleteFile(this.toAbs(path));
+        const result = await deleteFile(normalize(path));
         if (result.isErr()) {
             throw new Error(result.error);
         }
@@ -332,7 +328,7 @@ class WorkspaceStore {
     }
 
     private async _deleteFolder(path: string): Promise<void> {
-        const result = await deleteFolder(this.toAbs(path));
+        const result = await deleteFolder(normalize(path));
         if (result.isErr()) {
             throw new Error(result.error);
         }
@@ -368,7 +364,7 @@ class WorkspaceStore {
         const dir = dirname(src);
         const dst = dir ? `${dir}/${newName}` : newName;
 
-        const result = await renameFile(this.toAbs(src), this.toAbs(dst));
+        const result = await renameFile(normalize(src), normalize(dst));
         if (result.isErr()) {
             throw new Error(result.error);
         }
@@ -403,8 +399,8 @@ class WorkspaceStore {
 
     private async _moveAction(src: string, dst: string, is_dir: boolean): Promise<void> {
         const result = is_dir
-            ? await moveFolder(this.toAbs(src), this.toAbs(dst))
-            : await moveFile(this.toAbs(src), this.toAbs(dst));
+            ? await moveFolder(normalize(src), normalize(dst))
+            : await moveFile(normalize(src), normalize(dst));
         if (result.isErr()) {
             throw new Error(result.error);
         }
@@ -440,32 +436,7 @@ class WorkspaceStore {
     }
 
     async importFilesAction(destDir: string): Promise<void> {
-        if (platform.isMobile) {
-            // Android: tauri-plugin-dialog's open dialog crashes the activity
-            // under scoped storage. Use the SAF picker to obtain content://
-            // URIs, then copy them through android-fs on the Rust side.
-            const uris = await AndroidFs.showOpenFilePicker({ multiple: true });
-            if (!uris || uris.length === 0) {
-                return;
-            }
-            const result = await importFilesFromUris(uris, this.toAbs(destDir));
-            if (result.isErr()) {
-                throw new Error(result.error);
-            }
-        } else {
-            const selected = await openDialog({ multiple: true, directory: false });
-            if (!selected) {
-                return;
-            }
-            const paths = Array.isArray(selected) ? selected : [selected];
-            if (paths.length === 0) {
-                return;
-            }
-            const result = await importFiles(paths, this.toAbs(destDir));
-            if (result.isErr()) {
-                throw new Error(result.error);
-            }
-        }
+        await importFilesToWorkspace(normalize(destDir));
 
         const refreshResult = await this.refreshTree();
         if (refreshResult.isErr()) {
@@ -477,15 +448,18 @@ class WorkspaceStore {
         const node = findNode(this.tree, path);
         if (node?.is_dir) {
             node.expanded = !node.expanded;
+            this.tree = [...this.tree];
         }
     }
 
     expandAll(): void {
         walkAndSetExpanded(this.tree, true);
+        this.tree = [...this.tree];
     }
 
     collapseAll(): void {
         walkAndSetExpanded(this.tree, false);
+        this.tree = [...this.tree];
     }
 
     persistTabs(): void {

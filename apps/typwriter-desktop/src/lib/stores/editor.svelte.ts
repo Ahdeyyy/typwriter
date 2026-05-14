@@ -1,4 +1,5 @@
 import { ResultAsync } from 'neverthrow';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import {
     discardShadow,
     formatTypstSource,
@@ -30,6 +31,10 @@ function extOf(path: string): string {
     return dot >= 0 ? path.slice(dot).toLowerCase() : '';
 }
 
+function imageAssetSrc(path: string): string {
+    return convertFileSrc(path.replace(/\\/g, '/'));
+}
+
 export interface TabInfo {
     id: string;
     relPath: string;
@@ -45,6 +50,7 @@ export interface TabInfo {
 
 const TYPING_PREVIEW_INTERVAL = 75;
 const IDLE_SAVE_DELAY = 1500;
+const SHADOW_WRITE_DELAY = 50;
 
 class EditorStore {
     tabs = $state<TabInfo[]>([]);
@@ -65,6 +71,8 @@ class EditorStore {
     } | null>(null);
     private _contentSyncVersion = 0;
 
+    private _shadowWriteTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private _shadowWriteVersions = new Map<string, number>();
     private _typingPreviewTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private _typingPreviewLastRun = new Map<string, number>();
     private _idleSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -146,7 +154,7 @@ class EditorStore {
             if (response.value.type !== 'image') {
                 throw new Error(`Expected image, got ${response.value.type}`);
             }
-            liveTab.imageSrc = `data:${response.value.mime};base64,${response.value.base64}`;
+            liveTab.imageSrc = imageAssetSrc(response.value.path);
             liveTab.content = '';
         } else {
             if (response.value.type !== 'text') {
@@ -230,11 +238,7 @@ class EditorStore {
         tab.content = content;
         tab.hasUnsavedChanges = true;
 
-        updateFileContent(tab.absPath, tab.content).mapErr((err) => {
-            logError('shadow write error:', err);
-            toast.error(`Shadow update failed for ${tab.name}: ${err}`);
-        });
-
+        this._scheduleShadowWrite(tab);
         this._scheduleTypingPreview(tab);
         this._scheduleIdleSave(tab);
     }
@@ -266,9 +270,7 @@ class EditorStore {
                 version: ++this._contentSyncVersion,
                 cursor: newCursor,
             };
-            updateFileContent(tab.absPath, formatted).mapErr((err) => {
-                logError('shadow write after format failed:', err);
-            });
+            this._scheduleShadowWrite(tab, 0);
         };
 
         // Cursor maintenance runs in Rust on UTF-8 bytes; the IPC boundary
@@ -302,15 +304,9 @@ class EditorStore {
         }
 
         this._clearIdleSave(tab.id);
+        await this._flushShadowWrite(tab);
 
         const contentToSave = tab.content;
-        const shadowResult = await updateFileContent(tab.absPath, contentToSave);
-        if (shadowResult.isErr()) {
-            const message = `Failed to stage ${tab.name}: ${shadowResult.error}`;
-            toast.error(message);
-            throw new Error(message);
-        }
-
         const saveResult = await saveFile(tab.absPath, contentToSave);
         if (saveResult.isErr()) {
             const message = `Failed to save ${tab.name}: ${saveResult.error}`;
@@ -374,6 +370,12 @@ class EditorStore {
 
         this._moveTimerKey(this._typingPreviewTimers, oldId, newId);
         this._moveTimerKey(this._idleSaveTimers, oldId, newId);
+        this._moveTimerKey(this._shadowWriteTimers, oldId, newId);
+        const shadowVersion = this._shadowWriteVersions.get(oldId);
+        if (shadowVersion !== undefined) {
+            this._shadowWriteVersions.delete(oldId);
+            this._shadowWriteVersions.set(newId, shadowVersion);
+        }
 
         const lastRun = this._typingPreviewLastRun.get(oldId);
         if (lastRun !== undefined) {
@@ -438,7 +440,9 @@ class EditorStore {
             return;
         }
         this._typingPreviewLastRun.set(tab.id, Date.now());
-        this._requestPreview('typing');
+        void this._flushShadowWrite(tab)
+            .then(() => this._requestPreview('typing'))
+            .catch((err) => logError('shadow write before preview failed:', err));
     }
 
     private _scheduleIdleSave(tab: TabInfo): void {
@@ -452,6 +456,45 @@ class EditorStore {
         triggerPreview(reason).mapErr((err) => {
             logError('preview trigger error:', err);
         });
+    }
+
+    private _scheduleShadowWrite(tab: TabInfo, delay = SHADOW_WRITE_DELAY): void {
+        const version = (this._shadowWriteVersions.get(tab.id) ?? 0) + 1;
+        this._shadowWriteVersions.set(tab.id, version);
+
+        const existing = this._shadowWriteTimers.get(tab.id);
+        if (existing !== undefined) clearTimeout(existing);
+
+        this._shadowWriteTimers.set(tab.id, setTimeout(() => {
+            this._shadowWriteTimers.delete(tab.id);
+            void this._writeShadow(tab, version);
+        }, delay));
+    }
+
+    private async _flushShadowWrite(tab: TabInfo): Promise<void> {
+        const timer = this._shadowWriteTimers.get(tab.id);
+        if (timer !== undefined) {
+            clearTimeout(timer);
+            this._shadowWriteTimers.delete(tab.id);
+        }
+        const version = this._shadowWriteVersions.get(tab.id);
+        if (version === undefined) return;
+        await this._writeShadow(tab, version);
+    }
+
+    private async _writeShadow(tab: TabInfo, version: number): Promise<void> {
+        if (!this.tabs.includes(tab) || !tab.isEditable) return;
+        if (this._shadowWriteVersions.get(tab.id) !== version) return;
+
+        const result = await updateFileContent(tab.absPath, tab.content);
+        if (result.isErr()) {
+            logError('shadow write error:', result.error);
+            toast.error(`Shadow update failed for ${tab.name}: ${result.error}`);
+            throw new Error(result.error);
+        }
+        if (this._shadowWriteVersions.get(tab.id) === version) {
+            this._shadowWriteVersions.delete(tab.id);
+        }
     }
 
     private _clearIdleSave(id: string): void {
@@ -469,6 +512,12 @@ class EditorStore {
             this._typingPreviewTimers.delete(id);
         }
         this._typingPreviewLastRun.delete(id);
+        const shadowTimer = this._shadowWriteTimers.get(id);
+        if (shadowTimer !== undefined) {
+            clearTimeout(shadowTimer);
+            this._shadowWriteTimers.delete(id);
+        }
+        this._shadowWriteVersions.delete(id);
         this._clearIdleSave(id);
     }
 

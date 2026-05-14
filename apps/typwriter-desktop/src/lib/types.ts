@@ -43,7 +43,7 @@ export type JumpResponse =
 /** Internally-tagged union (discriminant: `type`). */
 export type FileContentResponse =
     | { type: 'text'; content: string }
-    | { type: 'image'; base64: string; mime: string }
+    | { type: 'image'; path: string; mime: string }
     | { type: 'unsupported' };
 
 // ─── Click / Jump ─────────────────────────────────────────────────────────────

@@ -9,6 +9,8 @@
 // All file-system operations (create/delete/rename/move) funnel through here
 // so that the EditorWorld caches stay consistent.
 
+mod error;
+mod path;
 mod store;
 mod watcher;
 
@@ -30,6 +32,7 @@ use crate::{
     compiler::{render_page, CompileReason, PreviewPipeline},
     world::EditorWorld,
 };
+use path::{ExternalPath, WorkspacePath};
 
 // ─── Recent workspace entry (returned to the frontend) ────────────────────────
 
@@ -164,6 +167,24 @@ impl WorkspaceState {
     pub fn set_main_file(&self, path: PathBuf) -> Result<(), String> {
         let t = Instant::now();
         info!("WorkspaceState::set_main_file: path={path:?}");
+
+        let path = {
+            let root = self.root.read();
+            let root = root.as_ref().ok_or_else(|| {
+                let e = "No workspace open";
+                error!("WorkspaceState::set_main_file: err=\"{e}\"");
+                e.to_string()
+            })?;
+            if path.is_absolute() {
+                WorkspacePath::from_absolute_inside(root, path)
+                    .map_err(|e| e.to_string())?
+                    .into_path_buf()
+            } else {
+                WorkspacePath::resolve(root, path.to_string_lossy().as_ref())
+                    .map_err(|e| e.to_string())?
+                    .into_path_buf()
+            }
+        };
 
         let id = {
             let guard = self.root.read();
@@ -321,19 +342,20 @@ impl WorkspaceState {
     // ─── File-system helpers ───────────────────────────────────────────────
 
     /// Resolve a workspace-relative string path to an absolute PathBuf.
-    /// If `path` is already absolute it is returned as-is.
+    /// Absolute inputs are rejected for workspace mutations.
     pub fn resolve_path(&self, path: &str) -> Result<PathBuf, String> {
         self.resolve(path)
     }
 
     fn resolve(&self, path: &str) -> Result<PathBuf, String> {
-        let p = PathBuf::from(path);
-        if p.is_absolute() {
-            return Ok(p);
-        }
-        let root = self.root.read();
-        let root = root.as_ref().ok_or("No workspace open")?;
-        Ok(root.join(p))
+        let root = {
+            let root = self.root.read();
+            root.as_ref().ok_or("No workspace open")?.clone()
+        };
+
+        WorkspacePath::resolve(&root, path)
+            .map(WorkspacePath::into_path_buf)
+            .map_err(|e| e.to_string())
     }
 
     // ─── FS operations ─────────────────────────────────────────────────────
@@ -501,14 +523,17 @@ impl WorkspaceState {
         }
 
         for src_str in sources {
-            let src_path = PathBuf::from(src_str);
-            if !src_path.is_file() {
-                let e = format!("Source is not a file: {}", src_path.display());
+            let src_path = ExternalPath::new(src_str).map_err(|e| e.to_string())?;
+            if !src_path.as_path().is_file() {
+                let e = format!("Source is not a file: {}", src_path.as_path().display());
                 error!("WorkspaceState::import_files: err=\"{e}\"");
                 return Err(e);
             }
-            let file_name = src_path.file_name().ok_or_else(|| {
-                let e = format!("Cannot determine file name for {}", src_path.display());
+            let file_name = src_path.as_path().file_name().ok_or_else(|| {
+                let e = format!(
+                    "Cannot determine file name for {}",
+                    src_path.as_path().display()
+                );
                 error!("WorkspaceState::import_files: err=\"{e}\"");
                 e
             })?;
@@ -518,7 +543,7 @@ impl WorkspaceState {
                 error!("WorkspaceState::import_files: err=\"{e}\"");
                 return Err(e);
             }
-            std::fs::copy(&src_path, &dst_path).map_err(|e| {
+            std::fs::copy(src_path.as_path(), &dst_path).map_err(|e| {
                 error!("WorkspaceState::import_files: copy failed src={src_path:?} dst={dst_path:?} err=\"{e}\"");
                 e.to_string()
             })?;
@@ -629,12 +654,19 @@ impl WorkspaceState {
 
 fn read_dir_recursive(root: &Path, dir: &Path) -> Vec<FileTreeEntry> {
     let Ok(entries) = std::fs::read_dir(dir) else {
+        warn!("read_dir_recursive: failed to read dir={dir:?}");
         return vec![];
     };
 
     let mut result: Vec<FileTreeEntry> = entries
-        .flatten()
         .filter_map(|entry| {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(err) => {
+                    warn!("read_dir_recursive: skipped entry in dir={dir:?} err=\"{err}\"");
+                    return None;
+                }
+            };
             let path = entry.path();
             let name = path.file_name()?.to_str()?.to_string();
             // Skip hidden files/dirs (e.g. .git).
@@ -671,14 +703,24 @@ fn read_dir_recursive(root: &Path, dir: &Path) -> Vec<FileTreeEntry> {
 /// Recursively collect all file paths under `dir`.
 fn collect_files_recursive(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                files.extend(collect_files_recursive(&path));
-            } else {
-                files.push(path);
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        warn!("collect_files_recursive: failed to read dir={dir:?}");
+        return files;
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                warn!("collect_files_recursive: skipped entry in dir={dir:?} err=\"{err}\"");
+                continue;
             }
+        };
+        let path = entry.path();
+        if path.is_dir() {
+            files.extend(collect_files_recursive(&path));
+        } else {
+            files.push(path);
         }
     }
     files

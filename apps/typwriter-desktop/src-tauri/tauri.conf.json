@@ -26,7 +26,7 @@
       "csp": "default-src 'self' ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; font-src 'self' data:",
       "assetProtocol": {
         "enable": true,
-        "scope": ["*", "$HOME/*"]
+        "scope": ["$HOME/**/*"]
       }
     }
   },

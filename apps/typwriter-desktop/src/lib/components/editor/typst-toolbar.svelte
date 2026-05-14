@@ -69,7 +69,7 @@
     border-bottom: 1px solid var(--border);
   }
 
-  .tb-btn {
+  :global(.tb-btn) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -83,12 +83,12 @@
     transition: background-color 0.1s ease, color 0.1s ease;
   }
 
-  .tb-btn:hover {
+  :global(.tb-btn:hover) {
     background-color: color-mix(in srgb, var(--foreground) 8%, transparent);
     color: var(--foreground);
   }
 
-  .tb-btn:active {
+  :global(.tb-btn:active) {
     background-color: color-mix(in srgb, var(--foreground) 14%, transparent);
   }
 

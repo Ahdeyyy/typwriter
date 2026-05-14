@@ -281,7 +281,7 @@
     min-width: max-content;
   }
 
-  .opt-btn {
+  :global(.opt-btn) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -296,7 +296,7 @@
     transition: background-color 120ms, color 120ms;
   }
 
-  .opt-btn:hover {
+  :global(.opt-btn:hover) {
     background-color: color-mix(in srgb, var(--accent) 60%, transparent);
     color: var(--accent-foreground);
   }
@@ -307,7 +307,7 @@
     color: var(--accent-foreground);
   }
 
-  .action-btn {
+  :global(.action-btn) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -319,12 +319,12 @@
     transition: background-color 120ms;
   }
 
-  .action-btn:hover:not(:disabled) {
+  :global(.action-btn:hover:not(:disabled)) {
     background-color: var(--accent);
     color: var(--accent-foreground);
   }
 
-  .action-btn:disabled {
+  :global(.action-btn:disabled) {
     opacity: 0.4;
     cursor: not-allowed;
   }
