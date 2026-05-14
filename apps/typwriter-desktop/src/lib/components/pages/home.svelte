@@ -440,7 +440,7 @@
               {/if}
             </div>
           {:else if newWorkspaceParent && newWorkspaceName.trim()}
-            <p class="text-xs text-muted-foreground">
+            <p class="text-xs text-muted-foreground break-all">
               Will create: {newWorkspaceParent}/{newWorkspaceName.trim()}
             </p>
           {/if}

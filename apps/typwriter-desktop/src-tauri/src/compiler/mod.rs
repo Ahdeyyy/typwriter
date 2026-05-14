@@ -98,6 +98,9 @@ pub struct PdfExportConfig {
     pub author: Option<String>,
     // PDF standard identifier: "1.7", "a-2b", etc. None means default (1.7).
     pub pdf_standard: Option<String>,
+    // When true, stamp the PDF with the current local date as the creation
+    // timestamp (used only if the document's `set document(date: ..)` is auto).
+    pub include_date: Option<bool>,
 }
 
 #[derive(serde::Deserialize, Serialize, Clone, Debug)]
@@ -553,9 +556,25 @@ impl PreviewPipeline {
             _ => typst_pdf::PdfStandards::default(),
         };
 
+        let timestamp = if config.include_date.unwrap_or(false) {
+            use chrono::{Datelike, Timelike};
+            let now = chrono::Local::now();
+            typst::foundations::Datetime::from_ymd_hms(
+                now.year(),
+                now.month() as u8,
+                now.day() as u8,
+                now.hour() as u8,
+                now.minute() as u8,
+                now.second() as u8,
+            )
+            .map(typst_pdf::Timestamp::new_utc)
+        } else {
+            None
+        };
+
         let options = typst_pdf::PdfOptions {
             ident: typst::foundations::Smart::Auto,
-            timestamp: None,
+            timestamp,
             standards,
             page_ranges: None,
             tagged: true,

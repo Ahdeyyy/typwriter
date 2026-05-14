@@ -10,7 +10,7 @@ use std::{path::Path, sync::Arc, time::Instant};
 
 use base64::Engine;
 use ecow::EcoString;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use serde::Serialize;
 use tauri::State;
 use typst::{
@@ -319,20 +319,23 @@ pub fn save_file(
 }
 
 /// Remove the shadow override for a file (e.g. after discarding unsaved edits).
+///
+/// Treated as best-effort cleanup: if the path can no longer be resolved to a
+/// FileId (e.g. because the workspace root has changed under us), we just log
+/// and return Ok — the shadow has nothing to do anyway.
 #[tauri::command]
 pub fn discard_shadow(path: String, world: State<'_, Arc<EditorWorld>>) -> Result<(), String> {
     let t = Instant::now();
     info!("discard_shadow: path={path:?}");
 
     let abs = Path::new(&path);
-    let id = world.path_to_id(abs).ok_or_else(|| {
-        let e = "Could not resolve file path to a FileId";
-        error!(
-            "discard_shadow: err=\"{e}\" ({:.1}ms) path={path:?}",
+    let Some(id) = world.path_to_id(abs) else {
+        warn!(
+            "discard_shadow: path outside workspace root, skipping ({:.1}ms) path={path:?}",
             t.elapsed().as_secs_f64() * 1000.0
         );
-        e.to_string()
-    })?;
+        return Ok(());
+    };
     world.shadow_remove(id);
     info!(
         "discard_shadow: ok ({:.1}ms)",

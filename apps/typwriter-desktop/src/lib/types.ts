@@ -73,6 +73,8 @@ export interface PdfExportConfig {
     author?: string | null;
     /** PDF standard: "1.4", "1.7", "2.0", "a-2b", etc. Omit for default (1.7). */
     pdf_standard?: string | null;
+    /** Stamp the current local date as the PDF creation timestamp. */
+    include_date?: boolean | null;
 }
 
 export interface PngExportConfig {

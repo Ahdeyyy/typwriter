@@ -47,6 +47,7 @@
   let pdfTitle = $state("");
   let pdfAuthor = $state("");
   let pdfStandard = $state("1.7");
+  let pdfIncludeDate = $state(false);
 
   // PNG
   let pngScale = $state(2.0);
@@ -122,6 +123,7 @@
             title: pdfTitle || null,
             author: pdfAuthor || null,
             pdf_standard: pdfStandard !== "1.7" ? pdfStandard : null,
+            include_date: pdfIncludeDate,
           });
           result.match(
             () => {
@@ -146,6 +148,7 @@
             title: pdfTitle || null,
             author: pdfAuthor || null,
             pdf_standard: pdfStandard !== "1.7" ? pdfStandard : null,
+            include_date: pdfIncludeDate,
           });
           result.match(
             () => {
@@ -356,6 +359,33 @@
               placeholder="Author name (optional)"
               bind:value={pdfAuthor}
             />
+          </div>
+
+          <div class="space-y-1.5">
+            <p class="text-sm font-medium text-foreground">Document date</p>
+            <div class="flex gap-1.5">
+              <Button
+                variant={pdfIncludeDate ? "default" : "outline"}
+                size="sm"
+                class="flex-1"
+                onclick={() => (pdfIncludeDate = true)}
+              >
+                Today
+              </Button>
+              <Button
+                variant={!pdfIncludeDate ? "default" : "outline"}
+                size="sm"
+                class="flex-1"
+                onclick={() => (pdfIncludeDate = false)}
+              >
+                None
+              </Button>
+            </div>
+            <p class="text-xs text-muted-foreground">
+              {pdfIncludeDate
+                ? "Stamped with today's date if document date is auto."
+                : "No creation date will be set."}
+            </p>
           </div>
         </div>
       {/if}

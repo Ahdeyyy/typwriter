@@ -128,10 +128,15 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
         <DropdownMenu.Root>
           <DropdownMenu.Trigger>
             {#snippet child({ props })}
-              <Sidebar.MenuButton size="lg" {...props} tooltipContent={workspaceName}>
+              <Sidebar.MenuButton
+                size="lg"
+                {...props}
+                tooltipContent={workspaceName}
+                class="md:px-2 px-0"
+              >
                 <div
                   class="bg-sidebar-accent text-sidebar-accent-foreground shadow-lg flex size-8 shrink-0
-                         items-center justify-center rounded-lg mx-auto"
+                         items-center justify-center rounded-lg"
                 >
                     {#if iconImage}
                         <img src={iconImage.src} alt="typwriter logo" class="mx-auto size-8" />
