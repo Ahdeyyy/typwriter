@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "rust-best-practices": {
+      "source": "pedronauck/skills",
+      "sourceType": "github",
+      "skillPath": "skills/mine/rust-best-practices/SKILL.md",
+      "computedHash": "64b158de8d3480f5e6593a4ccae9f07c299bb4b2b025d56c0efafd059e71523f"
+    },
+    "tailwindcss": {
+      "source": "pedronauck/skills",
+      "sourceType": "github",
+      "skillPath": "skills/mine/tailwindcss/SKILL.md",
+      "computedHash": "6bec7b2d72bc9e2453ab17c66d36245241af32068e085f4248766df95c31b28b"
+    },
+    "tauri-v2": {
+      "source": "pedronauck/skills",
+      "sourceType": "github",
+      "skillPath": "skills/community/tauri-v2/SKILL.md",
+      "computedHash": "a333d119fa97f6a4c72d7f5a0e7c44c1c614254b8d67383f83ff23ac1af2afb0"
+    }
+  }
+}
