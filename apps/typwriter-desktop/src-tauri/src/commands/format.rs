@@ -396,10 +396,21 @@ mod tests {
 /// directories (e.g. `.git`, `.typwriter`).
 fn collect_typ_files(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return files;
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) => {
+            warn!("collect_typ_files: failed to read dir={dir:?} err=\"{err}\"");
+            return files;
+        }
     };
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                warn!("collect_typ_files: skipped entry in dir={dir:?} err=\"{err}\"");
+                continue;
+            }
+        };
         let path = entry.path();
         let name = match path.file_name().and_then(|n| n.to_str()) {
             Some(n) => n,

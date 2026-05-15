@@ -1,23 +1,47 @@
 <script lang="ts">
-  // Desktop file tree. Mobile variant lives in filetree.mobile.svelte;
-  // shared logic lives in filetree-controller.svelte.ts.
-  import { onMount, onDestroy, tick } from "svelte";
+  // Mobile file tree. Differences from desktop:
+  //   - Persistent (always-visible) row action buttons
+  //   - Long-press AND right-click both open the context menu
+  //   - Create flow uses a shadcn Dialog (mobile keyboard doesn't play
+  //     nicely with @pierre/trees' inline rename)
+  //   - Shows an "Export workspace" toolbar button (desktop exports via
+  //     the export-dialog).
+  import { onMount, onDestroy } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
     FilePlusIcon,
     FolderAddIcon,
     UnfoldLessIcon,
     FileImportIcon,
+    FileExportIcon,
   } from "@hugeicons/core-free-icons";
   import { ChevronsUpDownIcon } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { toast } from "svelte-sonner";
   import { FiletreeController } from "./filetree-controller.svelte";
 
+  // Mobile dialog state.
+  let dialogOpen = $state(false);
+  let dialogKind = $state<"file" | "folder">("file");
+  let dialogParent = $state(""); // "" = workspace root
+  let dialogName = $state("");
+  let dialogSubmitting = $state(false);
+
+  function openDialog(parent: string, kind: "file" | "folder") {
+    dialogKind = kind;
+    dialogParent = parent;
+    dialogName = "";
+    dialogOpen = true;
+  }
+
   const controller = new FiletreeController({
-    contextMenuTriggerMode: "right-click",
-    contextMenuButtonVisibility: "when-needed",
+    contextMenuTriggerMode: "both",
+    contextMenuButtonVisibility: "always",
+    onRequestCreate: openDialog,
   });
 
   let treeMount = $state<HTMLDivElement | null>(null);
@@ -28,7 +52,6 @@
 
   onDestroy(() => controller.destroy());
 
-  // Reactive sync between workspace state and the Pierre tree instance.
   $effect(() => {
     workspace.tree;
     controller.syncPaths();
@@ -42,44 +65,39 @@
     controller.syncMainFileDecoration();
   });
 
-  // ─── Toolbar: root-level inline create ───────────────────────────────
+  // ─── Toolbar root create ─────────────────────────────────────────────
 
-  let creatingRoot = $state<"file" | "folder" | null>(null);
-  let newRootName = $state("");
-  let rootCreateInputEl = $state<HTMLInputElement | null>(null);
-  let blurGuardUntil = $state(0);
-
-  async function startRootCreate(kind: "file" | "folder") {
-    creatingRoot = kind;
-    newRootName = "";
-    await tick();
-    blurGuardUntil = Date.now() + 80;
-    rootCreateInputEl?.focus();
+  function startRootCreate(kind: "file" | "folder") {
+    openDialog("", kind);
   }
 
-  async function commitRootCreate() {
-    const name = newRootName.trim();
-    const kind = creatingRoot;
-    creatingRoot = null;
-    newRootName = "";
-    if (!name || !kind) return;
-    await controller.startCreateAtRoot(name, kind);
+  // ─── Dialog submit ───────────────────────────────────────────────────
+
+  async function submitDialogCreate() {
+    if (dialogSubmitting) return;
+    const trimmed = dialogName.trim();
+    if (!trimmed) return;
+    dialogSubmitting = true;
+    const result = await controller.submitDialogCreate(
+      dialogParent,
+      trimmed,
+      dialogKind,
+    );
+    dialogSubmitting = false;
+    if (!result) return;
+    result.match(
+      () => {
+        dialogOpen = false;
+        dialogName = "";
+      },
+      (err) => toast.error(`Create failed: ${err}`),
+    );
   }
 
-  function cancelRootCreate() {
-    if (Date.now() < blurGuardUntil) return;
-    creatingRoot = null;
-    newRootName = "";
-  }
-
-  function handleRootCreateKey(e: KeyboardEvent) {
+  function handleDialogKey(e: KeyboardEvent) {
     if (e.key === "Enter") {
       e.preventDefault();
-      commitRootCreate();
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      cancelRootCreate();
+      submitDialogCreate();
     }
   }
 </script>
@@ -153,22 +171,24 @@
       </Tooltip.Trigger>
       <Tooltip.Content>Import files to root</Tooltip.Content>
     </Tooltip.Root>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            variant="ghost"
+            size="icon"
+            onclick={() => controller.exportWorkspace()}
+            disabled={controller.exportingWorkspace}
+          >
+            <HugeiconsIcon icon={FileExportIcon} class="size-4" />
+          </Button>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.Content>Export workspace…</Tooltip.Content>
+    </Tooltip.Root>
   </div>
 </div>
-
-<!-- ─── Inline root create input ───────────────────────────────────── -->
-{#if creatingRoot}
-  <div class="shrink-0 border-b border-sidebar-border px-2 py-1">
-    <input
-      bind:this={rootCreateInputEl}
-      class="h-5 w-full rounded border border-input bg-background px-1 text-xs outline-none focus:ring-1 focus:ring-ring"
-      placeholder={creatingRoot === "folder" ? "folder-name" : "file.typ"}
-      bind:value={newRootName}
-      onkeydown={handleRootCreateKey}
-      onblur={cancelRootCreate}
-    />
-  </div>
-{/if}
 
 <!-- ─── Pierre tree mount ──────────────────────────────────────────── -->
 <div
@@ -279,3 +299,45 @@
     </Button>
   </div>
 {/if}
+
+<!-- ─── Mobile create dialog ───────────────────────────────────────── -->
+<Dialog.Root bind:open={dialogOpen}>
+  <Dialog.Content class="sm:max-w-md">
+    <Dialog.Header>
+      <Dialog.Title>
+        {dialogKind === "folder" ? "New Folder" : "New File"}
+      </Dialog.Title>
+      <Dialog.Description>
+        {dialogParent
+          ? `Inside ${dialogParent}`
+          : "At workspace root"}
+      </Dialog.Description>
+    </Dialog.Header>
+
+    <div class="py-2">
+      <Input
+        autofocus
+        placeholder={dialogKind === "folder" ? "folder-name" : "file.typ"}
+        bind:value={dialogName}
+        onkeydown={handleDialogKey}
+        disabled={dialogSubmitting}
+      />
+    </div>
+
+    <Dialog.Footer>
+      <Dialog.Close>
+        {#snippet child({ props })}
+          <Button {...props} variant="ghost" disabled={dialogSubmitting}>
+            Cancel
+          </Button>
+        {/snippet}
+      </Dialog.Close>
+      <Button
+        onclick={submitDialogCreate}
+        disabled={dialogSubmitting || !dialogName.trim()}
+      >
+        {dialogSubmitting ? "Creating…" : "Create"}
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
