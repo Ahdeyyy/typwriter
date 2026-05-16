@@ -352,6 +352,24 @@ impl PreviewPipeline {
         let t = Instant::now();
         info!("request_compile: starting revision={revision} reason={reason:?}");
 
+        // With no main file set, typst would synthesise "cannot find main file"
+        // errors on every cycle. Clear preview + diagnostics and bail.
+        if !self.world.has_main() {
+            info!("compile revision={revision} reason={reason:?} skipped — no main file");
+            let old_count = self.last_fingerprints.lock().len();
+            self.clear_preview(old_count);
+            if let Err(err) = self.app_handle.emit(
+                "compile:diagnostics",
+                DiagnosticsPayload {
+                    errors: Vec::new(),
+                    warnings: Vec::new(),
+                },
+            ) {
+                error!("failed to emit compile:diagnostics err=\"{err}\"");
+            }
+            return;
+        }
+
         let CompileOutput {
             document,
             mut errors,

@@ -7,13 +7,18 @@ import { preview } from "$lib/stores/preview.svelte";
 import { platform } from "$lib/stores/platform.svelte";
 import { editor } from "$lib/stores/editor.svelte";
 import { workspace } from "$lib/stores/workspace.svelte";
-import { jumpFromClick, setVisiblePage } from "$lib/ipc/commands";
+import { jumpFromClick, setVisiblePage, syncPreview, triggerPreview } from "$lib/ipc/commands";
 import { emitPreviewSourceJump } from "$lib/ipc/events";
 import { logError } from "$lib/logger";
 
 export type PreviewControllerOptions = {
   onPresentationMode?: () => void;
 };
+
+const DECODE_MAX_ATTEMPTS = 3;
+const DECODE_RETRY_BASE_MS = 150;
+const STARTUP_RECOVERY_DELAY_MS = 1200;
+const STARTUP_RECOVERY_MAX_ATTEMPTS = 4;
 
 export class PreviewController {
   // ── Refs / local state ──────────────────────────────────────────────
@@ -25,6 +30,9 @@ export class PreviewController {
   // while the next compile is in flight, avoiding white flashes.
   committedPages = $state<(string | null)[]>([]);
   private pending = new Map<number, string>();
+  private decodeAttempts = new Map<number, number>();
+  private startupRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
+  private startupRecoveryAttempts = 0;
 
   toolbarWidth = $state(0);
 
@@ -45,6 +53,42 @@ export class PreviewController {
         return false;
       }
     })();
+
+    // On (re)mount, ask the backend to resend its current page set. This is
+    // cheap when the pipeline has nothing cached, and recovers stale frames
+    // when the mobile preview pane was unmounted and the in-store `pages`
+    // buffer is partial or out-of-sync with the decoded `committedPages`.
+    syncPreview().mapErr((err) =>
+      logError("preview controller: syncPreview on mount failed:", err)
+    );
+    this.scheduleStartupRecovery();
+  }
+
+  destroy() {
+    if (this.startupRecoveryTimer !== null) {
+      clearTimeout(this.startupRecoveryTimer);
+      this.startupRecoveryTimer = null;
+    }
+    this.decodeAttempts.clear();
+    this.pending.clear();
+  }
+
+  /** If the backend never reports any pages but the workspace has a main
+   *  file, retry triggerPreview a few times. Covers the race where the
+   *  preview pane mounts before the compiler pipeline has been kicked. */
+  private scheduleStartupRecovery() {
+    if (this.startupRecoveryTimer !== null) return;
+    this.startupRecoveryTimer = setTimeout(() => {
+      this.startupRecoveryTimer = null;
+      if (preview.totalPages > 0) return;
+      if (!workspace.mainFile) return;
+      if (this.startupRecoveryAttempts >= STARTUP_RECOVERY_MAX_ATTEMPTS) return;
+      this.startupRecoveryAttempts += 1;
+      triggerPreview("explicit").mapErr((err) =>
+        logError("preview controller: startup retry triggerPreview failed:", err)
+      );
+      this.scheduleStartupRecovery();
+    }, STARTUP_RECOVERY_DELAY_MS);
   }
 
   // ── Effects, exposed as methods consumers wire via $effect ──────────
@@ -58,6 +102,9 @@ export class PreviewController {
       for (let i = curLen; i < incoming.length; i++) this.committedPages.push(null);
     } else if (curLen > incoming.length) {
       this.committedPages.splice(incoming.length);
+      for (const key of [...this.decodeAttempts.keys()]) {
+        if (key >= incoming.length) this.decodeAttempts.delete(key);
+      }
     }
 
     for (let i = 0; i < incoming.length; i++) {
@@ -66,21 +113,49 @@ export class PreviewController {
       if (data === untrack(() => this.committedPages[i])) continue;
       if (this.pending.get(i) === data) continue;
 
-      const idx = i;
-      this.pending.set(idx, data);
-
-      const img = new Image();
-      img.src = `data:image/png;base64,${data}`;
-      img.decode()
-        .then(() => {
-          if (this.pending.get(idx) === data) this.pending.delete(idx);
-          if (preview.pages[idx] === data) this.committedPages[idx] = data;
-        })
-        .catch(() => {
-          if (this.pending.get(idx) === data) this.pending.delete(idx);
-          console.warn(`preview: failed to decode page ${idx}`);
-        });
+      this.decodeAttempts.delete(i);
+      this.attemptDecode(i, data, 0);
     }
+  }
+
+  private attemptDecode(idx: number, data: string, attempt: number) {
+    this.pending.set(idx, data);
+    this.decodeAttempts.set(idx, attempt);
+
+    const img = new Image();
+    img.src = `data:image/png;base64,${data}`;
+    img
+      .decode()
+      .then(() => {
+        if (this.pending.get(idx) !== data) return;
+        this.pending.delete(idx);
+        this.decodeAttempts.delete(idx);
+        if (preview.pages[idx] === data) this.committedPages[idx] = data;
+      })
+      .catch((err) => {
+        if (this.pending.get(idx) !== data) return;
+        const next = attempt + 1;
+        if (next < DECODE_MAX_ATTEMPTS) {
+          const delay = DECODE_RETRY_BASE_MS * Math.pow(2, attempt);
+          console.warn(`preview: decode page ${idx} failed (attempt ${attempt + 1}), retrying in ${delay}ms`, err);
+          setTimeout(() => {
+            if (preview.pages[idx] !== data) {
+              this.pending.delete(idx);
+              return;
+            }
+            this.attemptDecode(idx, data, next);
+          }, delay);
+          return;
+        }
+        this.pending.delete(idx);
+        this.decodeAttempts.delete(idx);
+        console.warn(`preview: gave up decoding page ${idx} after ${DECODE_MAX_ATTEMPTS} attempts`, err);
+        // Last resort: ask the backend to re-emit pages — the data we got
+        // may have been truncated mid-transfer.
+        syncPreview().mapErr((e) =>
+          logError("preview: syncPreview after decode failure failed:", e)
+        );
+      });
   }
 
   /** Scroll to cursor-sync target when it changes. */
@@ -160,6 +235,13 @@ export class PreviewController {
   }
 
   refresh() {
+    // Reset retry budgets so a manual refresh fully re-attempts decode.
+    this.decodeAttempts.clear();
+    this.pending.clear();
+    this.startupRecoveryAttempts = 0;
+    syncPreview().mapErr((err) =>
+      logError("preview controller: syncPreview before refresh failed:", err)
+    );
     preview.triggerRefresh().catch((err) => logError("preview refresh failed:", err));
   }
 

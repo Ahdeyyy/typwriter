@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { ZoomInAreaIcon, ZoomOutAreaIcon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon, ArrowLeft01Icon, ArrowRight01Icon, Menu01Icon, File01Icon } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
@@ -13,6 +14,7 @@
   let { onPresentationMode }: Props = $props();
 
   const ctrl = new PreviewController({ onPresentationMode: () => onPresentationMode?.() });
+  onDestroy(() => ctrl.destroy());
 
   $effect(() => ctrl.syncPagesEffect());
   $effect(() => ctrl.scrollTargetEffect());

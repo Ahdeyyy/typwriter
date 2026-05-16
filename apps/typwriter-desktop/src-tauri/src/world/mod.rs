@@ -169,6 +169,13 @@ impl EditorWorld {
         *self.main.read()
     }
 
+    /// Whether a real main file has been set (vs. the placeholder used when
+    /// no file has been chosen yet). Use this to gate compilation: with the
+    /// placeholder, typst would emit "cannot find main file" for every cycle.
+    pub fn has_main(&self) -> bool {
+        *self.main.read() != Self::placeholder_main()
+    }
+
     /// Update the workspace root and flush all file caches.
     pub fn set_root(&self, path: PathBuf) {
         *self.root.write() = path;

@@ -37,7 +37,7 @@ use commands::{
         delete_folder, export_workspace_to_dir_uri, get_file_tree, get_mobile_workspaces_dir,
         get_recent_workspaces, get_workspace_tabs, import_files, import_files_from_uris,
         list_mobile_workspaces, move_file, move_folder, open_folder, remove_recent_workspace,
-        rename_file, save_workspace_tabs, set_main_file,
+        rename_file, saf_tree_uri_to_path, save_workspace_tabs, set_main_file,
     },
 };
 
@@ -114,6 +114,7 @@ pub fn run() {
             create_workspace,
             get_mobile_workspaces_dir,
             list_mobile_workspaces,
+            saf_tree_uri_to_path,
             set_main_file,
             get_file_tree,
             get_recent_workspaces,

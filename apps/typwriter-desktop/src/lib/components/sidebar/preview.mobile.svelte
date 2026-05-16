@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
     ZoomInAreaIcon,
@@ -18,6 +19,7 @@
   import { PreviewController } from "./preview-controller.svelte";
 
   const ctrl = new PreviewController();
+  onDestroy(() => ctrl.destroy());
 
   $effect(() => ctrl.syncPagesEffect());
   $effect(() => ctrl.scrollTargetEffect());
