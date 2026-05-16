@@ -12,7 +12,7 @@ jobs:
   build-android:
     runs-on: ubuntu-22.04
     permissions:
-      contents: read
+      contents: write
 
     env:
       NDK_VERSION: "29.0.14206865"
@@ -211,11 +211,37 @@ jobs:
           RANLIB_x86_64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
         run: bunx tauri android build --apk --split-per-abi
 
-      - name: Upload APKs
-        uses: actions/upload-artifact@v4
+      - name: Get app version
+        id: version
+        run: |
+          VERSION=$(jq -r .version apps/typwriter-desktop/src-tauri/tauri.conf.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Rename APKs to match desktop naming convention
+        run: |
+          set -eux
+          VERSION="${{ steps.version.outputs.version }}"
+          OUT="apps/typwriter-desktop/src-tauri/gen/android/app/build/outputs/apk"
+          mkdir -p release-apks
+          shopt -s globstar nullglob
+          for apk in "$OUT"/**/*.apk; do
+            base="$(basename "$apk")"
+            if [[ "$base" == *unsigned* ]]; then
+              continue
+            fi
+            abi="${base#app-}"
+            abi="${abi%.apk}"
+            abi="${abi%-release}"
+            cp "$apk" "release-apks/typwriter_${VERSION}_${abi}.apk"
+          done
+          ls -la release-apks/
+
+      - name: Publish APKs to draft release
+        uses: softprops/action-gh-release@v2
         with:
-          name: typwriter-android-apk
-          path: |
-            apps/typwriter-desktop/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
-          if-no-files-found: error
-          retention-days: 30
+          tag_name: typwriter-v${{ steps.version.outputs.version }}
+          name: typwriter v${{ steps.version.outputs.version }}
+          body: ${{ steps.version.outputs.version }} Release
+          draft: true
+          files: release-apks/*.apk
+          fail_on_unmatched_files: true
