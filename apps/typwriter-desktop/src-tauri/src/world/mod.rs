@@ -42,8 +42,11 @@ pub struct EditorWorld {
     /// Workspace root on disk — updatable when the user opens a new folder.
     root: RwLock<PathBuf>,
 
-    /// The file currently set as "main" by the user
-    main: RwLock<FileId>,
+    /// The file currently set as "main" by the user. `None` when no main
+    /// file has been chosen — we deliberately avoid a sentinel `FileId`
+    /// here since any plausible sentinel path (e.g. `main.typ`) could
+    /// collide with a real file in the workspace.
+    main: RwLock<Option<FileId>>,
 
     /// Typst standard library — built lazily on first compile, not at startup
     library: OnceLock<LazyHash<Library>>,
@@ -82,8 +85,11 @@ pub struct EditorWorld {
 }
 
 impl EditorWorld {
-    fn placeholder_main() -> FileId {
-        FileId::new(None, VirtualPath::new("main.typ"))
+    /// Fallback `FileId` returned from `World::main()` when no main file is
+    /// set. The typst trait method requires a `FileId`, but compilation is
+    /// gated on `has_main()` so this value is never actually compiled.
+    fn fallback_main() -> FileId {
+        FileId::new(None, VirtualPath::new("<no-main>"))
     }
 
     /// Resolve the directory where downloaded packages should be cached and
@@ -128,7 +134,7 @@ impl EditorWorld {
         );
         Self {
             root: RwLock::new(root),
-            main: RwLock::new(Self::placeholder_main()),
+            main: RwLock::new(None),
             library: OnceLock::new(),
             font_data: OnceLock::new(),
             empty_book: LazyHash::new(FontBook::from_fonts(&[])),
@@ -152,11 +158,11 @@ impl EditorWorld {
 
     /// Called by Tauri command when user sets main file
     pub fn set_main(&self, id: FileId) {
-        *self.main.write() = id;
+        *self.main.write() = Some(id);
     }
 
     pub fn clear_main(&self) {
-        *self.main.write() = Self::placeholder_main();
+        *self.main.write() = None;
     }
 
     /// The workspace root path.
@@ -164,22 +170,21 @@ impl EditorWorld {
         self.root.read().clone()
     }
 
-    /// The current main `FileId`.
-    pub fn main_id(&self) -> FileId {
+    /// The current main `FileId`, or `None` when no main file is set.
+    pub fn main_id(&self) -> Option<FileId> {
         *self.main.read()
     }
 
-    /// Whether a real main file has been set (vs. the placeholder used when
-    /// no file has been chosen yet). Use this to gate compilation: with the
-    /// placeholder, typst would emit "cannot find main file" for every cycle.
+    /// Whether a real main file has been set. Use this to gate compilation:
+    /// without it, typst would emit "cannot find main file" for every cycle.
     pub fn has_main(&self) -> bool {
-        *self.main.read() != Self::placeholder_main()
+        self.main.read().is_some()
     }
 
     /// Update the workspace root and flush all file caches.
     pub fn set_root(&self, path: PathBuf) {
         *self.root.write() = path;
-        *self.main.write() = Self::placeholder_main();
+        *self.main.write() = None;
         self.source_cache.lock().clear();
         self.file_cache.lock().clear();
         self.shadow.write().clear();
@@ -259,7 +264,7 @@ impl World for EditorWorld {
     }
 
     fn main(&self) -> FileId {
-        *self.main.read()
+        self.main.read().unwrap_or_else(Self::fallback_main)
     }
 
     fn source(&self, id: FileId) -> FileResult<Source> {

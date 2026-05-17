@@ -90,7 +90,7 @@ pub fn collect_workspace_diagnostics(
         let Some(id) = world.path_to_id(&path) else {
             continue;
         };
-        if id == main_id {
+        if Some(id) == main_id {
             continue;
         }
 
