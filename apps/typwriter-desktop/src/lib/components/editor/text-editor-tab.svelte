@@ -287,14 +287,14 @@
         {
           key: "Mod-f",
           run: () => {
-            editorSearch.openPanel(false);
+            editorSearch.toggleFindPanel();
             return true;
           },
         },
         {
           key: "Mod-h",
           run: () => {
-            editorSearch.openPanel(true);
+            editorSearch.toggleReplacePanel();
             return true;
           },
         },

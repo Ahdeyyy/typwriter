@@ -69,6 +69,25 @@ class EditorSearchStore {
         this.replaceVisible = !this.replaceVisible;
     }
 
+    /** Ctrl/Cmd+H semantics: if the panel is closed, open it with replace
+     *  visible; if it's already open, toggle the replace row. */
+    toggleReplacePanel() {
+        if (this.open) {
+            this.toggleReplace();
+        } else {
+            this.openPanel(true);
+        }
+    }
+
+    /** Ctrl/Cmd+F semantics: toggle the panel open/closed. */
+    toggleFindPanel() {
+        if (this.open) {
+            this.closePanel();
+        } else {
+            this.openPanel(false);
+        }
+    }
+
     setQuery(q: string) {
         this.query = q;
         this.applyQuery();

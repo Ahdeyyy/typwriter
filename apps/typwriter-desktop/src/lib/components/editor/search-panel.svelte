@@ -18,7 +18,26 @@
     }
   });
 
+  function isToggleReplaceShortcut(e: KeyboardEvent): boolean {
+    return (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "h";
+  }
+
+  function isToggleFindShortcut(e: KeyboardEvent): boolean {
+    return (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f";
+  }
+
   function onSearchKey(e: KeyboardEvent) {
+    if (isToggleFindShortcut(e)) {
+      // Intercept before the webview's native finder can grab it.
+      e.preventDefault();
+      editorSearch.toggleFindPanel();
+      return;
+    }
+    if (isToggleReplaceShortcut(e)) {
+      e.preventDefault();
+      editorSearch.toggleReplacePanel();
+      return;
+    }
     if (e.key === "Escape") {
       e.preventDefault();
       editorSearch.closePanel();
@@ -32,6 +51,16 @@
   }
 
   function onReplaceKey(e: KeyboardEvent) {
+    if (isToggleFindShortcut(e)) {
+      e.preventDefault();
+      editorSearch.toggleFindPanel();
+      return;
+    }
+    if (isToggleReplaceShortcut(e)) {
+      e.preventDefault();
+      editorSearch.toggleReplacePanel();
+      return;
+    }
     if (e.key === "Escape") {
       e.preventDefault();
       editorSearch.closePanel();
