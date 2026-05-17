@@ -42,14 +42,6 @@ export function logError(...values: LogValue[]): void {
         return;
     }
 
-    // Surface every error as a toast — invaluable on mobile where there is no
-    // accessible dev console or log file. Safe to call without a Toaster
-    // mounted (svelte-sonner queues internally).
-    try {
-        toast.error(message);
-    } catch {
-        // Defensive — never let UI logging crash the logger itself.
-    }
 
     void tauriError(message).catch(() => {
         // Keep app behavior stable when running outside a Tauri context.
