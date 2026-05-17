@@ -154,7 +154,7 @@
         <div class="absolute left-2 top-2 z-20">
           <Sidebar.Trigger
             size="icon-lg"
-            class="bg-background/80 backdrop-blur shadow-sm"
+            class="bg-background/80 backdrop-blur shadow-sm rounded-full"
           />
         </div>
 
@@ -163,7 +163,7 @@
           <Button
             variant="ghost"
             size="icon-lg"
-            class="bg-background/80 backdrop-blur shadow-sm"
+            class="bg-background/80 backdrop-blur shadow-sm rounded-full"
             onclick={() => (mobileView = mobileView === "editor" ? "preview" : "editor")}
             aria-label={mobileView === "editor" ? "Show preview" : "Show editor"}
           >
