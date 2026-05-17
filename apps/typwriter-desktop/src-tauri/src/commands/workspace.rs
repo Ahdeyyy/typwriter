@@ -524,8 +524,9 @@ fn resolve_saf_tree_uri(uri: &str) -> Result<PathBuf, String> {
     };
 
     // The tree segment may have an additional `/document/...` suffix when the
-    // URI describes a child of the picked root. We only need the tree id.
-    let tree_id = rest.split('/').next().unwrap_or(rest);
+    // URI describes a child of the picked root. We only need the tree id —
+    // everything before the first '/', or the whole string if there is none.
+    let tree_id = rest.split_once('/').map_or(rest, |(head, _)| head);
     let decoded = percent_decode(tree_id);
     let (volume, rel) = match decoded.split_once(':') {
         Some((v, r)) => (v, r),

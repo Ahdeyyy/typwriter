@@ -165,5 +165,8 @@ pub fn run() {
             format_workspace_typ_files,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|err| {
+            eprintln!("fatal: tauri application exited with error: {err:?}");
+            std::process::exit(1);
+        });
 }

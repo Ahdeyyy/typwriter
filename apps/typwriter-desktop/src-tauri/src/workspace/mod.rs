@@ -168,47 +168,37 @@ impl WorkspaceState {
         let t = Instant::now();
         info!("WorkspaceState::set_main_file: path={path:?}");
 
-        let path = {
-            let root = self.root.read();
-            let root = root.as_ref().ok_or_else(|| {
-                let e = "No workspace open";
-                error!("WorkspaceState::set_main_file: err=\"{e}\"");
-                e.to_string()
-            })?;
-            if path.is_absolute() {
-                WorkspacePath::from_absolute_inside(root, path)
-                    .map_err(|e| e.to_string())?
-                    .into_path_buf()
-            } else {
-                WorkspacePath::resolve(root, path.to_string_lossy().as_ref())
-                    .map_err(|e| e.to_string())?
-                    .into_path_buf()
-            }
+        // Snapshot the workspace root once — set_main_file is a hot path that
+        // used to take this lock three times.
+        let root = self.root.read().clone().ok_or_else(|| {
+            let e = "No workspace open";
+            error!("WorkspaceState::set_main_file: err=\"{e}\"");
+            e.to_string()
+        })?;
+
+        let path = if path.is_absolute() {
+            WorkspacePath::from_absolute_inside(&root, path)
+                .map_err(|e| e.to_string())?
+                .into_path_buf()
+        } else {
+            WorkspacePath::resolve(&root, path.to_string_lossy().as_ref())
+                .map_err(|e| e.to_string())?
+                .into_path_buf()
         };
 
-        let id = {
-            let guard = self.root.read();
-            let root = guard.as_ref().ok_or_else(|| {
-                let e = "No workspace open";
-                error!("WorkspaceState::set_main_file: err=\"{e}\"");
-                e.to_string()
-            })?;
-            let relative = path.strip_prefix(root).map_err(|_| {
-                let e = format!("{} is not inside the workspace root", path.display());
-                error!("WorkspaceState::set_main_file: err=\"{e}\" root={root:?}");
-                e
-            })?;
-            FileId::new(None, VirtualPath::new(relative))
-        };
+        let relative = path.strip_prefix(&root).map_err(|_| {
+            let e = format!("{} is not inside the workspace root", path.display());
+            error!("WorkspaceState::set_main_file: err=\"{e}\" root={root:?}");
+            e
+        })?;
+        let id = FileId::new(None, VirtualPath::new(relative));
 
         self.world.set_main(id);
         self.pipeline.invalidate_cache();
         *self.main_file.write() = Some(path.clone());
 
         // Persist the choice so it can be restored on next open.
-        if let Some(root) = self.root.read().as_ref() {
-            store::set_workspace_main_file(&self.app_handle, root, &path);
-        }
+        store::set_workspace_main_file(&self.app_handle, &root, &path);
 
         info!(
             "WorkspaceState::set_main_file: ok ({:.1}ms)",

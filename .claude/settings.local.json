@@ -58,7 +58,10 @@
       "Bash(curl -s http://localhost:5173/)",
       "Bash(ls /c/Users/ahdey/projects/typwriter/*.md)",
       "Bash(git -C /c/Users/ahdey/projects/typwriter log --format=\"%an\" -1)",
-      "Bash(find /c/Users/ahdey/projects/typwriter/apps/typwriter-desktop/src-tauri -name \"Cargo.toml\" -exec grep -A 20 \"^\\\\[dependencies\\\\]\" {} ;)"
+      "Bash(find /c/Users/ahdey/projects/typwriter/apps/typwriter-desktop/src-tauri -name \"Cargo.toml\" -exec grep -A 20 \"^\\\\[dependencies\\\\]\" {} ;)",
+      "Bash(cargo doc *)",
+      "Bash(find ~/.cargo/registry/src -name 'typstyle*' -type d 2>/dev/null | head -5)",
+      "Bash(bun tauri *)"
     ]
   }
 }

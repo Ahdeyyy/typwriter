@@ -25,6 +25,10 @@ use crate::{
     world::EditorWorld,
 };
 
+/// Maximum byte distance we probe left/right of the cursor when disambiguating
+/// preview positions for an ambiguous source location. 128 bytes is roughly
+/// one typical line of code — far enough to find an unambiguous anchor token,
+/// short enough that probing stays well under a millisecond.
 const MAX_CURSOR_SHIFT_BYTES: usize = 128;
 
 // ─── Preview → Editor ─────────────────────────────────────────────────────────
@@ -48,8 +52,7 @@ pub fn jump_from_click(
     let zoom = *pipeline.zoom.lock() as f64;
     let point = Point::new(Abs::pt(x / zoom), Abs::pt(y / zoom));
 
-    let guard = pipeline.last_document.lock();
-    let doc = guard.as_deref().ok_or_else(|| {
+    let doc_arc = pipeline.last_document.lock().clone().ok_or_else(|| {
         let e = "No compiled document available";
         error!(
             "jump_from_click: err=\"{e}\" ({:.1}ms) page={page}",
@@ -57,6 +60,7 @@ pub fn jump_from_click(
         );
         e.to_string()
     })?;
+    let doc: &PagedDocument = &doc_arc;
 
     if page >= doc.pages.len() {
         let e = format!(
@@ -121,8 +125,7 @@ pub fn jump_from_cursor(
     let text = source.text();
     let byte_cursor = utf16_to_byte(text, cursor);
 
-    let guard = pipeline.last_document.lock();
-    let doc = guard.as_deref().ok_or_else(|| {
+    let doc_arc = pipeline.last_document.lock().clone().ok_or_else(|| {
         let e = "No compiled document available";
         error!(
             "jump_from_cursor: err=\"{e}\" ({:.1}ms) path={path:?}",
@@ -130,6 +133,7 @@ pub fn jump_from_cursor(
         );
         e.to_string()
     })?;
+    let doc: &PagedDocument = &doc_arc;
 
     let positions = typst_ide::jump_from_cursor(doc, &source, byte_cursor);
     let count = positions.len();

@@ -19,7 +19,8 @@ pub struct PageCache(LruCache<PageFingerprint, String>);
 
 impl PageCache {
     pub fn new(capacity: usize) -> Self {
-        let cap = NonZeroUsize::new(capacity).unwrap_or(NonZeroUsize::new(1).unwrap());
+        const ONE: NonZeroUsize = NonZeroUsize::new(1).expect("1 is non-zero");
+        let cap = NonZeroUsize::new(capacity).unwrap_or(ONE);
         Self(LruCache::new(cap))
     }
 

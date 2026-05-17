@@ -3,6 +3,7 @@
 
 import { platform as tauriPlatform } from "@tauri-apps/plugin-os";
 import { documentDir } from "@tauri-apps/api/path";
+import { normalize } from "$lib/paths";
 
 export type Os = "macos" | "windows" | "linux" | "android" | "ios" | "unknown";
 export type FormFactor = "desktop" | "mobile";
@@ -43,8 +44,8 @@ class PlatformStore {
   displayPath(path: string): string {
     if (!path) return path;
     if (!this.isMobile || !this.documentsDirPrefix) return path;
-    const normalized = path.replace(/\\/g, "/");
-    const prefix = this.documentsDirPrefix.replace(/\\/g, "/").replace(/\/$/, "");
+    const normalized = normalize(path);
+    const prefix = normalize(this.documentsDirPrefix).replace(/\/$/, "");
     if (normalized.startsWith(prefix + "/")) {
       return normalized.slice(prefix.length + 1);
     }

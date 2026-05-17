@@ -203,6 +203,16 @@ struct CompileQueueState {
     next_revision: u64,
 }
 
+/// Drain every pending request from `rx` and return the most recent reason,
+/// falling back to `initial` if the channel was already empty.
+fn drain_latest_reason(rx: &Receiver<CompileReason>, initial: CompileReason) -> CompileReason {
+    let mut latest = initial;
+    while let Ok(reason) = rx.try_recv() {
+        latest = reason;
+    }
+    latest
+}
+
 pub struct PreviewPipeline {
     world: Arc<EditorWorld>,
     last_fingerprints: Mutex<Vec<PageFingerprint>>,
@@ -260,22 +270,26 @@ impl PreviewPipeline {
     /// (e.g. the popped-out preview window) needs to populate its UI from the
     /// existing compiled state without forcing a recompile.
     pub fn emit_current_state(&self) {
-        let fps = self.last_fingerprints.lock().clone();
-        let _ = self.app_handle.emit(
-            "preview:total-pages",
-            TotalPagesPayload { count: fps.len() },
-        );
-        let mut cache = self.page_cache.lock();
-        for (idx, fp) in fps.iter().enumerate() {
-            if let Some(b64) = cache.get(*fp) {
-                let _ = self.app_handle.emit(
-                    "preview:page-updated",
-                    PageUpdatedPayload {
-                        index: idx,
-                        data: b64.clone(),
-                    },
-                );
-            }
+        // Snapshot inside one critical section, then emit lock-free. Lock
+        // order matches compile_and_emit: last_fingerprints then page_cache.
+        let (count, pages): (usize, Vec<(usize, String)>) = {
+            let fps = self.last_fingerprints.lock();
+            let mut cache = self.page_cache.lock();
+            let pages = fps
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, fp)| cache.get(*fp).map(|b64| (idx, b64.clone())))
+                .collect();
+            (fps.len(), pages)
+        };
+
+        let _ = self
+            .app_handle
+            .emit("preview:total-pages", TotalPagesPayload { count });
+        for (idx, data) in pages {
+            let _ = self
+                .app_handle
+                .emit("preview:page-updated", PageUpdatedPayload { index: idx, data });
         }
     }
 
@@ -296,13 +310,24 @@ impl PreviewPipeline {
     }
 
     fn run_compile_worker(self: Arc<Self>, rx: Receiver<CompileReason>) {
-        let mut next_reason = rx.recv().ok();
-        while let Some(mut reason) = next_reason.take() {
-            while let Ok(queued_reason) = rx.try_recv() {
-                reason = queued_reason;
-            }
-            let request_mark = self.request_counter.load(Ordering::Acquire);
+        // Carry the next reason between iterations so we can distinguish
+        // "already-queued work" (skip the Idle event) from "channel empty"
+        // (announce Idle, then block for the next request).
+        let mut pending: Option<CompileReason> = None;
+        loop {
+            let initial = match pending.take() {
+                Some(r) => r,
+                None => match rx.recv() {
+                    Ok(r) => r,
+                    Err(_) => return, // channel closed
+                },
+            };
 
+            // Coalesce: drain any extra requests that piled up while we were
+            // busy, keeping only the most recent reason.
+            let reason = drain_latest_reason(&rx, initial);
+
+            let request_mark = self.request_counter.load(Ordering::Acquire);
             let revision = {
                 let mut queue = self.compile_queue.lock();
                 queue.next_revision += 1;
@@ -311,14 +336,13 @@ impl PreviewPipeline {
             self.emit_compile_state(CompileStatus::Started, revision, reason);
             self.compile_and_emit(revision, reason, request_mark);
 
-            next_reason = match rx.try_recv() {
-                Ok(reason) => Some(reason),
+            match rx.try_recv() {
+                Ok(next) => pending = Some(next),
                 Err(mpsc::TryRecvError::Empty) => {
                     self.emit_compile_state(CompileStatus::Idle, revision, reason);
-                    rx.recv().ok()
                 }
-                Err(mpsc::TryRecvError::Disconnected) => None,
-            };
+                Err(mpsc::TryRecvError::Disconnected) => return,
+            }
         }
     }
 

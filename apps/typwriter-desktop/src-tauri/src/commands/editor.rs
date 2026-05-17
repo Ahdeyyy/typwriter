@@ -379,8 +379,11 @@ pub fn get_completions(
     let text = source.text();
     let byte_cursor = utf16_to_byte(text, cursor);
 
-    let guard = pipeline.last_document.lock();
-    let doc_ref: Option<&PagedDocument> = guard.as_deref();
+    // Clone the Arc out of the mutex so the lock is released before the
+    // (potentially long) IDE traversal — keeps concurrent click/hover
+    // handlers from blocking on us.
+    let doc = pipeline.last_document.lock().clone();
+    let doc_ref: Option<&PagedDocument> = doc.as_deref();
 
     let result = typst_ide::autocomplete(&**world, doc_ref, &source, byte_cursor, explicit);
 
@@ -449,8 +452,8 @@ pub fn get_tooltip(
 
     let byte_cursor = utf16_to_byte(source.text(), cursor);
 
-    let guard = pipeline.last_document.lock();
-    let doc_ref: Option<&PagedDocument> = guard.as_deref();
+    let doc = pipeline.last_document.lock().clone();
+    let doc_ref: Option<&PagedDocument> = doc.as_deref();
 
     // Try against the latest compiled document first, then document-agnostic.
     let mut tooltip = typst_ide::tooltip(&**world, doc_ref, &source, byte_cursor, Side::Before)
@@ -514,8 +517,8 @@ pub fn get_definitions(
 
     let byte_cursor = utf16_to_byte(source.text(), cursor);
 
-    let guard = pipeline.last_document.lock();
-    let doc_ref: Option<&PagedDocument> = guard.as_deref();
+    let doc = pipeline.last_document.lock().clone();
+    let doc_ref: Option<&PagedDocument> = doc.as_deref();
 
     let def = typst_ide::definition(&**world, doc_ref, &source, byte_cursor, Side::Before);
     let result = def.and_then(|d| serialize_definition(&d, &**world));

@@ -49,7 +49,10 @@
     if (editorSearch.regexError) return editorSearch.regexError;
     if (!editorSearch.query) return "";
     if (editorSearch.totalMatches === 0) return "No results";
-    return `${editorSearch.currentMatch || "?"} of ${editorSearch.totalMatches}`;
+    const total = editorSearch.totalMatchesCapped
+      ? `${editorSearch.totalMatches}+`
+      : `${editorSearch.totalMatches}`;
+    return `${editorSearch.currentMatch || "?"} of ${total}`;
   });
 
   const noResults = $derived(

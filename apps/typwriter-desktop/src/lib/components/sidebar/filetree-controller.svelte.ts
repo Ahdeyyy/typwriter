@@ -20,7 +20,8 @@ import type {
 } from '@pierre/trees';
 import { toast } from 'svelte-sonner';
 
-import { workspace, basename, dirname, type FileNode } from '$lib/stores/workspace.svelte';
+import { workspace, type FileNode } from '$lib/stores/workspace.svelte';
+import { basename, dirname, normalize } from '$lib/paths';
 import { editor } from '$lib/stores/editor.svelte';
 import { exportWorkspaceWithPicker } from '$lib/services/export-service';
 
@@ -79,7 +80,7 @@ function stripSlash(p: string): string {
 
 function ancestorDirsOf(path: string): string[] {
     const out: string[] = [];
-    const norm = path.replace(/\\/g, '/');
+    const norm = normalize(path);
     let i = norm.indexOf('/');
     while (i !== -1) {
         out.push(`${norm.slice(0, i)}/`);

@@ -10,7 +10,8 @@ import {
     updateFileContent,
 } from '$lib/ipc/commands';
 import type { CompileReason } from '$lib/types';
-import { workspace, normalize, basename } from './workspace.svelte';
+import { workspace } from './workspace.svelte';
+import { normalize, basename } from '$lib/paths';
 import { logError } from '$lib/logger';
 import { toast } from 'svelte-sonner';
 
@@ -32,7 +33,7 @@ function extOf(path: string): string {
 }
 
 function imageAssetSrc(path: string): string {
-    return convertFileSrc(path.replace(/\\/g, '/'));
+    return convertFileSrc(normalize(path));
 }
 
 export interface TabInfo {

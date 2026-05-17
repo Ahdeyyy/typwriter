@@ -19,6 +19,12 @@ import type { FileTreeEntry } from '$lib/types';
 import { logError } from '$lib/logger';
 import { editor } from './editor.svelte';
 import { importFilesToWorkspace } from '$lib/services/workspace-file-service';
+import { normalize, basename, dirname } from '$lib/paths';
+import { SerialQueue } from '$lib/async';
+
+// Re-exported for back-compat with existing `from '$lib/stores/workspace.svelte'`
+// imports. New code should import from `$lib/paths` directly.
+export { normalize, basename, dirname };
 
 export interface FileNode {
     name: string;
@@ -26,20 +32,6 @@ export interface FileNode {
     is_dir: boolean;
     children: FileNode[];
     expanded: boolean;
-}
-
-export function normalize(path: string): string {
-    return path.replace(/\\/g, '/');
-}
-
-export function basename(path: string): string {
-    return normalize(path).split('/').pop() ?? path;
-}
-
-export function dirname(path: string): string {
-    const normalized = normalize(path);
-    const idx = normalized.lastIndexOf('/');
-    return idx >= 0 ? normalized.slice(0, idx) : '';
 }
 
 function entryToNode(entry: FileTreeEntry, expandedPaths: Set<string>): FileNode {
@@ -133,6 +125,11 @@ function rewritePath(path: string, src: string, dst: string, isDir: boolean): st
 }
 
 class WorkspaceStore {
+    // `$state.raw` means Svelte won't deep-proxy the tree (it can be large).
+    // To trigger reactivity after a localized mutation like flipping
+    // `node.expanded`, reassign the top-level reference (`this.tree = […this.tree]`)
+    // — that's a deliberate idiom here, not a missed deep clone. Children are
+    // intentionally shared between the old and new array.
     tree = $state.raw<FileNode[]>([]);
     rootPath = $state<string | null>(null);
     mainFile = $state<string | null>(null);
@@ -146,7 +143,7 @@ class WorkspaceStore {
     private _filesChangedUnlisten: UnlistenFn | null = null;
     private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
     private _persistTabsTimer: ReturnType<typeof setTimeout> | null = null;
-    private _opLock: Promise<void> = Promise.resolve();
+    private _opQueue = new SerialQueue();
 
     toAbs(path: string): string {
         if (!this.rootPath) {
@@ -169,15 +166,17 @@ class WorkspaceStore {
     }
 
     init(root: string): ResultAsync<void, string> {
-        const op = this._opLock.then(() => this._init(root));
-        this._opLock = op.catch(() => {});
-        return ResultAsync.fromPromise(op, (err) => String(err));
+        return ResultAsync.fromPromise(
+            this._opQueue.run(() => this._init(root)),
+            (err) => String(err),
+        );
     }
 
     leave(): ResultAsync<void, string> {
-        const op = this._opLock.then(() => this._leave());
-        this._opLock = op.catch(() => {});
-        return ResultAsync.fromPromise(op, (err) => String(err));
+        return ResultAsync.fromPromise(
+            this._opQueue.run(() => this._leave()),
+            (err) => String(err),
+        );
     }
 
     private async _init(root: string): Promise<void> {
