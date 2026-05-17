@@ -125,8 +125,9 @@ export interface TotalPagesPayload {
 
 export interface PageUpdatedPayload {
     index: number;
-    /** Base64-encoded PNG */
-    data: string;
+    /** Hex-encoded page fingerprint. Use `buildPreviewUrl` to turn this into
+     *  the `previewimg://` URL that the webview fetches the PNG from. */
+    fingerprint: string;
 }
 
 export interface PageRemovedPayload {

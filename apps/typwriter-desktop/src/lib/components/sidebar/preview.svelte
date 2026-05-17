@@ -9,6 +9,7 @@
   import { Button } from "$lib/components/ui/button";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { PreviewController } from "./preview-controller.svelte";
+  import { buildPreviewUrl } from "$lib/preview-url";
 
   type Props = { onPresentationMode?: () => void };
   let { onPresentationMode }: Props = $props();
@@ -212,7 +213,7 @@
           onclick={(e) => ctrl.handlePageClick(e, ctrl.visiblePage)}
         >
           <img
-            src="data:image/png;base64,{ctrl.committedPages[ctrl.visiblePage]}"
+            src={buildPreviewUrl(ctrl.committedPages[ctrl.visiblePage]!)}
             alt="Page {ctrl.visiblePage + 1}"
             draggable="false"
             class="block h-full w-full object-cover"
@@ -242,7 +243,7 @@
               onclick={(e) => ctrl.handlePageClick(e, ctrl.visiblePage)}
             >
               <img
-                src="data:image/png;base64,{ctrl.committedPages[ctrl.visiblePage]}"
+                src={buildPreviewUrl(ctrl.committedPages[ctrl.visiblePage]!)}
                 alt="Page {ctrl.visiblePage + 1}"
                 draggable="false"
                 class="block max-w-full"
@@ -282,7 +283,7 @@
                 onclick={(e) => ctrl.handlePageClick(e, i)}
               >
                 <img
-                  src="data:image/png;base64,{ctrl.committedPages[i]}"
+                  src={buildPreviewUrl(ctrl.committedPages[i]!)}
                   alt="Page {i + 1}"
                   draggable="false"
                   class="block max-w-full"

@@ -11,6 +11,7 @@ mod compile;
 mod diff;
 mod render;
 
+pub use cache::{fingerprint_to_hex, parse_fingerprint};
 pub use compile::{
     collect_workspace_diagnostics, compile_document, dedup_merge, CompileOutput,
     SerializedDiagnostic,
@@ -31,7 +32,6 @@ use std::{
 use log::{error, info, warn};
 use parking_lot::Mutex;
 
-use base64::Engine;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
@@ -57,8 +57,10 @@ struct TotalPagesPayload {
 #[derive(Serialize, Clone)]
 struct PageUpdatedPayload {
     index: usize,
-    // Base64-encoded PNG
-    data: String,
+    // Hex-encoded `PageFingerprint`. The webview fetches the PNG bytes from
+    // `previewimg://localhost/{fingerprint}.png`, which keeps the IPC event
+    // tiny and lets the browser cache by URL.
+    fingerprint: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -270,27 +272,30 @@ impl PreviewPipeline {
     /// (e.g. the popped-out preview window) needs to populate its UI from the
     /// existing compiled state without forcing a recompile.
     pub fn emit_current_state(&self) {
-        // Snapshot inside one critical section, then emit lock-free. Lock
-        // order matches compile_and_emit: last_fingerprints then page_cache.
-        let (count, pages): (usize, Vec<(usize, String)>) = {
-            let fps = self.last_fingerprints.lock();
-            let mut cache = self.page_cache.lock();
-            let pages = fps
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, fp)| cache.get(*fp).map(|b64| (idx, b64.clone())))
-                .collect();
-            (fps.len(), pages)
-        };
+        // Snapshot fingerprints under the lock; bytes live in the cache and
+        // are fetched on demand via the `previewimg` URI scheme.
+        let fingerprints: Vec<PageFingerprint> = self.last_fingerprints.lock().clone();
+        let count = fingerprints.len();
 
         let _ = self
             .app_handle
             .emit("preview:total-pages", TotalPagesPayload { count });
-        for (idx, data) in pages {
-            let _ = self
-                .app_handle
-                .emit("preview:page-updated", PageUpdatedPayload { index: idx, data });
+        for (idx, fp) in fingerprints.into_iter().enumerate() {
+            let _ = self.app_handle.emit(
+                "preview:page-updated",
+                PageUpdatedPayload {
+                    index: idx,
+                    fingerprint: fingerprint_to_hex(fp),
+                },
+            );
         }
+    }
+
+    /// Look up the PNG bytes for a fingerprint. Used by the `previewimg`
+    /// URI scheme handler to serve images to the webview without going
+    /// through the JS bridge.
+    pub fn page_bytes(&self, fp: PageFingerprint) -> Option<Vec<u8>> {
+        self.page_cache.lock().get(fp).cloned()
     }
 
     pub fn set_zoom(&self, zoom: f32) {
@@ -465,14 +470,17 @@ impl PreviewPipeline {
         let zoom = *self.zoom.lock();
         let visible_page = *self.visible_page.lock();
 
-        let mut cache_hits: Vec<(usize, String)> = Vec::new();
+        // For each changed index we emit immediately if the cache already
+        // has bytes for that fingerprint. The bytes themselves never cross
+        // the IPC bridge — the webview pulls them via `previewimg://`.
+        let mut cache_hits: Vec<(usize, PageFingerprint)> = Vec::new();
         let mut cache_misses: Vec<usize> = Vec::new();
         {
-            let mut cache = self.page_cache.lock();
+            let cache = self.page_cache.lock();
             for &idx in &changed_indices {
                 let fp = new_fps[idx];
-                if let Some(b64) = cache.get(fp) {
-                    cache_hits.push((idx, b64.clone()));
+                if cache.peek(fp).is_some() {
+                    cache_hits.push((idx, fp));
                 } else {
                     cache_misses.push(idx);
                 }
@@ -480,7 +488,7 @@ impl PreviewPipeline {
         }
 
         cache_hits.sort_by_key(|(idx, _)| if *idx == visible_page { 0 } else { 1 });
-        for (idx, b64) in cache_hits {
+        for (idx, fp) in cache_hits {
             if self.is_stale_request(request_mark) {
                 info!("compile revision={revision} reason={reason:?} stopped stale cache emit");
                 return;
@@ -489,7 +497,7 @@ impl PreviewPipeline {
                 "preview:page-updated",
                 PageUpdatedPayload {
                     index: idx,
-                    data: b64,
+                    fingerprint: fingerprint_to_hex(fp),
                 },
             );
         }
@@ -510,13 +518,12 @@ impl PreviewPipeline {
             let page = &doc.pages[*idx];
             match render_page(page, zoom) {
                 Ok(png) => {
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
-                    self.page_cache.lock().insert(fp, b64.clone());
+                    self.page_cache.lock().insert(fp, png);
                     let _ = self.app_handle.emit(
                         "preview:page-updated",
                         PageUpdatedPayload {
                             index: *idx,
-                            data: b64,
+                            fingerprint: fingerprint_to_hex(fp),
                         },
                     );
                 }
@@ -556,13 +563,12 @@ impl PreviewPipeline {
                     info!("compile revision={revision} reason={reason:?} stopped stale page emit");
                     return;
                 }
-                let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
-                cache.insert(fp, b64.clone());
+                cache.insert(fp, png);
                 let _ = self.app_handle.emit(
                     "preview:page-updated",
                     PageUpdatedPayload {
                         index: idx,
-                        data: b64,
+                        fingerprint: fingerprint_to_hex(fp),
                     },
                 );
             }

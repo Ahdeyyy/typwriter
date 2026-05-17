@@ -18,6 +18,7 @@ import { onWorkspaceFilesChanged, type UnlistenFn } from '$lib/ipc/events';
 import type { FileTreeEntry } from '$lib/types';
 import { logError } from '$lib/logger';
 import { editor } from './editor.svelte';
+import { preview } from './preview.svelte';
 import { importFilesToWorkspace } from '$lib/services/workspace-file-service';
 import { normalize, basename, dirname } from '$lib/paths';
 import { SerialQueue } from '$lib/async';
@@ -182,6 +183,7 @@ class WorkspaceStore {
     private async _init(root: string): Promise<void> {
         await editor.flushAllTabs();
         await editor.reset();
+        preview.clear();
         this._disposeFilesChangedListener();
         this._clearRefreshTimer();
 
@@ -248,6 +250,7 @@ class WorkspaceStore {
         this._disposeFilesChangedListener();
         this._clearRefreshTimer();
         await editor.reset();
+        preview.clear();
         this._clearPersistTabsTimer();
         this.tree = [];
         this.rootPath = null;

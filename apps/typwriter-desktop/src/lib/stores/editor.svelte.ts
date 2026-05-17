@@ -49,9 +49,10 @@ export interface TabInfo {
     isLoading: boolean;
 }
 
-const TYPING_PREVIEW_INTERVAL = 16;
 const IDLE_SAVE_DELAY = 1500;
-const SHADOW_WRITE_DELAY = 50;
+// Small enough to feel instant (~half a frame at 60Hz), large enough to
+// swallow same-frame keystroke bursts so we don't fire one IPC per key.
+const TYPING_PREVIEW_INTERVAL = 8;
 
 class EditorStore {
     tabs = $state<TabInfo[]>([]);
@@ -72,11 +73,9 @@ class EditorStore {
     } | null>(null);
     private _contentSyncVersion = 0;
 
-    private _shadowWriteTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private _shadowWriteVersions = new Map<string, number>();
-    private _typingPreviewTimers = new Map<string, ReturnType<typeof setTimeout>>();
-    private _typingPreviewLastRun = new Map<string, number>();
     private _idleSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private _typingPreviewTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     requestCursorJump(tabId: string, offset: number): void {
         this.cursorJumpRequest = { tabId, offset };
@@ -239,7 +238,6 @@ class EditorStore {
         tab.content = content;
         tab.hasUnsavedChanges = true;
 
-        this._scheduleShadowWrite(tab);
         this._scheduleTypingPreview(tab);
         this._scheduleIdleSave(tab);
     }
@@ -271,7 +269,7 @@ class EditorStore {
                 version: ++this._contentSyncVersion,
                 cursor: newCursor,
             };
-            this._scheduleShadowWrite(tab, 0);
+            void this._writeShadowNow(tab);
         };
 
         // Cursor maintenance runs in Rust on UTF-8 bytes; the IPC boundary
@@ -369,19 +367,12 @@ class EditorStore {
             }
         }
 
-        this._moveTimerKey(this._typingPreviewTimers, oldId, newId);
         this._moveTimerKey(this._idleSaveTimers, oldId, newId);
-        this._moveTimerKey(this._shadowWriteTimers, oldId, newId);
+        this._moveTimerKey(this._typingPreviewTimers, oldId, newId);
         const shadowVersion = this._shadowWriteVersions.get(oldId);
         if (shadowVersion !== undefined) {
             this._shadowWriteVersions.delete(oldId);
             this._shadowWriteVersions.set(newId, shadowVersion);
-        }
-
-        const lastRun = this._typingPreviewLastRun.get(oldId);
-        if (lastRun !== undefined) {
-            this._typingPreviewLastRun.delete(oldId);
-            this._typingPreviewLastRun.set(newId, lastRun);
         }
 
         tab.id = newId;
@@ -416,32 +407,23 @@ class EditorStore {
     // timer maps — still resolves to the live tab. Capturing tabId as a
     // string would silently break auto-save and typing preview after rename.
     private _scheduleTypingPreview(tab: TabInfo): void {
-        const now = Date.now();
-        const lastRun = this._typingPreviewLastRun.get(tab.id) ?? 0;
-        const existingTimer = this._typingPreviewTimers.get(tab.id);
-        const remaining = Math.max(0, TYPING_PREVIEW_INTERVAL - (now - lastRun));
-
-        if (remaining === 0 && existingTimer === undefined) {
-            this._fireTypingPreview(tab);
-            return;
-        }
-
-        if (existingTimer !== undefined) {
-            return;
-        }
-
+        // Throttle: if a fire is already scheduled, the latest content will
+        // be picked up when it runs — no need to reset the timer (which
+        // would push the fire further out and slow the trailing edge).
+        if (this._typingPreviewTimers.has(tab.id)) return;
         this._typingPreviewTimers.set(tab.id, setTimeout(() => {
             this._typingPreviewTimers.delete(tab.id);
             this._fireTypingPreview(tab);
-        }, remaining || TYPING_PREVIEW_INTERVAL));
+        }, TYPING_PREVIEW_INTERVAL));
     }
 
     private _fireTypingPreview(tab: TabInfo): void {
         if (!this.tabs.includes(tab) || !tab.isEditable || !tab.hasUnsavedChanges) {
             return;
         }
-        this._typingPreviewLastRun.set(tab.id, Date.now());
-        void this._flushShadowWrite(tab)
+        const version = (this._shadowWriteVersions.get(tab.id) ?? 0) + 1;
+        this._shadowWriteVersions.set(tab.id, version);
+        void this._writeShadow(tab, version)
             .then(() => this._requestPreview('typing'))
             .catch((err) => logError('shadow write before preview failed:', err));
     }
@@ -459,25 +441,13 @@ class EditorStore {
         });
     }
 
-    private _scheduleShadowWrite(tab: TabInfo, delay = SHADOW_WRITE_DELAY): void {
+    private async _writeShadowNow(tab: TabInfo): Promise<void> {
         const version = (this._shadowWriteVersions.get(tab.id) ?? 0) + 1;
         this._shadowWriteVersions.set(tab.id, version);
-
-        const existing = this._shadowWriteTimers.get(tab.id);
-        if (existing !== undefined) clearTimeout(existing);
-
-        this._shadowWriteTimers.set(tab.id, setTimeout(() => {
-            this._shadowWriteTimers.delete(tab.id);
-            void this._writeShadow(tab, version);
-        }, delay));
+        await this._writeShadow(tab, version);
     }
 
     private async _flushShadowWrite(tab: TabInfo): Promise<void> {
-        const timer = this._shadowWriteTimers.get(tab.id);
-        if (timer !== undefined) {
-            clearTimeout(timer);
-            this._shadowWriteTimers.delete(tab.id);
-        }
         const version = this._shadowWriteVersions.get(tab.id);
         if (version === undefined) return;
         await this._writeShadow(tab, version);
@@ -507,18 +477,12 @@ class EditorStore {
     }
 
     private _clearTimers(id: string): void {
-        const previewTimer = this._typingPreviewTimers.get(id);
-        if (previewTimer !== undefined) {
-            clearTimeout(previewTimer);
+        this._shadowWriteVersions.delete(id);
+        const typingTimer = this._typingPreviewTimers.get(id);
+        if (typingTimer !== undefined) {
+            clearTimeout(typingTimer);
             this._typingPreviewTimers.delete(id);
         }
-        this._typingPreviewLastRun.delete(id);
-        const shadowTimer = this._shadowWriteTimers.get(id);
-        if (shadowTimer !== undefined) {
-            clearTimeout(shadowTimer);
-            this._shadowWriteTimers.delete(id);
-        }
-        this._shadowWriteVersions.delete(id);
         this._clearIdleSave(id);
     }
 

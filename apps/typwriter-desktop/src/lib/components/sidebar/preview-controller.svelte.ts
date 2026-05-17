@@ -10,6 +10,7 @@ import { workspace } from "$lib/stores/workspace.svelte";
 import { jumpFromClick, setVisiblePage, syncPreview, triggerPreview } from "$lib/ipc/commands";
 import { emitPreviewSourceJump } from "$lib/ipc/events";
 import { logError } from "$lib/logger";
+import { buildPreviewUrl } from "$lib/preview-url";
 
 export type PreviewControllerOptions = {
   onPresentationMode?: () => void;
@@ -26,8 +27,10 @@ export class PreviewController {
   visiblePage = $state(0);
   exportOpen = $state(false);
 
-  // Double-buffered decoded page data — keeps last good frame visible
-  // while the next compile is in flight, avoiding white flashes.
+  // Double-buffered fingerprints — keeps the last good frame visible while
+  // the next compile is in flight, avoiding white flashes. The string is a
+  // page fingerprint; templates resolve it to a `previewimg://` URL via
+  // `buildPreviewUrl` so the webview fetches the PNG directly.
   committedPages = $state<(string | null)[]>([]);
   private pending = new Map<number, string>();
   private decodeAttempts = new Map<number, number>();
@@ -108,50 +111,51 @@ export class PreviewController {
     }
 
     for (let i = 0; i < incoming.length; i++) {
-      const data = incoming[i];
-      if (!data) continue;
-      if (data === untrack(() => this.committedPages[i])) continue;
-      if (this.pending.get(i) === data) continue;
+      const fingerprint = incoming[i];
+      if (!fingerprint) continue;
+      if (fingerprint === untrack(() => this.committedPages[i])) continue;
+      if (this.pending.get(i) === fingerprint) continue;
 
       this.decodeAttempts.delete(i);
-      this.attemptDecode(i, data, 0);
+      this.attemptDecode(i, fingerprint, 0);
     }
   }
 
-  private attemptDecode(idx: number, data: string, attempt: number) {
-    this.pending.set(idx, data);
+  private attemptDecode(idx: number, fingerprint: string, attempt: number) {
+    this.pending.set(idx, fingerprint);
     this.decodeAttempts.set(idx, attempt);
 
     const img = new Image();
-    img.src = `data:image/png;base64,${data}`;
+    img.src = buildPreviewUrl(fingerprint);
     img
       .decode()
       .then(() => {
-        if (this.pending.get(idx) !== data) return;
+        if (this.pending.get(idx) !== fingerprint) return;
         this.pending.delete(idx);
         this.decodeAttempts.delete(idx);
-        if (preview.pages[idx] === data) this.committedPages[idx] = data;
+        if (preview.pages[idx] === fingerprint) this.committedPages[idx] = fingerprint;
       })
       .catch((err) => {
-        if (this.pending.get(idx) !== data) return;
+        if (this.pending.get(idx) !== fingerprint) return;
         const next = attempt + 1;
         if (next < DECODE_MAX_ATTEMPTS) {
           const delay = DECODE_RETRY_BASE_MS * Math.pow(2, attempt);
           console.warn(`preview: decode page ${idx} failed (attempt ${attempt + 1}), retrying in ${delay}ms`, err);
           setTimeout(() => {
-            if (preview.pages[idx] !== data) {
+            if (preview.pages[idx] !== fingerprint) {
               this.pending.delete(idx);
               return;
             }
-            this.attemptDecode(idx, data, next);
+            this.attemptDecode(idx, fingerprint, next);
           }, delay);
           return;
         }
         this.pending.delete(idx);
         this.decodeAttempts.delete(idx);
         console.warn(`preview: gave up decoding page ${idx} after ${DECODE_MAX_ATTEMPTS} attempts`, err);
-        // Last resort: ask the backend to re-emit pages — the data we got
-        // may have been truncated mid-transfer.
+        // Last resort: ask the backend to re-emit pages. A miss here usually
+        // means the fingerprint was evicted from the LRU before the webview
+        // got to fetch it — `syncPreview` re-publishes the latest known set.
         syncPreview().mapErr((e) =>
           logError("preview: syncPreview after decode failure failed:", e)
         );

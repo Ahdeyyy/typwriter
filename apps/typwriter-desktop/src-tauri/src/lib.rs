@@ -8,7 +8,7 @@ mod world;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use compiler::PreviewPipeline;
+use compiler::{parse_fingerprint, PreviewPipeline};
 use tauri::{Emitter, Manager};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 use typst_kit::fonts::FontSearcher;
@@ -54,6 +54,43 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
     builder
+        .register_uri_scheme_protocol("previewimg", |ctx, request| {
+            // URL form on Windows/Android: http://previewimg.localhost/{fingerprint}.png
+            // URL form on macOS/iOS/Linux: previewimg://localhost/{fingerprint}.png
+            //
+            // The path is `/{fingerprint}[.png]`. We strip the leading `/`
+            // (and the optional `.png` extension is tolerated by
+            // `parse_fingerprint`) and look the bytes up in the live
+            // `PreviewPipeline`.
+            let path = request.uri().path().trim_start_matches('/');
+            let not_found = || {
+                tauri::http::Response::builder()
+                    .status(tauri::http::StatusCode::NOT_FOUND)
+                    .header(tauri::http::header::CACHE_CONTROL, "no-store")
+                    .body(Vec::new())
+                    .expect("static response should build")
+            };
+
+            let Some(fp) = parse_fingerprint(path) else {
+                return not_found();
+            };
+            let Some(pipeline) = ctx.app_handle().try_state::<Arc<PreviewPipeline>>() else {
+                return not_found();
+            };
+            let Some(bytes) = pipeline.page_bytes(fp) else {
+                return not_found();
+            };
+
+            tauri::http::Response::builder()
+                .status(tauri::http::StatusCode::OK)
+                .header(tauri::http::header::CONTENT_TYPE, "image/png")
+                // The URL is the content hash, so the bytes are immutable for
+                // the lifetime of the cache entry. Let the webview cache them.
+                .header(tauri::http::header::CACHE_CONTROL, "public, max-age=31536000, immutable")
+                .header(tauri::http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .body(bytes)
+                .expect("png response should build")
+        })
         .plugin(tauri_plugin_android_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
