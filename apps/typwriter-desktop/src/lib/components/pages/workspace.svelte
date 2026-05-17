@@ -174,12 +174,13 @@
           </Button>
         </div>
 
-        <div class="h-full w-full">
-          {#if mobileView === "editor"}
+        <div class="relative h-full w-full">
+          <div class="absolute inset-0" class:hidden={mobileView !== "editor"}>
             <EditorPane />
-          {:else}
+          </div>
+          <div class="absolute inset-0" class:hidden={mobileView !== "preview"}>
             <PreviewMobile />
-          {/if}
+          </div>
         </div>
       {:else}
         <Resizable.PaneGroup direction="horizontal" class="h-full w-full">
