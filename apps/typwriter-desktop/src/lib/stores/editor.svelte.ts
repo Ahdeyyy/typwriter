@@ -49,7 +49,7 @@ export interface TabInfo {
     isLoading: boolean;
 }
 
-const TYPING_PREVIEW_INTERVAL = 75;
+const TYPING_PREVIEW_INTERVAL = 16;
 const IDLE_SAVE_DELAY = 1500;
 const SHADOW_WRITE_DELAY = 50;
 
