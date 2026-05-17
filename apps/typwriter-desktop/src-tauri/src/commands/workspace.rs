@@ -37,6 +37,9 @@ pub fn set_main_file(
 ) -> Result<(), String> {
     let t = Instant::now();
     info!("set_main_file: path={path:?}");
+    if PathBuf::from(&path).is_absolute() {
+        return Err("set_main_file expects a workspace-relative path".into());
+    }
     let result = workspace.set_main_file(PathBuf::from(&path));
     match &result {
         Ok(_) => info!(
@@ -280,7 +283,10 @@ pub fn import_files_from_uris(
             return Err(e);
         }
         let bytes = api.read(uri).map_err(|e| {
-            error!("import_files_from_uris: read failed uri={:?} err=\"{e}\"", uri.uri);
+            error!(
+                "import_files_from_uris: read failed uri={:?} err=\"{e}\"",
+                uri.uri
+            );
             e.to_string()
         })?;
         fs::write(&dst_path, &bytes).map_err(|e| {
@@ -448,10 +454,17 @@ fn copy_dir_to_uri<R: tauri::Runtime>(
     count: &mut u32,
 ) -> Result<(), String> {
     let src_dir = src_root.join(rel_dir);
-    let entries = fs::read_dir(&src_dir)
-        .map_err(|e| format!("Failed to read {}: {e}", src_dir.display()))?;
+    let entries =
+        fs::read_dir(&src_dir).map_err(|e| format!("Failed to read {}: {e}", src_dir.display()))?;
 
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                log::warn!("copy_dir_to_uri: skipped entry in {src_dir:?} err=\"{err}\"");
+                continue;
+            }
+        };
         let name = entry.file_name().to_string_lossy().into_owned();
         if name.starts_with('.') {
             continue;
@@ -478,6 +491,87 @@ fn copy_dir_to_uri<R: tauri::Runtime>(
     Ok(())
 }
 
+/// Convert a SAF tree URI (returned by `AndroidFs.showOpenDirPicker`) to a
+/// filesystem path that `std::fs` can read and write. Supports the common
+/// `content://com.android.externalstorage.documents/tree/<volume>%3A<path>`
+/// form covering both primary storage (`/storage/emulated/0/...`) and named
+/// volumes such as SD cards (`/storage/<id>/...`). File-scheme URIs are
+/// returned verbatim.
+///
+/// Returns an error for URIs that don't map to a filesystem path (e.g.
+/// document providers backed by cloud storage). The caller is expected to
+/// fall back to a different flow in that case.
+#[tauri::command]
+pub fn saf_tree_uri_to_path(uri: String) -> Result<String, String> {
+    info!("saf_tree_uri_to_path: uri={uri:?}");
+    let resolved = resolve_saf_tree_uri(&uri)?;
+    let path = resolved.to_string_lossy().into_owned();
+    info!("saf_tree_uri_to_path: ok path={path:?}");
+    Ok(path)
+}
+
+fn resolve_saf_tree_uri(uri: &str) -> Result<PathBuf, String> {
+    if let Some(stripped) = uri.strip_prefix("file://") {
+        let decoded = percent_decode(stripped);
+        return Ok(PathBuf::from(decoded));
+    }
+
+    const TREE_PREFIX: &str = "content://com.android.externalstorage.documents/tree/";
+    let Some(rest) = uri.strip_prefix(TREE_PREFIX) else {
+        return Err(format!(
+            "Unsupported folder URI scheme. Pick a folder on this device (URI: {uri})"
+        ));
+    };
+
+    // The tree segment may have an additional `/document/...` suffix when the
+    // URI describes a child of the picked root. We only need the tree id —
+    // everything before the first '/', or the whole string if there is none.
+    let tree_id = rest.split_once('/').map_or(rest, |(head, _)| head);
+    let decoded = percent_decode(tree_id);
+    let (volume, rel) = match decoded.split_once(':') {
+        Some((v, r)) => (v, r),
+        None => (decoded.as_str(), ""),
+    };
+
+    let mut path = PathBuf::from(volume_root(volume));
+    if !rel.is_empty() {
+        for segment in rel.split('/') {
+            if !segment.is_empty() {
+                path.push(segment);
+            }
+        }
+    }
+    Ok(path)
+}
+
+fn volume_root(volume: &str) -> String {
+    if volume.eq_ignore_ascii_case("primary") {
+        "/storage/emulated/0".to_string()
+    } else {
+        format!("/storage/{volume}")
+    }
+}
+
+fn percent_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hi = (bytes[i + 1] as char).to_digit(16);
+            let lo = (bytes[i + 2] as char).to_digit(16);
+            if let (Some(h), Some(l)) = (hi, lo) {
+                out.push(((h << 4) | l) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// Mobile flow: list the immediate subdirectories of the mobile workspaces
 /// root. Each entry is a workspace candidate (whether or not it has a
 /// `.typwriter/` metadata dir — `open_folder` will create one if missing).
@@ -486,10 +580,17 @@ pub fn list_mobile_workspaces(app: AppHandle) -> Result<Vec<MobileWorkspaceEntry
     let root = resolve_mobile_workspaces_root(&app)?;
 
     let mut entries: Vec<MobileWorkspaceEntry> = Vec::new();
-    let read_dir = fs::read_dir(&root)
-        .map_err(|e| format!("Failed to read mobile workspaces dir: {e}"))?;
+    let read_dir =
+        fs::read_dir(&root).map_err(|e| format!("Failed to read mobile workspaces dir: {e}"))?;
 
-    for entry in read_dir.flatten() {
+    for entry in read_dir {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                log::warn!("list_mobile_workspaces: skipped entry in {root:?} err=\"{err}\"");
+                continue;
+            }
+        };
         let file_type = match entry.file_type() {
             Ok(t) => t,
             Err(_) => continue,

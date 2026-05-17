@@ -1,4 +1,5 @@
 import { ResultAsync } from 'neverthrow';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import {
     discardShadow,
     formatTypstSource,
@@ -9,7 +10,8 @@ import {
     updateFileContent,
 } from '$lib/ipc/commands';
 import type { CompileReason } from '$lib/types';
-import { workspace, normalize, basename } from './workspace.svelte';
+import { workspace } from './workspace.svelte';
+import { normalize, basename } from '$lib/paths';
 import { logError } from '$lib/logger';
 import { toast } from 'svelte-sonner';
 
@@ -30,6 +32,10 @@ function extOf(path: string): string {
     return dot >= 0 ? path.slice(dot).toLowerCase() : '';
 }
 
+function imageAssetSrc(path: string): string {
+    return convertFileSrc(normalize(path));
+}
+
 export interface TabInfo {
     id: string;
     relPath: string;
@@ -43,8 +49,10 @@ export interface TabInfo {
     isLoading: boolean;
 }
 
-const TYPING_PREVIEW_INTERVAL = 75;
 const IDLE_SAVE_DELAY = 1500;
+// Small enough to feel instant (~half a frame at 60Hz), large enough to
+// swallow same-frame keystroke bursts so we don't fire one IPC per key.
+const TYPING_PREVIEW_INTERVAL = 8;
 
 class EditorStore {
     tabs = $state<TabInfo[]>([]);
@@ -65,9 +73,9 @@ class EditorStore {
     } | null>(null);
     private _contentSyncVersion = 0;
 
-    private _typingPreviewTimers = new Map<string, ReturnType<typeof setTimeout>>();
-    private _typingPreviewLastRun = new Map<string, number>();
+    private _shadowWriteVersions = new Map<string, number>();
     private _idleSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private _typingPreviewTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     requestCursorJump(tabId: string, offset: number): void {
         this.cursorJumpRequest = { tabId, offset };
@@ -146,7 +154,7 @@ class EditorStore {
             if (response.value.type !== 'image') {
                 throw new Error(`Expected image, got ${response.value.type}`);
             }
-            liveTab.imageSrc = `data:${response.value.mime};base64,${response.value.base64}`;
+            liveTab.imageSrc = imageAssetSrc(response.value.path);
             liveTab.content = '';
         } else {
             if (response.value.type !== 'text') {
@@ -230,11 +238,6 @@ class EditorStore {
         tab.content = content;
         tab.hasUnsavedChanges = true;
 
-        updateFileContent(tab.absPath, tab.content).mapErr((err) => {
-            logError('shadow write error:', err);
-            toast.error(`Shadow update failed for ${tab.name}: ${err}`);
-        });
-
         this._scheduleTypingPreview(tab);
         this._scheduleIdleSave(tab);
     }
@@ -266,9 +269,7 @@ class EditorStore {
                 version: ++this._contentSyncVersion,
                 cursor: newCursor,
             };
-            updateFileContent(tab.absPath, formatted).mapErr((err) => {
-                logError('shadow write after format failed:', err);
-            });
+            void this._writeShadowNow(tab);
         };
 
         // Cursor maintenance runs in Rust on UTF-8 bytes; the IPC boundary
@@ -302,15 +303,9 @@ class EditorStore {
         }
 
         this._clearIdleSave(tab.id);
+        await this._flushShadowWrite(tab);
 
         const contentToSave = tab.content;
-        const shadowResult = await updateFileContent(tab.absPath, contentToSave);
-        if (shadowResult.isErr()) {
-            const message = `Failed to stage ${tab.name}: ${shadowResult.error}`;
-            toast.error(message);
-            throw new Error(message);
-        }
-
         const saveResult = await saveFile(tab.absPath, contentToSave);
         if (saveResult.isErr()) {
             const message = `Failed to save ${tab.name}: ${saveResult.error}`;
@@ -372,13 +367,12 @@ class EditorStore {
             }
         }
 
-        this._moveTimerKey(this._typingPreviewTimers, oldId, newId);
         this._moveTimerKey(this._idleSaveTimers, oldId, newId);
-
-        const lastRun = this._typingPreviewLastRun.get(oldId);
-        if (lastRun !== undefined) {
-            this._typingPreviewLastRun.delete(oldId);
-            this._typingPreviewLastRun.set(newId, lastRun);
+        this._moveTimerKey(this._typingPreviewTimers, oldId, newId);
+        const shadowVersion = this._shadowWriteVersions.get(oldId);
+        if (shadowVersion !== undefined) {
+            this._shadowWriteVersions.delete(oldId);
+            this._shadowWriteVersions.set(newId, shadowVersion);
         }
 
         tab.id = newId;
@@ -413,32 +407,25 @@ class EditorStore {
     // timer maps — still resolves to the live tab. Capturing tabId as a
     // string would silently break auto-save and typing preview after rename.
     private _scheduleTypingPreview(tab: TabInfo): void {
-        const now = Date.now();
-        const lastRun = this._typingPreviewLastRun.get(tab.id) ?? 0;
-        const existingTimer = this._typingPreviewTimers.get(tab.id);
-        const remaining = Math.max(0, TYPING_PREVIEW_INTERVAL - (now - lastRun));
-
-        if (remaining === 0 && existingTimer === undefined) {
-            this._fireTypingPreview(tab);
-            return;
-        }
-
-        if (existingTimer !== undefined) {
-            return;
-        }
-
+        // Throttle: if a fire is already scheduled, the latest content will
+        // be picked up when it runs — no need to reset the timer (which
+        // would push the fire further out and slow the trailing edge).
+        if (this._typingPreviewTimers.has(tab.id)) return;
         this._typingPreviewTimers.set(tab.id, setTimeout(() => {
             this._typingPreviewTimers.delete(tab.id);
             this._fireTypingPreview(tab);
-        }, remaining || TYPING_PREVIEW_INTERVAL));
+        }, TYPING_PREVIEW_INTERVAL));
     }
 
     private _fireTypingPreview(tab: TabInfo): void {
         if (!this.tabs.includes(tab) || !tab.isEditable || !tab.hasUnsavedChanges) {
             return;
         }
-        this._typingPreviewLastRun.set(tab.id, Date.now());
-        this._requestPreview('typing');
+        const version = (this._shadowWriteVersions.get(tab.id) ?? 0) + 1;
+        this._shadowWriteVersions.set(tab.id, version);
+        void this._writeShadow(tab, version)
+            .then(() => this._requestPreview('typing'))
+            .catch((err) => logError('shadow write before preview failed:', err));
     }
 
     private _scheduleIdleSave(tab: TabInfo): void {
@@ -454,6 +441,33 @@ class EditorStore {
         });
     }
 
+    private async _writeShadowNow(tab: TabInfo): Promise<void> {
+        const version = (this._shadowWriteVersions.get(tab.id) ?? 0) + 1;
+        this._shadowWriteVersions.set(tab.id, version);
+        await this._writeShadow(tab, version);
+    }
+
+    private async _flushShadowWrite(tab: TabInfo): Promise<void> {
+        const version = this._shadowWriteVersions.get(tab.id);
+        if (version === undefined) return;
+        await this._writeShadow(tab, version);
+    }
+
+    private async _writeShadow(tab: TabInfo, version: number): Promise<void> {
+        if (!this.tabs.includes(tab) || !tab.isEditable) return;
+        if (this._shadowWriteVersions.get(tab.id) !== version) return;
+
+        const result = await updateFileContent(tab.absPath, tab.content);
+        if (result.isErr()) {
+            logError('shadow write error:', result.error);
+            toast.error(`Shadow update failed for ${tab.name}: ${result.error}`);
+            throw new Error(result.error);
+        }
+        if (this._shadowWriteVersions.get(tab.id) === version) {
+            this._shadowWriteVersions.delete(tab.id);
+        }
+    }
+
     private _clearIdleSave(id: string): void {
         const timer = this._idleSaveTimers.get(id);
         if (timer !== undefined) {
@@ -463,12 +477,12 @@ class EditorStore {
     }
 
     private _clearTimers(id: string): void {
-        const previewTimer = this._typingPreviewTimers.get(id);
-        if (previewTimer !== undefined) {
-            clearTimeout(previewTimer);
+        this._shadowWriteVersions.delete(id);
+        const typingTimer = this._typingPreviewTimers.get(id);
+        if (typingTimer !== undefined) {
+            clearTimeout(typingTimer);
             this._typingPreviewTimers.delete(id);
         }
-        this._typingPreviewLastRun.delete(id);
         this._clearIdleSave(id);
     }
 

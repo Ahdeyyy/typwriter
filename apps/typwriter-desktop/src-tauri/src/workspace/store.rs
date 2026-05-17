@@ -5,8 +5,8 @@
 // Stored in a single JSON file ("app_data.json") located in the Tauri app
 // data directory.  Two keys are used:
 //
-//   "recent_workspaces"    – JSON array of path strings (max 10, newest first)
-//   "workspace_main_files" – JSON object  { "<root_path>": "<main_file_path>" }
+//   KEY_RECENT_WORKSPACES    – JSON array of path strings (max 10, newest first)
+//   KEY_WORKSPACE_MAIN_FILES – JSON object  { "<root_path>": "<main_file_path>" }
 //
 // Thumbnail PNGs are written directly to `<workspace_root>/.typwriter/thumbnail.png`.
 
@@ -20,6 +20,12 @@ use tauri_plugin_store::StoreExt;
 
 const STORE_FILE: &str = "app_data.json";
 const MAX_RECENT: usize = 10;
+
+// JSON keys inside the store file. Keep all references to these strings
+// going through these constants so a rename can never silently drift.
+const KEY_RECENT_WORKSPACES: &str = "recent_workspaces";
+const KEY_WORKSPACE_MAIN_FILES: &str = "workspace_main_files";
+const KEY_WORKSPACE_OPEN_TABS: &str = "workspace_open_tabs";
 
 // ─── Recent workspaces ────────────────────────────────────────────────────────
 
@@ -35,7 +41,7 @@ pub fn add_recent_workspace(handle: &AppHandle, root: &Path) {
     let path_str = root.to_string_lossy().to_string();
 
     let mut list: Vec<String> = store
-        .get("recent_workspaces")
+        .get(KEY_RECENT_WORKSPACES)
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
 
@@ -48,7 +54,7 @@ pub fn add_recent_workspace(handle: &AppHandle, root: &Path) {
     // Cap at MAX_RECENT.
     list.truncate(MAX_RECENT);
 
-    store.set("recent_workspaces", json!(list));
+    store.set(KEY_RECENT_WORKSPACES, json!(list));
     let _ = store.save();
     info!(
         "store: added recent workspace ({:.1}ms)",
@@ -64,13 +70,13 @@ pub fn remove_recent_workspace(handle: &AppHandle, path: &str) {
     };
 
     let mut list: Vec<String> = store
-        .get("recent_workspaces")
+        .get(KEY_RECENT_WORKSPACES)
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
 
     list.retain(|p| p != path);
 
-    store.set("recent_workspaces", json!(list));
+    store.set(KEY_RECENT_WORKSPACES, json!(list));
     let _ = store.save();
     info!("store: removed recent workspace {path:?}");
 }
@@ -82,7 +88,7 @@ pub fn clear_recent_workspaces(handle: &AppHandle) {
         return;
     };
 
-    store.set("recent_workspaces", json!(Vec::<String>::new()));
+    store.set(KEY_RECENT_WORKSPACES, json!(Vec::<String>::new()));
     let _ = store.save();
     info!("store: cleared recent workspaces");
 }
@@ -94,7 +100,7 @@ pub fn get_recent_workspaces(handle: &AppHandle) -> Vec<String> {
     };
 
     store
-        .get("recent_workspaces")
+        .get(KEY_RECENT_WORKSPACES)
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default()
 }
@@ -113,7 +119,7 @@ pub fn set_workspace_main_file(handle: &AppHandle, root: &Path, main_file: &Path
     let main_val = main_file.to_string_lossy().to_string();
 
     let mut map: serde_json::Map<String, JsonValue> = store
-        .get("workspace_main_files")
+        .get(KEY_WORKSPACE_MAIN_FILES)
         .and_then(|v| {
             if let JsonValue::Object(m) = v {
                 Some(m)
@@ -125,7 +131,7 @@ pub fn set_workspace_main_file(handle: &AppHandle, root: &Path, main_file: &Path
 
     map.insert(root_key, json!(main_val));
 
-    store.set("workspace_main_files", JsonValue::Object(map));
+    store.set(KEY_WORKSPACE_MAIN_FILES, JsonValue::Object(map));
     let _ = store.save();
     info!(
         "store: set workspace main file ({:.1}ms)",
@@ -140,7 +146,7 @@ pub fn get_workspace_main_file(handle: &AppHandle, root: &Path) -> Option<String
     let root_key = root.to_string_lossy().to_string();
 
     let map: serde_json::Map<String, JsonValue> =
-        store.get("workspace_main_files").and_then(|v| {
+        store.get(KEY_WORKSPACE_MAIN_FILES).and_then(|v| {
             if let JsonValue::Object(m) = v {
                 Some(m)
             } else {
@@ -171,7 +177,7 @@ pub fn save_workspace_tabs(
     let root_key = root.to_string_lossy().to_string();
 
     let mut map: serde_json::Map<String, JsonValue> = store
-        .get("workspace_open_tabs")
+        .get(KEY_WORKSPACE_OPEN_TABS)
         .and_then(|v| {
             if let JsonValue::Object(m) = v {
                 Some(m)
@@ -189,7 +195,7 @@ pub fn save_workspace_tabs(
         }),
     );
 
-    store.set("workspace_open_tabs", JsonValue::Object(map));
+    store.set(KEY_WORKSPACE_OPEN_TABS, JsonValue::Object(map));
     let _ = store.save();
     info!(
         "store: saved workspace tabs ({:.1}ms)",
@@ -206,7 +212,7 @@ pub fn get_workspace_tabs(
     let root_key = root.to_string_lossy().to_string();
 
     let map: serde_json::Map<String, JsonValue> =
-        store.get("workspace_open_tabs").and_then(|v| {
+        store.get(KEY_WORKSPACE_OPEN_TABS).and_then(|v| {
             if let JsonValue::Object(m) = v {
                 Some(m)
             } else {

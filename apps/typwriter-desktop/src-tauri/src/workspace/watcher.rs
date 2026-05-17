@@ -149,7 +149,13 @@ fn is_relevant(event: &Event) -> bool {
 }
 
 fn is_ignored_path(root: &Path, path: &Path) -> bool {
-    let rel = path.strip_prefix(root).unwrap_or(path);
+    // notify only fires for paths under what we watch, so strip_prefix should
+    // always succeed. If it doesn't, the event is outside our scope — treat
+    // it as ignored rather than scanning unrelated parent components for
+    // accidental name matches (e.g. a user's "~/node_modules").
+    let Ok(rel) = path.strip_prefix(root) else {
+        return true;
+    };
     rel.components().any(|component| match component {
         Component::Normal(name) => {
             let name = name.to_string_lossy();

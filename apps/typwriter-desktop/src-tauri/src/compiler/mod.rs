@@ -11,6 +11,7 @@ mod compile;
 mod diff;
 mod render;
 
+pub use cache::{fingerprint_to_hex, parse_fingerprint};
 pub use compile::{
     collect_workspace_diagnostics, compile_document, dedup_merge, CompileOutput,
     SerializedDiagnostic,
@@ -18,12 +19,19 @@ pub use compile::{
 pub use diff::{diff_pages, fingerprint_pages, PageFingerprint};
 pub use render::render_page;
 
-use std::{sync::Arc, thread, time::Instant};
+use std::{
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc::{self, Receiver, Sender},
+        Arc,
+    },
+    thread,
+    time::Instant,
+};
 
 use log::{error, info, warn};
 use parking_lot::Mutex;
 
-use base64::Engine;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
@@ -49,8 +57,10 @@ struct TotalPagesPayload {
 #[derive(Serialize, Clone)]
 struct PageUpdatedPayload {
     index: usize,
-    // Base64-encoded PNG
-    data: String,
+    // Hex-encoded `PageFingerprint`. The webview fetches the PNG bytes from
+    // `previewimg://localhost/{fingerprint}.png`, which keeps the IPC event
+    // tiny and lets the browser cache by URL.
+    fingerprint: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -192,9 +202,17 @@ fn parse_pdf_standard(s: &str) -> Result<typst_pdf::PdfStandards, String> {
 
 #[derive(Default)]
 struct CompileQueueState {
-    is_compiling: bool,
-    pending_reason: Option<CompileReason>,
     next_revision: u64,
+}
+
+/// Drain every pending request from `rx` and return the most recent reason,
+/// falling back to `initial` if the channel was already empty.
+fn drain_latest_reason(rx: &Receiver<CompileReason>, initial: CompileReason) -> CompileReason {
+    let mut latest = initial;
+    while let Ok(reason) = rx.try_recv() {
+        latest = reason;
+    }
+    latest
 }
 
 pub struct PreviewPipeline {
@@ -211,10 +229,14 @@ pub struct PreviewPipeline {
     // Used to prioritise rendering so the user sees instant updates.
     visible_page: Mutex<usize>,
     compile_queue: Mutex<CompileQueueState>,
+    compile_tx: Sender<CompileReason>,
+    compile_rx: Mutex<Option<Receiver<CompileReason>>>,
+    request_counter: AtomicU64,
 }
 
 impl PreviewPipeline {
     pub fn new(world: Arc<EditorWorld>, app_handle: AppHandle) -> Self {
+        let (compile_tx, compile_rx) = mpsc::channel();
         Self {
             world,
             last_fingerprints: Mutex::new(Vec::new()),
@@ -224,7 +246,20 @@ impl PreviewPipeline {
             zoom: Mutex::new(2.0),
             visible_page: Mutex::new(0),
             compile_queue: Mutex::new(CompileQueueState::default()),
+            compile_tx,
+            compile_rx: Mutex::new(Some(compile_rx)),
+            request_counter: AtomicU64::new(0),
         }
+    }
+
+    pub fn start_worker(self: &Arc<Self>) {
+        let Some(rx) = self.compile_rx.lock().take() else {
+            return;
+        };
+        let pipeline = Arc::clone(self);
+        thread::spawn(move || {
+            pipeline.run_compile_worker(rx);
+        });
     }
 
     pub fn invalidate_cache(&self) {
@@ -237,23 +272,30 @@ impl PreviewPipeline {
     /// (e.g. the popped-out preview window) needs to populate its UI from the
     /// existing compiled state without forcing a recompile.
     pub fn emit_current_state(&self) {
-        let fps = self.last_fingerprints.lock().clone();
-        let _ = self.app_handle.emit(
-            "preview:total-pages",
-            TotalPagesPayload { count: fps.len() },
-        );
-        let mut cache = self.page_cache.lock();
-        for (idx, fp) in fps.iter().enumerate() {
-            if let Some(b64) = cache.get(*fp) {
-                let _ = self.app_handle.emit(
-                    "preview:page-updated",
-                    PageUpdatedPayload {
-                        index: idx,
-                        data: b64.clone(),
-                    },
-                );
-            }
+        // Snapshot fingerprints under the lock; bytes live in the cache and
+        // are fetched on demand via the `previewimg` URI scheme.
+        let fingerprints: Vec<PageFingerprint> = self.last_fingerprints.lock().clone();
+        let count = fingerprints.len();
+
+        let _ = self
+            .app_handle
+            .emit("preview:total-pages", TotalPagesPayload { count });
+        for (idx, fp) in fingerprints.into_iter().enumerate() {
+            let _ = self.app_handle.emit(
+                "preview:page-updated",
+                PageUpdatedPayload {
+                    index: idx,
+                    fingerprint: fingerprint_to_hex(fp),
+                },
+            );
         }
+    }
+
+    /// Look up the PNG bytes for a fingerprint. Used by the `previewimg`
+    /// URI scheme handler to serve images to the webview without going
+    /// through the JS bridge.
+    pub fn page_bytes(&self, fp: PageFingerprint) -> Option<Vec<u8>> {
+        self.page_cache.lock().get(fp).cloned()
     }
 
     pub fn set_zoom(&self, zoom: f32) {
@@ -266,53 +308,45 @@ impl PreviewPipeline {
     }
 
     pub fn request_compile(self: &Arc<Self>, reason: CompileReason) {
-        let start_request = {
-            let mut queue = self.compile_queue.lock();
-            if queue.is_compiling {
-                queue.pending_reason = Some(reason);
-                None
-            } else {
-                queue.is_compiling = true;
-                queue.next_revision += 1;
-                Some((queue.next_revision, reason))
-            }
-        };
-
-        let Some((revision, reason)) = start_request else {
-            return;
-        };
-
-        let pipeline = Arc::clone(self);
-        thread::spawn(move || {
-            pipeline.run_compile_loop(revision, reason);
-        });
+        self.request_counter.fetch_add(1, Ordering::Relaxed);
+        if let Err(err) = self.compile_tx.send(reason) {
+            error!("request_compile: worker queue send failed err=\"{err}\"");
+        }
     }
 
-    fn run_compile_loop(self: Arc<Self>, mut revision: u64, mut reason: CompileReason) {
+    fn run_compile_worker(self: Arc<Self>, rx: Receiver<CompileReason>) {
+        // Carry the next reason between iterations so we can distinguish
+        // "already-queued work" (skip the Idle event) from "channel empty"
+        // (announce Idle, then block for the next request).
+        let mut pending: Option<CompileReason> = None;
         loop {
-            self.emit_compile_state(CompileStatus::Started, revision, reason);
-            self.compile_and_emit(revision, reason);
-
-            let next = {
-                let mut queue = self.compile_queue.lock();
-                if let Some(next_reason) = queue.pending_reason.take() {
-                    queue.next_revision += 1;
-                    Some((queue.next_revision, next_reason))
-                } else {
-                    queue.is_compiling = false;
-                    None
-                }
+            let initial = match pending.take() {
+                Some(r) => r,
+                None => match rx.recv() {
+                    Ok(r) => r,
+                    Err(_) => return, // channel closed
+                },
             };
 
-            match next {
-                Some((next_revision, next_reason)) => {
-                    revision = next_revision;
-                    reason = next_reason;
-                }
-                None => {
+            // Coalesce: drain any extra requests that piled up while we were
+            // busy, keeping only the most recent reason.
+            let reason = drain_latest_reason(&rx, initial);
+
+            let request_mark = self.request_counter.load(Ordering::Acquire);
+            let revision = {
+                let mut queue = self.compile_queue.lock();
+                queue.next_revision += 1;
+                queue.next_revision
+            };
+            self.emit_compile_state(CompileStatus::Started, revision, reason);
+            self.compile_and_emit(revision, reason, request_mark);
+
+            match rx.try_recv() {
+                Ok(next) => pending = Some(next),
+                Err(mpsc::TryRecvError::Empty) => {
                     self.emit_compile_state(CompileStatus::Idle, revision, reason);
-                    break;
                 }
+                Err(mpsc::TryRecvError::Disconnected) => return,
             }
         }
     }
@@ -343,9 +377,27 @@ impl PreviewPipeline {
         *self.last_document.lock() = None;
     }
 
-    fn compile_and_emit(&self, revision: u64, reason: CompileReason) {
+    fn compile_and_emit(&self, revision: u64, reason: CompileReason, request_mark: u64) {
         let t = Instant::now();
         info!("request_compile: starting revision={revision} reason={reason:?}");
+
+        // With no main file set, typst would synthesise "cannot find main file"
+        // errors on every cycle. Clear preview + diagnostics and bail.
+        if !self.world.has_main() {
+            info!("compile revision={revision} reason={reason:?} skipped — no main file");
+            let old_count = self.last_fingerprints.lock().len();
+            self.clear_preview(old_count);
+            if let Err(err) = self.app_handle.emit(
+                "compile:diagnostics",
+                DiagnosticsPayload {
+                    errors: Vec::new(),
+                    warnings: Vec::new(),
+                },
+            ) {
+                error!("failed to emit compile:diagnostics err=\"{err}\"");
+            }
+            return;
+        }
 
         let CompileOutput {
             document,
@@ -392,6 +444,12 @@ impl PreviewPipeline {
             }
         };
 
+        if self.is_stale_request(request_mark) {
+            info!("compile revision={revision} reason={reason:?} skipped stale render");
+            *self.last_document.lock() = Some(Arc::new(doc));
+            return;
+        }
+
         let new_fps = fingerprint_pages(&doc);
         let old_fps = self.last_fingerprints.lock().clone();
         let (changed_indices, removed_count) = diff_pages(&old_fps, &new_fps);
@@ -412,14 +470,17 @@ impl PreviewPipeline {
         let zoom = *self.zoom.lock();
         let visible_page = *self.visible_page.lock();
 
-        let mut cache_hits: Vec<(usize, String)> = Vec::new();
+        // For each changed index we emit immediately if the cache already
+        // has bytes for that fingerprint. The bytes themselves never cross
+        // the IPC bridge — the webview pulls them via `previewimg://`.
+        let mut cache_hits: Vec<(usize, PageFingerprint)> = Vec::new();
         let mut cache_misses: Vec<usize> = Vec::new();
         {
-            let mut cache = self.page_cache.lock();
+            let cache = self.page_cache.lock();
             for &idx in &changed_indices {
                 let fp = new_fps[idx];
-                if let Some(b64) = cache.get(fp) {
-                    cache_hits.push((idx, b64.clone()));
+                if cache.peek(fp).is_some() {
+                    cache_hits.push((idx, fp));
                 } else {
                     cache_misses.push(idx);
                 }
@@ -427,12 +488,16 @@ impl PreviewPipeline {
         }
 
         cache_hits.sort_by_key(|(idx, _)| if *idx == visible_page { 0 } else { 1 });
-        for (idx, b64) in cache_hits {
+        for (idx, fp) in cache_hits {
+            if self.is_stale_request(request_mark) {
+                info!("compile revision={revision} reason={reason:?} stopped stale cache emit");
+                return;
+            }
             let _ = self.app_handle.emit(
                 "preview:page-updated",
                 PageUpdatedPayload {
                     index: idx,
-                    data: b64,
+                    fingerprint: fingerprint_to_hex(fp),
                 },
             );
         }
@@ -443,17 +508,22 @@ impl PreviewPipeline {
             .partition(|&idx| idx == visible_page);
 
         for idx in &priority_misses {
+            if self.is_stale_request(request_mark) {
+                info!(
+                    "compile revision={revision} reason={reason:?} stopped stale priority render"
+                );
+                return;
+            }
             let fp = new_fps[*idx];
             let page = &doc.pages[*idx];
             match render_page(page, zoom) {
                 Ok(png) => {
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
-                    self.page_cache.lock().insert(fp, b64.clone());
+                    self.page_cache.lock().insert(fp, png);
                     let _ = self.app_handle.emit(
                         "preview:page-updated",
                         PageUpdatedPayload {
                             index: *idx,
-                            data: b64,
+                            fingerprint: fingerprint_to_hex(fp),
                         },
                     );
                 }
@@ -466,6 +536,12 @@ impl PreviewPipeline {
         }
 
         if !rest_misses.is_empty() {
+            if self.is_stale_request(request_mark) {
+                info!(
+                    "compile revision={revision} reason={reason:?} skipped stale background render"
+                );
+                return;
+            }
             let rendered: Vec<(usize, PageFingerprint, Vec<u8>)> = rest_misses
                 .par_iter()
                 .filter_map(|&idx| {
@@ -483,13 +559,16 @@ impl PreviewPipeline {
 
             let mut cache = self.page_cache.lock();
             for (idx, fp, png) in rendered {
-                let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
-                cache.insert(fp, b64.clone());
+                if self.is_stale_request(request_mark) {
+                    info!("compile revision={revision} reason={reason:?} stopped stale page emit");
+                    return;
+                }
+                cache.insert(fp, png);
                 let _ = self.app_handle.emit(
                     "preview:page-updated",
                     PageUpdatedPayload {
                         index: idx,
-                        data: b64,
+                        fingerprint: fingerprint_to_hex(fp),
                     },
                 );
             }
@@ -510,6 +589,10 @@ impl PreviewPipeline {
             render_t.elapsed().as_secs_f64() * 1000.0,
             t.elapsed().as_secs_f64() * 1000.0
         );
+    }
+
+    fn is_stale_request(&self, request_mark: u64) -> bool {
+        self.request_counter.load(Ordering::Acquire) != request_mark
     }
 
     pub fn export_pdf(&self, config: PdfExportConfig) -> Result<(), String> {

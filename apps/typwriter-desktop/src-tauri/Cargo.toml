@@ -48,6 +48,7 @@ tauri-plugin-android-fs = { version = "=28.1.0", features = [
     # For notification options
     "notification_permission"
 ] }
+thiserror = "2.0.18"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"

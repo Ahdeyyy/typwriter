@@ -19,6 +19,7 @@
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
   import FileTree from "$lib/components/sidebar/filetree.svelte";
+  import FileTreeMobile from "$lib/components/sidebar/filetree.mobile.svelte";
   import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
   import ModeSwitcher from "./mode-switcher.svelte";
   import type { RecentWorkspaceEntry } from "$lib/types";
@@ -179,7 +180,11 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
   <!-- ─── Content: file tree or diagnostics ─────────────────────────────────── -->
   <Sidebar.Content class="group-data-[collapsible=icon]:hidden">
     {#if activeSection === "files"}
-      <FileTree />
+      {#if platform.isMobile}
+        <FileTreeMobile />
+      {:else}
+        <FileTree />
+      {/if}
     {:else}
       <DiagnosticsPane onclose={() => sidebarCtx.setOpen(false)} />
     {/if}

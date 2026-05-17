@@ -63,6 +63,7 @@
   //   githubLightTheme,
   //   githubLightHighlightStyle,
   // } from "$lib/typst-codemirror-lang/lightTheme.js";
+  import { untrack } from "svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
@@ -286,14 +287,14 @@
         {
           key: "Mod-f",
           run: () => {
-            editorSearch.openPanel(false);
+            editorSearch.toggleFindPanel();
             return true;
           },
         },
         {
           key: "Mod-h",
           run: () => {
-            editorSearch.openPanel(true);
+            editorSearch.toggleReplacePanel();
             return true;
           },
         },
@@ -657,19 +658,42 @@
   });
 
   // ── Diagnostics → CodeMirror lint markers
-  $effect(() => {
+  //
+  // Two effects: one that fans out when the diagnostics themselves change
+  // (file boundaries may have moved, so every tab's view needs a refresh),
+  // and one that pushes only to the newly mounted view on tab switch. The
+  // previous single-effect version walked every tabView on every tab switch,
+  // re-dispatching unchanged diagnostics to background tabs.
+  function applyDiagnosticsToView(tabId: string, view: EditorView) {
+    const tab = editor.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
     const allDiags = [...diagnostics.errors, ...diagnostics.warnings];
-    const _ = mountedTabId; // re-run when active tab changes
+    const marks = allDiags
+      .filter((d) => d.file_path === tab.relPath)
+      .map((d) => toCMDiagnostic(d, view))
+      .filter((d): d is CMDiagnostic => d !== null);
+    view.dispatch(setDiagnostics(view.state, marks));
+  }
 
-    for (const [tabId, view] of tabViews) {
-      const tab = editor.tabs.find((t) => t.id === tabId);
-      if (!tab) continue;
-      const marks = allDiags
-        .filter((d) => d.file_path === tab.relPath)
-        .map((d) => toCMDiagnostic(d, view))
-        .filter((d): d is CMDiagnostic => d !== null);
-      view.dispatch(setDiagnostics(view.state, marks));
-    }
+  $effect(() => {
+    // Track diagnostics + tab list so this re-runs when either changes.
+    diagnostics.errors;
+    diagnostics.warnings;
+    editor.tabs;
+    untrack(() => {
+      for (const [tabId, view] of tabViews) {
+        applyDiagnosticsToView(tabId, view);
+      }
+    });
+  });
+
+  $effect(() => {
+    const id = mountedTabId;
+    if (!id) return;
+    untrack(() => {
+      const view = tabViews.get(id);
+      if (view) applyDiagnosticsToView(id, view);
+    });
   });
 </script>
 

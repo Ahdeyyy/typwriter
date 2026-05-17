@@ -2,11 +2,12 @@
   import { onMount, onDestroy } from "svelte";
   import { page } from "@/stores/page.svelte";
   import Button from "../ui/button/button.svelte";
-  import { getRecentWorkspaces, createWorkspace, isFontsLoaded, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath, getMobileWorkspacesDir, listMobileWorkspaces, type MobileWorkspaceEntry } from "$lib/ipc/commands";
+  import { getRecentWorkspaces, createWorkspace, isFontsLoaded, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath, safTreeUriToPath } from "$lib/ipc/commands";
   import { onAppFontsLoaded, type UnlistenFn } from "$lib/ipc/events";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
+  import { AndroidFs } from "tauri-plugin-android-fs-api";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, File01Icon, KeyboardIcon } from "@hugeicons/core-free-icons";
   import { openUrl, openPath } from "@tauri-apps/plugin-opener";
@@ -31,12 +32,28 @@
   let newWorkspaceParent = $state("");
   let newWorkspaceCreating = $state(false);
 
-  // Mobile: pick from a list of existing workspaces in the auto-managed dir.
-  let mobilePickerOpen = $state(false);
-  let mobileWorkspaces = $state<MobileWorkspaceEntry[]>([]);
-  let mobileWorkspacesLoading = $state(false);
-
   const displayPath = (path: string) => platform.displayPath(path);
+
+  /** Mobile folder picker: opens the SAF directory picker, converts the
+   *  returned tree URI into a filesystem path the workspace commands can
+   *  use. Returns null when the user cancels. */
+  async function pickMobileFolder(): Promise<string | null> {
+    try {
+      const uri = await AndroidFs.showOpenDirPicker({ localOnly: true });
+      if (!uri) return null;
+      const result = await safTreeUriToPath(uri.uri);
+      if (result.isErr()) {
+        logError("safTreeUriToPath failed:", result.error);
+        toast.error(`Couldn't use that folder: ${result.error}`);
+        return null;
+      }
+      return result.value;
+    } catch (err) {
+      logError("mobile folder picker failed:", err);
+      toast.error(`Folder picker failed: ${err}`);
+      return null;
+    }
+  }
 
   // ── Font readiness ──────────────────────────────────────────────────────────
 
@@ -119,26 +136,12 @@
   }
 
   async function handleOpenNew() {
-    if (platform.isMobile) {
-      // Mobile: no OS folder picker — list workspaces in the auto-managed dir.
-      mobilePickerOpen = true;
-      mobileWorkspacesLoading = true;
-      const result = await listMobileWorkspaces();
-      mobileWorkspacesLoading = false;
-      result.match(
-        (entries) => { mobileWorkspaces = entries; },
-        (err) => {
-          logError("Failed to list mobile workspaces:", err);
-          toast.error(`Failed to list workspaces: ${err}`);
-        },
-      );
-      return;
-    }
-
-    const selected = await openDialog({ directory: true, multiple: false });
+    const selected = platform.isMobile
+      ? await pickMobileFolder()
+      : await openDialog({ directory: true, multiple: false });
     if (!selected) return;
 
-    const result = await workspace.init(selected);
+    const result = await workspace.init(selected as string);
     result.match(
       () => { page.navigate("workspace"); },
       (err) => {
@@ -149,47 +152,13 @@
   }
 
   async function handleSelectParentFolder() {
-    if (platform.isMobile) {
-      const result = await getMobileWorkspacesDir();
-      result.match(
-        (dir) => { newWorkspaceParent = dir; },
-        (err) => {
-          logError("Failed to resolve mobile workspaces dir:", err);
-          toast.error(`Failed to resolve workspaces folder: ${err}`);
-        },
-      );
-      return;
-    }
-
-    const selected = await openDialog({ directory: true, multiple: false });
+    const selected = platform.isMobile
+      ? await pickMobileFolder()
+      : await openDialog({ directory: true, multiple: false });
     if (selected) {
-      newWorkspaceParent = selected;
+      newWorkspaceParent = selected as string;
     }
   }
-
-  async function handlePickMobileWorkspace(path: string) {
-    mobilePickerOpen = false;
-    const result = await workspace.init(path);
-    result.match(
-      () => { page.navigate("workspace"); },
-      (err) => {
-        logError("Failed to open workspace:", err);
-        toast.error(`Failed to open workspace: ${err}`);
-      },
-    );
-  }
-
-  // On mobile, auto-fill the parent folder when the New Workspace dialog opens.
-  $effect(() => {
-    if (newWorkspaceOpen && platform.isMobile && !newWorkspaceParent) {
-      getMobileWorkspacesDir().then((res) => {
-        res.match(
-          (dir) => { newWorkspaceParent = dir; },
-          (err) => logError("Failed to resolve mobile workspaces dir:", err),
-        );
-      });
-    }
-  });
 
   async function handleCreateWorkspace() {
     if (!newWorkspaceName.trim()) {
@@ -389,12 +358,8 @@
         <Dialog.Header>
           <Dialog.Title>New Workspace</Dialog.Title>
           <Dialog.Description>
-            {#if platform.isMobile}
-              Name your new workspace. It will be created in the Typwriter folder inside Documents.
-            {:else}
-              Choose a location and name for your new workspace. A folder with a
-              <code>.typwriter</code> metadata directory will be created inside.
-            {/if}
+            Choose a location and name for your new workspace. A folder with a
+            <code>.typwriter</code> metadata directory will be created inside.
           </Dialog.Description>
         </Dialog.Header>
 
@@ -411,39 +376,33 @@
             />
           </div>
 
-          {#if !platform.isMobile}
-            <!-- Location picker (desktop only) -->
-            <div class="flex flex-col gap-1.5">
-              <label for="ws-location" class="text-sm font-medium">Location</label>
-              <div class="flex gap-2">
-                <Input
-                  readonly
-                  id="ws-location"
-                  value={newWorkspaceParent}
-                  placeholder="Select a folder…"
-                  class="flex-1 cursor-default text-muted-foreground"
-                  disabled={newWorkspaceCreating}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onclick={handleSelectParentFolder}
-                  disabled={newWorkspaceCreating}
-                >
-                  Browse
-                </Button>
-              </div>
-              {#if newWorkspaceParent && newWorkspaceName.trim()}
-                <p class="text-xs text-muted-foreground">
-                  Will create: {displayPath(newWorkspaceParent)}/{newWorkspaceName.trim()}
-                </p>
-              {/if}
+          <!-- Location picker -->
+          <div class="flex flex-col gap-1.5">
+            <label for="ws-location" class="text-sm font-medium">Location</label>
+            <div class="flex gap-2">
+              <Input
+                readonly
+                id="ws-location"
+                value={newWorkspaceParent}
+                placeholder="Select a folder…"
+                class="flex-1 cursor-default text-muted-foreground"
+                disabled={newWorkspaceCreating}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onclick={handleSelectParentFolder}
+                disabled={newWorkspaceCreating}
+              >
+                Browse
+              </Button>
             </div>
-          {:else if newWorkspaceParent && newWorkspaceName.trim()}
-            <p class="text-xs text-muted-foreground break-all">
-              Will create: {newWorkspaceParent}/{newWorkspaceName.trim()}
-            </p>
-          {/if}
+            {#if newWorkspaceParent && newWorkspaceName.trim()}
+              <p class="text-xs text-muted-foreground break-all">
+                Will create: {displayPath(newWorkspaceParent)}/{newWorkspaceName.trim()}
+              </p>
+            {/if}
+          </div>
         </div>
 
         <Dialog.Footer>
@@ -515,49 +474,5 @@
     {/if}
   </div>
   </main>
-
-  <!-- Mobile: open-folder picker over the auto-managed workspaces dir -->
-  <Dialog.Root bind:open={mobilePickerOpen}>
-    <Dialog.Content class="sm:max-w-md">
-      <Dialog.Header>
-        <Dialog.Title>Open Workspace</Dialog.Title>
-        <Dialog.Description>
-          Workspaces stored in the Typwriter folder inside Documents.
-        </Dialog.Description>
-      </Dialog.Header>
-
-      <div class="flex max-h-[50vh] flex-col gap-1.5 overflow-y-auto py-2">
-        {#if mobileWorkspacesLoading}
-          <p class="py-6 text-center text-sm text-muted-foreground">Loading…</p>
-        {:else if mobileWorkspaces.length === 0}
-          <p class="py-6 text-center text-sm text-muted-foreground">
-            No workspaces yet. Create one with “New Workspace”.
-          </p>
-        {:else}
-          {#each mobileWorkspaces as entry (entry.path)}
-            <Button
-              variant="outline"
-              class="h-auto md:h-auto w-full justify-start gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-left font-normal hover:bg-accent hover:text-accent-foreground"
-              onclick={() => handlePickMobileWorkspace(entry.path)}
-            >
-              <HugeiconsIcon icon={Folder01Icon} class="size-5 shrink-0 text-muted-foreground" />
-              <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium text-foreground">{entry.name}</p>
-                <p class="truncate text-xs text-muted-foreground">{displayPath(entry.path)}</p>
-              </div>
-            </Button>
-          {/each}
-        {/if}
-      </div>
-
-      <Dialog.Footer>
-        <Dialog.Close>
-          {#snippet child({ props })}
-            <Button {...props} variant="ghost">Cancel</Button>
-          {/snippet}
-        </Dialog.Close>
-      </Dialog.Footer>
-    </Dialog.Content>
-  </Dialog.Root>
 </div>
 </Tooltip.Provider>

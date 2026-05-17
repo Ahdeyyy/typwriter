@@ -7,6 +7,7 @@
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { basename } from "$lib/paths";
   import type { SerializedDiagnostic } from "$lib/types";
 
   interface Props {
@@ -33,10 +34,6 @@
   });
 
   const totalCount = $derived(diagnostics.errors.length + diagnostics.warnings.length);
-
-  function basename(path: string): string {
-    return path.split(/[/\\]/).pop() ?? path;
-  }
 
   function lineColToOffset(content: string, line: number, col: number): number {
     const lines = content.split("\n");

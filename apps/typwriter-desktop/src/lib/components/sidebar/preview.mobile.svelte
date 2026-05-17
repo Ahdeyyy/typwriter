@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
     ZoomInAreaIcon,
@@ -16,8 +17,10 @@
   import { workspace } from "$lib/stores/workspace.svelte";
   import { Button } from "$lib/components/ui/button";
   import { PreviewController } from "./preview-controller.svelte";
+  import { buildPreviewUrl } from "$lib/preview-url";
 
   const ctrl = new PreviewController();
+  onDestroy(() => ctrl.destroy());
 
   $effect(() => ctrl.syncPagesEffect());
   $effect(() => ctrl.scrollTargetEffect());
@@ -131,7 +134,7 @@
               onclick={(e) => ctrl.handlePageClick(e, ctrl.visiblePage)}
             >
               <img
-                src="data:image/png;base64,{ctrl.committedPages[ctrl.visiblePage]}"
+                src={buildPreviewUrl(ctrl.committedPages[ctrl.visiblePage]!)}
                 alt="Page {ctrl.visiblePage + 1}"
                 draggable="false"
                 class="block max-w-full"
@@ -169,7 +172,7 @@
                 onclick={(e) => ctrl.handlePageClick(e, i)}
               >
                 <img
-                  src="data:image/png;base64,{ctrl.committedPages[i]}"
+                  src={buildPreviewUrl(ctrl.committedPages[i]!)}
                   alt="Page {i + 1}"
                   draggable="false"
                   class="block max-w-full"

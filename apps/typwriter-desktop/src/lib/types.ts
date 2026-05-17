@@ -43,7 +43,7 @@ export type JumpResponse =
 /** Internally-tagged union (discriminant: `type`). */
 export type FileContentResponse =
     | { type: 'text'; content: string }
-    | { type: 'image'; base64: string; mime: string }
+    | { type: 'image'; path: string; mime: string }
     | { type: 'unsupported' };
 
 // ─── Click / Jump ─────────────────────────────────────────────────────────────
@@ -125,8 +125,9 @@ export interface TotalPagesPayload {
 
 export interface PageUpdatedPayload {
     index: number;
-    /** Base64-encoded PNG */
-    data: string;
+    /** Hex-encoded page fingerprint. Use `buildPreviewUrl` to turn this into
+     *  the `previewimg://` URL that the webview fetches the PNG from. */
+    fingerprint: string;
 }
 
 export interface PageRemovedPayload {
