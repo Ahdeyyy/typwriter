@@ -391,7 +391,7 @@
           fontSize: "13px",
           fontFamily: "var(--font-mono, monospace)",
         },
-        ".cm-scroller": { overflow: "auto" },
+        ".cm-scroller": { overflow: "auto", ...(platform.isMobile ? { paddingTop: "3.25rem" } : {}) },
         ".cm-tooltip.cm-tooltip-hover": {
           backgroundColor: "var(--popover)",
           color: "var(--popover-foreground)",
