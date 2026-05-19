@@ -8,6 +8,14 @@ import {
     replaceAll,
 } from '@codemirror/search';
 
+/**
+ * Counting every match in a huge document blocks the main thread, but users
+ * only need a rough sense of "how many" beyond a small ceiling — they navigate
+ * with next/prev, not by jumping to "match #3217 of 9842". Cap counting and
+ * raise the `totalMatchesCapped` flag so the UI can render "5000+".
+ */
+const MAX_MATCH_COUNT = 5000;
+
 class EditorSearchStore {
     open = $state(false);
     replaceVisible = $state(false);
@@ -18,6 +26,7 @@ class EditorSearchStore {
     regex = $state(false);
     regexError = $state<string | null>(null);
     totalMatches = $state(0);
+    totalMatchesCapped = $state(false);
     currentMatch = $state(0);
 
     private _view: EditorView | null = null;
@@ -58,6 +67,25 @@ class EditorSearchStore {
 
     toggleReplace() {
         this.replaceVisible = !this.replaceVisible;
+    }
+
+    /** Ctrl/Cmd+H semantics: if the panel is closed, open it with replace
+     *  visible; if it's already open, toggle the replace row. */
+    toggleReplacePanel() {
+        if (this.open) {
+            this.toggleReplace();
+        } else {
+            this.openPanel(true);
+        }
+    }
+
+    /** Ctrl/Cmd+F semantics: toggle the panel open/closed. */
+    toggleFindPanel() {
+        if (this.open) {
+            this.closePanel();
+        } else {
+            this.openPanel(false);
+        }
     }
 
     setQuery(q: string) {
@@ -105,14 +133,9 @@ class EditorSearchStore {
 
     refreshCounts() {
         const view = this._view;
-        if (!view) {
+        if (!view || !this.query) {
             this.totalMatches = 0;
-            this.currentMatch = 0;
-            this.regexError = null;
-            return;
-        }
-        if (!this.query) {
-            this.totalMatches = 0;
+            this.totalMatchesCapped = false;
             this.currentMatch = 0;
             this.regexError = null;
             return;
@@ -120,6 +143,7 @@ class EditorSearchStore {
         const q = this.buildQuery();
         if (!q.valid) {
             this.totalMatches = 0;
+            this.totalMatchesCapped = false;
             this.currentMatch = 0;
             this.regexError = this.regex ? 'Invalid regular expression' : null;
             return;
@@ -129,16 +153,25 @@ class EditorSearchStore {
         const sel = view.state.selection.main;
         let count = 0;
         let current = 0;
+        let capped = false;
         let item = cursor.next();
         while (!item.done) {
             count++;
             if (item.value.from === sel.from && item.value.to === sel.to) {
                 current = count;
             }
+            if (count >= MAX_MATCH_COUNT) {
+                // Keep scanning a tiny bit further only if we still need to
+                // locate the current selection's match index; otherwise stop.
+                if (current > 0) {
+                    capped = true;
+                    break;
+                }
+            }
             item = cursor.next();
-            if (count > 100000) break;
         }
         this.totalMatches = count;
+        this.totalMatchesCapped = capped;
         this.currentMatch = current;
     }
 

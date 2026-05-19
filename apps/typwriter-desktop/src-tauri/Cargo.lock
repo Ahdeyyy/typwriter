@@ -6819,6 +6819,7 @@ dependencies = [
  "tauri-plugin-os",
  "tauri-plugin-store",
  "tauri-plugin-updater",
+ "thiserror 2.0.18",
  "typst",
  "typst-ide",
  "typst-kit",

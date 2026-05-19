@@ -18,7 +18,26 @@
     }
   });
 
+  function isToggleReplaceShortcut(e: KeyboardEvent): boolean {
+    return (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "h";
+  }
+
+  function isToggleFindShortcut(e: KeyboardEvent): boolean {
+    return (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f";
+  }
+
   function onSearchKey(e: KeyboardEvent) {
+    if (isToggleFindShortcut(e)) {
+      // Intercept before the webview's native finder can grab it.
+      e.preventDefault();
+      editorSearch.toggleFindPanel();
+      return;
+    }
+    if (isToggleReplaceShortcut(e)) {
+      e.preventDefault();
+      editorSearch.toggleReplacePanel();
+      return;
+    }
     if (e.key === "Escape") {
       e.preventDefault();
       editorSearch.closePanel();
@@ -32,6 +51,16 @@
   }
 
   function onReplaceKey(e: KeyboardEvent) {
+    if (isToggleFindShortcut(e)) {
+      e.preventDefault();
+      editorSearch.toggleFindPanel();
+      return;
+    }
+    if (isToggleReplaceShortcut(e)) {
+      e.preventDefault();
+      editorSearch.toggleReplacePanel();
+      return;
+    }
     if (e.key === "Escape") {
       e.preventDefault();
       editorSearch.closePanel();
@@ -49,7 +78,10 @@
     if (editorSearch.regexError) return editorSearch.regexError;
     if (!editorSearch.query) return "";
     if (editorSearch.totalMatches === 0) return "No results";
-    return `${editorSearch.currentMatch || "?"} of ${editorSearch.totalMatches}`;
+    const total = editorSearch.totalMatchesCapped
+      ? `${editorSearch.totalMatches}+`
+      : `${editorSearch.totalMatches}`;
+    return `${editorSearch.currentMatch || "?"} of ${total}`;
   });
 
   const noResults = $derived(
@@ -281,7 +313,7 @@
     min-width: max-content;
   }
 
-  .opt-btn {
+  :global(.opt-btn) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -296,7 +328,7 @@
     transition: background-color 120ms, color 120ms;
   }
 
-  .opt-btn:hover {
+  :global(.opt-btn:hover) {
     background-color: color-mix(in srgb, var(--accent) 60%, transparent);
     color: var(--accent-foreground);
   }
@@ -307,7 +339,7 @@
     color: var(--accent-foreground);
   }
 
-  .action-btn {
+  :global(.action-btn) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -319,12 +351,12 @@
     transition: background-color 120ms;
   }
 
-  .action-btn:hover:not(:disabled) {
+  :global(.action-btn:hover:not(:disabled)) {
     background-color: var(--accent);
     color: var(--accent-foreground);
   }
 
-  .action-btn:disabled {
+  :global(.action-btn:disabled) {
     opacity: 0.4;
     cursor: not-allowed;
   }

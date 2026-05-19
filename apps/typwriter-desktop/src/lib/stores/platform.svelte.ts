@@ -3,19 +3,26 @@
 
 import { platform as tauriPlatform } from "@tauri-apps/plugin-os";
 import { documentDir } from "@tauri-apps/api/path";
+import { normalize } from "$lib/paths";
+
+export type Os = "macos" | "windows" | "linux" | "android" | "ios" | "unknown";
+export type FormFactor = "desktop" | "mobile";
 
 class PlatformStore {
-  os = $state<string>("unknown");
+  os = $state<Os>("unknown");
   documentsDirPrefix = $state("");
 
   isMobile = $derived(this.os === "android" || this.os === "ios");
   isDesktop = $derived(!this.isMobile);
+  formFactor = $derived<FormFactor>(this.isMobile ? "mobile" : "desktop");
+  hasDesktopWindowControls = $derived(this.isDesktop);
+  isMac = $derived(this.os === "macos");
 
   constructor() {
     if (typeof window === "undefined") return;
 
     try {
-      this.os = tauriPlatform();
+      this.os = tauriPlatform() as Os;
     } catch {
       this.os = "unknown";
     }
@@ -37,8 +44,8 @@ class PlatformStore {
   displayPath(path: string): string {
     if (!path) return path;
     if (!this.isMobile || !this.documentsDirPrefix) return path;
-    const normalized = path.replace(/\\/g, "/");
-    const prefix = this.documentsDirPrefix.replace(/\\/g, "/").replace(/\/$/, "");
+    const normalized = normalize(path);
+    const prefix = normalize(this.documentsDirPrefix).replace(/\/$/, "");
     if (normalized.startsWith(prefix + "/")) {
       return normalized.slice(prefix.length + 1);
     }

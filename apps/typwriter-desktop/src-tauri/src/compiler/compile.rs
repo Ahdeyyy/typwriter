@@ -6,6 +6,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
+use log::warn;
 use serde::Serialize;
 use typst::{
     diag::{FileResult, Severity, SourceDiagnostic},
@@ -89,7 +90,7 @@ pub fn collect_workspace_diagnostics(
         let Some(id) = world.path_to_id(&path) else {
             continue;
         };
-        if id == main_id {
+        if Some(id) == main_id {
             continue;
         }
 
@@ -263,9 +264,19 @@ fn walk_typ_files(root: &Path) -> Vec<std::path::PathBuf> {
 fn walk_dir_recursive(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
-        Err(_) => return,
+        Err(err) => {
+            warn!("walk_dir_recursive: failed to read dir={dir:?} err=\"{err}\"");
+            return;
+        }
     };
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                warn!("walk_dir_recursive: skipped entry in dir={dir:?} err=\"{err}\"");
+                continue;
+            }
+        };
         let path = entry.path();
         if path.is_dir() {
             // Skip hidden dirs and common non-source dirs

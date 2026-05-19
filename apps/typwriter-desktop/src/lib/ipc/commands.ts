@@ -43,6 +43,15 @@ export function listMobileWorkspaces() {
     );
 }
 
+/** Android-only: convert a SAF tree URI from `AndroidFs.showOpenDirPicker`
+ *  to a filesystem path that the standard workspace commands can use. */
+export function safTreeUriToPath(uri: string) {
+    return ResultAsync.fromPromise(
+        invoke<string>('saf_tree_uri_to_path', { uri }),
+        toErrString
+    );
+}
+
 export function setMainFile(path: string) {
     return ResultAsync.fromPromise(invoke<void>('set_main_file', { path }), toErrString);
 }

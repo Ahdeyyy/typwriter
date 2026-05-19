@@ -17,11 +17,16 @@
 		AppleLogo,
 		LinuxLogo,
 		Monitor,
-		Code
+		Code,
+		AndroidLogo
 	} from 'phosphor-svelte';
 
 	import showcaseDark from '$lib/assets/showcase_dark.png';
 	import showcaseLight from '$lib/assets/showcase_light.png';
+	import mobileShowcaseDark from '$lib/assets/mobile_showcase_dark.png';
+	import mobileShowcaseLight from '$lib/assets/mobile_showcase_light.png';
+	import mobileEditorDark from '$lib/assets/mobile_showcase_editor_dark.png';
+	import mobileEditorLight from '$lib/assets/mobile_showcase_editor_light.png';
 
 	let { data }: { data: PageData } = $props();
 
@@ -40,6 +45,27 @@
 			(a) => a.name.endsWith('.deb') || a.name.endsWith('.rpm') || a.name.endsWith('.AppImage')
 		)
 	);
+	const androidAssets = $derived(assets.filter((a) => a.name.endsWith('.apk')));
+
+	// Android APK naming scheme (see .github/workflows/android.yml):
+	//   typwriter_${VERSION}_${abi}.apk
+	// The current "latest" release doesn't include the Android build yet,
+	// so the dynamic GitHub API filter above returns []. Until v0.7.0 is
+	// published as a non-draft release, we point at the draft's untagged
+	// asset URLs directly. Once that release is published, the dynamic
+	// filter takes over automatically.
+	const ANDROID_FALLBACK_TAG = 'untagged-e4d32bbff1234ecdd41a';
+	const ANDROID_FALLBACK_VERSION = '0.7.0';
+	const ANDROID_VARIANTS = [
+		{ abi: 'arm64', label: 'ARM64 (.apk)', hint: '64-bit ARM · most phones' },
+		{ abi: 'arm', label: 'ARMv7 (.apk)', hint: '32-bit ARM · older phones' },
+		{ abi: 'x86_64', label: 'x86_64 (.apk)', hint: 'Emulators · x86_64' },
+		{ abi: 'x86', label: 'x86 (.apk)', hint: 'Emulators · x86' }
+	] as const;
+
+	function androidApkUrl(abi: string): string {
+		return `https://github.com/Ahdeyyy/typwriter/releases/download/${ANDROID_FALLBACK_TAG}/typwriter_${ANDROID_FALLBACK_VERSION}_${abi}.apk`;
+	}
 
 	function formatSize(bytes: number): string {
 		return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
@@ -53,6 +79,7 @@
 		if (name.endsWith('.deb')) return 'Debian / Ubuntu (.deb)';
 		if (name.endsWith('.rpm')) return 'Fedora / RHEL (.rpm)';
 		if (name.endsWith('.AppImage')) return 'AppImage';
+		if (name.endsWith('.apk')) return 'Android (.apk)';
 		return name;
 	}
 
@@ -108,8 +135,9 @@
 	<h1 class="mb-4 text-4xl font-bold tracking-tighter sm:text-5xl lg:text-6xl">Typwriter</h1>
 
 	<p class="mx-auto mb-10 max-w-xl text-base text-muted-foreground sm:text-lg">
-		A cross-platform Typst editor for Windows, macOS, and Linux. Write with syntax highlighting and
-		autocomplete, preview your document in real time, and export to PDF, SVG, or PNG.
+		A cross-platform Typst editor for Windows, macOS, Linux, and Android. Write with syntax
+		highlighting and autocomplete, preview your document in real time, and export to PDF, SVG, or
+		PNG.
 	</p>
 
 	<div class="flex flex-wrap items-center justify-center gap-3">
@@ -144,6 +172,51 @@
 	</div>
 </section>
 
+<!-- ─── Mobile ────────────────────────────────────────────── -->
+<section class="mx-auto max-w-5xl px-6 pb-20">
+	<div class="mb-10 text-center">
+		<h2 class="mb-2 text-2xl font-bold tracking-tight">Now on Android</h2>
+		<p class="mx-auto max-w-xl text-sm text-muted-foreground">
+			Take Typwriter with you. The same editor, preview, and export tools.
+		</p>
+	</div>
+
+	<div class="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+		<div class="w-full max-w-[16rem]">
+			<div class="overflow-hidden rounded-sm border border-border shadow-sm">
+				<img
+					src={mobileShowcaseLight}
+					alt="Typwriter mobile app showing the workspace view"
+					class="block w-full object-cover dark:hidden"
+					loading="lazy"
+				/>
+				<img
+					src={mobileShowcaseDark}
+					alt="Typwriter mobile app showing the workspace view"
+					class="hidden w-full object-cover dark:block"
+					loading="lazy"
+				/>
+			</div>
+		</div>
+		<div class="w-full max-w-[16rem]">
+			<div class="overflow-hidden rounded-sm border border-border shadow-sm">
+				<img
+					src={mobileEditorLight}
+					alt="Typwriter mobile editor with live preview"
+					class="block w-full object-cover dark:hidden"
+					loading="lazy"
+				/>
+				<img
+					src={mobileEditorDark}
+					alt="Typwriter mobile editor with live preview"
+					class="hidden w-full object-cover dark:block"
+					loading="lazy"
+				/>
+			</div>
+		</div>
+	</div>
+</section>
+
 <Separator />
 
 <!-- ─── Features ──────────────────────────────────────────── -->
@@ -166,7 +239,7 @@
 	<div class="mb-12 text-center">
 		<h2 class="mb-2 text-2xl font-bold tracking-tight">Download</h2>
 		<p class="text-sm text-muted-foreground">
-			Available for Windows, macOS, and Linux.
+			Available for Windows, macOS, Linux, and Android.
 			{#if version}
 				Latest release: <span class="text-foreground">{version}</span>
 			{/if}
@@ -174,7 +247,7 @@
 	</div>
 
 	<Tabs value="windows" class="mx-auto max-w-xl">
-		<TabsList class="grid w-full grid-cols-3">
+		<TabsList class="grid w-full grid-cols-4">
 			<TabsTrigger value="windows">
 				<Monitor size={14} class="mr-1.5" />
 				Windows
@@ -186,6 +259,10 @@
 			<TabsTrigger value="linux">
 				<LinuxLogo size={14} class="mr-1.5" />
 				Linux
+			</TabsTrigger>
+			<TabsTrigger value="android">
+				<AndroidLogo size={14} class="mr-1.5" />
+				Android
 			</TabsTrigger>
 		</TabsList>
 
@@ -263,6 +340,41 @@
 						<Download size={14} class="mr-2" />
 						View Linux releases
 					</Button>
+				{/if}
+			</div>
+		</TabsContent>
+
+		<!-- Android -->
+		<TabsContent value="android" class="mt-6">
+			<div class="flex flex-col gap-3">
+				{#if androidAssets.length > 0}
+					{#each androidAssets as asset}
+						<Button
+							variant="outline"
+							class="h-auto justify-between px-4 py-3"
+							href={asset.browser_download_url}
+						>
+							<span class="flex items-center gap-2">
+								<Download size={14} />
+								{assetLabel(asset.name)}
+							</span>
+							<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
+						</Button>
+					{/each}
+				{:else}
+					{#each ANDROID_VARIANTS as variant (variant.abi)}
+						<Button
+							variant="outline"
+							class="h-auto justify-between px-4 py-3"
+							href={androidApkUrl(variant.abi)}
+						>
+							<span class="flex items-center gap-2">
+								<Download size={14} />
+								{variant.label}
+							</span>
+							<span class="text-xs text-muted-foreground">{variant.hint}</span>
+						</Button>
+					{/each}
 				{/if}
 			</div>
 		</TabsContent>

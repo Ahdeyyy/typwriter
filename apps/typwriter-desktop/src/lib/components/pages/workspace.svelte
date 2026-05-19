@@ -154,7 +154,7 @@
         <div class="absolute left-2 top-2 z-20">
           <Sidebar.Trigger
             size="icon-lg"
-            class="bg-background/80 backdrop-blur shadow-sm"
+            class="bg-background/80 backdrop-blur shadow-sm rounded-full"
           />
         </div>
 
@@ -163,7 +163,7 @@
           <Button
             variant="ghost"
             size="icon-lg"
-            class="bg-background/80 backdrop-blur shadow-sm"
+            class="bg-background/80 backdrop-blur shadow-sm rounded-full"
             onclick={() => (mobileView = mobileView === "editor" ? "preview" : "editor")}
             aria-label={mobileView === "editor" ? "Show preview" : "Show editor"}
           >
@@ -174,12 +174,13 @@
           </Button>
         </div>
 
-        <div class="h-full w-full">
-          {#if mobileView === "editor"}
+        <div class="relative h-full w-full">
+          <div class="absolute inset-0" class:hidden={mobileView !== "editor"}>
             <EditorPane />
-          {:else}
+          </div>
+          <div class="absolute inset-0" class:hidden={mobileView !== "preview"}>
             <PreviewMobile />
-          {/if}
+          </div>
         </div>
       {:else}
         <Resizable.PaneGroup direction="horizontal" class="h-full w-full">

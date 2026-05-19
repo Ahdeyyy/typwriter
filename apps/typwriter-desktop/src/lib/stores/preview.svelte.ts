@@ -33,6 +33,9 @@ function isPopoutWindow(): boolean {
 const CURSOR_DEBOUNCE = 200;
 
 class PreviewStore {
+    /** Per-page hex fingerprint (null while a page slot exists but no
+     *  render has arrived yet). Rendered PNGs live in the Rust page cache
+     *  and are fetched on demand via the `previewimg` URI scheme. */
     pages = $state<(string | null)[]>([]);
     totalPages = $state<number>(0);
     zoom = $state<number>(2.0);
@@ -69,11 +72,11 @@ class PreviewStore {
             logError('preview: onPreviewTotalPages listener failed:', totalPagesResult.error);
         }
 
-        const updatedResult = await onPreviewPageUpdated(({ index, data }) => {
+        const updatedResult = await onPreviewPageUpdated(({ index, fingerprint }) => {
             while (this.pages.length <= index) {
                 this.pages.push(null);
             }
-            this.pages[index] = data;
+            this.pages[index] = fingerprint;
         });
         if (updatedResult.isOk()) {
             this._unlisteners.push(updatedResult.value);
@@ -142,6 +145,21 @@ class PreviewStore {
         this.lastCompileRevision = 0;
         this.lastCompileReason = 'explicit';
         this.presentationMode = false;
+    }
+
+    /** Drop cached page state from a previous workspace. Listeners and the
+     *  popped-out window state stay intact — only the rendered pages are
+     *  flushed so we don't briefly show the wrong document while the new
+     *  workspace compiles. */
+    clear(): void {
+        if (this._cursorTimer !== null) {
+            clearTimeout(this._cursorTimer);
+            this._cursorTimer = null;
+        }
+        this.pages = [];
+        this.totalPages = 0;
+        this.scrollTarget = null;
+        this.isCompiling = false;
     }
 
     async togglePresentationMode(): Promise<void> {
