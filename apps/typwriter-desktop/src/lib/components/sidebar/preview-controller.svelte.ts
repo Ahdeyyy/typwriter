@@ -20,6 +20,8 @@ const DECODE_MAX_ATTEMPTS = 3;
 const DECODE_RETRY_BASE_MS = 150;
 const STARTUP_RECOVERY_DELAY_MS = 1200;
 const STARTUP_RECOVERY_MAX_ATTEMPTS = 4;
+const WATCHDOG_INTERVAL_MS = 1500;
+const WATCHDOG_RESYNC_AFTER_TICKS = 3;
 
 export class PreviewController {
   // ── Refs / local state ──────────────────────────────────────────────
@@ -36,6 +38,15 @@ export class PreviewController {
   private decodeAttempts = new Map<number, number>();
   private startupRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
   private startupRecoveryAttempts = 0;
+
+  // What fingerprint the actual DOM <img> last successfully loaded for each
+  // slot. The off-DOM `img.decode()` succeeding doesn't guarantee the DOM
+  // element will fetch the same URL — the backend LRU may evict between the
+  // two fetches, leaving the skeleton up forever. Templates call
+  // `notifyImageLoaded` / `notifyImageError` so the watchdog can recover.
+  private renderedFingerprints = new Map<number, string>();
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private stuckTicks = new Map<number, number>();
 
   toolbarWidth = $state(0);
 
@@ -65,6 +76,7 @@ export class PreviewController {
       logError("preview controller: syncPreview on mount failed:", err)
     );
     this.scheduleStartupRecovery();
+    this.startWatchdog();
   }
 
   destroy() {
@@ -72,8 +84,14 @@ export class PreviewController {
       clearTimeout(this.startupRecoveryTimer);
       this.startupRecoveryTimer = null;
     }
+    if (this.watchdogTimer !== null) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
     this.decodeAttempts.clear();
     this.pending.clear();
+    this.renderedFingerprints.clear();
+    this.stuckTicks.clear();
   }
 
   /** If the backend never reports any pages but the workspace has a main
@@ -92,6 +110,71 @@ export class PreviewController {
       );
       this.scheduleStartupRecovery();
     }, STARTUP_RECOVERY_DELAY_MS);
+  }
+
+  /** Periodic check that catches pages stuck on the skeleton — usually
+   *  because the off-DOM decode succeeded but the DOM `<img>` fetch never
+   *  did, or the backend evicted the cached PNG between the two fetches.
+   *  Reactive effects only re-run when `preview.pages` changes, so without
+   *  this timer a stuck slot would stay stuck until the next compile. */
+  private startWatchdog() {
+    if (this.watchdogTimer !== null) return;
+    this.watchdogTimer = setInterval(() => this.runWatchdogTick(), WATCHDOG_INTERVAL_MS);
+  }
+
+  private runWatchdogTick() {
+    const pages = preview.pages;
+    for (let i = 0; i < pages.length; i++) {
+      const fingerprint = pages[i];
+      if (!fingerprint) {
+        this.stuckTicks.delete(i);
+        continue;
+      }
+
+      const committed = this.committedPages[i];
+      const rendered = this.renderedFingerprints.get(i);
+      if (committed === fingerprint && rendered === fingerprint) {
+        this.stuckTicks.delete(i);
+        continue;
+      }
+      if (this.pending.get(i) === fingerprint) {
+        // A decode is already in flight; give it more time.
+        continue;
+      }
+
+      const ticks = (this.stuckTicks.get(i) ?? 0) + 1;
+      this.stuckTicks.set(i, ticks);
+
+      if (ticks >= WATCHDOG_RESYNC_AFTER_TICKS) {
+        // Decode keeps failing — backend may have evicted the cached PNG.
+        // Ask it to resend the current set so the fingerprint round-trips.
+        this.stuckTicks.set(i, 0);
+        syncPreview().mapErr((err) =>
+          logError("preview watchdog: syncPreview failed:", err)
+        );
+      } else {
+        // Reset retry budget and try decoding again.
+        this.decodeAttempts.delete(i);
+        this.attemptDecode(i, fingerprint, 0);
+      }
+    }
+  }
+
+  /** Called from the template when the DOM `<img>` finishes loading. */
+  notifyImageLoaded(i: number, fingerprint: string) {
+    this.renderedFingerprints.set(i, fingerprint);
+    this.stuckTicks.delete(i);
+  }
+
+  /** Called from the template when the DOM `<img>` fails to load. Clears
+   *  the committed slot so the skeleton reappears and re-attempts the
+   *  decode that gates it. */
+  notifyImageError(i: number, fingerprint: string) {
+    this.renderedFingerprints.delete(i);
+    if (this.committedPages[i] === fingerprint) this.committedPages[i] = null;
+    this.pending.delete(i);
+    this.decodeAttempts.delete(i);
+    if (preview.pages[i] === fingerprint) this.attemptDecode(i, fingerprint, 0);
   }
 
   // ── Effects, exposed as methods consumers wire via $effect ──────────
@@ -242,6 +325,8 @@ export class PreviewController {
     // Reset retry budgets so a manual refresh fully re-attempts decode.
     this.decodeAttempts.clear();
     this.pending.clear();
+    this.stuckTicks.clear();
+    this.renderedFingerprints.clear();
     this.startupRecoveryAttempts = 0;
     syncPreview().mapErr((err) =>
       logError("preview controller: syncPreview before refresh failed:", err)

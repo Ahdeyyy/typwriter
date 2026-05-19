@@ -217,6 +217,8 @@
             alt="Page {ctrl.visiblePage + 1}"
             draggable="false"
             class="block h-full w-full object-cover"
+            onload={() => ctrl.notifyImageLoaded(ctrl.visiblePage, ctrl.committedPages[ctrl.visiblePage]!)}
+            onerror={() => ctrl.notifyImageError(ctrl.visiblePage, ctrl.committedPages[ctrl.visiblePage]!)}
           />
         </Button>
       {/if}
@@ -247,6 +249,8 @@
                 alt="Page {ctrl.visiblePage + 1}"
                 draggable="false"
                 class="block max-w-full"
+                onload={() => ctrl.notifyImageLoaded(ctrl.visiblePage, ctrl.committedPages[ctrl.visiblePage]!)}
+                onerror={() => ctrl.notifyImageError(ctrl.visiblePage, ctrl.committedPages[ctrl.visiblePage]!)}
               />
             </Button>
           {:else}
@@ -287,6 +291,8 @@
                   alt="Page {i + 1}"
                   draggable="false"
                   class="block max-w-full"
+                  onload={() => ctrl.notifyImageLoaded(i, ctrl.committedPages[i]!)}
+                  onerror={() => ctrl.notifyImageError(i, ctrl.committedPages[i]!)}
                 />
               </Button>
             {:else}
