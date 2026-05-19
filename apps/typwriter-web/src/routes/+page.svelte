@@ -45,27 +45,20 @@
 			(a) => a.name.endsWith('.deb') || a.name.endsWith('.rpm') || a.name.endsWith('.AppImage')
 		)
 	);
-	const androidAssets = $derived(assets.filter((a) => a.name.endsWith('.apk')));
-
-	// Android APK naming scheme (see .github/workflows/android.yml):
-	//   typwriter_${VERSION}_${abi}.apk
-	// The current "latest" release doesn't include the Android build yet,
-	// so the dynamic GitHub API filter above returns []. Until v0.7.0 is
-	// published as a non-draft release, we point at the draft's untagged
-	// asset URLs directly. Once that release is published, the dynamic
-	// filter takes over automatically.
-	const ANDROID_FALLBACK_TAG = 'untagged-e4d32bbff1234ecdd41a';
-	const ANDROID_FALLBACK_VERSION = '0.7.0';
-	const ANDROID_VARIANTS = [
-		{ abi: 'arm64', label: 'ARM64 (.apk)', hint: '64-bit ARM · most phones' },
-		{ abi: 'arm', label: 'ARMv7 (.apk)', hint: '32-bit ARM · older phones' },
-		{ abi: 'x86_64', label: 'x86_64 (.apk)', hint: 'Emulators · x86_64' },
-		{ abi: 'x86', label: 'x86 (.apk)', hint: 'Emulators · x86' }
-	] as const;
-
-	function androidApkUrl(abi: string): string {
-		return `https://github.com/Ahdeyyy/typwriter/releases/download/${ANDROID_FALLBACK_TAG}/typwriter_${ANDROID_FALLBACK_VERSION}_${abi}.apk`;
-	}
+	// APK asset names follow `typwriter_${VERSION}_${abi}.apk`
+	// (see .github/workflows/android.yml). Sort by preferred ABI so the
+	// 64-bit ARM build — what almost every modern phone wants — comes first.
+	const APK_ABI_ORDER = ['arm64', 'arm', 'x86_64', 'x86'];
+	const androidAssets = $derived(
+		assets
+			.filter((a) => a.name.endsWith('.apk'))
+			.slice()
+			.sort((a, b) => {
+				const ia = APK_ABI_ORDER.findIndex((abi) => a.name.endsWith(`_${abi}.apk`));
+				const ib = APK_ABI_ORDER.findIndex((abi) => b.name.endsWith(`_${abi}.apk`));
+				return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+			})
+	);
 
 	function formatSize(bytes: number): string {
 		return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
@@ -79,6 +72,11 @@
 		if (name.endsWith('.deb')) return 'Debian / Ubuntu (.deb)';
 		if (name.endsWith('.rpm')) return 'Fedora / RHEL (.rpm)';
 		if (name.endsWith('.AppImage')) return 'AppImage';
+		// Order matters: check `arm64` before `arm`, `x86_64` before `x86`.
+		if (name.endsWith('_arm64.apk')) return 'ARM64 (.apk)';
+		if (name.endsWith('_arm.apk')) return 'ARMv7 (.apk)';
+		if (name.endsWith('_x86_64.apk')) return 'x86_64 (.apk)';
+		if (name.endsWith('_x86.apk')) return 'x86 (.apk)';
 		if (name.endsWith('.apk')) return 'Android (.apk)';
 		return name;
 	}
@@ -362,19 +360,10 @@
 						</Button>
 					{/each}
 				{:else}
-					{#each ANDROID_VARIANTS as variant (variant.abi)}
-						<Button
-							variant="outline"
-							class="h-auto justify-between px-4 py-3"
-							href={androidApkUrl(variant.abi)}
-						>
-							<span class="flex items-center gap-2">
-								<Download size={14} />
-								{variant.label}
-							</span>
-							<span class="text-xs text-muted-foreground">{variant.hint}</span>
-						</Button>
-					{/each}
+					<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
+						<Download size={14} class="mr-2" />
+						View Android releases
+					</Button>
 				{/if}
 			</div>
 		</TabsContent>
