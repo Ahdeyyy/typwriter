@@ -285,7 +285,7 @@
             <Button
               variant="ghost"
               size="icon-sm"
-              class="absolute right-1.5 inset-y-0 my-auto h-fit rounded-lg bg-background text-muted-foreground hover:bg-destructive hover:text-destructive-foreground"
+              class="absolute right-1.5 inset-y-0 my-auto rounded-lg bg-background text-muted-foreground hover:bg-destructive hover:text-destructive-foreground"
               onclick={(e) => handleRemoveRecent(e, entry.path)}
               aria-label="Remove {entry.name} from recents"
             >

@@ -150,16 +150,12 @@
     <AppSidebar />
     <main class="relative flex h-full min-w-0 flex-1 overflow-hidden">
       {#if platform.isMobile}
-        <!-- Floating sidebar trigger (top-left) -->
-        <div class="absolute left-2 top-2 z-20">
+        <!-- Mobile title bar -->
+        <div class="absolute inset-x-0 top-0 z-20 flex h-12 items-center justify-between px-2 bg-transparent">
           <Sidebar.Trigger
             size="icon-lg"
             class="bg-background/80 backdrop-blur shadow-sm rounded-full"
           />
-        </div>
-
-        <!-- Floating view toggle (top-right) -->
-        <div class="absolute right-2 top-2 z-20">
           <Button
             variant="ghost"
             size="icon-lg"

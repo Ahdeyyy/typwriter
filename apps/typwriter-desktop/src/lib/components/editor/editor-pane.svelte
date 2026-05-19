@@ -16,7 +16,7 @@
   );
 </script>
 
-<div class="flex h-full flex-col bg-background {platform.isMobile ? 'pt-12 pb-2' : ''}">
+<div class="flex h-full flex-col bg-background {platform.isMobile ? 'pb-2' : ''}">
   {#if editor.tabs.length > 0 && !platform.isMobile}
     <TabBar />
   {/if}
@@ -25,7 +25,7 @@
     <TypstToolbar />
   {/if}
 
-  <div class="relative flex-1 min-h-0 overflow-hidden">
+  <div class="relative flex-1 min-h-0 overflow-hidden" class:mobile-editor={platform.isMobile}>
     {#if !editor.activeTab}
       <div class="flex h-full flex-col items-center justify-center gap-2 select-none text-muted-foreground">
         <HugeiconsIcon icon={FileCodeIcon} class="size-10 opacity-30" />
@@ -65,3 +65,9 @@
     <TabBarMobile />
   {/if}
 </div>
+
+<style>
+  .mobile-editor :global(.cm-scroller) {
+    padding-top: 3rem;
+  }
+</style>
