@@ -3,6 +3,15 @@
 @import "shadcn-svelte/tailwind.css";
 @import "@fontsource-variable/ibm-plex-sans";
 @import "@fontsource-variable/geist";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/roboto-flex";
+@import "@fontsource-variable/source-sans-3";
+@import "@fontsource-variable/noto-sans";
+@import "@fontsource/atkinson-hyperlegible";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource-variable/fira-code";
+@import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/source-code-pro";
 
 @custom-variant dark (&:is(.dark *));
 

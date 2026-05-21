@@ -1,6 +1,5 @@
 <script lang="ts">
   import "./layout.css";
-  import "@fontsource-variable/inter/wght.css";
   import { onMount, untrack } from "svelte";
   import { Toaster } from "$lib/components/ui/sonner/index.js";
   import { installGlobalErrorLogging } from "$lib/logger";
@@ -30,7 +29,7 @@
     if (platform.isDesktop) {
       app.setTheme(mode.current === "dark" ? "dark" : "light");
     }
-    settings.init().andThen(() => settings.refreshFontFamilies());
+    settings.init();
 
     // `settings.init()` is async, but the persisted value lands on the store
     // synchronously from localStorage before the IPC call, so we can read it

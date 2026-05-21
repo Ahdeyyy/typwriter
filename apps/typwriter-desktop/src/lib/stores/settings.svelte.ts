@@ -9,13 +9,33 @@
 import { ResultAsync, okAsync } from 'neverthrow';
 import {
     getAppSettings,
-    listFontFamilies,
     setAppSettings,
     setTypstFontDirectories,
 } from '$lib/ipc/commands';
 import { logError } from '$lib/logger';
 
 const LS_KEY = 'typwriter:settings:v1';
+
+// Fonts bundled via @fontsource(-variable) in `layout.css`. These are the only
+// families the WebView can resolve reliably on every platform — Android in
+// particular can't load fonts that Typst discovered on disk because they aren't
+// registered with the browser engine.
+export const BUNDLED_UI_FONTS: readonly string[] = [
+    'IBM Plex Sans Variable',
+    'Inter Variable',
+    'Geist Variable',
+    'Roboto Flex Variable',
+    'Source Sans 3 Variable',
+    'Noto Sans Variable',
+    'Atkinson Hyperlegible',
+];
+
+export const BUNDLED_EDITOR_FONTS: readonly string[] = [
+    'JetBrains Mono Variable',
+    'Fira Code Variable',
+    'Geist Mono Variable',
+    'Source Code Pro Variable',
+];
 
 export type ThemeId =
     | 'default'
@@ -60,7 +80,7 @@ interface PersistedSettings {
 
 const DEFAULTS: PersistedSettings = {
     uiFontFamily: 'IBM Plex Sans Variable',
-    editorFontFamily: 'monospace',
+    editorFontFamily: 'JetBrains Mono Variable',
     editorFontSize: 13,
     lightTheme: 'default',
     darkTheme: 'default',
@@ -131,7 +151,6 @@ class SettingsStore {
     wordWrap = $state(INITIAL.wordWrap);
 
     fontDirectories = $state<string[]>([]);
-    availableFontFamilies = $state<string[]>([]);
     fontsReloading = $state(false);
 
     /** Fetch Rust-side settings (font directories). UI-only prefs are already
@@ -163,17 +182,6 @@ class SettingsStore {
             })
             .mapErr((err) => {
                 logError('settings.init getAppSettings failed:', err);
-                return err;
-            });
-    }
-
-    refreshFontFamilies(): ResultAsync<void, string> {
-        return listFontFamilies()
-            .map((families) => {
-                this.availableFontFamilies = families;
-            })
-            .mapErr((err) => {
-                logError('settings.refreshFontFamilies failed:', err);
                 return err;
             });
     }
@@ -356,11 +364,11 @@ class SettingsStore {
         // a background thread.
     }
 
-    /** Called by the app:fonts-loaded listener to flip the reloading flag and
-     *  refresh the font family list. */
-    onFontsReloaded(): ResultAsync<void, string> {
+    /** Called by the app:fonts-loaded listener to flip the reloading flag once
+     *  Typst has rescanned its font directories. The picker uses the bundled
+     *  list, so we don't need to refresh anything else. */
+    onFontsReloaded(): void {
         this.fontsReloading = false;
-        return this.refreshFontFamilies();
     }
 }
 

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
     ArrowLeft01Icon,
@@ -22,7 +21,13 @@
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import { page } from "$lib/stores/page.svelte";
   import { platform } from "$lib/stores/platform.svelte";
-  import { settings, THEMES, type ThemeId } from "$lib/stores/settings.svelte";
+  import {
+    settings,
+    THEMES,
+    BUNDLED_UI_FONTS,
+    BUNDLED_EDITOR_FONTS,
+    type ThemeId,
+  } from "$lib/stores/settings.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { AndroidFs } from "tauri-plugin-android-fs-api";
   import { importFontDirectoryUri, safTreeUriToPath } from "$lib/ipc/commands";
@@ -36,22 +41,14 @@
 
   const filteredUiFonts = $derived.by(() => {
     const q = fontFilter.trim().toLowerCase();
-    const families = settings.availableFontFamilies;
-    if (!q) return families.slice(0, 200);
-    return families.filter((f) => f.toLowerCase().includes(q)).slice(0, 200);
+    if (!q) return BUNDLED_UI_FONTS;
+    return BUNDLED_UI_FONTS.filter((f) => f.toLowerCase().includes(q));
   });
 
   const filteredEditorFonts = $derived.by(() => {
     const q = editorFontFilter.trim().toLowerCase();
-    const families = settings.availableFontFamilies;
-    if (!q) return families.slice(0, 200);
-    return families.filter((f) => f.toLowerCase().includes(q)).slice(0, 200);
-  });
-
-  onMount(() => {
-    if (settings.availableFontFamilies.length === 0) {
-      settings.refreshFontFamilies();
-    }
+    if (!q) return BUNDLED_EDITOR_FONTS;
+    return BUNDLED_EDITOR_FONTS.filter((f) => f.toLowerCase().includes(q));
   });
 
   async function pickFolder(): Promise<string | null> {
@@ -288,9 +285,7 @@
                     />
                   </div>
                   <div class="max-h-72 overflow-y-auto py-1">
-                    {#if settings.availableFontFamilies.length === 0}
-                      <p class="px-3 py-2 text-xs text-muted-foreground">Loading fonts…</p>
-                    {:else if filteredUiFonts.length === 0}
+                    {#if filteredUiFonts.length === 0}
                       <p class="px-3 py-2 text-xs text-muted-foreground">No matches.</p>
                     {:else}
                       {#each filteredUiFonts as family (family)}
@@ -341,9 +336,7 @@
                     />
                   </div>
                   <div class="max-h-72 overflow-y-auto py-1">
-                    {#if settings.availableFontFamilies.length === 0}
-                      <p class="px-3 py-2 text-xs text-muted-foreground">Loading fonts…</p>
-                    {:else if filteredEditorFonts.length === 0}
+                    {#if filteredEditorFonts.length === 0}
                       <p class="px-3 py-2 text-xs text-muted-foreground">No matches.</p>
                     {:else}
                       {#each filteredEditorFonts as family (family)}
