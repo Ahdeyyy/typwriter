@@ -219,6 +219,11 @@ export class FiletreeController {
         if (!this.tree || !active) return;
         const selected = this.tree.getSelectedPaths();
         if (selected.length === 1 && selected[0] === active) return;
+        // Pierre's per-item `.select()` is additive — clear existing selection first
+        // so switching the active file doesn't stack highlights.
+        for (const p of selected) {
+            if (p !== active) this.tree.getItem(p)?.deselect();
+        }
         this.tree.getItem(active)?.select();
     }
 
