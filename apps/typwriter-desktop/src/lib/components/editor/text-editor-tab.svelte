@@ -39,6 +39,7 @@
   import { json } from "@codemirror/lang-json";
   import { xml } from "@codemirror/lang-xml";
   import { yaml } from "@codemirror/lang-yaml";
+  import { markdown } from "@codemirror/lang-markdown";
   import { toml as tomlMode } from "@codemirror/legacy-modes/mode/toml";
 
   import {
@@ -286,6 +287,9 @@
       case ".yaml":
       case ".yml":
         return yaml();
+      case ".md":
+      case ".markdown":
+        return markdown({ codeLanguages: languages });
       case ".toml":
         return StreamLanguage.define(tomlMode);
       default:
