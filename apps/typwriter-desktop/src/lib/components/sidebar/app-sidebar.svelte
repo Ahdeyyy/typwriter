@@ -6,6 +6,7 @@
     Alert01Icon,
     Home01Icon,
     ArrowDown01Icon,
+    Settings01Icon,
   } from "@hugeicons/core-free-icons";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -259,6 +260,23 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="top">Home</Tooltip.Content>
+      </Tooltip.Root>
+
+      <!-- Settings -->
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              class="size-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onclick={() => page.navigate("settings")}
+            >
+              <HugeiconsIcon icon={Settings01Icon} class="size-4" />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content side="top">Settings</Tooltip.Content>
       </Tooltip.Root>
 
       <!-- Theme switcher -->

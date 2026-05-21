@@ -86,7 +86,6 @@ export const darkTheme = EditorView.theme(
             backgroundColor: "var(--background)",
             color: "var(--muted-foreground)",
             border: "none",
-            width: "1.35rem",
             borderRight: "1px solid var(--border)",
         },
         ".cm-activeLineGutter": {

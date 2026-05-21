@@ -16,13 +16,14 @@
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";
   import { platform } from "$lib/stores/platform.svelte";
+  import { settings } from "$lib/stores/settings.svelte";
   import { workspace, basename } from "$lib/stores/workspace.svelte";
   import { onPreviewSourceJump } from "$lib/ipc/events";
   import { logError } from "$lib/logger";
 
   const PREVIEW_WINDOW_LABEL = "preview";
 
-  let previewVisible = $state(true);
+  let previewVisible = $state(settings.defaultPreviewVisible);
   let mobileView = $state<"editor" | "preview">("editor");
 
   const paneVisible = $derived(previewVisible && !preview.poppedOut);

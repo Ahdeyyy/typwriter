@@ -32,6 +32,9 @@ use commands::{
     },
     logs::get_log_file_path,
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
+    settings::{
+        get_app_settings, list_font_families, set_app_settings, set_typst_font_directories,
+    },
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
         delete_folder, export_workspace_to_dir_uri, get_file_tree, get_mobile_workspaces_dir,
@@ -86,7 +89,10 @@ pub fn run() {
                 .header(tauri::http::header::CONTENT_TYPE, "image/png")
                 // The URL is the content hash, so the bytes are immutable for
                 // the lifetime of the cache entry. Let the webview cache them.
-                .header(tauri::http::header::CACHE_CONTROL, "public, max-age=31536000, immutable")
+                .header(
+                    tauri::http::header::CACHE_CONTROL,
+                    "public, max-age=31536000, immutable",
+                )
                 .header(tauri::http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                 .body(bytes)
                 .expect("png response should build")
@@ -134,8 +140,12 @@ pub fn run() {
             app.manage(workspace);
 
             // ── Background font loading ─────────────────────────────────────
+            // Pick up any extra font directories the user configured in a
+            // previous session so their custom fonts are available from the
+            // first compile.
+            let extra_font_dirs = commands::settings::load_font_directories(&handle);
             std::thread::spawn(move || {
-                let font_results = FontSearcher::new().search();
+                let font_results = FontSearcher::new().search_with(&extra_font_dirs);
                 world.load_fonts(font_results.book, font_results.fonts);
                 init.fonts_loaded.store(true, Ordering::Release);
                 let _ = handle.emit("app:fonts-loaded", ());
@@ -188,6 +198,11 @@ pub fn run() {
             jump_from_cursor,
             // logs
             get_log_file_path,
+            // settings
+            get_app_settings,
+            set_app_settings,
+            list_font_families,
+            set_typst_font_directories,
             // export
             export_pdf,
             export_pdf_to_uri,

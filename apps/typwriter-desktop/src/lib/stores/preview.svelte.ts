@@ -18,6 +18,7 @@ import type { CompileReason } from '$lib/types';
 import { logError } from '$lib/logger';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { platform } from './platform.svelte';
+import { settings } from './settings.svelte';
 
 const PREVIEW_WINDOW_LABEL = 'preview';
 
@@ -52,6 +53,18 @@ class PreviewStore {
     private _paginatedBeforePresentation = false;
 
     async init(): Promise<void> {
+        // The user-configured default zoom wins on every workspace open.
+        // Rust still persists in-session zoom changes via setZoom, but the
+        // settings page is the single source of truth for the initial value,
+        // so we override here.
+        const desiredZoom = settings.defaultPreviewZoom;
+        this.zoom = desiredZoom;
+        setZoom(desiredZoom).mapErr((err) =>
+            logError('preview: applying default zoom failed:', err)
+        );
+        // Read back from Rust in case the override failed (e.g. on the
+        // preview popout where setZoom may be a no-op until the pipeline is
+        // ready) so we display the actual current value.
         const zoomResult = await getZoom();
         if (zoomResult.isOk()) {
             this.zoom = zoomResult.value;

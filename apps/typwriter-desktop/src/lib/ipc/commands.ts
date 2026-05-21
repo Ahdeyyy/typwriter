@@ -331,3 +331,41 @@ export function exportSvgToDirUri(
 export function isFontsLoaded() {
     return ResultAsync.fromPromise(invoke<boolean>('is_fonts_loaded'), toErrString);
 }
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+export interface AppSettings {
+    font_directories: string[];
+    ui_font_family: string;
+    editor_font_family: string;
+    editor_font_size: number;
+    light_theme: string;
+    dark_theme: string;
+    auto_check_updates: boolean;
+    default_preview_zoom: number;
+    default_preview_visible: boolean;
+    show_line_numbers: boolean;
+    show_indentation_markers: boolean;
+    spellcheck: boolean;
+    tab_width: number;
+    word_wrap: boolean;
+}
+
+export function getAppSettings() {
+    return ResultAsync.fromPromise(invoke<AppSettings>('get_app_settings'), toErrString);
+}
+
+export function setAppSettings(settings: AppSettings) {
+    return ResultAsync.fromPromise(invoke<void>('set_app_settings', { settings }), toErrString);
+}
+
+export function setTypstFontDirectories(dirs: string[]) {
+    return ResultAsync.fromPromise(
+        invoke<void>('set_typst_font_directories', { dirs }),
+        toErrString
+    );
+}
+
+export function listFontFamilies() {
+    return ResultAsync.fromPromise(invoke<string[]>('list_font_families'), toErrString);
+}

@@ -9,7 +9,7 @@
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { AndroidFs } from "tauri-plugin-android-fs-api";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, File01Icon, KeyboardIcon } from "@hugeicons/core-free-icons";
+  import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, File01Icon, KeyboardIcon, Settings01Icon } from "@hugeicons/core-free-icons";
   import { openUrl, openPath } from "@tauri-apps/plugin-opener";
   import { updater } from "$lib/stores/updater.svelte";
   import { toast } from "svelte-sonner";
@@ -440,6 +440,15 @@
 
     {#if platform.isMobile}
       <ModeSwitcher />
+      <Button
+        variant="link"
+        size="sm"
+        class="gap-1.5 text-muted-foreground"
+        onclick={() => page.navigate("settings")}
+      >
+        <HugeiconsIcon icon={Settings01Icon} class="size-3.5" />
+        Settings
+      </Button>
     {:else}
       <Button
         variant="link"
@@ -470,6 +479,16 @@
       >
         <HugeiconsIcon icon={KeyboardIcon} class="size-3.5" />
         Keymaps
+      </Button>
+
+      <Button
+        variant="link"
+        size="sm"
+        class="gap-1.5 text-muted-foreground"
+        onclick={() => page.navigate("settings")}
+      >
+        <HugeiconsIcon icon={Settings01Icon} class="size-3.5" />
+        Settings
       </Button>
     {/if}
   </div>

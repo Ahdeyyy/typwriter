@@ -67,6 +67,7 @@
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
+  import { settings } from "$lib/stores/settings.svelte";
   import {
     getCompletions,
     getTooltip as getTooltipIpc,
@@ -84,6 +85,58 @@
   let mountedTabId = $state<string | null>(null);
 
   const themeCompartment = new Compartment();
+  const fontCompartment = new Compartment();
+  const lineNumbersCompartment = new Compartment();
+  const indentMarkersCompartment = new Compartment();
+  const lineWrapCompartment = new Compartment();
+  const spellcheckCompartment = new Compartment();
+  const tabSizeCompartment = new Compartment();
+
+  function quoteFamily(family: string): string {
+    return family.includes(" ") && !family.includes('"') ? `"${family}"` : family;
+  }
+
+  function fontExtension() {
+    const family = quoteFamily(settings.editorFontFamily);
+    const size = `${settings.editorFontSize}px`;
+    return EditorView.theme({
+      "&": {
+        fontSize: size,
+        fontFamily: `${family}, var(--font-mono, monospace)`,
+      },
+      ".cm-content, .cm-gutters": {
+        fontFamily: `${family}, var(--font-mono, monospace)`,
+      },
+    });
+  }
+
+  function lineNumbersExt() {
+    return settings.showLineNumbers ? lineNumbers() : [];
+  }
+
+  function indentMarkersExt() {
+    return !platform.isMobile && settings.showIndentationMarkers
+      ? indentationMarkers()
+      : [];
+  }
+
+  function lineWrapExt() {
+    return settings.wordWrap ? EditorView.lineWrapping : [];
+  }
+
+  function spellcheckExt(isTypst: boolean) {
+    const attrs = EditorView.contentAttributes.of({
+      spellcheck: settings.spellcheck ? "true" : "false",
+    });
+    if (isTypst && settings.spellcheck) {
+      return [attrs, typstSpellcheck];
+    }
+    return [attrs];
+  }
+
+  function tabSizeExt() {
+    return EditorState.tabSize.of(settings.tabWidth);
+  }
 
   function resolvedTheme() {
     const m = mode.current;
@@ -248,9 +301,10 @@
 
     return [
       lintGutter(),
-      // lineNumbers(),
-      EditorView.lineWrapping,
-      EditorView.contentAttributes.of({ spellcheck: "true" }),
+      lineNumbersCompartment.of(lineNumbersExt()),
+      lineWrapCompartment.of(lineWrapExt()),
+      spellcheckCompartment.of(spellcheckExt(isTypst)),
+      tabSizeCompartment.of(tabSizeExt()),
       highlightActiveLine(),
       history(),
       drawSelection(),
@@ -267,10 +321,11 @@
       // syntaxHighlighting(githubLightHighlightStyle),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       themeCompartment.of(resolvedTheme()),
+      fontCompartment.of(fontExtension()),
       // Language extension chosen by file extension; null = plain text
       ...(langExt ? [langExt] : []),
-      ...(isTypst ? [typstCommentDecorations, typstSpellcheck, keymap.of(typstKeymap)] : []),
-      ...(platform.isMobile ? [] : [indentationMarkers()]),
+      ...(isTypst ? [typstCommentDecorations, keymap.of(typstKeymap)] : []),
+      indentMarkersCompartment.of(indentMarkersExt()),
       // Custom Svelte search panel — provide an empty CM panel so the
       // search extension's state is initialized but its UI is suppressed.
       search({
@@ -388,10 +443,26 @@
         "&": {
           height: "100%",
           width: "100%",
-          fontSize: "13px",
-          fontFamily: "var(--font-mono, monospace)",
         },
         ".cm-scroller": { overflow: "auto", ...(platform.isMobile ? { paddingTop: "3.25rem" } : {}) },
+        // Line-number gutter — give the digits breathing room from the
+        // content and a muted tone so they don't compete with the code.
+        ".cm-lineNumbers .cm-gutterElement": {
+          padding: "0 0.3rem 0 0.1rem",
+          minWidth: "1em",
+          textAlign: "right",
+        },
+        ".cm-foldGutter .cm-gutterElement": {
+          padding: "0 0.1rem",
+        },
+        ".cm-activeLineGutter": {
+          backgroundColor: "color-mix(in srgb, var(--accent) 15%, transparent)",
+          color: "var(--foreground)",
+        },
+        // Clear gap between the gutter border and the first code character
+        ".cm-content": {
+          paddingLeft: "0.875rem",
+        },
         ".cm-tooltip.cm-tooltip-hover": {
           backgroundColor: "var(--popover)",
           color: "var(--popover-foreground)",
@@ -654,6 +725,58 @@
     const themeExt = resolvedTheme();
     for (const view of tabViews.values()) {
       view.dispatch({ effects: themeCompartment.reconfigure(themeExt) });
+    }
+  });
+
+  // ── Font / size → reconfigure all views when settings change
+  $effect(() => {
+    settings.editorFontFamily;
+    settings.editorFontSize;
+    const ext = fontExtension();
+    for (const view of tabViews.values()) {
+      view.dispatch({ effects: fontCompartment.reconfigure(ext) });
+    }
+  });
+
+  // ── Editor behavior toggles → reconfigure relevant compartments
+  $effect(() => {
+    settings.showLineNumbers;
+    const ext = lineNumbersExt();
+    for (const view of tabViews.values()) {
+      view.dispatch({ effects: lineNumbersCompartment.reconfigure(ext) });
+    }
+  });
+
+  $effect(() => {
+    settings.showIndentationMarkers;
+    const ext = indentMarkersExt();
+    for (const view of tabViews.values()) {
+      view.dispatch({ effects: indentMarkersCompartment.reconfigure(ext) });
+    }
+  });
+
+  $effect(() => {
+    settings.wordWrap;
+    const ext = lineWrapExt();
+    for (const view of tabViews.values()) {
+      view.dispatch({ effects: lineWrapCompartment.reconfigure(ext) });
+    }
+  });
+
+  $effect(() => {
+    settings.spellcheck;
+    for (const [tabId, view] of tabViews) {
+      const tab = editor.tabs.find((t) => t.id === tabId);
+      const isTypst = !!tab && tab.relPath.endsWith(".typ");
+      view.dispatch({ effects: spellcheckCompartment.reconfigure(spellcheckExt(isTypst)) });
+    }
+  });
+
+  $effect(() => {
+    settings.tabWidth;
+    const ext = tabSizeExt();
+    for (const view of tabViews.values()) {
+      view.dispatch({ effects: tabSizeCompartment.reconfigure(ext) });
     }
   });
 

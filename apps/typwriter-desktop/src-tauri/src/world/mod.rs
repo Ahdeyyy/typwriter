@@ -28,7 +28,7 @@ use typst::{
 use typst_ide::IdeWorld;
 use typst_kit::{
     download::Downloader,
-    fonts::FontSlot,
+    fonts::{FontSearcher, FontSlot},
     package::{default_package_cache_path, default_package_path, PackageStorage},
 };
 
@@ -51,8 +51,12 @@ pub struct EditorWorld {
     /// Typst standard library — built lazily on first compile, not at startup
     library: OnceLock<LazyHash<Library>>,
 
-    /// Fonts + book, set once background font loading completes
-    font_data: OnceLock<FontData>,
+    /// Active font set, behind a lock so settings changes can swap fonts at
+    /// runtime. Pointing at leaked memory keeps the `&LazyHash<FontBook>` /
+    /// `Font` references returned from the `World` trait valid even after a
+    /// reload. Each reload leaks the previous allocation; this is a tiny,
+    /// bounded cost since font reloads happen at human cadence.
+    font_data: RwLock<Option<&'static FontData>>,
 
     /// Empty fallback for `World::book()` before fonts arrive
     empty_book: LazyHash<FontBook>,
@@ -127,16 +131,13 @@ impl EditorWorld {
             "EditorWorld: packages cache={:?} packages={:?}",
             cache_dir, package_dir
         );
-        let package_storage = PackageStorage::new(
-            cache_dir,
-            package_dir,
-            Downloader::new(user_agent),
-        );
+        let package_storage =
+            PackageStorage::new(cache_dir, package_dir, Downloader::new(user_agent));
         Self {
             root: RwLock::new(root),
             main: RwLock::new(None),
             library: OnceLock::new(),
-            font_data: OnceLock::new(),
+            font_data: RwLock::new(None),
             empty_book: LazyHash::new(FontBook::from_fonts(&[])),
             source_cache: Mutex::new(HashMap::new()),
             file_cache: Mutex::new(HashMap::new()),
@@ -148,12 +149,40 @@ impl EditorWorld {
         }
     }
 
-    /// Load fonts from a background thread after startup.
+    /// Load fonts from a background thread after startup. Replaces any
+    /// existing font set. Previous allocations are leaked so any outstanding
+    /// `&LazyHash<FontBook>` borrows returned from `World::book` remain
+    /// valid.
     pub fn load_fonts(&self, book: FontBook, slots: Vec<FontSlot>) {
-        let _ = self.font_data.set(FontData {
+        let data: &'static FontData = Box::leak(Box::new(FontData {
             slots,
             book: LazyHash::new(book),
-        });
+        }));
+        *self.font_data.write() = Some(data);
+    }
+
+    /// Run a font search (system + embedded + the given extra directories)
+    /// and replace the current font set. Intended to be called from a
+    /// background thread since `fontdb`'s system scan can be slow.
+    pub fn reload_fonts_with(&self, extra_dirs: Vec<PathBuf>) {
+        let fonts = FontSearcher::new().search_with(&extra_dirs);
+        self.load_fonts(fonts.book, fonts.fonts);
+    }
+
+    /// Snapshot of the currently loaded font families (deduplicated, sorted).
+    /// Used by the settings UI to populate the editor/UI font pickers.
+    pub fn font_families(&self) -> Vec<String> {
+        let Some(data) = *self.font_data.read() else {
+            return Vec::new();
+        };
+        let mut families: Vec<String> = data
+            .book
+            .families()
+            .map(|(name, _)| name.to_string())
+            .collect();
+        families.sort_unstable_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        families.dedup();
+        families
     }
 
     /// Called by Tauri command when user sets main file
@@ -257,10 +286,14 @@ impl World for EditorWorld {
     }
 
     fn book(&self) -> &LazyHash<FontBook> {
-        self.font_data
-            .get()
-            .map(|d| &d.book)
-            .unwrap_or(&self.empty_book)
+        // `*self.font_data.read()` copies the `Option<&'static FontData>` out
+        // of the guard so we can return a reference whose lifetime is tied to
+        // `&self` (the static reference outlives any caller-chosen lifetime).
+        let opt: Option<&'static FontData> = *self.font_data.read();
+        match opt {
+            Some(d) => &d.book,
+            None => &self.empty_book,
+        }
     }
 
     fn main(&self) -> FileId {
@@ -305,9 +338,8 @@ impl World for EditorWorld {
     }
 
     fn font(&self, index: usize) -> Option<Font> {
-        self.font_data
-            .get()
-            .and_then(|d| d.slots.get(index))
+        let opt: Option<&'static FontData> = *self.font_data.read();
+        opt.and_then(|d| d.slots.get(index))
             .and_then(|slot| slot.get())
     }
 
