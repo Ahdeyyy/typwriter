@@ -10,6 +10,7 @@
   import { platform } from "$lib/stores/platform.svelte";
   import { settings } from "$lib/stores/settings.svelte";
   import { onAppFontsLoaded } from "$lib/ipc/events";
+  import { installKeyboardAvoider } from "$lib/hooks/mobile-keyboard";
 
   const { children } = $props();
   let appliedTheme: string | undefined;
@@ -17,6 +18,12 @@
   $effect(() => {
 
     return installGlobalErrorLogging();
+  });
+
+  $effect(() => {
+    // No-op on desktop. Keeps focused inputs above the soft keyboard on
+    // Android by listening to visualViewport changes.
+    return installKeyboardAvoider();
   });
 
   onMount(async () => {

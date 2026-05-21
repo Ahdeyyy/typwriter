@@ -25,7 +25,7 @@
   import { settings, THEMES, type ThemeId } from "$lib/stores/settings.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { AndroidFs } from "tauri-plugin-android-fs-api";
-  import { safTreeUriToPath } from "$lib/ipc/commands";
+  import { importFontDirectoryUri, safTreeUriToPath } from "$lib/ipc/commands";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
 
@@ -76,6 +76,33 @@
   }
 
   async function handleAddFontDir() {
+    // Mobile takes a separate path: typst-kit's FontSearcher can't scan SAF
+    // tree paths, so we copy the picked folder's font files into app-private
+    // storage and register THAT path with the font search instead.
+    if (platform.isMobile) {
+      try {
+        const uri = await AndroidFs.showOpenDirPicker({ localOnly: true });
+        if (!uri) return;
+        const imported = await importFontDirectoryUri({
+          uri: uri.uri,
+          documentTopTreeUri: uri.documentTopTreeUri ?? null,
+        });
+        if (imported.isErr()) {
+          toast.error(`Failed to import fonts: ${imported.error}`);
+          return;
+        }
+        const result = await settings.addFontDirectory(imported.value);
+        result.match(
+          () => toast.success("Fonts imported — reloading…"),
+          (err) => toast.error(`Failed to add font directory: ${err}`),
+        );
+      } catch (err) {
+        logError("mobile font import failed:", err);
+        toast.error(`Folder picker failed: ${err}`);
+      }
+      return;
+    }
+
     const folder = await pickFolder();
     if (!folder) return;
     const result = await settings.addFontDirectory(folder);
@@ -561,8 +588,16 @@
               {/if}
             </div>
             <p class="mb-4 text-sm text-muted-foreground">
-              Folders scanned for additional font files (<code>.ttf</code>, <code>.otf</code>). Fonts found here
-              are available in the editor, the UI font pickers above, and in Typst documents.
+              {#if platform.isMobile}
+                Pick a folder and Typwriter will copy its font files (<code>.ttf</code>, <code>.otf</code>,
+                <code>.ttc</code>) into the app's storage so they're available in the editor, the UI
+                font pickers above, and in Typst documents. Android scoped storage blocks the font
+                scanner from reading shared folders directly.
+              {:else}
+                Folders scanned for additional font files (<code>.ttf</code>, <code>.otf</code>).
+                Fonts found here are available in the editor, the UI font pickers above, and in
+                Typst documents.
+              {/if}
             </p>
 
             <div class="rounded-md border border-border">

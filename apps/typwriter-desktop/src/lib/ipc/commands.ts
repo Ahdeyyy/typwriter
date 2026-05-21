@@ -369,3 +369,16 @@ export function setTypstFontDirectories(dirs: string[]) {
 export function listFontFamilies() {
     return ResultAsync.fromPromise(invoke<string[]>('list_font_families'), toErrString);
 }
+
+/** Android-only: copy a user-picked SAF font folder into app-private storage
+ *  and return the destination path. The returned path is then handed to
+ *  `setTypstFontDirectories` so typst-kit's FontSearcher (which can't see
+ *  past SAF) scans a directory `std::fs` can actually read. */
+export function importFontDirectoryUri(
+    dirUri: { uri: string; documentTopTreeUri: string | null }
+) {
+    return ResultAsync.fromPromise(
+        invoke<string>('import_font_directory_uri', { dirUri }),
+        toErrString
+    );
+}

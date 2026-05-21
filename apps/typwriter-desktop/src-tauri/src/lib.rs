@@ -33,7 +33,8 @@ use commands::{
     logs::get_log_file_path,
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     settings::{
-        get_app_settings, list_font_families, set_app_settings, set_typst_font_directories,
+        get_app_settings, import_font_directory_uri, list_font_families, set_app_settings,
+        set_typst_font_directories,
     },
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
@@ -203,6 +204,7 @@ pub fn run() {
             set_app_settings,
             list_font_families,
             set_typst_font_directories,
+            import_font_directory_uri,
             // export
             export_pdf,
             export_pdf_to_uri,
