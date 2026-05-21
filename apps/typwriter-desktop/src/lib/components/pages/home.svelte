@@ -439,7 +439,6 @@
     </Button>
 
     {#if platform.isMobile}
-      <ModeSwitcher />
       <Button
         variant="link"
         size="sm"
@@ -449,6 +448,7 @@
         <HugeiconsIcon icon={Settings01Icon} class="size-3.5" />
         Settings
       </Button>
+      <ModeSwitcher />
     {:else}
       <Button
         variant="link"
