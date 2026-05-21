@@ -1,31 +1,26 @@
-## Project Configuration
+# typwriter-web
 
-- **Language**: TypeScript
-- **Package Manager**: bun
-- **Add-ons**: prettier, eslint, vitest, tailwindcss, mcp
+Landing page for Typwriter — a static SvelteKit site whose job is to advertise the app and link to GitHub releases. Not the editor (that's `typwriter-desktop`).
 
----
+## Stack
 
-You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
+- SvelteKit (Svelte 5), TypeScript, Tailwind v4, shadcn-svelte (Lyra style, mauve, 0rem radius), Phosphor icons.
+- `bun` for package management; `eslint` + `prettier` + `vitest` configured.
+- Dev server on port 5173 (`bun run dev`).
 
-## Available MCP Tools:
+## Structure (`src/`)
 
-### 1. list-sections
+- `routes/+page.server.ts` — server load: fetches the latest GitHub release to populate download links.
+- `routes/+page.svelte` — the single landing page.
+- `routes/+layout.svelte` + `layout.css` — global shell and styles.
+- `lib/components/` — `FeatureCard.svelte` (Phosphor icon + title + description) and shadcn primitives under `ui/`.
+- `lib/assets/`, `lib/utils.ts`, `lib/hooks/`, `lib/index.ts` — shared helpers.
 
-Use this FIRST to discover all available documentation sections. Returns a structured list with titles, use_cases, and paths.
-When asked about Svelte or SvelteKit topics, ALWAYS use this tool at the start of the chat to find relevant sections.
+## Svelte MCP tools
 
-### 2. get-documentation
+When working on Svelte code in this app, use the Svelte MCP server:
 
-Retrieves full documentation content for specific sections. Accepts single or multiple sections.
-After calling the list-sections tool, you MUST analyze the returned documentation sections (especially the use_cases field) and then use the get-documentation tool to fetch ALL documentation sections that are relevant for the user's task.
-
-### 3. svelte-autofixer
-
-Analyzes Svelte code and returns issues and suggestions.
-You MUST use this tool whenever writing Svelte code before sending it to the user. Keep calling it until no issues or suggestions are returned.
-
-### 4. playground-link
-
-Generates a Svelte Playground link with the provided code.
-After completing the code, ask the user if they want a playground link. Only call this tool after user confirmation and NEVER if code was written to files in their project.
+1. **list-sections** — call FIRST to discover all available Svelte/SvelteKit docs sections.
+2. **get-documentation** — fetch full content for sections relevant to the task (check the `use_cases` field).
+3. **svelte-autofixer** — run on any Svelte code you write; keep calling until it returns no issues.
+4. **playground-link** — generate a Svelte Playground link. Only after user confirmation, and never if code was written to project files.
