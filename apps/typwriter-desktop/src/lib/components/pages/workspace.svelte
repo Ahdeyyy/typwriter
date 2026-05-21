@@ -151,15 +151,15 @@
     <main class="relative flex h-full min-w-0 flex-1 overflow-hidden">
       {#if platform.isMobile}
         <!-- Mobile title bar -->
-        <div class="absolute inset-x-0 top-0 z-20 flex h-12 items-center justify-between px-2 bg-transparent">
+        <div class="absolute inset-x-0 top-0 z-20 flex h-12 items-center justify-between px-2 pointer-events-none">
           <Sidebar.Trigger
             size="icon-lg"
-            class="bg-background/80 backdrop-blur shadow-sm rounded-full"
+            class="bg-background/60 backdrop-blur-sm shadow-sm rounded-full pointer-events-auto"
           />
           <Button
             variant="ghost"
             size="icon-lg"
-            class="bg-background/80 backdrop-blur shadow-sm rounded-full"
+            class="bg-background/60 backdrop-blur-sm shadow-sm rounded-full pointer-events-auto"
             onclick={() => (mobileView = mobileView === "editor" ? "preview" : "editor")}
             aria-label={mobileView === "editor" ? "Show preview" : "Show editor"}
           >
