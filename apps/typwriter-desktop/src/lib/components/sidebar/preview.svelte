@@ -8,19 +8,32 @@
   import { workspace } from "$lib/stores/workspace.svelte";
   import { Button } from "$lib/components/ui/button";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { PreviewController } from "./preview-controller.svelte";
+  import { previewController } from "./preview-controller.svelte";
   import { buildPreviewUrl } from "$lib/preview-url";
 
   type Props = { onPresentationMode?: () => void };
   let { onPresentationMode }: Props = $props();
 
-  const ctrl = new PreviewController({ onPresentationMode: () => onPresentationMode?.() });
-  onDestroy(() => ctrl.destroy());
+  // Per-webview singleton: state (decoded pages, visiblePage, watchdog) survives
+  // unmount/remount cycles such as popping the preview out into its own window.
+  // We only attach DOM-bound callbacks for this mount and detach them on destroy.
+  const ctrl = previewController;
+  ctrl.setOnPresentationMode(() => onPresentationMode?.());
+  onDestroy(() => ctrl.detachFromMount());
 
   $effect(() => ctrl.syncPagesEffect());
   $effect(() => ctrl.scrollTargetEffect());
   $effect(() => ctrl.pageCounterEffect());
   $effect(() => ctrl.clampVisiblePageEffect());
+
+  // After remount (e.g. user popped the preview out and back in), the scroll
+  // container is a fresh DOM element with scrollTop=0. Snap it to whichever
+  // page was visible last so the pane lands where the user left it.
+  $effect(() => {
+    if (ctrl.scrollEl && ctrl.committedPages.length > 0) {
+      ctrl.restoreScrollToVisiblePage();
+    }
+  });
 </script>
 
 <svelte:window onkeydown={(e) => ctrl.handleKeydown(e)} />

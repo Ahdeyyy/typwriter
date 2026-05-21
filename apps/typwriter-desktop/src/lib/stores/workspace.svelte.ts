@@ -17,6 +17,7 @@ import {
 import { onWorkspaceFilesChanged, type UnlistenFn } from '$lib/ipc/events';
 import type { FileTreeEntry } from '$lib/types';
 import { logError } from '$lib/logger';
+import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
 import { editor } from './editor.svelte';
 import { preview } from './preview.svelte';
 import { importFilesToWorkspace } from '$lib/services/workspace-file-service';
@@ -133,7 +134,9 @@ class WorkspaceStore {
     // intentionally shared between the old and new array.
     tree = $state.raw<FileNode[]>([]);
     rootPath = $state<string | null>(null);
-    mainFile = $state<string | null>(null);
+    private _mainFile = crossWindowState<string | null>('workspace:mainFile', null);
+    get mainFile(): string | null { return this._mainFile.value; }
+    set mainFile(v: string | null) { this._mainFile.set(v); }
     activeFilePath = $state<string | null>(null);
     searchQuery = $state('');
     dragSrcPath = $state<string | null>(null);

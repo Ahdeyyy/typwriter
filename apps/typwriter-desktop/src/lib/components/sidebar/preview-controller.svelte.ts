@@ -26,7 +26,10 @@ const WATCHDOG_RESYNC_AFTER_TICKS = 3;
 export class PreviewController {
   // ── Refs / local state ──────────────────────────────────────────────
   scrollEl = $state<HTMLElement | null>(null);
-  visiblePage = $state(0);
+  // visiblePage lives on the shared store (synced across windows) so the
+  // popout and the pane line up on the same page after pop-in/pop-out.
+  get visiblePage(): number { return preview.visiblePage; }
+  set visiblePage(v: number) { preview.visiblePage = v; }
   exportOpen = $state(false);
 
   // Double-buffered fingerprints — keeps the last good frame visible while
@@ -58,6 +61,12 @@ export class PreviewController {
 
   zoomLabel = $derived(`${Math.round(preview.zoom * 50)}%`);
   isNarrow = $derived(this.toolbarWidth > 0 && this.toolbarWidth < 240);
+
+  /** Set by the mounted Preview component so the controller can call back
+   *  for presentation mode. Cleared on unmount. */
+  setOnPresentationMode(cb: (() => void) | undefined) {
+    this.onPresentationMode = cb;
+  }
 
   constructor(opts: PreviewControllerOptions = {}) {
     this.onPresentationMode = opts.onPresentationMode;
@@ -289,6 +298,24 @@ export class PreviewController {
     this._applyScrollTarget(this.lastScrollTarget);
   }
 
+  /** Scroll the (possibly freshly remounted) scroll container to the page
+   *  recorded in the shared `visiblePage`. Called by the Preview component
+   *  on mount so popping the preview out and back in lands on the same page
+   *  instead of jumping to page 0. */
+  restoreScrollToVisiblePage() {
+    const idx = this.visiblePage;
+    if (idx <= 0) return;
+    if (preview.paginated) {
+      setVisiblePage(idx);
+      return;
+    }
+    requestAnimationFrame(() => {
+      const pageEl = document.getElementById(`preview-page-${idx}`);
+      if (!pageEl || !this.scrollEl) return;
+      this.scrollEl.scrollTo({ top: pageEl.offsetTop, behavior: "instant" as ScrollBehavior });
+    });
+  }
+
   /** Track which page is visible via IntersectionObserver (scroll-view only). */
   pageCounterEffect(): (() => void) | void {
     const el = this.scrollEl;
@@ -408,6 +435,17 @@ export class PreviewController {
   }
 
   // ── Page click → source jump ────────────────────────────────────────
+  /** Reset transient buffers without tearing down the singleton. Called
+   *  when the preview component unmounts (popout opening, workspace pane
+   *  hidden) so DOM-bound refs don't dangle, but the decoded page buffer
+   *  and visiblePage stay intact so the next mount paints instantly
+   *  instead of re-decoding from scratch. */
+  detachFromMount() {
+    this.scrollEl = null;
+    this.toolbarWidth = 0;
+    this.onPresentationMode = undefined;
+  }
+
   async handlePageClick(e: MouseEvent, pageIndex: number) {
     const img = e.target as HTMLImageElement;
     const px = (e.offsetX / img.clientWidth) * img.naturalWidth;
@@ -437,3 +475,17 @@ export class PreviewController {
     }
   }
 }
+
+// Per-webview singleton. The Preview component used to `new PreviewController`
+// inside its <script>, which meant unmounting the pane (e.g. when the user
+// pops the preview out into a separate window) destroyed every per-controller
+// buffer — decoded page fingerprints, visible-page index, watchdog state. On
+// remount everything re-decoded from scratch and the pane looked like it
+// "reloaded". Hoisting to a singleton lets state survive across mounts;
+// `detachFromMount()` clears the DOM-bound refs without nuking the buffers.
+//
+// One instance per webview is fine — popout windows have their own module
+// graph, so each window gets its own singleton with its own DOM-bound state,
+// while shared state (zoom, paginated, scroll target, visible page) flows
+// through `crossWindowState` on the preview store.
+export const previewController = new PreviewController();

@@ -17,13 +17,14 @@
   import { preview } from "$lib/stores/preview.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { Button } from "$lib/components/ui/button";
-  import { PreviewController } from "./preview-controller.svelte";
+  import { previewController } from "./preview-controller.svelte";
   import { buildPreviewUrl } from "$lib/preview-url";
 
   let { visible = true }: { visible?: boolean } = $props();
 
-  const ctrl = new PreviewController();
-  onDestroy(() => ctrl.destroy());
+  // Singleton — see comment in preview-controller.svelte.ts for rationale.
+  const ctrl = previewController;
+  onDestroy(() => ctrl.detachFromMount());
 
   $effect(() => ctrl.syncPagesEffect());
   $effect(() => ctrl.scrollTargetEffect());

@@ -61,7 +61,8 @@
       "Bash(find /c/Users/ahdey/projects/typwriter/apps/typwriter-desktop/src-tauri -name \"Cargo.toml\" -exec grep -A 20 \"^\\\\[dependencies\\\\]\" {} ;)",
       "Bash(cargo doc *)",
       "Bash(find ~/.cargo/registry/src -name 'typstyle*' -type d 2>/dev/null | head -5)",
-      "Bash(bun tauri *)"
+      "Bash(bun tauri *)",
+      "Bash(bun run *)"
     ]
   }
 }

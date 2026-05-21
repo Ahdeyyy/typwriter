@@ -4,7 +4,7 @@ import {
     setZoom,
     syncPreview,
     triggerPreview,
-} from '$lib/ipc/commands';
+} from '$lib/ipc/commands'; // triggerPreview still used by zoom/refresh paths
 import {
     emitEditorCursorPosition,
     onEditorCursorPosition,
@@ -17,6 +17,7 @@ import {
 import type { CompileReason } from '$lib/types';
 import { logError } from '$lib/logger';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
 import { platform } from './platform.svelte';
 import { settings } from './settings.svelte';
 
@@ -38,36 +39,53 @@ class PreviewStore {
      *  render has arrived yet). Rendered PNGs live in the Rust page cache
      *  and are fetched on demand via the `previewimg` URI scheme. */
     pages = $state<(string | null)[]>([]);
-    totalPages = $state<number>(0);
-    zoom = $state<number>(2.0);
-    scrollTarget = $state<{ page: number; x: number; y: number } | null>(null);
     isCompiling = $state(false);
     lastCompileRevision = $state(0);
     lastCompileReason = $state<CompileReason>('explicit');
     poppedOut = $state(false);
     presentationMode = $state(false);
-    paginated = $state(false);
+
+    // Synced across every Tauri window so the popout and main pane stay
+    // consistent without each consumer wiring its own listener. See
+    // `$lib/ipc/cross-window-state.svelte.ts`.
+    private _zoom = crossWindowState<number>('preview:zoom', 2.0);
+    private _paginated = crossWindowState<boolean>('preview:paginated', false);
+    private _totalPages = crossWindowState<number>('preview:totalPages', 0);
+    private _scrollTarget = crossWindowState<{ page: number; x: number; y: number } | null>(
+        'preview:scrollTarget',
+        null,
+    );
+    private _visiblePage = crossWindowState<number>('preview:visiblePage', 0);
+    get visiblePage(): number { return this._visiblePage.value; }
+    set visiblePage(v: number) { this._visiblePage.set(v); }
+    get totalPages(): number { return this._totalPages.value; }
+    set totalPages(v: number) { this._totalPages.set(v); }
+    get zoom(): number { return this._zoom.value; }
+    set zoom(v: number) { this._zoom.set(v); }
+    get paginated(): boolean { return this._paginated.value; }
+    set paginated(v: boolean) { this._paginated.set(v); }
+    get scrollTarget(): { page: number; x: number; y: number } | null { return this._scrollTarget.value; }
+    set scrollTarget(v: { page: number; x: number; y: number } | null) { this._scrollTarget.set(v); }
 
     private _unlisteners: UnlistenFn[] = [];
     private _cursorTimer: ReturnType<typeof setTimeout> | null = null;
     private _paginatedBeforePresentation = false;
 
     async init(): Promise<void> {
-        // The user-configured default zoom wins on every workspace open.
-        // Rust still persists in-session zoom changes via setZoom, but the
-        // settings page is the single source of truth for the initial value,
-        // so we override here.
-        const desiredZoom = settings.defaultPreviewZoom;
-        this.zoom = desiredZoom;
-        setZoom(desiredZoom).mapErr((err) =>
-            logError('preview: applying default zoom failed:', err)
-        );
-        // Read back from Rust in case the override failed (e.g. on the
-        // preview popout where setZoom may be a no-op until the pipeline is
-        // ready) so we display the actual current value.
-        const zoomResult = await getZoom();
-        if (zoomResult.isOk()) {
-            this.zoom = zoomResult.value;
+        // Only the main window seeds the zoom from settings. The popout is a
+        // *mirror* — it should adopt whatever the main window broadcasts via
+        // `crossWindowState`, not stamp its own defaultPreviewZoom back onto
+        // the shared channel and override what the user just zoomed to.
+        if (!isPopoutWindow()) {
+            const desiredZoom = settings.defaultPreviewZoom;
+            this.zoom = desiredZoom;
+            setZoom(desiredZoom).mapErr((err) =>
+                logError('preview: applying default zoom failed:', err)
+            );
+            const zoomResult = await getZoom();
+            if (zoomResult.isOk()) {
+                this.zoom = zoomResult.value;
+            }
         }
 
         const totalPagesResult = await onPreviewTotalPages(({ count }) => {
@@ -129,17 +147,16 @@ class PreviewStore {
             logError('preview: onPreviewCompileState listener failed:', compileStateResult.error);
         }
 
-        if (isPopoutWindow()) {
-            // Popout joins an already-running pipeline; pull current cached
-            // pages instead of forcing a recompile.
-            syncPreview().mapErr((err) =>
-                logError('preview: initial syncPreview failed:', err)
-            );
-        } else {
-            triggerPreview('explicit').mapErr((err) =>
-                logError('preview: initial triggerPreview failed:', err)
-            );
-        }
+        // Both windows pull current cached state instead of forcing a
+        // recompile. Rust's `open_folder` already requests a compile when a
+        // main file is detected, and the Save / Watcher / MainFile paths
+        // trigger their own compiles. Re-running an explicit compile on every
+        // workspace open invalidates the page cache for free — the popout
+        // then sees a blank flash and the main window can't behave as a
+        // portal-source for an already-rendered document.
+        syncPreview().mapErr((err) =>
+            logError('preview: initial syncPreview failed:', err)
+        );
     }
 
     destroy(): void {
