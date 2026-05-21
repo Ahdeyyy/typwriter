@@ -68,6 +68,6 @@
 
 <style>
   .mobile-editor :global(.cm-scroller) {
-    padding-top: 3rem;
+    padding-top: 1.25rem;
   }
 </style>

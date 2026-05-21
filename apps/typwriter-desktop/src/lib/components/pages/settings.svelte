@@ -545,13 +545,7 @@
         {/if}
 
         <!-- ── Typst font directories ──────────────────────────────────── -->
-        <!-- Desktop only. On Android the SAF-mediated paths returned by the
-             folder picker aren't reliably scannable by typst-kit's fontdb
-             backend, and on iOS the OS doesn't expose arbitrary directories
-             to the app sandbox. Mobile users fall back to the bundled +
-             system fonts. -->
-        {#if platform.isDesktop}
-          <section>
+        <section>
             <div class="mb-3 flex items-center justify-between gap-2">
               <div class="flex items-center gap-2">
                 <HugeiconsIcon icon={Folder01Icon} class="size-4 text-muted-foreground" />
@@ -612,7 +606,6 @@
               </Button>
             </div>
           </section>
-        {/if}
 
       </div>
     </ScrollArea.Root>

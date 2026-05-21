@@ -77,7 +77,7 @@
     {/if}
 
     {#if preview.totalPages > 0}
-      <span class="text-[10px] text-muted-foreground tabular-nums">
+      <span class="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground tabular-nums">
         {ctrl.visiblePage + 1} / {preview.totalPages}
       </span>
     {/if}
