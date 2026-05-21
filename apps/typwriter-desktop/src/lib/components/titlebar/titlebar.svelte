@@ -2,8 +2,10 @@
   import { untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
-    PanelLeftIcon,
+    PanelLeftOpenIcon,
+    PanelLeftCloseIcon,
     EyeIcon,
+    ViewOffSlashIcon,
     ArrowExpandIcon,
     Link01Icon,
     LinkSquare01Icon,
@@ -61,9 +63,13 @@
               size="icon"
               aria-label="Toggle sidebar"
               onclick={() => sidebarCtx.toggle()}
-              class="text-foreground/60 hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground {sidebarCtx.open ? 'bg-accent text-accent-foreground' : ''}"
+              class="text-foreground/60 hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground"
             >
-              <HugeiconsIcon icon={PanelLeftIcon} class="size-4" />
+              {#if sidebarCtx.open}
+                <HugeiconsIcon icon={PanelLeftCloseIcon} class="size-4" />
+              {:else}
+                <HugeiconsIcon icon={PanelLeftOpenIcon} class="size-4" />
+              {/if}
             </Button>
           {/snippet}
         </Tooltip.Trigger>
@@ -106,9 +112,13 @@
               disabled={previewPoppedOut}
               aria-label={previewVisible ? "Hide preview" : "Show preview"}
               onclick={() => onTogglePreview?.()}
-              class="text-foreground/70 hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground {previewVisible && !previewPoppedOut ? 'bg-accent text-accent-foreground' : ''}"
+              class="text-foreground/70 hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground"
             >
-              <HugeiconsIcon icon={EyeIcon} class="size-4" />
+              {#if previewVisible && !previewPoppedOut}
+                <HugeiconsIcon icon={EyeIcon} class="size-4" />
+              {:else}
+                <HugeiconsIcon icon={ViewOffSlashIcon} class="size-4" />
+              {/if}
             </Button>
           {/snippet}
         </Tooltip.Trigger>
