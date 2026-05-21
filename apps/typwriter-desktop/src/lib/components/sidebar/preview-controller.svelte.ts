@@ -48,6 +48,8 @@ export class PreviewController {
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private stuckTicks = new Map<number, number>();
 
+  private lastScrollTarget: { page: number; x: number; y: number } | null = null;
+
   toolbarWidth = $state(0);
 
   // ── Static / derived ────────────────────────────────────────────────
@@ -250,7 +252,11 @@ export class PreviewController {
     const target = preview.scrollTarget;
     if (target === null) return;
     preview.scrollTarget = null;
+    this.lastScrollTarget = target;
+    this._applyScrollTarget(target);
+  }
 
+  private _applyScrollTarget(target: { page: number; x: number; y: number }) {
     this.visiblePage = target.page;
     if (preview.paginated) {
       setVisiblePage(target.page);
@@ -274,6 +280,13 @@ export class PreviewController {
       const scrollTo = yAbs - this.scrollEl.clientHeight / 3;
       this.scrollEl.scrollTo({ top: scrollTo, behavior: "smooth" });
     });
+  }
+
+  /** Re-apply the last cursor-sync scroll — call when the preview becomes
+   *  visible after being hidden so the position is restored. */
+  reapplyLastScroll() {
+    if (this.lastScrollTarget === null) return;
+    this._applyScrollTarget(this.lastScrollTarget);
   }
 
   /** Track which page is visible via IntersectionObserver (scroll-view only). */

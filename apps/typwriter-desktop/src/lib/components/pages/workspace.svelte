@@ -175,7 +175,7 @@
             <EditorPane />
           </div>
           <div class="absolute inset-0" class:hidden={mobileView !== "preview"}>
-            <PreviewMobile />
+            <PreviewMobile visible={mobileView === "preview"} />
           </div>
         </div>
       {:else}

@@ -10,6 +10,7 @@
     ArrowRight01Icon,
     Menu01Icon,
     File01Icon,
+    Loading02Icon,
   } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
 
@@ -19,6 +20,8 @@
   import { PreviewController } from "./preview-controller.svelte";
   import { buildPreviewUrl } from "$lib/preview-url";
 
+  let { visible = true }: { visible?: boolean } = $props();
+
   const ctrl = new PreviewController();
   onDestroy(() => ctrl.destroy());
 
@@ -26,6 +29,10 @@
   $effect(() => ctrl.scrollTargetEffect());
   $effect(() => ctrl.pageCounterEffect());
   $effect(() => ctrl.clampVisiblePageEffect());
+
+  $effect(() => {
+    if (visible) ctrl.reapplyLastScroll();
+  });
 </script>
 
 <div class="flex h-full flex-col bg-background text-foreground">
@@ -54,9 +61,7 @@
     <div class="flex-1"></div>
 
     {#if preview.isCompiling}
-      <span class="text-[10px] uppercase tracking-wide text-muted-foreground animate-pulse">
-        Compiling
-      </span>
+      <HugeiconsIcon icon={Loading02Icon} class="size-4 shrink-0 text-muted-foreground animate-spin" />
     {/if}
 
     {#if preview.paginated && preview.totalPages > 0}
@@ -71,7 +76,7 @@
     {/if}
 
     {#if preview.totalPages > 0}
-      <span class="text-xs text-muted-foreground tabular-nums">
+      <span class="text-[10px] text-muted-foreground tabular-nums">
         {ctrl.visiblePage + 1} / {preview.totalPages}
       </span>
     {/if}
