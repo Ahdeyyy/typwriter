@@ -1,25 +1,24 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Tabs, TabsList, TabsTrigger, TabsContent } from '$lib/components/ui/tabs';
 	import { Separator } from '$lib/components/ui/separator';
 	import FeatureCard from '$lib/components/FeatureCard.svelte';
 
+	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
-		GithubLogo,
-		EyeIcon,
-		ArrowsHorizontal,
-		Lightning,
-		FolderOpen,
-		Export,
-		Download,
-		AppleLogo,
-		LinuxLogo,
-		Monitor,
-		Code,
-		AndroidLogo
-	} from 'phosphor-svelte';
+		Github01Icon,
+		ViewIcon,
+		ArrowDataTransferHorizontalIcon,
+		FlashIcon,
+		FolderOpenIcon,
+		FileExportIcon,
+		Download04Icon,
+		Apple01Icon,
+		ComputerIcon,
+		SourceCodeIcon,
+		AndroidIcon,
+		LaptopIcon
+	} from '@hugeicons/core-free-icons';
 
 	import showcaseDark from '$lib/assets/showcase_dark.png';
 	import showcaseLight from '$lib/assets/showcase_light.png';
@@ -45,9 +44,8 @@
 			(a) => a.name.endsWith('.deb') || a.name.endsWith('.rpm') || a.name.endsWith('.AppImage')
 		)
 	);
-	// APK asset names follow `typwriter_${VERSION}_${abi}.apk`
-	// (see .github/workflows/android.yml). Sort by preferred ABI so the
-	// 64-bit ARM build — what almost every modern phone wants — comes first.
+	// APK asset names follow `typwriter_${VERSION}_${abi}.apk`.
+	// Sort by preferred ABI so 64-bit ARM (what almost every modern phone wants) comes first.
 	const APK_ABI_ORDER = ['arm64', 'arm', 'x86_64', 'x86'];
 	const androidAssets = $derived(
 		assets
@@ -59,6 +57,10 @@
 				return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
 			})
 	);
+
+	let desktopTheme = $state<'dark' | 'light' | null>(null);
+	let workspaceTheme = $state<'dark' | 'light' | null>(null);
+	let editorTheme = $state<'dark' | 'light' | null>(null);
 
 	function formatSize(bytes: number): string {
 		return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
@@ -72,7 +74,6 @@
 		if (name.endsWith('.deb')) return 'Debian / Ubuntu (.deb)';
 		if (name.endsWith('.rpm')) return 'Fedora / RHEL (.rpm)';
 		if (name.endsWith('.AppImage')) return 'AppImage';
-		// Order matters: check `arm64` before `arm`, `x86_64` before `x86`.
 		if (name.endsWith('_arm64.apk')) return 'ARM64 (.apk)';
 		if (name.endsWith('_arm.apk')) return 'ARMv7 (.apk)';
 		if (name.endsWith('_x86_64.apk')) return 'x86_64 (.apk)';
@@ -83,133 +84,152 @@
 
 	const features = [
 		{
-			icon: EyeIcon,
-			title: 'Live Preview',
+			icon: ViewIcon,
+			title: 'Live preview',
 			description:
-				'Your document compiles and renders as you type. See the final result instantly, with no manual refresh.'
+				'Your document recompiles as you type. The rendered page stays one keystroke behind your source, no manual refresh.'
 		},
 		{
-			icon: Code,
-			title: 'Syntax Highlighting',
+			icon: SourceCodeIcon,
+			title: 'Syntax highlighting',
 			description:
-				'Full syntax highlighting for Typst — markup, math, code blocks, and more — making your source easy to read and navigate.'
+				'Full Typst highlighting across markup, math, and code blocks, so the source stays easy to read and navigate.'
 		},
 		{
-			icon: ArrowsHorizontal,
-			title: 'Bidirectional Navigation',
+			icon: ArrowDataTransferHorizontalIcon,
+			title: 'Two-way navigation',
 			description:
-				'Click anywhere in the preview to jump to the matching source line, or navigate the other way around.'
+				'Click in the preview to jump to the matching source line. Move your cursor in the source to see the page follow.'
 		},
 		{
-			icon: Lightning,
-			title: 'Autocomplete & Docs',
+			icon: FlashIcon,
+			title: 'Autocomplete & docs',
 			description:
-				'Context-aware autocomplete and inline documentation surface the right suggestions as you write.'
+				'Context-aware suggestions and inline documentation surface the right symbol while you write, not after you guess.'
 		},
 		{
-			icon: FolderOpen,
-			title: 'Workspace Management',
+			icon: FolderOpenIcon,
+			title: 'Workspaces',
 			description:
-				'Organise documents into projects and pick up where you left off with quick access to recent workspaces.'
+				'Organise documents as projects. Pick up where you left off from a recent-workspaces list, on every device.'
 		},
 		{
-			icon: Export,
-			title: 'Export Anywhere',
-			description: 'Generate pixel-perfect PDF, SVG, or PNG output from your document in one click.'
+			icon: FileExportIcon,
+			title: 'Export anywhere',
+			description:
+				'Generate pixel-perfect PDF, SVG, or PNG output from the current document in one click.'
 		}
 	];
 </script>
 
 <svelte:head>
-	<title>Typwriter - Typst editor</title>
+	<title>Typwriter — a Typst editor for desktop and mobile</title>
 	<meta
 		name="description"
-		content="Typwriter is a cross-platform desktop editor for Typst — runs on Windows, macOS, and Linux. Syntax highlighting, live preview, bidirectional navigation, and export to PDF, SVG, and PNG."
+		content="Typwriter is a Typst editor for Windows, macOS, Linux, and Android. Live preview, syntax highlighting, autocomplete, and export to PDF, SVG, or PNG."
 	/>
 </svelte:head>
 
 <!-- ─── Hero ───────────────────────────────────────────────── -->
-<section class="mx-auto max-w-5xl px-6 py-24 text-center">
+<section class="mx-auto max-w-7xl px-6 py-24 text-center">
 	<h1 class="mb-4 text-4xl font-bold tracking-tighter sm:text-5xl lg:text-6xl">Typwriter</h1>
 
 	<p class="mx-auto mb-10 max-w-xl text-base text-muted-foreground sm:text-lg">
-		A cross-platform Typst editor for Windows, macOS, Linux, and Android. Write with syntax
-		highlighting and autocomplete, preview your document in real time, and export to PDF, SVG, or
-		PNG.
+		A Typst editor for Windows, macOS, Linux, and Android. Write with syntax highlighting and
+		autocomplete, watch your document render as you type, and export to PDF, SVG, or PNG.
 	</p>
 
 	<div class="flex flex-wrap items-center justify-center gap-3">
 		<Button size="lg" class="px-8 py-6 text-base" href="#download">
-			<Download size={18} class="mr-2" />
+			<HugeiconsIcon icon={Download04Icon} size={18} class="mr-2" />
 			Download
 		</Button>
 	</div>
 
-	<!-- Screenshot -->
-	<div class="relative mt-16">
-		<!-- Image container (overflow-hidden keeps scale animation clipped) -->
-		<div class="group overflow-hidden rounded-sm border border-border shadow-sm transition-all duration-500 ease-out hover:-translate-y-1 hover:shadow-lg">
-			<img
-				src={showcaseLight}
-				alt="Typwriter editor interface showing source and preview side by side"
-				class="block w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.01] dark:hidden"
-				loading="lazy"
-			/>
-			<img
-				src={showcaseDark}
-				alt="Typwriter editor interface showing source and preview side by side"
-				class="hidden w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.01] dark:block"
-				loading="lazy"
-			/>
-		</div>
-		<!-- Edge fades bleed beyond the image into the page background -->
-		<div class="pointer-events-none absolute inset-y-0 -translate-x-2 -left-3 w-12 bg-gradient-to-r from-background to-transparent"></div>
-		<div class="pointer-events-none absolute inset-y-0 translate-x-2 -right-3 w-12 bg-gradient-to-l from-background/20 to-transparent"></div>
-		<div class="pointer-events-none absolute inset-x-0 translate-y-2 -bottom-3 h-14 bg-gradient-to-t from-background to-transparent"></div>
-		<div class="pointer-events-none absolute inset-x-0 -translate-y-2 -top-3 h-10 bg-gradient-to-b from-background/20 to-transparent"></div>
-	</div>
-</section>
+	<div class="showcase-row">
+		<div class="theme-stack relative w-full">
+			<div class="theme-stack__frames" data-active-theme={desktopTheme ?? undefined}>
+				<button
+					type="button"
+					class="theme-frame theme-frame--dark"
+					aria-label="Show the desktop dark mode screenshot"
+					onclick={() => (desktopTheme = 'dark')}
+				>
+					<img
+						src={showcaseDark}
+						alt="Typwriter editor in dark mode, source on the left, rendered preview on the right"
+						fetchpriority="high"
+					/>
+				</button>
 
-<!-- ─── Mobile ────────────────────────────────────────────── -->
-<section class="mx-auto max-w-5xl px-6 pb-20">
-	<div class="mb-10 text-center">
-		<h2 class="mb-2 text-2xl font-bold tracking-tight">Now on Android</h2>
-		<p class="mx-auto max-w-xl text-sm text-muted-foreground">
-			Take Typwriter with you. The same editor, preview, and export tools.
-		</p>
-	</div>
-
-	<div class="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
-		<div class="w-full max-w-[16rem]">
-			<div class="overflow-hidden rounded-sm border border-border shadow-sm">
-				<img
-					src={mobileShowcaseLight}
-					alt="Typwriter mobile app showing the workspace view"
-					class="block w-full object-cover dark:hidden"
-					loading="lazy"
-				/>
-				<img
-					src={mobileShowcaseDark}
-					alt="Typwriter mobile app showing the workspace view"
-					class="hidden w-full object-cover dark:block"
-					loading="lazy"
-				/>
+				<button
+					type="button"
+					class="theme-frame theme-frame--light"
+					aria-label="Show the desktop light mode screenshot"
+					onclick={() => (desktopTheme = 'light')}
+				>
+					<img
+						src={showcaseLight}
+						alt="Typwriter editor in light mode, source on the left, rendered preview on the right"
+						loading="lazy"
+					/>
+				</button>
 			</div>
 		</div>
-		<div class="w-full max-w-[16rem]">
-			<div class="overflow-hidden rounded-sm border border-border shadow-sm">
-				<img
-					src={mobileEditorLight}
-					alt="Typwriter mobile editor with live preview"
-					class="block w-full object-cover dark:hidden"
-					loading="lazy"
-				/>
-				<img
-					src={mobileEditorDark}
-					alt="Typwriter mobile editor with live preview"
-					class="hidden w-full object-cover dark:block"
-					loading="lazy"
-				/>
+
+		<div class="android-showcase">
+			<div class="phone-stack phone-stack--workspace">
+				<div class="phone-stack__frames" data-active-theme={workspaceTheme ?? undefined}>
+					<button
+						type="button"
+						class="phone-frame phone-frame--dark"
+						aria-label="Show the Android workspace dark mode screenshot"
+						onclick={() => (workspaceTheme = 'dark')}
+					>
+						<img
+							src={mobileShowcaseDark}
+							alt="Typwriter mobile workspace in dark mode"
+							loading="lazy"
+						/>
+					</button>
+					<button
+						type="button"
+						class="phone-frame phone-frame--light"
+						aria-label="Show the Android workspace light mode screenshot"
+						onclick={() => (workspaceTheme = 'light')}
+					>
+						<img
+							src={mobileShowcaseLight}
+							alt="Typwriter mobile workspace in light mode"
+							loading="lazy"
+						/>
+					</button>
+				</div>
+			</div>
+
+			<div class="phone-stack phone-stack--editor">
+				<div class="phone-stack__frames" data-active-theme={editorTheme ?? undefined}>
+					<button
+						type="button"
+						class="phone-frame phone-frame--dark"
+						aria-label="Show the Android editor dark mode screenshot"
+						onclick={() => (editorTheme = 'dark')}
+					>
+						<img src={mobileEditorDark} alt="Typwriter mobile editor in dark mode" loading="lazy" />
+					</button>
+					<button
+						type="button"
+						class="phone-frame phone-frame--light"
+						aria-label="Show the Android editor light mode screenshot"
+						onclick={() => (editorTheme = 'light')}
+					>
+						<img
+							src={mobileEditorLight}
+							alt="Typwriter mobile editor in light mode"
+							loading="lazy"
+						/>
+					</button>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -244,130 +264,119 @@
 		</p>
 	</div>
 
-	<Tabs value="windows" class="mx-auto max-w-xl">
-		<TabsList class="grid w-full grid-cols-4">
-			<TabsTrigger value="windows">
-				<Monitor size={14} class="mr-1.5" />
-				Windows
-			</TabsTrigger>
-			<TabsTrigger value="macos">
-				<AppleLogo size={14} class="mr-1.5" />
-				macOS
-			</TabsTrigger>
-			<TabsTrigger value="linux">
-				<LinuxLogo size={14} class="mr-1.5" />
-				Linux
-			</TabsTrigger>
-			<TabsTrigger value="android">
-				<AndroidLogo size={14} class="mr-1.5" />
-				Android
-			</TabsTrigger>
-		</TabsList>
-
+	<div class="grid gap-6 sm:grid-cols-2">
 		<!-- Windows -->
-		<TabsContent value="windows" class="mt-6">
-			<div class="flex flex-col gap-3">
-				{#if windowsAssets.length > 0}
-					{#each windowsAssets as asset}
-						<Button
-							variant="outline"
-							class="h-auto justify-between px-4 py-3"
-							href={asset.browser_download_url}
-						>
-							<span class="flex items-center gap-2">
-								<Download size={14} />
-								{assetLabel(asset.name)}
-							</span>
-							<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
-						</Button>
-					{/each}
-				{:else}
-					<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
-						<Download size={14} class="mr-2" />
-						View Windows releases
-					</Button>
-				{/if}
+		<div class="flex flex-col gap-3">
+			<div class="flex items-center gap-2 text-sm font-medium">
+				<HugeiconsIcon icon={ComputerIcon} size={15} class="text-muted-foreground" />
+				Windows
 			</div>
-		</TabsContent>
+			{#if windowsAssets.length > 0}
+				{#each windowsAssets as asset (asset.name)}
+					<Button
+						variant="outline"
+						class="h-auto justify-between px-4 py-3"
+						href={asset.browser_download_url}
+					>
+						<span class="flex items-center gap-2">
+							<HugeiconsIcon icon={Download04Icon} size={14} />
+							{assetLabel(asset.name)}
+						</span>
+						<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
+					</Button>
+				{/each}
+			{:else}
+				<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
+					<HugeiconsIcon icon={Download04Icon} size={14} class="mr-2" />
+					View Windows releases
+				</Button>
+			{/if}
+		</div>
 
 		<!-- macOS -->
-		<TabsContent value="macos" class="mt-6">
-			<div class="flex flex-col gap-3">
-				{#if macosAssets.length > 0}
-					{#each macosAssets as asset}
-						<Button
-							variant="outline"
-							class="h-auto justify-between px-4 py-3"
-							href={asset.browser_download_url}
-						>
-							<span class="flex items-center gap-2">
-								<Download size={14} />
-								{assetLabel(asset.name)}
-							</span>
-							<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
-						</Button>
-					{/each}
-				{:else}
-					<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
-						<Download size={14} class="mr-2" />
-						View macOS releases
-					</Button>
-				{/if}
+		<div class="flex flex-col gap-3">
+			<div class="flex items-center gap-2 text-sm font-medium">
+				<HugeiconsIcon icon={Apple01Icon} size={15} class="text-muted-foreground" />
+				macOS
 			</div>
-		</TabsContent>
+			{#if macosAssets.length > 0}
+				{#each macosAssets as asset (asset.name)}
+					<Button
+						variant="outline"
+						class="h-auto justify-between px-4 py-3"
+						href={asset.browser_download_url}
+					>
+						<span class="flex items-center gap-2">
+							<HugeiconsIcon icon={Download04Icon} size={14} />
+							{assetLabel(asset.name)}
+						</span>
+						<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
+					</Button>
+				{/each}
+			{:else}
+				<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
+					<HugeiconsIcon icon={Download04Icon} size={14} class="mr-2" />
+					View macOS releases
+				</Button>
+			{/if}
+		</div>
 
 		<!-- Linux -->
-		<TabsContent value="linux" class="mt-6">
-			<div class="flex flex-col gap-3">
-				{#if linuxAssets.length > 0}
-					{#each linuxAssets as asset}
-						<Button
-							variant="outline"
-							class="h-auto justify-between px-4 py-3"
-							href={asset.browser_download_url}
-						>
-							<span class="flex items-center gap-2">
-								<Download size={14} />
-								{assetLabel(asset.name)}
-							</span>
-							<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
-						</Button>
-					{/each}
-				{:else}
-					<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
-						<Download size={14} class="mr-2" />
-						View Linux releases
-					</Button>
-				{/if}
+		<div class="flex flex-col gap-3">
+			<div class="flex items-center gap-2 text-sm font-medium">
+				<HugeiconsIcon icon={LaptopIcon} size={15} class="text-muted-foreground" />
+				Linux
 			</div>
-		</TabsContent>
+			{#if linuxAssets.length > 0}
+				{#each linuxAssets as asset (asset.name)}
+					<Button
+						variant="outline"
+						class="h-auto justify-between px-4 py-3"
+						href={asset.browser_download_url}
+					>
+						<span class="flex items-center gap-2">
+							<HugeiconsIcon icon={Download04Icon} size={14} />
+							{assetLabel(asset.name)}
+						</span>
+						<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
+					</Button>
+				{/each}
+			{:else}
+				<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
+					<HugeiconsIcon icon={Download04Icon} size={14} class="mr-2" />
+					View Linux releases
+				</Button>
+			{/if}
+		</div>
 
 		<!-- Android -->
-		<TabsContent value="android" class="mt-6">
-			<div class="flex flex-col gap-3">
-				{#if androidAssets.length > 0}
-					{#each androidAssets as asset}
-						<Button
-							variant="outline"
-							class="h-auto justify-between px-4 py-3"
-							href={asset.browser_download_url}
-						>
-							<span class="flex items-center gap-2">
-								<Download size={14} />
-								{assetLabel(asset.name)}
-							</span>
-							<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
-						</Button>
-					{/each}
-				{:else}
-					<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
-						<Download size={14} class="mr-2" />
-						View Android releases
-					</Button>
-				{/if}
+		<div class="flex flex-col gap-3">
+			<div class="flex items-center gap-2 text-sm font-medium">
+				<HugeiconsIcon icon={AndroidIcon} size={15} class="text-muted-foreground" />
+				Android
 			</div>
-		</TabsContent>
-	</Tabs>
+			{#if androidAssets.length > 0}
+				{#each androidAssets as asset (asset.name)}
+					<Button
+						variant="outline"
+						class="h-auto justify-between px-4 py-3"
+						href={asset.browser_download_url}
+					>
+						<span class="flex items-center gap-2">
+							<HugeiconsIcon icon={Download04Icon} size={14} />
+							{assetLabel(asset.name)}
+						</span>
+						<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
+					</Button>
+				{/each}
+			{:else}
+				<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
+					<HugeiconsIcon icon={Download04Icon} size={14} class="mr-2" />
+					View Android releases
+				</Button>
+			{/if}
+		</div>
+	</div>
 </section>
 
 <Separator />
@@ -387,7 +396,7 @@
 				rel="noopener noreferrer"
 				class="flex items-center gap-1 transition-colors hover:text-foreground"
 			>
-				<GithubLogo size={13} />
+				<HugeiconsIcon icon={Github01Icon} size={13} />
 				GitHub
 			</a>
 			<a
@@ -401,3 +410,201 @@
 		</div>
 	</div>
 </footer>
+
+<style>
+	.showcase-row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(18rem, 27rem);
+		align-items: center;
+		gap: clamp(2.5rem, 5vw, 5rem);
+		margin-top: 5rem;
+		padding-inline: clamp(1.5rem, 4vw, 4rem) clamp(0.5rem, 2vw, 2rem);
+	}
+
+	.theme-stack__frames {
+		position: relative;
+		aspect-ratio: 16 / 10;
+		isolation: isolate;
+		width: 100%;
+		margin-inline: auto;
+	}
+
+	.theme-frame {
+		position: absolute;
+		inset: 0;
+		margin: 0;
+		overflow: hidden;
+		border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+		border-radius: 0.5rem;
+		background: transparent;
+		padding: 0;
+		color: inherit;
+		box-shadow: 0 14px 30px -18px oklch(0 0 0 / 0.35);
+		-webkit-mask-image: linear-gradient(to bottom, black 0%, black 76%, rgb(0 0 0 / 0.38) 100%);
+		mask-image: linear-gradient(to bottom, black 0%, black 76%, rgb(0 0 0 / 0.38) 100%);
+		cursor: pointer;
+		transition:
+			transform 600ms cubic-bezier(0.16, 1, 0.3, 1),
+			box-shadow 600ms cubic-bezier(0.16, 1, 0.3, 1),
+			border-color 200ms ease;
+	}
+
+	.theme-frame:focus-visible,
+	.phone-frame:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 0.35rem;
+	}
+
+	.theme-frame img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		object-position: top left;
+	}
+
+	.theme-frame--light {
+		z-index: 1;
+		transform: translate(-9%, 10%) scale(0.93) rotate(-1.2deg);
+	}
+	.theme-frame--dark {
+		z-index: 2;
+		transform: translate(3%, -2%) scale(0.96);
+	}
+
+	.theme-stack__frames[data-active-theme='light'] .theme-frame--light,
+	.theme-stack__frames[data-active-theme='dark'] .theme-frame--dark {
+		z-index: 4;
+		transform: translate(2%, -1%) scale(0.98) rotate(0deg);
+		box-shadow: 0 40px 60px -28px oklch(0 0 0 / 0.4);
+	}
+
+	.theme-stack__frames[data-active-theme='light'] .theme-frame--dark {
+		z-index: 1;
+		transform: translate(11%, -8%) scale(0.9) rotate(1.2deg);
+		opacity: 0.86;
+	}
+
+	.theme-stack__frames[data-active-theme='dark'] .theme-frame--light {
+		z-index: 1;
+		transform: translate(-9%, 10%) scale(0.93) rotate(-1.2deg);
+		opacity: 0.86;
+	}
+
+	.android-showcase {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(8rem, 11.25rem));
+		justify-content: center;
+		column-gap: clamp(0.75rem, 2.25vw, 1.75rem);
+		row-gap: 4rem;
+		padding-inline: 0;
+	}
+
+	.phone-stack {
+		width: 100%;
+		max-width: 11.25rem;
+	}
+
+	.phone-stack__frames {
+		position: relative;
+		aspect-ratio: 9 / 19.5;
+		isolation: isolate;
+	}
+
+	.phone-frame {
+		position: absolute;
+		inset: 0;
+		margin: 0;
+		overflow: hidden;
+		border: 1px solid var(--border);
+		border-radius: 0.75rem;
+		background: var(--card);
+		padding: 0;
+		color: inherit;
+		box-shadow: 0 14px 30px -18px oklch(0 0 0 / 0.3);
+		cursor: pointer;
+		transition:
+			transform 600ms cubic-bezier(0.16, 1, 0.3, 1),
+			box-shadow 600ms cubic-bezier(0.16, 1, 0.3, 1),
+			opacity 400ms ease;
+	}
+
+	.phone-frame img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		object-position: top center;
+	}
+
+	.phone-frame--light {
+		z-index: 1;
+		transform: translate(-18%, 8%) scale(0.82) rotate(-3deg);
+		opacity: 0.94;
+	}
+	.phone-frame--dark {
+		z-index: 2;
+		transform: translate(0, 0) scale(1) rotate(0deg);
+	}
+
+	.phone-stack--editor .phone-frame--light {
+		transform: translate(18%, -7%) scale(0.82) rotate(3deg);
+	}
+
+	.phone-stack__frames[data-active-theme='light'] .phone-frame--light,
+	.phone-stack__frames[data-active-theme='dark'] .phone-frame--dark {
+		z-index: 4;
+		transform: translate(0, 0) scale(1.03) rotate(0deg);
+		box-shadow: 0 36px 54px -22px oklch(0 0 0 / 0.4);
+		opacity: 1;
+	}
+
+	.phone-stack__frames[data-active-theme='light'] .phone-frame--dark {
+		z-index: 1;
+		transform: translate(16%, -6%) scale(0.82) rotate(3deg);
+		opacity: 0.82;
+	}
+
+	.phone-stack__frames[data-active-theme='dark'] .phone-frame--light {
+		z-index: 1;
+		opacity: 0.88;
+	}
+
+	@media (prefers-color-scheme: light) {
+		.theme-stack__frames:not([data-active-theme]) .theme-frame--light {
+			z-index: 2;
+			transform: translate(2%, -1%) scale(0.98);
+		}
+
+		.theme-stack__frames:not([data-active-theme]) .theme-frame--dark {
+			z-index: 1;
+			transform: translate(11%, -8%) scale(0.9) rotate(1.2deg);
+			opacity: 0.86;
+		}
+	}
+
+	@media (max-width: 640px) {
+		.showcase-row {
+			grid-template-columns: 1fr;
+			margin-top: 4rem;
+		}
+
+		.android-showcase {
+			grid-template-columns: minmax(10rem, 13rem);
+			row-gap: 3.25rem;
+		}
+	}
+
+	@media (min-width: 641px) and (max-width: 1024px) {
+		.showcase-row {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.theme-frame,
+		.phone-frame {
+			transition: none;
+		}
+	}
+</style>
