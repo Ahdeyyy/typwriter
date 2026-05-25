@@ -11,12 +11,12 @@ mod compile;
 mod diff;
 mod render;
 
-pub use cache::{fingerprint_to_hex, parse_fingerprint};
+pub use cache::{key_to_path, parse_key, zoom_to_bucket, PageCacheKey};
 pub use compile::{
     collect_workspace_diagnostics, compile_document, dedup_merge, CompileOutput,
     SerializedDiagnostic,
 };
-pub use diff::{diff_pages, fingerprint_pages, PageFingerprint};
+pub use diff::fingerprint_pages;
 pub use render::render_page;
 
 use std::{
@@ -57,9 +57,10 @@ struct TotalPagesPayload {
 #[derive(Serialize, Clone)]
 struct PageUpdatedPayload {
     index: usize,
-    // Hex-encoded `PageFingerprint`. The webview fetches the PNG bytes from
-    // `previewimg://localhost/{fingerprint}.png`, which keeps the IPC event
-    // tiny and lets the browser cache by URL.
+    // URL path component (`{fp_hex}-{zoom_bucket}`). The webview fetches the
+    // PNG bytes from `previewimg://localhost/{path}.png`, which keeps the IPC
+    // event tiny and lets the browser cache by URL. The field name is
+    // historical — preserved so the frontend payload type doesn't change.
     fingerprint: String,
 }
 
@@ -217,7 +218,16 @@ fn drain_latest_reason(rx: &Receiver<CompileReason>, initial: CompileReason) -> 
 
 pub struct PreviewPipeline {
     world: Arc<EditorWorld>,
-    last_fingerprints: Mutex<Vec<PageFingerprint>>,
+    /// What the frontend has been told about, paired with the bytes that were
+    /// in the cache at emit time. `Some((fp, zoom))` means "we emitted this
+    /// `(fp, zoom)` key for the slot and the cache had bytes for it at that
+    /// moment"; `None` means the slot exists but has never been emitted.
+    ///
+    /// Updated atomically — a single write at the end of (or each exit point
+    /// from) `compile_and_emit`. The mid-flight write the old code did caused
+    /// aborted compiles to leave the frontend pointing at fingerprints that
+    /// had never been rendered.
+    last_emitted: Mutex<Vec<Option<PageCacheKey>>>,
     page_cache: Mutex<PageCache>,
     // The most recently successfully compiled document.
     // Held so IDE features (hover, go-to-def, jump-from-click) can use it.
@@ -239,7 +249,7 @@ impl PreviewPipeline {
         let (compile_tx, compile_rx) = mpsc::channel();
         Self {
             world,
-            last_fingerprints: Mutex::new(Vec::new()),
+            last_emitted: Mutex::new(Vec::new()),
             page_cache: Mutex::new(PageCache::default()),
             last_document: Mutex::new(None),
             app_handle,
@@ -264,43 +274,47 @@ impl PreviewPipeline {
 
     pub fn invalidate_cache(&self) {
         self.page_cache.lock().clear();
-        *self.last_fingerprints.lock() = Vec::new();
+        *self.last_emitted.lock() = Vec::new();
         *self.last_document.lock() = None;
     }
 
-    /// Re-emit total-pages and every cached page. Used when a new webview
-    /// (e.g. the popped-out preview window) needs to populate its UI from the
-    /// existing compiled state without forcing a recompile.
+    /// Re-emit total-pages and every previously-emitted page key. Used when a
+    /// new webview (e.g. the popped-out preview window) needs to populate its
+    /// UI from the existing compiled state without forcing a recompile.
     pub fn emit_current_state(&self) {
-        // Snapshot fingerprints under the lock; bytes live in the cache and
-        // are fetched on demand via the `previewimg` URI scheme.
-        let fingerprints: Vec<PageFingerprint> = self.last_fingerprints.lock().clone();
-        let count = fingerprints.len();
+        let emitted: Vec<Option<PageCacheKey>> = self.last_emitted.lock().clone();
+        let count = emitted.len();
 
         let _ = self
             .app_handle
             .emit("preview:total-pages", TotalPagesPayload { count });
-        for (idx, fp) in fingerprints.into_iter().enumerate() {
-            let _ = self.app_handle.emit(
-                "preview:page-updated",
-                PageUpdatedPayload {
-                    index: idx,
-                    fingerprint: fingerprint_to_hex(fp),
-                },
-            );
+        for (idx, slot) in emitted.into_iter().enumerate() {
+            if let Some(key) = slot {
+                let _ = self.app_handle.emit(
+                    "preview:page-updated",
+                    PageUpdatedPayload {
+                        index: idx,
+                        fingerprint: key_to_path(key),
+                    },
+                );
+            }
         }
     }
 
-    /// Look up the PNG bytes for a fingerprint. Used by the `previewimg`
+    /// Look up the PNG bytes for a cache key. Used by the `previewimg`
     /// URI scheme handler to serve images to the webview without going
     /// through the JS bridge.
-    pub fn page_bytes(&self, fp: PageFingerprint) -> Option<Vec<u8>> {
-        self.page_cache.lock().get(fp).cloned()
+    pub fn page_bytes(&self, key: PageCacheKey) -> Option<Vec<u8>> {
+        self.page_cache.lock().get(key).cloned()
     }
 
     pub fn set_zoom(&self, zoom: f32) {
         *self.zoom.lock() = zoom;
-        self.invalidate_cache();
+        // No cache invalidation: zoom is part of the cache key, so renderings
+        // at the previous scale remain valid (a zoom-out then zoom-in is a
+        // pure cache hit). A subsequent `request_compile(Zoom)` will re-emit
+        // every page with the new key, picking up cached bytes where they
+        // exist and rendering only where they don't.
     }
 
     pub fn set_visible_page(&self, page: usize) {
@@ -373,7 +387,7 @@ impl PreviewPipeline {
                 .app_handle
                 .emit("preview:page-removed", PageRemovedPayload { index: i });
         }
-        *self.last_fingerprints.lock() = Vec::new();
+        *self.last_emitted.lock() = Vec::new();
         *self.last_document.lock() = None;
     }
 
@@ -385,7 +399,7 @@ impl PreviewPipeline {
         // errors on every cycle. Clear preview + diagnostics and bail.
         if !self.world.has_main() {
             info!("compile revision={revision} reason={reason:?} skipped — no main file");
-            let old_count = self.last_fingerprints.lock().len();
+            let old_count = self.last_emitted.lock().len();
             self.clear_preview(old_count);
             if let Err(err) = self.app_handle.emit(
                 "compile:diagnostics",
@@ -434,7 +448,7 @@ impl PreviewPipeline {
         let doc = match document {
             Some(doc) => doc,
             None => {
-                let old_count = self.last_fingerprints.lock().len();
+                let old_count = self.last_emitted.lock().len();
                 self.clear_preview(old_count);
                 info!(
                     "compile revision={revision} reason={reason:?} produced no document ({:.1}ms)",
@@ -451,8 +465,22 @@ impl PreviewPipeline {
         }
 
         let new_fps = fingerprint_pages(&doc);
-        let old_fps = self.last_fingerprints.lock().clone();
-        let (changed_indices, removed_count) = diff_pages(&old_fps, &new_fps);
+        let zoom = *self.zoom.lock();
+        let zoom_bucket = zoom_to_bucket(zoom);
+        let visible_page = *self.visible_page.lock();
+
+        // Snapshot the previous emit state (per slot). `new_emitted` is the
+        // *working copy* we mutate as we successfully emit; it gets committed
+        // to `self.last_emitted` exactly once, at the end of this function or
+        // at any stale-request exit. This is what fixes the blank-pages bug:
+        // an aborted compile no longer leaves the canonical state ahead of
+        // what the frontend has actually been told.
+        let prev_emitted: Vec<Option<PageCacheKey>> = self.last_emitted.lock().clone();
+        let mut new_emitted: Vec<Option<PageCacheKey>> = Vec::with_capacity(new_fps.len());
+        for i in 0..new_fps.len() {
+            new_emitted.push(prev_emitted.get(i).copied().unwrap_or(None));
+        }
+        let removed_count = prev_emitted.len().saturating_sub(new_fps.len());
 
         let _ = self.app_handle.emit(
             "preview:total-pages",
@@ -467,39 +495,54 @@ impl PreviewPipeline {
                 .emit("preview:page-removed", PageRemovedPayload { index: i });
         }
 
-        let zoom = *self.zoom.lock();
-        let visible_page = *self.visible_page.lock();
-
-        // For each changed index we emit immediately if the cache already
-        // has bytes for that fingerprint. The bytes themselves never cross
-        // the IPC bridge — the webview pulls them via `previewimg://`.
-        let mut cache_hits: Vec<(usize, PageFingerprint)> = Vec::new();
+        // A slot needs (re-)emission if either:
+        //   (a) the target key `(fp, zoom)` differs from what we last told
+        //       the frontend, OR
+        //   (b) the LRU has since evicted bytes for the previously-emitted
+        //       key (the frontend would 404 on fetch).
+        //
+        // The eviction case turns the otherwise quiet "nothing changed"
+        // path into a real recovery: a zoom + idle period that evicted
+        // cached pages will re-render them on the next compile cycle.
+        let mut cache_hits: Vec<usize> = Vec::new();
         let mut cache_misses: Vec<usize> = Vec::new();
         {
             let cache = self.page_cache.lock();
-            for &idx in &changed_indices {
-                let fp = new_fps[idx];
-                if cache.peek(fp).is_some() {
-                    cache_hits.push((idx, fp));
+            for i in 0..new_fps.len() {
+                let target: PageCacheKey = (new_fps[i], zoom_bucket);
+                let already_emitted = prev_emitted.get(i).copied().flatten() == Some(target);
+                if already_emitted && cache.peek(target).is_some() {
+                    // Frontend already has this key and its bytes are still
+                    // in the LRU. Nothing to do; new_emitted[i] is already
+                    // correct (copied from prev_emitted above).
+                    continue;
+                }
+                if cache.peek(target).is_some() {
+                    cache_hits.push(i);
                 } else {
-                    cache_misses.push(idx);
+                    cache_misses.push(i);
                 }
             }
         }
 
-        cache_hits.sort_by_key(|(idx, _)| if *idx == visible_page { 0 } else { 1 });
-        for (idx, fp) in cache_hits {
+        // Render the visible page first, then everything else.
+        cache_hits.sort_by_key(|idx| if *idx == visible_page { 0 } else { 1 });
+
+        for idx in cache_hits {
             if self.is_stale_request(request_mark) {
                 info!("compile revision={revision} reason={reason:?} stopped stale cache emit");
+                *self.last_emitted.lock() = new_emitted;
                 return;
             }
+            let key: PageCacheKey = (new_fps[idx], zoom_bucket);
             let _ = self.app_handle.emit(
                 "preview:page-updated",
                 PageUpdatedPayload {
                     index: idx,
-                    fingerprint: fingerprint_to_hex(fp),
+                    fingerprint: key_to_path(key),
                 },
             );
+            new_emitted[idx] = Some(key);
         }
 
         let render_t = Instant::now();
@@ -512,27 +555,25 @@ impl PreviewPipeline {
                 info!(
                     "compile revision={revision} reason={reason:?} stopped stale priority render"
                 );
+                *self.last_emitted.lock() = new_emitted;
                 return;
             }
-            let fp = new_fps[*idx];
+            let key: PageCacheKey = (new_fps[*idx], zoom_bucket);
             let page = &doc.pages[*idx];
             match render_page(page, zoom) {
                 Ok(png) => {
-                    self.page_cache.lock().insert(fp, png);
+                    self.page_cache.lock().insert(key, png);
                     let _ = self.app_handle.emit(
                         "preview:page-updated",
                         PageUpdatedPayload {
                             index: *idx,
-                            fingerprint: fingerprint_to_hex(fp),
+                            fingerprint: key_to_path(key),
                         },
                     );
+                    new_emitted[*idx] = Some(key);
                 }
                 Err(err) => error!("render error page={idx} err=\"{err}\""),
             }
-        }
-
-        if !priority_misses.is_empty() {
-            *self.last_fingerprints.lock() = new_fps.clone();
         }
 
         if !rest_misses.is_empty() {
@@ -540,15 +581,16 @@ impl PreviewPipeline {
                 info!(
                     "compile revision={revision} reason={reason:?} skipped stale background render"
                 );
+                *self.last_emitted.lock() = new_emitted;
                 return;
             }
-            let rendered: Vec<(usize, PageFingerprint, Vec<u8>)> = rest_misses
+            let rendered: Vec<(usize, PageCacheKey, Vec<u8>)> = rest_misses
                 .par_iter()
                 .filter_map(|&idx| {
-                    let fp = new_fps[idx];
+                    let key: PageCacheKey = (new_fps[idx], zoom_bucket);
                     let page = &doc.pages[idx];
                     match render_page(page, zoom) {
-                        Ok(png) => Some((idx, fp, png)),
+                        Ok(png) => Some((idx, key, png)),
                         Err(err) => {
                             error!("render error page={idx} err=\"{err}\"");
                             None
@@ -558,23 +600,26 @@ impl PreviewPipeline {
                 .collect();
 
             let mut cache = self.page_cache.lock();
-            for (idx, fp, png) in rendered {
+            for (idx, key, png) in rendered {
                 if self.is_stale_request(request_mark) {
                     info!("compile revision={revision} reason={reason:?} stopped stale page emit");
+                    drop(cache);
+                    *self.last_emitted.lock() = new_emitted;
                     return;
                 }
-                cache.insert(fp, png);
+                cache.insert(key, png);
                 let _ = self.app_handle.emit(
                     "preview:page-updated",
                     PageUpdatedPayload {
                         index: idx,
-                        fingerprint: fingerprint_to_hex(fp),
+                        fingerprint: key_to_path(key),
                     },
                 );
+                new_emitted[idx] = Some(key);
             }
         }
 
-        *self.last_fingerprints.lock() = new_fps;
+        *self.last_emitted.lock() = new_emitted;
         *self.last_document.lock() = Some(Arc::new(doc));
 
         // Generate thumbnail when the workspace is opened and the main file is compiled.

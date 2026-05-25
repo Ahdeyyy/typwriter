@@ -8,7 +8,7 @@ mod world;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use compiler::{parse_fingerprint, PreviewPipeline};
+use compiler::{parse_key, PreviewPipeline};
 use tauri::{Emitter, Manager};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 use typst_kit::fonts::FontSearcher;
@@ -59,13 +59,15 @@ pub fn run() {
     }
     builder
         .register_uri_scheme_protocol("previewimg", |ctx, request| {
-            // URL form on Windows/Android: http://previewimg.localhost/{fingerprint}.png
-            // URL form on macOS/iOS/Linux: previewimg://localhost/{fingerprint}.png
+            // URL form on Windows/Android: http://previewimg.localhost/{key}.png
+            // URL form on macOS/iOS/Linux: previewimg://localhost/{key}.png
             //
-            // The path is `/{fingerprint}[.png]`. We strip the leading `/`
-            // (and the optional `.png` extension is tolerated by
-            // `parse_fingerprint`) and look the bytes up in the live
-            // `PreviewPipeline`.
+            // The path is `/{fingerprint}-{zoom}[.png]`. We strip the leading
+            // `/` and parse the composite key. Including the zoom in the URL
+            // is what lets the webview's HTTP cache distinguish renderings of
+            // the same content at different scales — the response is marked
+            // `immutable`, so a content-only URL would serve stale bytes after
+            // a zoom change.
             let path = request.uri().path().trim_start_matches('/');
             let not_found = || {
                 tauri::http::Response::builder()
@@ -75,21 +77,22 @@ pub fn run() {
                     .expect("static response should build")
             };
 
-            let Some(fp) = parse_fingerprint(path) else {
+            let Some(key) = parse_key(path) else {
                 return not_found();
             };
             let Some(pipeline) = ctx.app_handle().try_state::<Arc<PreviewPipeline>>() else {
                 return not_found();
             };
-            let Some(bytes) = pipeline.page_bytes(fp) else {
+            let Some(bytes) = pipeline.page_bytes(key) else {
                 return not_found();
             };
 
             tauri::http::Response::builder()
                 .status(tauri::http::StatusCode::OK)
                 .header(tauri::http::header::CONTENT_TYPE, "image/png")
-                // The URL is the content hash, so the bytes are immutable for
-                // the lifetime of the cache entry. Let the webview cache them.
+                // Key encodes both content hash and zoom, so bytes are
+                // immutable for the lifetime of the cache entry. The webview
+                // is free to cache aggressively.
                 .header(
                     tauri::http::header::CACHE_CONTROL,
                     "public, max-age=31536000, immutable",
