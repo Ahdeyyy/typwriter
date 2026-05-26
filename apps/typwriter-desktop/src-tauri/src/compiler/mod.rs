@@ -9,6 +9,7 @@
 mod cache;
 mod compile;
 mod diff;
+mod disk_cache;
 mod render;
 
 pub use cache::{key_to_path, parse_key, zoom_to_bucket, PageCacheKey};
@@ -39,6 +40,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::workspace::WorkspaceState;
 use crate::world::EditorWorld;
 use cache::PageCache;
+use disk_cache::DiskCache;
+use std::path::Path;
 use typst::layout::PagedDocument;
 
 // IPC payloads
@@ -229,6 +232,11 @@ pub struct PreviewPipeline {
     /// had never been rendered.
     last_emitted: Mutex<Vec<Option<PageCacheKey>>>,
     page_cache: Mutex<PageCache>,
+    /// Persistent on-disk mirror of `page_cache`, scoped to the open workspace.
+    /// `None` until a workspace is attached via [`Self::attach_disk_cache`].
+    /// Lookups fall through to disk on in-memory LRU misses, and renders write
+    /// to both layers so subsequent app sessions skip re-rendering.
+    disk_cache: Mutex<Option<DiskCache>>,
     // The most recently successfully compiled document.
     // Held so IDE features (hover, go-to-def, jump-from-click) can use it.
     pub last_document: Mutex<Option<Arc<PagedDocument>>>,
@@ -251,6 +259,7 @@ impl PreviewPipeline {
             world,
             last_emitted: Mutex::new(Vec::new()),
             page_cache: Mutex::new(PageCache::default()),
+            disk_cache: Mutex::new(None),
             last_document: Mutex::new(None),
             app_handle,
             zoom: Mutex::new(2.0),
@@ -273,9 +282,23 @@ impl PreviewPipeline {
     }
 
     pub fn invalidate_cache(&self) {
+        // In-memory state only. The on-disk cache is intentionally preserved
+        // across workspace open / main-file change / clear-main — it is the
+        // persistent layer and its keys (content-hash + zoom) are immune to
+        // accidental collision with stale state.
         self.page_cache.lock().clear();
         *self.last_emitted.lock() = Vec::new();
         *self.last_document.lock() = None;
+    }
+
+    /// Bind the persistent on-disk cache to a workspace root. Subsequent
+    /// renders write PNGs into `<root>/.typwriter/cache/previews/`, and
+    /// page-byte lookups fall through to disk on LRU misses. Existing files
+    /// in that directory are picked up — that's what makes re-opening a
+    /// workspace serve the preview without recompiling.
+    pub fn attach_disk_cache(&self, workspace_root: &Path) {
+        let cache = disk_cache::open_default(workspace_root);
+        *self.disk_cache.lock() = Some(cache);
     }
 
     /// Re-emit total-pages and every previously-emitted page key. Used when a
@@ -304,8 +327,19 @@ impl PreviewPipeline {
     /// Look up the PNG bytes for a cache key. Used by the `previewimg`
     /// URI scheme handler to serve images to the webview without going
     /// through the JS bridge.
+    ///
+    /// Lookup order: in-memory LRU → on-disk cache. A disk hit re-hydrates the
+    /// LRU so a hot key stops hitting the filesystem after the first request.
     pub fn page_bytes(&self, key: PageCacheKey) -> Option<Vec<u8>> {
-        self.page_cache.lock().get(key).cloned()
+        if let Some(bytes) = self.page_cache.lock().get(key).cloned() {
+            return Some(bytes);
+        }
+        let bytes = {
+            let mut disk = self.disk_cache.lock();
+            disk.as_mut()?.get(key)?
+        };
+        self.page_cache.lock().insert(key, bytes.clone());
+        Some(bytes)
     }
 
     pub fn set_zoom(&self, zoom: f32) {
@@ -499,25 +533,40 @@ impl PreviewPipeline {
         //   (a) the target key `(fp, zoom)` differs from what we last told
         //       the frontend, OR
         //   (b) the LRU has since evicted bytes for the previously-emitted
-        //       key (the frontend would 404 on fetch).
+        //       key (the frontend would 404 on fetch) and the disk cache
+        //       also doesn't have the bytes.
         //
         // The eviction case turns the otherwise quiet "nothing changed"
         // path into a real recovery: a zoom + idle period that evicted
         // cached pages will re-render them on the next compile cycle.
+        //
+        // "Bytes available" combines in-memory LRU and on-disk cache; a disk
+        // hit counts as a cache hit (no re-render needed) because the URI
+        // handler will lazily hydrate the LRU on the next fetch. This is
+        // what makes re-opening a workspace serve the preview without
+        // recompiling every page.
         let mut cache_hits: Vec<usize> = Vec::new();
         let mut cache_misses: Vec<usize> = Vec::new();
         {
             let cache = self.page_cache.lock();
+            let mut disk = self.disk_cache.lock();
             for i in 0..new_fps.len() {
                 let target: PageCacheKey = (new_fps[i], zoom_bucket);
+                let in_lru = cache.peek(target).is_some();
+                let on_disk = !in_lru
+                    && disk
+                        .as_mut()
+                        .map(|d| d.contains(target))
+                        .unwrap_or(false);
+                let has_bytes = in_lru || on_disk;
                 let already_emitted = prev_emitted.get(i).copied().flatten() == Some(target);
-                if already_emitted && cache.peek(target).is_some() {
-                    // Frontend already has this key and its bytes are still
-                    // in the LRU. Nothing to do; new_emitted[i] is already
-                    // correct (copied from prev_emitted above).
+                if already_emitted && has_bytes {
+                    // Frontend already has this key and the bytes are still
+                    // reachable (LRU or disk). Nothing to do; new_emitted[i]
+                    // is already correct (copied from prev_emitted above).
                     continue;
                 }
-                if cache.peek(target).is_some() {
+                if has_bytes {
                     cache_hits.push(i);
                 } else {
                     cache_misses.push(i);
@@ -562,6 +611,9 @@ impl PreviewPipeline {
             let page = &doc.pages[*idx];
             match render_page(page, zoom) {
                 Ok(png) => {
+                    if let Some(disk) = self.disk_cache.lock().as_mut() {
+                        disk.insert(key, &png);
+                    }
                     self.page_cache.lock().insert(key, png);
                     let _ = self.app_handle.emit(
                         "preview:page-updated",
@@ -606,6 +658,12 @@ impl PreviewPipeline {
                     drop(cache);
                     *self.last_emitted.lock() = new_emitted;
                     return;
+                }
+                // Disk write first (with bytes still owned by us) so the LRU
+                // insert can consume `png`. Order is functionally irrelevant
+                // — both layers see the same key on success.
+                if let Some(disk) = self.disk_cache.lock().as_mut() {
+                    disk.insert(key, &png);
                 }
                 cache.insert(key, png);
                 let _ = self.app_handle.emit(

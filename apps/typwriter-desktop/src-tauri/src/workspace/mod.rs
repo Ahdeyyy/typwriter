@@ -106,9 +106,13 @@ impl WorkspaceState {
         *self._watcher.lock() = None;
         *self.last_thumbnail_at.lock() = None;
 
-        // Update the EditorWorld root and flush all caches.
+        // Update the EditorWorld root and flush all in-memory caches. The
+        // on-disk preview cache is rebound to the new workspace below — its
+        // contents survive across opens (per workspace), so re-opening shows
+        // the existing preview without recompiling.
         self.world.set_root(path.clone());
         self.pipeline.invalidate_cache();
+        self.pipeline.attach_disk_cache(&path);
 
         // Start a new watcher for the new root.
         let new_watcher = watcher::start_watcher(
