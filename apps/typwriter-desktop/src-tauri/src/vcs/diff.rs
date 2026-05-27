@@ -182,10 +182,7 @@ fn commit_tree(repo: &gix::Repository, commit_id: ObjectId) -> Result<ObjectId, 
     Ok(commit.tree_id().map_err(|e| e.to_string())?.detach())
 }
 
-fn collect_tree_files(
-    repo: &gix::Repository,
-    root: ObjectId,
-) -> Result<Vec<FileBytes>, String> {
+fn collect_tree_files(repo: &gix::Repository, root: ObjectId) -> Result<Vec<FileBytes>, String> {
     let mut out = Vec::new();
     collect_tree_into(repo, root, &PathBuf::new(), &mut out)?;
     Ok(out)
@@ -200,19 +197,14 @@ struct OwnedEntry {
     is_blob: bool,
 }
 
-fn read_tree_entries(
-    repo: &gix::Repository,
-    id: ObjectId,
-) -> Result<Vec<OwnedEntry>, String> {
+fn read_tree_entries(repo: &gix::Repository, id: ObjectId) -> Result<Vec<OwnedEntry>, String> {
     let obj = repo
         .find_object(id)
         .map_err(|e| format!("find_object(tree) failed: {e}"))?;
     let tree = obj
         .try_into_tree()
         .map_err(|e| format!("not a tree: {e}"))?;
-    let tree_ref = tree
-        .decode()
-        .map_err(|e| format!("decode tree: {e}"))?;
+    let tree_ref = tree.decode().map_err(|e| format!("decode tree: {e}"))?;
     let mut out = Vec::new();
     for entry in tree_ref.entries.iter() {
         let Ok(name) = std::str::from_utf8(entry.filename.as_ref()) else {

@@ -256,8 +256,7 @@ pub fn import_font_directory_uri(
         .document_dir()
         .map_err(|e| format!("Documents dir unavailable: {e}"))?;
     let fonts_root = docs.join("Typwriter").join(ANDROID_FONTS_SUBDIR);
-    std::fs::create_dir_all(&fonts_root)
-        .map_err(|e| format!("Failed to create fonts dir: {e}"))?;
+    std::fs::create_dir_all(&fonts_root).map_err(|e| format!("Failed to create fonts dir: {e}"))?;
 
     let label = derive_label_from_uri(&dir_uri.uri);
     let safe = sanitize_dir_name(&label);
@@ -267,8 +266,7 @@ pub fn import_font_directory_uri(
         dest = fonts_root.join(format!("{safe}-{suffix}"));
         suffix += 1;
     }
-    std::fs::create_dir_all(&dest)
-        .map_err(|e| format!("Failed to create import dir: {e}"))?;
+    std::fs::create_dir_all(&dest).map_err(|e| format!("Failed to create import dir: {e}"))?;
 
     let api = app.android_fs();
     let mut count: u32 = 0;
@@ -278,9 +276,7 @@ pub fn import_font_directory_uri(
     }
     if count == 0 {
         let _ = std::fs::remove_dir_all(&dest);
-        return Err(
-            "No font files (.ttf, .otf, .ttc) found in the selected folder.".to_string(),
-        );
+        return Err("No font files (.ttf, .otf, .ttc) found in the selected folder.".to_string());
     }
 
     info!(

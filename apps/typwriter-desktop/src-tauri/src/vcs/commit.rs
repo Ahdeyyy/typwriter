@@ -165,7 +165,11 @@ fn commit_tree_id(repo: &gix::Repository, commit_id: ObjectId) -> Result<ObjectI
 /// `IGNORED_TOP_LEVEL` filter. Nested directories named `.typwriter` (if any)
 /// would be committed — but that's intentional, only the actual workspace
 /// metadata directory at the root is special.
-fn build_tree(repo: &gix::Repository, workspace_root: &Path, dir: &Path) -> Result<ObjectId, String> {
+fn build_tree(
+    repo: &gix::Repository,
+    workspace_root: &Path,
+    dir: &Path,
+) -> Result<ObjectId, String> {
     let mut entries: Vec<Entry> = Vec::new();
     let read = fs::read_dir(dir).map_err(|e| format!("read_dir {dir:?}: {e}"))?;
 

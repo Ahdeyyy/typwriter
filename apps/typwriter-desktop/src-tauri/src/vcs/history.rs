@@ -22,19 +22,14 @@ struct OwnedEntry {
     is_tree: bool,
 }
 
-fn read_tree_entries(
-    repo: &gix::Repository,
-    id: ObjectId,
-) -> Result<Vec<OwnedEntry>, String> {
+fn read_tree_entries(repo: &gix::Repository, id: ObjectId) -> Result<Vec<OwnedEntry>, String> {
     let obj = repo
         .find_object(id)
         .map_err(|e| format!("find_object(tree) failed: {e}"))?;
     let tree = obj
         .try_into_tree()
         .map_err(|e| format!("not a tree: {e}"))?;
-    let tree_ref = tree
-        .decode()
-        .map_err(|e| format!("decode tree: {e}"))?;
+    let tree_ref = tree.decode().map_err(|e| format!("decode tree: {e}"))?;
     let mut out = Vec::new();
     for entry in tree_ref.entries.iter() {
         let Ok(name) = std::str::from_utf8(entry.filename.as_ref()) else {
@@ -160,11 +155,7 @@ fn commit_tree_id(repo: &gix::Repository, commit_id: ObjectId) -> Result<ObjectI
 /// Naive recursive tree diff. We compare entries by filename: missing on
 /// either side, or differing oid, both count as "changed". Returns paths
 /// using forward slashes regardless of platform.
-fn diff_trees(
-    repo: &gix::Repository,
-    a: ObjectId,
-    b: ObjectId,
-) -> Result<Vec<String>, String> {
+fn diff_trees(repo: &gix::Repository, a: ObjectId, b: ObjectId) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
     diff_trees_inner(repo, a, b, &PathBuf::new(), &mut out)?;
     Ok(out)

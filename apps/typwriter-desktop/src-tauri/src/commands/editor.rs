@@ -320,11 +320,9 @@ pub fn save_file(
         .map(|s| s.to_string())
         .unwrap_or_else(|| path.clone());
     let policy = snapshot_policy.read().clone();
-    if let Err(err) = vcs.auto_commit_if_changed(
-        CommitTrigger::Save,
-        &format!("Saved {file_label}"),
-        &policy,
-    ) {
+    if let Err(err) =
+        vcs.auto_commit_if_changed(CommitTrigger::Save, &format!("Saved {file_label}"), &policy)
+    {
         warn!("save_file: vcs commit failed err=\"{err}\"");
     }
 

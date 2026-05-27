@@ -25,13 +25,14 @@ use super::repo::{open_or_init, IGNORED_TOP_LEVEL};
 ///
 /// `.git/` and `.typwriter/` are skipped on both the read and write sides.
 pub fn restore_workspace(workspace_root: &Path, commit_id: &str) -> Result<(), String> {
-    // Best-effort snapshot. If it skips because there's nothing to commit,
-    // that's still fine — the user can already step back via HEAD.
-    let _ = commit_if_changed(
+    // If it skips because there's nothing to commit, that's still fine — the
+    // user can already step back via HEAD. Real snapshot failures must abort
+    // before we overwrite the working tree.
+    commit_if_changed(
         workspace_root,
         CommitTrigger::PreRestore,
         "Pre-restore snapshot",
-    );
+    )?;
 
     let repo = open_or_init(workspace_root)?;
     let target_commit = parse_oid(commit_id)?;
@@ -88,11 +89,11 @@ pub fn restore_file(
     commit_id: &str,
     rel_path: &str,
 ) -> Result<(), String> {
-    let _ = commit_if_changed(
+    commit_if_changed(
         workspace_root,
         CommitTrigger::PreRestore,
         &format!("Pre-restore (single file): {rel_path}"),
-    );
+    )?;
 
     let repo = open_or_init(workspace_root)?;
     let target_commit = parse_oid(commit_id)?;

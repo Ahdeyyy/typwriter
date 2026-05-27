@@ -558,11 +558,7 @@ impl PreviewPipeline {
             for i in 0..new_fps.len() {
                 let target: PageCacheKey = (new_fps[i], zoom_bucket);
                 let in_lru = cache.peek(target).is_some();
-                let on_disk = !in_lru
-                    && disk
-                        .as_mut()
-                        .map(|d| d.contains(target))
-                        .unwrap_or(false);
+                let on_disk = !in_lru && disk.as_mut().map(|d| d.contains(target)).unwrap_or(false);
                 let has_bytes = in_lru || on_disk;
                 let already_emitted = prev_emitted.get(i).copied().flatten() == Some(target);
                 if already_emitted && has_bytes {

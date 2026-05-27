@@ -87,10 +87,13 @@ pub fn format_typst_cursor_virtual(
         buf
     };
 
-    let raw = Typstyle::default().format_text(marked).render().map_err(|e| {
-        error!("format_typst_cursor_virtual: format err=\"{e}\"");
-        e.to_string()
-    })?;
+    let raw = Typstyle::default()
+        .format_text(marked)
+        .render()
+        .map_err(|e| {
+            error!("format_typst_cursor_virtual: format err=\"{e}\"");
+            e.to_string()
+        })?;
 
     let (formatted, new_byte_cursor) = match locate_unique(&raw, &marker) {
         Some(idx) => {
@@ -118,9 +121,11 @@ pub fn format_typst_cursor_virtual(
         "virtual[1/1] ok cursor_utf16={new_cursor} ({:.1}ms)",
         t.elapsed().as_secs_f64() * 1000.0
     );
-    Ok(FormatWithCursorResponse { formatted, cursor: new_cursor })
+    Ok(FormatWithCursorResponse {
+        formatted,
+        cursor: new_cursor,
+    })
 }
-
 
 /// Format a single .typ file in place. Reads from disk, formats, writes the
 /// result back, and returns the formatted content so the frontend can refresh
@@ -273,7 +278,11 @@ fn utf16_to_byte_offset(s: &str, utf16: usize) -> Option<usize> {
         }
         count += units;
     }
-    if count == utf16 { Some(s.len()) } else { None }
+    if count == utf16 {
+        Some(s.len())
+    } else {
+        None
+    }
 }
 
 fn byte_to_utf16_offset(s: &str, byte_offset: usize) -> usize {
@@ -326,7 +335,11 @@ fn make_cursor_marker(source: &str) -> String {
 fn locate_unique(haystack: &str, needle: &str) -> Option<usize> {
     let first = haystack.find(needle)?;
     let last = haystack.rfind(needle)?;
-    if first == last { Some(first) } else { None }
+    if first == last {
+        Some(first)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
