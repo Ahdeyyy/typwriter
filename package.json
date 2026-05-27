@@ -22,6 +22,7 @@
     "packages/*"
   ],
   "dependencies": {
+    "@fontsource/iosevka": "^5.2.5",
     "mode-watcher": "^1.1.0"
   }
 }

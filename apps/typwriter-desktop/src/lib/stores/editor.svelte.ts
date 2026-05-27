@@ -11,6 +11,7 @@ import {
 } from '$lib/ipc/commands';
 import type { CompileReason } from '$lib/types';
 import { workspace } from './workspace.svelte';
+import { settings } from './settings.svelte';
 import { normalize, basename } from '$lib/paths';
 import { logError } from '$lib/logger';
 import { toast } from 'svelte-sonner';
@@ -49,7 +50,6 @@ export interface TabInfo {
     isLoading: boolean;
 }
 
-const IDLE_SAVE_DELAY = 1500;
 // Small enough to feel instant (~half a frame at 60Hz), large enough to
 // swallow same-frame keystroke bursts so we don't fire one IPC per key.
 const TYPING_PREVIEW_INTERVAL = 8;
@@ -303,6 +303,16 @@ class EditorStore {
         }
 
         this._clearIdleSave(tab.id);
+
+        // Optional format-on-save for .typ files. Errors are logged and
+        // swallowed — a failed format must not block the user's save.
+        if (settings.formatBeforeSave && tab.relPath.endsWith('.typ')) {
+            const result = await this.formatTabById(tab.id);
+            if (result.isErr()) {
+                logError('format-on-save failed:', result.error);
+            }
+        }
+
         await this._flushShadowWrite(tab);
 
         const contentToSave = tab.content;
@@ -482,9 +492,10 @@ class EditorStore {
 
     private _scheduleIdleSave(tab: TabInfo): void {
         this._clearIdleSave(tab.id);
+        if (!settings.autoSaveEnabled) return;
         this._idleSaveTimers.set(tab.id, setTimeout(() => {
             void this.flushTab(tab.id).catch(() => {});
-        }, IDLE_SAVE_DELAY));
+        }, settings.autoSaveDelayMs));
     }
 
     private _requestPreview(reason: CompileReason): void {

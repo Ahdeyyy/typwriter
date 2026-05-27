@@ -400,6 +400,12 @@ export interface AppSettings {
     spellcheck: boolean;
     tab_width: number;
     word_wrap: boolean;
+    auto_save_enabled: boolean;
+    auto_save_delay_ms: number;
+    format_before_save: boolean;
+    auto_snapshot_on_save: boolean;
+    auto_snapshot_on_compile: boolean;
+    auto_snapshot_min_interval_seconds: number;
 }
 
 export function getAppSettings() {

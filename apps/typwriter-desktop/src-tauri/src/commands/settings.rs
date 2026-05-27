@@ -5,13 +5,14 @@
 use std::{path::PathBuf, sync::Arc, time::Instant};
 
 use log::{error, info, warn};
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
-#[cfg(any(target_os = "android", target_os = "ios"))]
 use tauri::Manager;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_store::StoreExt;
 
+use crate::vcs::SnapshotPolicy;
 use crate::world::EditorWorld;
 
 /// On Android, user-picked font directories live behind SAF and aren't
@@ -27,6 +28,7 @@ const KEY_FONT_DIRECTORIES: &str = "settings.font_directories";
 const KEY_UI_SETTINGS: &str = "settings.ui";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(default)]
 pub struct AppSettings {
     pub font_directories: Vec<String>,
     pub ui_font_family: String,
@@ -42,6 +44,16 @@ pub struct AppSettings {
     pub spellcheck: bool,
     pub tab_width: u8,
     pub word_wrap: bool,
+
+    // Auto-save
+    pub auto_save_enabled: bool,
+    pub auto_save_delay_ms: u32,
+    pub format_before_save: bool,
+
+    // Auto-snapshot (version control)
+    pub auto_snapshot_on_save: bool,
+    pub auto_snapshot_on_compile: bool,
+    pub auto_snapshot_min_interval_seconds: u32,
 }
 
 impl Default for AppSettings {
@@ -61,6 +73,14 @@ impl Default for AppSettings {
             spellcheck: true,
             tab_width: 2,
             word_wrap: true,
+
+            auto_save_enabled: true,
+            auto_save_delay_ms: 1500,
+            format_before_save: false,
+
+            auto_snapshot_on_save: true,
+            auto_snapshot_on_compile: true,
+            auto_snapshot_min_interval_seconds: 0,
         }
     }
 }
@@ -127,6 +147,15 @@ pub fn get_app_settings(handle: AppHandle) -> AppSettings {
 #[tauri::command]
 pub fn set_app_settings(handle: AppHandle, settings: AppSettings) {
     write_settings(&handle, &settings);
+    if let Some(policy) = handle.try_state::<Arc<RwLock<SnapshotPolicy>>>() {
+        *policy.write() = SnapshotPolicy::from_settings(&settings);
+    }
+}
+
+/// Build the in-memory snapshot policy from the persisted settings.
+/// Called both at startup and when the user mutates settings from the UI.
+pub fn snapshot_policy_from_handle(handle: &AppHandle) -> SnapshotPolicy {
+    SnapshotPolicy::from_settings(&read_settings(handle))
 }
 
 #[tauri::command]

@@ -31,13 +31,13 @@ use std::{
 };
 
 use log::{error, info, warn};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::vcs::{CommitTrigger, VcsState};
+use crate::vcs::{CommitTrigger, SnapshotPolicy, VcsState};
 use crate::workspace::WorkspaceState;
 use crate::world::EditorWorld;
 use cache::PageCache;
@@ -706,10 +706,16 @@ impl PreviewPipeline {
                 | CompileReason::Explicit
         );
         if should_snapshot {
-            if let Err(err) = self
-                .vcs
-                .commit_if_changed(CommitTrigger::Compile, "Auto-snapshot after compile")
-            {
+            let policy = self
+                .app_handle
+                .try_state::<Arc<RwLock<SnapshotPolicy>>>()
+                .map(|s| s.read().clone())
+                .unwrap_or_default();
+            if let Err(err) = self.vcs.auto_commit_if_changed(
+                CommitTrigger::Compile,
+                "Auto-snapshot after compile",
+                &policy,
+            ) {
                 warn!("compile auto-commit failed err=\"{err}\"");
             }
         }

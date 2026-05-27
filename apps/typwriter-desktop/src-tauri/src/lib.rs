@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use compiler::{parse_key, PreviewPipeline};
+use parking_lot::RwLock;
 use tauri::{Emitter, Manager};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 use typst_kit::fonts::FontSearcher;
@@ -150,11 +151,19 @@ pub fn run() {
                 handle.clone(),
             ));
 
+            // Snapshot policy mirrors the user's persisted prefs. Seeded
+            // here so save/compile workers see the right values on the very
+            // first event; refreshed on every `set_app_settings` call.
+            let snapshot_policy = Arc::new(RwLock::new(
+                commands::settings::snapshot_policy_from_handle(&handle),
+            ));
+
             app.manage(init.clone());
             app.manage(world.clone());
             app.manage(pipeline);
             app.manage(workspace);
             app.manage(vcs);
+            app.manage(snapshot_policy);
 
             // ── Background font loading ─────────────────────────────────────
             // Pick up any extra font directories the user configured in a

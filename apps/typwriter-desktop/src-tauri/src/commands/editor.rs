@@ -10,6 +10,7 @@ use std::{path::Path, sync::Arc, time::Instant};
 
 use ecow::EcoString;
 use log::{debug, error, info, warn};
+use parking_lot::RwLock;
 use serde::Serialize;
 use tauri::State;
 use typst::{
@@ -24,7 +25,7 @@ use typst_ide::IdeWorld;
 
 use crate::{
     compiler::{CompileReason, PreviewPipeline},
-    vcs::{CommitTrigger, VcsState},
+    vcs::{CommitTrigger, SnapshotPolicy, VcsState},
     workspace::WorkspaceState,
     world::EditorWorld,
 };
@@ -280,6 +281,7 @@ pub fn save_file(
     workspace: State<'_, Arc<WorkspaceState>>,
     pipeline: State<'_, Arc<PreviewPipeline>>,
     vcs: State<'_, Arc<VcsState>>,
+    snapshot_policy: State<'_, Arc<RwLock<SnapshotPolicy>>>,
 ) -> Result<(), String> {
     let t = Instant::now();
     info!("save_file: path={path:?} content_bytes={}", content.len());
@@ -317,7 +319,12 @@ pub fn save_file(
         .and_then(|n| n.to_str())
         .map(|s| s.to_string())
         .unwrap_or_else(|| path.clone());
-    if let Err(err) = vcs.commit_if_changed(CommitTrigger::Save, &format!("Saved {file_label}")) {
+    let policy = snapshot_policy.read().clone();
+    if let Err(err) = vcs.auto_commit_if_changed(
+        CommitTrigger::Save,
+        &format!("Saved {file_label}"),
+        &policy,
+    ) {
         warn!("save_file: vcs commit failed err=\"{err}\"");
     }
 

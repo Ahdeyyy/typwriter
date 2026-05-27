@@ -37,9 +37,51 @@ pub use diff::{FileDiff, FileDiffStatus, WorkspaceDiff};
 pub use history::RestorePoint;
 
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use log::{info, warn};
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
+
+/// User preferences governing automatic snapshot (commit) creation.
+/// Lives behind an `Arc<RwLock<_>>` managed by Tauri; refreshed whenever the
+/// frontend mutates settings via `set_app_settings`.
+#[derive(Clone, Debug)]
+pub struct SnapshotPolicy {
+    pub on_save: bool,
+    pub on_compile: bool,
+    pub min_interval_seconds: u32,
+}
+
+impl Default for SnapshotPolicy {
+    fn default() -> Self {
+        Self {
+            on_save: true,
+            on_compile: true,
+            min_interval_seconds: 0,
+        }
+    }
+}
+
+impl SnapshotPolicy {
+    pub fn from_settings(settings: &crate::commands::settings::AppSettings) -> Self {
+        Self {
+            on_save: settings.auto_snapshot_on_save,
+            on_compile: settings.auto_snapshot_on_compile,
+            min_interval_seconds: settings.auto_snapshot_min_interval_seconds,
+        }
+    }
+
+    /// Does this trigger fall under the auto-snapshot gate?
+    /// Manual / Initial / PreRestore always bypass — those are user-driven
+    /// or safety-critical and never throttled by user prefs.
+    pub fn allows(&self, trigger: CommitTrigger) -> bool {
+        match trigger {
+            CommitTrigger::Save => self.on_save,
+            CommitTrigger::Compile => self.on_compile,
+            CommitTrigger::Manual | CommitTrigger::Initial | CommitTrigger::PreRestore => true,
+        }
+    }
+}
 
 /// Process-wide VCS coordinator. Holds the path of the open workspace so the
 /// gix repo can be (re-)opened on demand without keeping a `Repository` handle
@@ -49,6 +91,10 @@ use parking_lot::RwLock;
 /// Lookups are cheap: `gix::open` is a header-read, not a full scan.
 pub struct VcsState {
     root: RwLock<Option<PathBuf>>,
+    /// Time of the last auto-snapshot. Used to throttle Save / Compile
+    /// triggers when the user has configured a `min_interval_seconds`.
+    /// `None` until the first successful auto-commit.
+    last_auto_snapshot: Mutex<Option<Instant>>,
 }
 
 impl Default for VcsState {
@@ -61,6 +107,7 @@ impl VcsState {
     pub fn new() -> Self {
         Self {
             root: RwLock::new(None),
+            last_auto_snapshot: Mutex::new(None),
         }
     }
 
@@ -107,6 +154,36 @@ impl VcsState {
             return Ok(None);
         };
         commit::commit_if_changed(&root, trigger, message)
+    }
+
+    /// Auto-commit gated by the user's [`SnapshotPolicy`]. Skips the commit
+    /// entirely when the relevant toggle is off, and throttles by the
+    /// configured min-interval (compared against the timestamp of the
+    /// previous successful auto-snapshot).
+    ///
+    /// Manual / Initial / PreRestore triggers should not call this — go
+    /// through [`Self::commit_if_changed`] directly.
+    pub fn auto_commit_if_changed(
+        &self,
+        trigger: CommitTrigger,
+        message: &str,
+        policy: &SnapshotPolicy,
+    ) -> Result<Option<String>, String> {
+        if !policy.allows(trigger) {
+            return Ok(None);
+        }
+        if policy.min_interval_seconds > 0 {
+            if let Some(last) = *self.last_auto_snapshot.lock() {
+                if last.elapsed().as_secs() < policy.min_interval_seconds as u64 {
+                    return Ok(None);
+                }
+            }
+        }
+        let result = self.commit_if_changed(trigger, message)?;
+        if result.is_some() {
+            *self.last_auto_snapshot.lock() = Some(Instant::now());
+        }
+        Ok(result)
     }
 
     /// User-driven restore-point creation with a custom message.

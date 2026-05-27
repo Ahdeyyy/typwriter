@@ -21,13 +21,24 @@ const LS_KEY = 'typwriter:settings:v1';
 // particular can't load fonts that Typst discovered on disk because they aren't
 // registered with the browser engine.
 export const BUNDLED_UI_FONTS: readonly string[] = [
+    // Sans
     'IBM Plex Sans Variable',
     'Inter Variable',
     'Geist Variable',
     'Roboto Flex Variable',
     'Source Sans 3 Variable',
     'Noto Sans Variable',
+    'Nunito Variable',
+    'DM Sans Variable',
+    'Work Sans Variable',
+    'Manrope Variable',
     'Atkinson Hyperlegible',
+    'Iosevka',
+    // Serif
+    'Lora Variable',
+    'Merriweather Variable',
+    'Crimson Pro Variable',
+    'Playfair Display Variable',
 ];
 
 export const BUNDLED_EDITOR_FONTS: readonly string[] = [
@@ -35,6 +46,11 @@ export const BUNDLED_EDITOR_FONTS: readonly string[] = [
     'Fira Code Variable',
     'Geist Mono Variable',
     'Source Code Pro Variable',
+    'Roboto Mono Variable',
+    'IBM Plex Mono',
+    'Cascadia Code',
+    'Ubuntu Mono',
+    'Iosevka',
 ];
 
 export type ThemeId =
@@ -76,6 +92,16 @@ interface PersistedSettings {
     spellcheck: boolean;
     tabWidth: number;
     wordWrap: boolean;
+
+    // Auto-save
+    autoSaveEnabled: boolean;
+    autoSaveDelayMs: number;
+    formatBeforeSave: boolean;
+
+    // Auto-snapshot (version control)
+    autoSnapshotOnSave: boolean;
+    autoSnapshotOnCompile: boolean;
+    autoSnapshotMinIntervalSeconds: number;
 }
 
 const DEFAULTS: PersistedSettings = {
@@ -95,6 +121,14 @@ const DEFAULTS: PersistedSettings = {
     spellcheck: true,
     tabWidth: 2,
     wordWrap: true,
+
+    autoSaveEnabled: true,
+    autoSaveDelayMs: 1500,
+    formatBeforeSave: false,
+
+    autoSnapshotOnSave: true,
+    autoSnapshotOnCompile: true,
+    autoSnapshotMinIntervalSeconds: 0,
 };
 
 const THEME_IDS = new Set<ThemeId>(THEMES.map((theme) => theme.id));
@@ -150,6 +184,14 @@ class SettingsStore {
     tabWidth = $state(INITIAL.tabWidth);
     wordWrap = $state(INITIAL.wordWrap);
 
+    autoSaveEnabled = $state(INITIAL.autoSaveEnabled);
+    autoSaveDelayMs = $state(INITIAL.autoSaveDelayMs);
+    formatBeforeSave = $state(INITIAL.formatBeforeSave);
+
+    autoSnapshotOnSave = $state(INITIAL.autoSnapshotOnSave);
+    autoSnapshotOnCompile = $state(INITIAL.autoSnapshotOnCompile);
+    autoSnapshotMinIntervalSeconds = $state(INITIAL.autoSnapshotMinIntervalSeconds);
+
     fontDirectories = $state<string[]>([]);
     fontsReloading = $state(false);
 
@@ -173,6 +215,12 @@ class SettingsStore {
                     spellcheck: s.spellcheck,
                     tabWidth: s.tab_width,
                     wordWrap: s.word_wrap,
+                    autoSaveEnabled: s.auto_save_enabled,
+                    autoSaveDelayMs: s.auto_save_delay_ms,
+                    formatBeforeSave: s.format_before_save,
+                    autoSnapshotOnSave: s.auto_snapshot_on_save,
+                    autoSnapshotOnCompile: s.auto_snapshot_on_compile,
+                    autoSnapshotMinIntervalSeconds: s.auto_snapshot_min_interval_seconds,
                 };
                 const nextSettings = INITIAL_LOCAL.hasSettings
                     ? { ...rustSettings, ...INITIAL }
@@ -201,6 +249,12 @@ class SettingsStore {
             spellcheck: this.spellcheck,
             tabWidth: this.tabWidth,
             wordWrap: this.wordWrap,
+            autoSaveEnabled: this.autoSaveEnabled,
+            autoSaveDelayMs: this.autoSaveDelayMs,
+            formatBeforeSave: this.formatBeforeSave,
+            autoSnapshotOnSave: this.autoSnapshotOnSave,
+            autoSnapshotOnCompile: this.autoSnapshotOnCompile,
+            autoSnapshotMinIntervalSeconds: this.autoSnapshotMinIntervalSeconds,
         };
     }
 
@@ -219,6 +273,15 @@ class SettingsStore {
         this.spellcheck = settings.spellcheck;
         this.tabWidth = Math.max(1, Math.min(8, Math.round(settings.tabWidth)));
         this.wordWrap = settings.wordWrap;
+        this.autoSaveEnabled = settings.autoSaveEnabled;
+        this.autoSaveDelayMs = Math.max(250, Math.min(60_000, Math.round(settings.autoSaveDelayMs)));
+        this.formatBeforeSave = settings.formatBeforeSave;
+        this.autoSnapshotOnSave = settings.autoSnapshotOnSave;
+        this.autoSnapshotOnCompile = settings.autoSnapshotOnCompile;
+        this.autoSnapshotMinIntervalSeconds = Math.max(
+            0,
+            Math.min(3600, Math.round(settings.autoSnapshotMinIntervalSeconds)),
+        );
     }
 
     private persistLocal(): void {
@@ -248,6 +311,12 @@ class SettingsStore {
             spellcheck: current.spellcheck,
             tab_width: current.tabWidth,
             word_wrap: current.wordWrap,
+            auto_save_enabled: current.autoSaveEnabled,
+            auto_save_delay_ms: current.autoSaveDelayMs,
+            format_before_save: current.formatBeforeSave,
+            auto_snapshot_on_save: current.autoSnapshotOnSave,
+            auto_snapshot_on_compile: current.autoSnapshotOnCompile,
+            auto_snapshot_min_interval_seconds: current.autoSnapshotMinIntervalSeconds,
         }).mapErr((err) => {
             logError('settings.persist setAppSettings failed:', err);
             return err;
@@ -319,6 +388,36 @@ class SettingsStore {
         this.persist();
     }
 
+    setAutoSaveEnabled(value: boolean) {
+        this.autoSaveEnabled = value;
+        this.persist();
+    }
+
+    setAutoSaveDelayMs(value: number) {
+        this.autoSaveDelayMs = Math.max(250, Math.min(60_000, Math.round(value)));
+        this.persist();
+    }
+
+    setFormatBeforeSave(value: boolean) {
+        this.formatBeforeSave = value;
+        this.persist();
+    }
+
+    setAutoSnapshotOnSave(value: boolean) {
+        this.autoSnapshotOnSave = value;
+        this.persist();
+    }
+
+    setAutoSnapshotOnCompile(value: boolean) {
+        this.autoSnapshotOnCompile = value;
+        this.persist();
+    }
+
+    setAutoSnapshotMinIntervalSeconds(value: number) {
+        this.autoSnapshotMinIntervalSeconds = Math.max(0, Math.min(3600, Math.round(value)));
+        this.persist();
+    }
+
     resetToDefaults() {
         this.uiFontFamily = DEFAULTS.uiFontFamily;
         this.editorFontFamily = DEFAULTS.editorFontFamily;
@@ -333,6 +432,12 @@ class SettingsStore {
         this.spellcheck = DEFAULTS.spellcheck;
         this.tabWidth = DEFAULTS.tabWidth;
         this.wordWrap = DEFAULTS.wordWrap;
+        this.autoSaveEnabled = DEFAULTS.autoSaveEnabled;
+        this.autoSaveDelayMs = DEFAULTS.autoSaveDelayMs;
+        this.formatBeforeSave = DEFAULTS.formatBeforeSave;
+        this.autoSnapshotOnSave = DEFAULTS.autoSnapshotOnSave;
+        this.autoSnapshotOnCompile = DEFAULTS.autoSnapshotOnCompile;
+        this.autoSnapshotMinIntervalSeconds = DEFAULTS.autoSnapshotMinIntervalSeconds;
         this.persist();
     }
 

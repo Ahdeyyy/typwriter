@@ -13,8 +13,11 @@
     Refresh01Icon,
     EyeIcon,
     FileCodeIcon,
+    FloppyDiskIcon,
+    GitCommitIcon,
   } from "@hugeicons/core-free-icons";
   import Button from "$lib/components/ui/button/button.svelte";
+  import { Switch } from "$lib/components/ui/switch/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
   import * as Popover from "$lib/components/ui/popover/index.js";
@@ -400,11 +403,9 @@
                 <p class="text-sm font-medium">Line numbers</p>
                 <p class="truncate text-xs text-muted-foreground">Show a gutter with line numbers.</p>
               </div>
-              <input
-                type="checkbox"
-                class="size-4 accent-primary"
+              <Switch
                 checked={settings.showLineNumbers}
-                onchange={(e) => settings.setShowLineNumbers(e.currentTarget.checked)}
+                onCheckedChange={(v) => settings.setShowLineNumbers(v)}
               />
             </label>
 
@@ -415,11 +416,9 @@
                   Faint vertical guides showing indentation levels.
                 </p>
               </div>
-              <input
-                type="checkbox"
-                class="size-4 accent-primary"
+              <Switch
                 checked={settings.showIndentationMarkers}
-                onchange={(e) => settings.setShowIndentationMarkers(e.currentTarget.checked)}
+                onCheckedChange={(v) => settings.setShowIndentationMarkers(v)}
               />
             </label>
 
@@ -430,11 +429,9 @@
                   Underline misspelled words in prose.
                 </p>
               </div>
-              <input
-                type="checkbox"
-                class="size-4 accent-primary"
+              <Switch
                 checked={settings.spellcheck}
-                onchange={(e) => settings.setSpellcheck(e.currentTarget.checked)}
+                onCheckedChange={(v) => settings.setSpellcheck(v)}
               />
             </label>
 
@@ -445,11 +442,9 @@
                   Wrap long lines instead of scrolling horizontally.
                 </p>
               </div>
-              <input
-                type="checkbox"
-                class="size-4 accent-primary"
+              <Switch
                 checked={settings.wordWrap}
-                onchange={(e) => settings.setWordWrap(e.currentTarget.checked)}
+                onCheckedChange={(v) => settings.setWordWrap(v)}
               />
             </label>
 
@@ -477,6 +472,146 @@
           </div>
         </section>
 
+        <!-- ── Auto-save ───────────────────────────────────────────────── -->
+        <section>
+          <div class="mb-3 flex items-center gap-2">
+            <HugeiconsIcon icon={FloppyDiskIcon} class="size-4 text-muted-foreground" />
+            <h2 class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+              Auto-save
+            </h2>
+          </div>
+          <p class="mb-4 text-sm text-muted-foreground">
+            Save edits to disk after you stop typing. Disable to require a manual save (Ctrl+S).
+          </p>
+
+          <div class="flex flex-col gap-3">
+
+            <label class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3 cursor-pointer">
+              <div class="min-w-0">
+                <p class="text-sm font-medium">Auto-save when idle</p>
+                <p class="truncate text-xs text-muted-foreground">
+                  Flush unsaved edits after a pause in typing.
+                </p>
+              </div>
+              <Switch
+                checked={settings.autoSaveEnabled}
+                onCheckedChange={(v) => settings.setAutoSaveEnabled(v)}
+              />
+            </label>
+
+            <div
+              class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3 {settings.autoSaveEnabled ? '' : 'opacity-50'}"
+            >
+              <div class="min-w-0">
+                <p class="text-sm font-medium">Idle delay</p>
+                <p class="truncate text-xs text-muted-foreground">
+                  How long to wait after the last keystroke before saving.
+                </p>
+              </div>
+              <div class="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="250"
+                  max="10000"
+                  step="250"
+                  value={settings.autoSaveDelayMs}
+                  disabled={!settings.autoSaveEnabled}
+                  oninput={(e) =>
+                    settings.setAutoSaveDelayMs(parseInt(e.currentTarget.value, 10))}
+                  class="w-32 accent-primary"
+                />
+                <span class="w-16 text-right text-sm tabular-nums">
+                  {(settings.autoSaveDelayMs / 1000).toFixed(settings.autoSaveDelayMs % 1000 === 0 ? 0 : 2)}s
+                </span>
+              </div>
+            </div>
+
+            <label class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3 cursor-pointer">
+              <div class="min-w-0">
+                <p class="text-sm font-medium">Format before saving</p>
+                <p class="truncate text-xs text-muted-foreground">
+                  Run typstyle on <code>.typ</code> files immediately before each save.
+                </p>
+              </div>
+              <Switch
+                checked={settings.formatBeforeSave}
+                onCheckedChange={(v) => settings.setFormatBeforeSave(v)}
+              />
+            </label>
+
+          </div>
+        </section>
+
+        <!-- ── Snapshots ───────────────────────────────────────────────── -->
+        <section>
+          <div class="mb-3 flex items-center gap-2">
+            <HugeiconsIcon icon={GitCommitIcon} class="size-4 text-muted-foreground" />
+            <h2 class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+              Snapshots
+            </h2>
+          </div>
+          <p class="mb-4 text-sm text-muted-foreground">
+            Typwriter records restore points automatically so you can roll back. Manual restore points
+            from the timeline always work regardless of these toggles.
+          </p>
+
+          <div class="flex flex-col gap-3">
+
+            <label class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3 cursor-pointer">
+              <div class="min-w-0">
+                <p class="text-sm font-medium">Snapshot on save</p>
+                <p class="truncate text-xs text-muted-foreground">
+                  Record a restore point each time a file is saved.
+                </p>
+              </div>
+              <Switch
+                checked={settings.autoSnapshotOnSave}
+                onCheckedChange={(v) => settings.setAutoSnapshotOnSave(v)}
+              />
+            </label>
+
+            <label class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3 cursor-pointer">
+              <div class="min-w-0">
+                <p class="text-sm font-medium">Snapshot on successful compile</p>
+                <p class="truncate text-xs text-muted-foreground">
+                  Record a restore point after each successful preview compile.
+                </p>
+              </div>
+              <Switch
+                checked={settings.autoSnapshotOnCompile}
+                onCheckedChange={(v) => settings.setAutoSnapshotOnCompile(v)}
+              />
+            </label>
+
+            <div class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3">
+              <div class="min-w-0">
+                <p class="text-sm font-medium">Minimum interval between snapshots</p>
+                <p class="truncate text-xs text-muted-foreground">
+                  Throttle automatic snapshots so they don't fire on every keystroke compile. Set to 0 for no throttle.
+                </p>
+              </div>
+              <div class="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="0"
+                  max="600"
+                  step="5"
+                  value={settings.autoSnapshotMinIntervalSeconds}
+                  oninput={(e) =>
+                    settings.setAutoSnapshotMinIntervalSeconds(parseInt(e.currentTarget.value, 10))}
+                  class="w-32 accent-primary"
+                />
+                <span class="w-16 text-right text-sm tabular-nums">
+                  {settings.autoSnapshotMinIntervalSeconds === 0
+                    ? "off"
+                    : `${settings.autoSnapshotMinIntervalSeconds}s`}
+                </span>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
         <!-- ── Preview ─────────────────────────────────────────────────── -->
         <section>
           <div class="mb-3 flex items-center gap-2">
@@ -498,11 +633,9 @@
                   Start the workspace with the preview pane visible.
                 </p>
               </div>
-              <input
-                type="checkbox"
-                class="size-4 accent-primary"
+              <Switch
                 checked={settings.defaultPreviewVisible}
-                onchange={(e) => settings.setDefaultPreviewVisible(e.currentTarget.checked)}
+                onCheckedChange={(v) => settings.setDefaultPreviewVisible(v)}
               />
             </label>
 
@@ -554,11 +687,9 @@
                   can always check manually from the home screen.
                 </p>
               </div>
-              <input
-                type="checkbox"
-                class="size-4 accent-primary"
+              <Switch
                 checked={settings.autoCheckUpdates}
-                onchange={(e) => settings.setAutoCheckUpdates(e.currentTarget.checked)}
+                onCheckedChange={(v) => settings.setAutoCheckUpdates(v)}
               />
             </label>
           </section>
