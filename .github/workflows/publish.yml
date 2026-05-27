@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - master
+      - release
     paths-ignore:
       - "apps/typwriter-web/**"
 jobs:
