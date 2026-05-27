@@ -12,7 +12,9 @@ import type {
     CompileReason,
     PdfExportConfig,
     PngExportConfig,
-    SvgExportConfig
+    SvgExportConfig,
+    RestorePoint,
+    WorkspaceDiff
 } from '$lib/types';
 
 const toErrString = (e: unknown): string => String(e);
@@ -322,6 +324,55 @@ export function exportSvgToDirUri(
 ) {
     return ResultAsync.fromPromise(
         invoke<void>('export_svg_to_dir_uri', { dirUri, config }),
+        toErrString
+    );
+}
+
+// ─── Versioning / Restore points ──────────────────────────────────────────────
+
+/** Create a user-driven restore point. Returns the new commit hex id, or
+ *  `null` if the working tree was already identical to HEAD. */
+export function vcsCreateRestorePoint(message: string) {
+    return ResultAsync.fromPromise(
+        invoke<string | null>('vcs_create_restore_point', { message }),
+        toErrString
+    );
+}
+
+/** Return the restore-point timeline (newest first). `limit` caps the count. */
+export function vcsListHistory(limit?: number) {
+    return ResultAsync.fromPromise(
+        invoke<RestorePoint[]>('vcs_list_history', { limit: limit ?? null }),
+        toErrString
+    );
+}
+
+export function vcsDiffVsCurrent(commitId: string) {
+    return ResultAsync.fromPromise(
+        invoke<WorkspaceDiff>('vcs_diff_vs_current', { commitId }),
+        toErrString
+    );
+}
+
+export function vcsDiffBetween(fromId: string, toId: string) {
+    return ResultAsync.fromPromise(
+        invoke<WorkspaceDiff>('vcs_diff_between', { fromId, toId }),
+        toErrString
+    );
+}
+
+/** Hard-reset the working tree to `commitId`. Records a safety commit first. */
+export function vcsRestoreWorkspace(commitId: string) {
+    return ResultAsync.fromPromise(
+        invoke<void>('vcs_restore_workspace', { commitId }),
+        toErrString
+    );
+}
+
+/** Restore a single file from `commitId`. Records a safety commit first. */
+export function vcsRestoreFile(commitId: string, path: string) {
+    return ResultAsync.fromPromise(
+        invoke<void>('vcs_restore_file', { commitId, path }),
         toErrString
     );
 }

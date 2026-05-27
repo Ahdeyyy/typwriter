@@ -333,6 +333,58 @@ class EditorStore {
         }
     }
 
+    /** Force every open tab to re-read its content from disk and replay that
+     *  content into CodeMirror. Used after operations that mutate the working
+     *  tree outside the editor — currently the VCS restore path.
+     *
+     *  Any in-memory unsaved edits are intentionally dropped: the user opted
+     *  into a restore. We also discard the shadow buffer per file so the next
+     *  compile sees the on-disk content, not stale shadow bytes. Tabs whose
+     *  file no longer exists are closed quietly. */
+    async reloadAllTabsFromDisk(): Promise<void> {
+        for (const tab of [...this.tabs]) {
+            this._clearTimers(tab.id);
+            // Drop the shadow buffer; disk is now the source of truth.
+            if (tab.viewMode === 'text') {
+                discardShadow(tab.absPath).mapErr((err) =>
+                    logError('reloadAllTabsFromDisk: discardShadow:', err)
+                );
+            }
+            if (tab.viewMode === 'unsupported') {
+                continue;
+            }
+
+            const response = await readFile(tab.absPath);
+            if (response.isErr()) {
+                // File is gone (e.g. restore deleted it). Close the tab.
+                await this.closeTab(tab.id, { flush: false });
+                continue;
+            }
+
+            if (tab.viewMode === 'image') {
+                if (response.value.type === 'image') {
+                    tab.imageSrc = imageAssetSrc(response.value.path);
+                }
+                tab.hasUnsavedChanges = false;
+                continue;
+            }
+
+            if (response.value.type !== 'text') {
+                continue;
+            }
+            const content = response.value.content;
+            tab.content = content;
+            tab.hasUnsavedChanges = false;
+            // Push the new content through the regular sync channel so the
+            // CodeMirror updateListener doesn't fight us.
+            this.contentSyncRequest = {
+                tabId: tab.id,
+                content,
+                version: ++this._contentSyncVersion,
+            };
+        }
+    }
+
     async reset(): Promise<void> {
         for (const tab of [...this.tabs]) {
             await this.closeTab(tab.id, { flush: false });

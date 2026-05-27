@@ -41,6 +41,7 @@
     "@lezer/common": "^1.5.1",
     "@lezer/highlight": "^1.2.3",
     "@lezer/lr": "^1.4.8",
+    "@pierre/diffs": "^1.2.3",
     "@pierre/trees": "^1.0.0-beta.3",
     "@replit/codemirror-indentation-markers": "^6.5.3",
     "@replit/codemirror-vscode-keymap": "^6.0.2",

@@ -44,6 +44,15 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* VCS timeline branch node colours — 8-step vibrant palette */
+  --vcs-node-0: oklch(0.57 0.19 255);  /* blue        */
+  --vcs-node-1: oklch(0.57 0.15 185);  /* teal        */
+  --vcs-node-2: oklch(0.57 0.16 145);  /* green       */
+  --vcs-node-3: oklch(0.61 0.15 75);   /* amber       */
+  --vcs-node-4: oklch(0.59 0.17 45);   /* orange      */
+  --vcs-node-5: oklch(0.57 0.19 15);   /* rose        */
+  --vcs-node-6: oklch(0.59 0.18 335);  /* pink        */
+  --vcs-node-7: oklch(0.57 0.20 295);  /* violet      */
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -106,6 +115,15 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* VCS timeline branch node colours — dark mode (slightly lighter/brighter) */
+  --vcs-node-0: oklch(0.72 0.16 255);
+  --vcs-node-1: oklch(0.72 0.14 185);
+  --vcs-node-2: oklch(0.72 0.15 145);
+  --vcs-node-3: oklch(0.75 0.14 75);
+  --vcs-node-4: oklch(0.72 0.16 45);
+  --vcs-node-5: oklch(0.70 0.17 15);
+  --vcs-node-6: oklch(0.72 0.16 335);
+  --vcs-node-7: oklch(0.72 0.18 295);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);

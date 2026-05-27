@@ -37,6 +37,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::vcs::{CommitTrigger, VcsState};
 use crate::workspace::WorkspaceState;
 use crate::world::EditorWorld;
 use cache::PageCache;
@@ -250,10 +251,13 @@ pub struct PreviewPipeline {
     compile_tx: Sender<CompileReason>,
     compile_rx: Mutex<Option<Receiver<CompileReason>>>,
     request_counter: AtomicU64,
+    /// Version-control state. Used to auto-commit a restore point whenever
+    /// a compile succeeds (the user's "good known state").
+    vcs: Arc<VcsState>,
 }
 
 impl PreviewPipeline {
-    pub fn new(world: Arc<EditorWorld>, app_handle: AppHandle) -> Self {
+    pub fn new(world: Arc<EditorWorld>, app_handle: AppHandle, vcs: Arc<VcsState>) -> Self {
         let (compile_tx, compile_rx) = mpsc::channel();
         Self {
             world,
@@ -268,6 +272,7 @@ impl PreviewPipeline {
             compile_tx,
             compile_rx: Mutex::new(Some(compile_rx)),
             request_counter: AtomicU64::new(0),
+            vcs,
         }
     }
 
@@ -684,6 +689,28 @@ impl PreviewPipeline {
         if reason == CompileReason::MainFile {
             if let Some(ws) = self.app_handle.try_state::<Arc<WorkspaceState>>() {
                 ws.generate_thumbnail();
+            }
+        }
+
+        // Auto-commit a "compile succeeded" restore point. We deliberately
+        // skip Zoom (purely a render change) and MainFile (just opened the
+        // workspace, the initial-commit hook already covered it). The
+        // dedupe inside `commit_if_changed` makes this a no-op when the
+        // working tree hasn't changed since the last commit (e.g. when save
+        // already committed a moment ago).
+        let should_snapshot = matches!(
+            reason,
+            CompileReason::Typing
+                | CompileReason::Save
+                | CompileReason::Watcher
+                | CompileReason::Explicit
+        );
+        if should_snapshot {
+            if let Err(err) = self
+                .vcs
+                .commit_if_changed(CommitTrigger::Compile, "Auto-snapshot after compile")
+            {
+                warn!("compile auto-commit failed err=\"{err}\"");
             }
         }
 

@@ -2,6 +2,7 @@
 
 mod commands;
 mod compiler;
+mod vcs;
 mod workspace;
 mod world;
 
@@ -12,6 +13,7 @@ use compiler::{parse_key, PreviewPipeline};
 use tauri::{Emitter, Manager};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 use typst_kit::fonts::FontSearcher;
+use vcs::VcsState;
 use workspace::WorkspaceState;
 use world::EditorWorld;
 
@@ -35,6 +37,10 @@ use commands::{
     settings::{
         get_app_settings, import_font_directory_uri, list_font_families, set_app_settings,
         set_typst_font_directories,
+    },
+    vcs::{
+        vcs_create_restore_point, vcs_diff_between, vcs_diff_vs_current, vcs_list_history,
+        vcs_restore_file, vcs_restore_workspace,
     },
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
@@ -130,11 +136,17 @@ pub fn run() {
                 fonts_loaded: AtomicBool::new(false),
             });
             let world = Arc::new(EditorWorld::new(root, handle.clone()));
-            let pipeline = Arc::new(PreviewPipeline::new(world.clone(), handle.clone()));
+            let vcs = Arc::new(VcsState::new());
+            let pipeline = Arc::new(PreviewPipeline::new(
+                world.clone(),
+                handle.clone(),
+                vcs.clone(),
+            ));
             pipeline.start_worker();
             let workspace = Arc::new(WorkspaceState::new(
                 world.clone(),
                 pipeline.clone(),
+                vcs.clone(),
                 handle.clone(),
             ));
 
@@ -142,6 +154,7 @@ pub fn run() {
             app.manage(world.clone());
             app.manage(pipeline);
             app.manage(workspace);
+            app.manage(vcs);
 
             // ── Background font loading ─────────────────────────────────────
             // Pick up any extra font directories the user configured in a
@@ -220,6 +233,13 @@ pub fn run() {
             format_typst_cursor_virtual,
             format_typst_file,
             format_workspace_typ_files,
+            // versioning / restore points
+            vcs_create_restore_point,
+            vcs_list_history,
+            vcs_diff_vs_current,
+            vcs_diff_between,
+            vcs_restore_workspace,
+            vcs_restore_file,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|err| {

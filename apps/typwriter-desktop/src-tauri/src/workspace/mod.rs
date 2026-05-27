@@ -30,6 +30,7 @@ use typst::syntax::{FileId, VirtualPath};
 
 use crate::{
     compiler::{render_page, CompileReason, PreviewPipeline},
+    vcs::VcsState,
     world::EditorWorld,
 };
 use path::{ExternalPath, WorkspacePath};
@@ -65,6 +66,9 @@ pub struct WorkspaceState {
     last_thumbnail_at: Mutex<Option<Instant>>,
     world: Arc<EditorWorld>,
     pipeline: Arc<PreviewPipeline>,
+    /// Local-only version history. Bound to the current workspace via
+    /// `VcsState::attach` whenever a folder is opened.
+    pub vcs: Arc<VcsState>,
     pub app_handle: AppHandle,
 }
 
@@ -72,6 +76,7 @@ impl WorkspaceState {
     pub fn new(
         world: Arc<EditorWorld>,
         pipeline: Arc<PreviewPipeline>,
+        vcs: Arc<VcsState>,
         app_handle: AppHandle,
     ) -> Self {
         Self {
@@ -82,6 +87,7 @@ impl WorkspaceState {
             last_thumbnail_at: Mutex::new(None),
             world,
             pipeline,
+            vcs,
             app_handle,
         }
     }
@@ -113,6 +119,11 @@ impl WorkspaceState {
         self.world.set_root(path.clone());
         self.pipeline.invalidate_cache();
         self.pipeline.attach_disk_cache(&path);
+
+        // Bind the version-history system to this workspace. Initializes a
+        // `.git` repo on first open and seeds an initial restore point so the
+        // timeline is never empty.
+        self.vcs.attach(&path);
 
         // Start a new watcher for the new root.
         let new_watcher = watcher::start_watcher(
