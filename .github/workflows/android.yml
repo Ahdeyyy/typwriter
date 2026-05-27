@@ -15,7 +15,7 @@ jobs:
       contents: write
 
     env:
-      NDK_VERSION: "29.0.14206865"
+      NDK_VERSION: r26d
       JAVA_VERSION: "17"
 
     steps:
@@ -41,7 +41,7 @@ jobs:
         id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r26d
+          ndk-version: ${{ env.NDK_VERSION }}
           add-to-path: false
 
       - name: Create per-target NDK tool shims for openssl-src
