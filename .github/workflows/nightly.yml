@@ -1,0 +1,326 @@
+name: "nightly"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "apps/typwriter-web/**"
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Delete previous nightly release and tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete nightly --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+
+      - name: Create empty nightly release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA_SHORT="$(git rev-parse --short HEAD)"
+          gh release create nightly \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Nightly ($SHA_SHORT)" \
+            --notes "Rolling nightly build from master @ $GITHUB_SHA. Built $(date -u +'%Y-%m-%d %H:%M UTC')." \
+            --prerelease \
+            --target "$GITHUB_SHA"
+
+  nightly-desktop:
+    needs: prepare
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: "macos-latest"
+            args: "--target aarch64-apple-darwin"
+          - platform: "macos-latest"
+            args: "--target x86_64-apple-darwin"
+          - platform: "ubuntu-22.04"
+            args: ""
+          - platform: "windows-latest"
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: setup bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' &&
+            'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./apps/typwriter-desktop/src-tauri -> target"
+          key: nightly-desktop-${{ matrix.platform }}-${{ matrix.args }}
+
+      - name: install frontend dependencies
+        run: bun install
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/typwriter-desktop
+          tagName: nightly
+          releaseName: "Nightly"
+          releaseBody: "Rolling nightly build from master."
+          releaseDraft: false
+          prerelease: true
+          args: ${{ matrix.args }}
+
+  nightly-android:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    env:
+      NDK_VERSION: "29.0.14206865"
+      JAVA_VERSION: "17"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system build tools (for vendored OpenSSL)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y perl make build-essential
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-34 build-tools;34.0.0"
+
+      - name: Setup Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+          add-to-path: false
+
+      - name: Create per-target NDK tool shims for openssl-src
+        run: |
+          set -eux
+          shim() {
+            local bin_dir="$1"
+            [ -d "$bin_dir" ] || return 0
+            for triple in aarch64-linux-android armv7a-linux-androideabi \
+                          arm-linux-androideabi i686-linux-android \
+                          x86_64-linux-android; do
+              for tool in ar ranlib nm strip ld as objcopy objdump readelf; do
+                src="$bin_dir/llvm-$tool"
+                dst="$bin_dir/${triple}-${tool}"
+                [ -e "$src" ] && [ ! -e "$dst" ] && ln -s "llvm-$tool" "$dst" || true
+              done
+            done
+          }
+          sdk_ndk_bin=""
+          for ndk in "$ANDROID_HOME"/ndk/*; do
+            bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+            shim "$bin"
+            sdk_ndk_bin="$bin"
+          done
+          shim "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          if [ -n "$sdk_ndk_bin" ]; then
+            echo "$sdk_ndk_bin" >> "$GITHUB_PATH"
+          fi
+          echo "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Rust stable + Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./apps/typwriter-desktop/src-tauri -> target"
+          key: nightly-android
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Initialize Tauri Android project
+        working-directory: apps/typwriter-desktop
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          if [ ! -d "src-tauri/gen/android" ]; then
+            bunx tauri android init
+          fi
+
+      - name: Setup Android signing
+        working-directory: apps/typwriter-desktop
+        run: |
+          set -eux
+          cd src-tauri/gen/android
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > keystore.properties
+          echo "password=${{ secrets.ANDROID_KEY_PASSWORD }}" >> keystore.properties
+          base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/keystore.jks
+          echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/build.gradle.kts")
+          s = p.read_text()
+
+          for imp in ('import java.io.FileInputStream', 'import java.util.Properties'):
+              if imp not in s:
+                  s = imp + '\n' + s
+
+          block = '''    signingConfigs {
+                  create("release") {
+                      val keystorePropertiesFile = rootProject.file("keystore.properties")
+                      val keystoreProperties = Properties()
+                      if (keystorePropertiesFile.exists()) {
+                          keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+                      }
+                      keyAlias = keystoreProperties.getProperty("keyAlias")
+                      keyPassword = keystoreProperties.getProperty("password")
+                      storeFile = file(keystoreProperties.getProperty("storeFile"))
+                      storePassword = keystoreProperties.getProperty("password")
+                  }
+              }
+
+              buildTypes {'''
+          if 'signingConfigs {' not in s:
+              s = s.replace('    buildTypes {', block, 1)
+
+          import re
+          lines = s.split('\n')
+          out = []
+          i = 0
+          patched = False
+          while i < len(lines):
+              line = lines[i]
+              out.append(line)
+              if not patched and re.search(r'getByName\("release"\)\s*\{', line):
+                  depth = line.count('{') - line.count('}')
+                  block = []
+                  i += 1
+                  while i < len(lines) and depth > 0:
+                      l = lines[i]
+                      depth += l.count('{') - l.count('}')
+                      block.append(l)
+                      i += 1
+                  body = '\n'.join(block)
+                  if re.search(r'signingConfig\s*=\s*signingConfigs\.getByName', body):
+                      body = re.sub(
+                          r'signingConfig\s*=\s*signingConfigs\.getByName\("[^"]+"\)',
+                          'signingConfig = signingConfigs.getByName("release")',
+                          body,
+                      )
+                  else:
+                      body = re.sub(
+                          r'(\n[ \t]*)\}\s*$',
+                          r'\1    signingConfig = signingConfigs.getByName("release")\1}',
+                          body,
+                      )
+                  out.append(body)
+                  patched = True
+                  continue
+              i += 1
+          if not patched:
+              raise SystemExit('ERROR: release buildType block not found in build.gradle.kts')
+          s = '\n'.join(out)
+          p.write_text(s)
+          PY
+          cat app/build.gradle.kts
+
+      - name: Build Android APK
+        working-directory: apps/typwriter-desktop
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          NODE_OPTIONS: --max-old-space-size=4096
+          CC_aarch64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+          CC_armv7-linux-androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi24-clang
+          CC_i686-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android24-clang
+          CC_x86_64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang
+          AR_aarch64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+          AR_armv7-linux-androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+          AR_i686-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+          AR_x86_64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+          RANLIB_aarch64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
+          RANLIB_armv7-linux-androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
+          RANLIB_i686-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
+          RANLIB_x86_64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
+        run: bunx tauri android build --apk --split-per-abi
+
+      - name: Get app version
+        id: version
+        run: |
+          VERSION=$(jq -r .version apps/typwriter-desktop/src-tauri/tauri.conf.json)
+          SHA_SHORT=$(git rev-parse --short HEAD)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha_short=$SHA_SHORT" >> "$GITHUB_OUTPUT"
+
+      - name: Rename APKs with nightly tag
+        run: |
+          set -eux
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA_SHORT="${{ steps.version.outputs.sha_short }}"
+          OUT="apps/typwriter-desktop/src-tauri/gen/android/app/build/outputs/apk"
+          mkdir -p release-apks
+          shopt -s globstar nullglob
+          for apk in "$OUT"/**/*.apk; do
+            base="$(basename "$apk")"
+            if [[ "$base" == *unsigned* ]]; then
+              continue
+            fi
+            abi="${base#app-}"
+            abi="${abi%.apk}"
+            abi="${abi%-release}"
+            cp "$apk" "release-apks/typwriter_nightly_${VERSION}-${SHA_SHORT}_${abi}.apk"
+          done
+          ls -la release-apks/
+
+      - name: Publish APKs to nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: "Nightly"
+          prerelease: true
+          draft: false
+          files: release-apks/*.apk
+          fail_on_unmatched_files: true
