@@ -6,7 +6,7 @@
 
 use std::{
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use gix::ObjectId;
@@ -84,11 +84,13 @@ pub fn restore_workspace(workspace_root: &Path, commit_id: &str) -> Result<(), S
 /// alone. If the file doesn't exist in the target, restore turns into a
 /// delete — the caller can disambiguate via [`crate::vcs::diff_vs_current`]
 /// before invoking this.
-pub fn restore_file(
-    workspace_root: &Path,
-    commit_id: &str,
-    rel_path: &str,
-) -> Result<(), String> {
+pub fn restore_file(workspace_root: &Path, commit_id: &str, rel_path: &str) -> Result<(), String> {
+    let target_path = normalize_restore_path(rel_path)?;
+    let workspace_root_abs = workspace_root
+        .canonicalize()
+        .map_err(|e| format!("canonicalize workspace root {workspace_root:?}: {e}"))?;
+    let abs = workspace_child_path(&workspace_root_abs, &target_path)?;
+
     commit_if_changed(
         workspace_root,
         CommitTrigger::PreRestore,
@@ -99,13 +101,10 @@ pub fn restore_file(
     let target_commit = parse_oid(commit_id)?;
     let target_tree = commit_tree(&repo, target_commit)?;
 
-    let normalized = rel_path.trim_start_matches('/').replace('\\', "/");
-    let target_path = PathBuf::from(&normalized);
-
-    let abs = workspace_root.join(&target_path);
     match find_blob_at(&repo, target_tree, &target_path)? {
         Some(bytes) => {
             if let Some(parent) = abs.parent() {
+                ensure_existing_ancestor_within_workspace(&workspace_root_abs, parent)?;
                 fs::create_dir_all(parent).map_err(|e| format!("mkdir {parent:?}: {e}"))?;
             }
             fs::write(&abs, &bytes).map_err(|e| format!("write {abs:?}: {e}"))?;
@@ -121,6 +120,59 @@ pub fn restore_file(
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+fn normalize_restore_path(rel_path: &str) -> Result<PathBuf, String> {
+    let normalized = rel_path.trim_start_matches(['/', '\\']).replace('\\', "/");
+    if normalized.is_empty() {
+        return Err("invalid restore path: empty path".into());
+    }
+
+    let path = PathBuf::from(&normalized);
+    if path
+        .components()
+        .all(|component| matches!(component, Component::Normal(_)))
+    {
+        Ok(path)
+    } else {
+        Err(format!(
+            "invalid restore path {rel_path:?}: path must stay within the workspace"
+        ))
+    }
+}
+
+fn workspace_child_path(workspace_root: &Path, rel_path: &Path) -> Result<PathBuf, String> {
+    let abs = workspace_root.join(rel_path);
+    if abs.starts_with(workspace_root) {
+        Ok(abs)
+    } else {
+        Err(format!(
+            "restore path {rel_path:?} resolves outside workspace {workspace_root:?}"
+        ))
+    }
+}
+
+fn ensure_existing_ancestor_within_workspace(
+    workspace_root: &Path,
+    parent: &Path,
+) -> Result<(), String> {
+    let mut ancestor = parent;
+    while !ancestor.exists() {
+        ancestor = ancestor
+            .parent()
+            .ok_or_else(|| format!("restore parent {parent:?} has no existing ancestor"))?;
+    }
+
+    let ancestor = ancestor
+        .canonicalize()
+        .map_err(|e| format!("canonicalize restore parent {ancestor:?}: {e}"))?;
+    if ancestor.starts_with(workspace_root) {
+        Ok(())
+    } else {
+        Err(format!(
+            "restore parent {parent:?} resolves outside workspace {workspace_root:?}"
+        ))
+    }
+}
 
 fn parse_oid(s: &str) -> Result<ObjectId, String> {
     ObjectId::from_hex(s.as_bytes()).map_err(|e| format!("invalid commit id {s:?}: {e}"))
@@ -145,19 +197,14 @@ struct OwnedEntry {
     is_blob: bool,
 }
 
-fn read_tree_entries(
-    repo: &gix::Repository,
-    id: ObjectId,
-) -> Result<Vec<OwnedEntry>, String> {
+fn read_tree_entries(repo: &gix::Repository, id: ObjectId) -> Result<Vec<OwnedEntry>, String> {
     let obj = repo
         .find_object(id)
         .map_err(|e| format!("find_object(tree) failed: {e}"))?;
     let tree = obj
         .try_into_tree()
         .map_err(|e| format!("not a tree: {e}"))?;
-    let tree_ref = tree
-        .decode()
-        .map_err(|e| format!("decode tree: {e}"))?;
+    let tree_ref = tree.decode().map_err(|e| format!("decode tree: {e}"))?;
     let mut out = Vec::new();
     for entry in tree_ref.entries.iter() {
         let Ok(name) = std::str::from_utf8(entry.filename.as_ref()) else {
@@ -199,11 +246,7 @@ fn walk_tree(
     Ok(())
 }
 
-fn walk_dir(
-    workspace_root: &Path,
-    dir: &Path,
-    out: &mut Vec<PathBuf>,
-) -> Result<(), String> {
+fn walk_dir(workspace_root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
     let read = fs::read_dir(dir).map_err(|e| format!("read_dir {dir:?}: {e}"))?;
     for entry in read.flatten() {
         let name = entry.file_name();
@@ -290,5 +333,36 @@ fn prune_empty_parents(workspace_root: &Path, file: &Path) {
             break;
         }
         cur = dir.parent();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_restore_path;
+    use std::path::PathBuf;
+
+    #[test]
+    fn normalize_restore_path_allows_workspace_relative_paths() {
+        assert_eq!(
+            normalize_restore_path("docs/main.typ"),
+            Ok(PathBuf::from("docs/main.typ"))
+        );
+        assert_eq!(
+            normalize_restore_path("/docs\\main.typ"),
+            Ok(PathBuf::from("docs/main.typ"))
+        );
+    }
+
+    #[test]
+    fn normalize_restore_path_rejects_traversal() {
+        assert!(normalize_restore_path("../important_file").is_err());
+        assert!(normalize_restore_path("docs/../../important_file").is_err());
+    }
+
+    #[test]
+    fn normalize_restore_path_rejects_empty_and_current_dir_paths() {
+        assert!(normalize_restore_path("").is_err());
+        assert!(normalize_restore_path(".").is_err());
+        assert!(normalize_restore_path("docs/./main.typ").is_err());
     }
 }
