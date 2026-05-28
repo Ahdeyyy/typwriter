@@ -29,8 +29,10 @@ use typst_ide::IdeWorld;
 use typst_kit::{
     download::Downloader,
     fonts::{FontSearcher, FontSlot},
-    package::{default_package_cache_path, default_package_path, PackageStorage},
+    package::PackageStorage,
 };
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use typst_kit::package::{default_package_cache_path, default_package_path};
 
 /// Bundled font data, set once via `OnceLock` when background loading completes.
 struct FontData {

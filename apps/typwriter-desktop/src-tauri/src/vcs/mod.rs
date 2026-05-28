@@ -48,6 +48,7 @@ use parking_lot::{Mutex, RwLock};
 #[cfg(target_os = "android")]
 use tauri::Manager;
 
+#[cfg(not(target_os = "android"))]
 use fs::LocalWorkingTreeFs;
 
 /// User preferences governing automatic snapshot (commit) creation.
@@ -142,9 +143,10 @@ impl VcsState {
         {
             let this = Arc::clone(self);
             let workspace_root = workspace_root.to_path_buf();
+            let for_thread = workspace_root.clone();
             if let Err(err) = std::thread::Builder::new()
                 .name("typwriter-vcs-attach".into())
-                .spawn(move || this.attach_repo(&workspace_root))
+                .spawn(move || this.attach_repo(&for_thread))
             {
                 warn!(
                     "vcs::attach: failed to spawn background attach root={workspace_root:?} err=\"{err}\""
@@ -193,13 +195,11 @@ impl VcsState {
 
     #[cfg(target_os = "android")]
     fn working_tree_fs(&self, root: &Path) -> fs::AndroidWorkingTreeFs<tauri::Wry> {
-        use tauri_plugin_android_fs::AndroidFsExt;
-
-        let api = self.app_handle.android_fs();
+        let app_handle = self.app_handle.clone();
         if let Some(uri) = self.saf_roots.read().get(root).cloned() {
-            fs::AndroidWorkingTreeFs::new_with_root(api, root.to_path_buf(), uri)
+            fs::AndroidWorkingTreeFs::new_with_root(app_handle, root.to_path_buf(), uri)
         } else {
-            fs::AndroidWorkingTreeFs::new(api)
+            fs::AndroidWorkingTreeFs::new(app_handle)
         }
     }
 

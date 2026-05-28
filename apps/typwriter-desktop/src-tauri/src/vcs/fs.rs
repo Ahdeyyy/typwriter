@@ -71,31 +71,36 @@ impl WorkingTreeFs for LocalWorkingTreeFs {
 
 #[cfg(target_os = "android")]
 pub struct AndroidWorkingTreeFs<R: tauri::Runtime> {
-    api: tauri_plugin_android_fs::api::api_sync::AndroidFs<R>,
+    app_handle: tauri::AppHandle<R>,
     root_path: Option<PathBuf>,
     root_uri: Option<tauri_plugin_android_fs::FileUri>,
 }
 
 #[cfg(target_os = "android")]
 impl<R: tauri::Runtime> AndroidWorkingTreeFs<R> {
-    pub fn new(api: tauri_plugin_android_fs::api::api_sync::AndroidFs<R>) -> Self {
+    pub fn new(app_handle: tauri::AppHandle<R>) -> Self {
         Self {
-            api,
+            app_handle,
             root_path: None,
             root_uri: None,
         }
     }
 
     pub fn new_with_root(
-        api: tauri_plugin_android_fs::api::api_sync::AndroidFs<R>,
+        app_handle: tauri::AppHandle<R>,
         root_path: PathBuf,
         root_uri: tauri_plugin_android_fs::FileUri,
     ) -> Self {
         Self {
-            api,
+            app_handle,
             root_path: Some(root_path),
             root_uri: Some(root_uri),
         }
+    }
+
+    fn api(&self) -> &tauri_plugin_android_fs::api::api_sync::AndroidFs<R> {
+        use tauri_plugin_android_fs::AndroidFsExt;
+        self.app_handle.android_fs()
     }
 
     fn uri(path: &Path) -> tauri_plugin_android_fs::FileUri {
@@ -117,7 +122,7 @@ impl<R: tauri::Runtime> AndroidWorkingTreeFs<R> {
         if rel.as_os_str().is_empty() {
             return Ok(root_uri.clone());
         }
-        self.api
+        self.api()
             .resolve_dir_uri(root_uri, &rel)
             .map_err(|e| format!("android-fs resolve dir {path:?}: {e}"))
     }
@@ -129,7 +134,7 @@ impl<R: tauri::Runtime> AndroidWorkingTreeFs<R> {
         let Some(rel) = self.root_relative(path) else {
             return Ok(Self::uri(path));
         };
-        self.api
+        self.api()
             .resolve_file_uri(root_uri, &rel)
             .map_err(|e| format!("android-fs resolve file {path:?}: {e}"))
     }
@@ -140,7 +145,7 @@ impl<R: tauri::Runtime> WorkingTreeFs for AndroidWorkingTreeFs<R> {
     fn read_dir(&self, dir: &Path) -> Result<Vec<WorkingEntry>, String> {
         let dir_uri = self.dir_uri(dir)?;
         let read = self
-            .api
+            .api()
             .read_dir(&dir_uri)
             .map_err(|e| format!("android-fs read_dir {dir:?}: {e}"))?;
         let mut entries = Vec::new();
@@ -160,7 +165,7 @@ impl<R: tauri::Runtime> WorkingTreeFs for AndroidWorkingTreeFs<R> {
     }
 
     fn read_file(&self, path: &Path) -> Result<Vec<u8>, String> {
-        self.api
+        self.api()
             .read(&self.file_uri(path)?)
             .map_err(|e| format!("android-fs read {path:?}: {e}"))
     }
@@ -177,20 +182,20 @@ impl<R: tauri::Runtime> WorkingTreeFs for AndroidWorkingTreeFs<R> {
             let file_uri = if let (Some(root_uri), Some(rel)) =
                 (self.root_uri.as_ref(), self.root_relative(path))
             {
-                self.api
+                self.api()
                     .create_new_file(root_uri, &rel, None)
                     .map_err(|e| format!("android-fs create file {path:?}: {e}"))?
             } else {
-                self.api
+                self.api()
                     .create_new_file(&self.dir_uri(parent)?, Path::new(name), None)
                     .map_err(|e| format!("android-fs create file {path:?}: {e}"))?
             };
             return self
-                .api
+                .api()
                 .write(&file_uri, bytes)
                 .map_err(|e| format!("android-fs write {path:?}: {e}"));
         }
-        self.api
+        self.api()
             .write(&self.file_uri(path)?, bytes)
             .map_err(|e| format!("android-fs write {path:?}: {e}"))
     }
@@ -200,7 +205,7 @@ impl<R: tauri::Runtime> WorkingTreeFs for AndroidWorkingTreeFs<R> {
             return Ok(());
         }
         if let (Some(root_uri), Some(rel)) = (self.root_uri.as_ref(), self.root_relative(path)) {
-            self.api
+            self.api()
                 .create_dir_all(root_uri, &rel)
                 .map_err(|e| format!("android-fs mkdir {path:?}: {e}"))?;
             return Ok(());
@@ -214,32 +219,32 @@ impl<R: tauri::Runtime> WorkingTreeFs for AndroidWorkingTreeFs<R> {
         let rel = path
             .strip_prefix(ancestor)
             .map_err(|_| format!("android-fs mkdir {path:?}: not below {ancestor:?}"))?;
-        self.api
+        self.api()
             .create_dir_all(&self.dir_uri(ancestor)?, rel)
             .map_err(|e| format!("android-fs mkdir {path:?}: {e}"))?;
         Ok(())
     }
 
     fn remove_file(&self, path: &Path) -> Result<(), String> {
-        self.api
+        self.api()
             .remove_file(&self.file_uri(path)?)
             .map_err(|e| format!("android-fs remove_file {path:?}: {e}"))
     }
 
     fn remove_dir(&self, path: &Path) -> Result<(), String> {
-        self.api
+        self.api()
             .remove_dir(&self.dir_uri(path)?)
             .map_err(|e| format!("android-fs remove_dir {path:?}: {e}"))
     }
 
     fn exists(&self, path: &Path) -> bool {
         self.file_uri(path)
-            .and_then(|uri| self.api.get_metadata(&uri).map_err(|e| e.to_string()))
+            .and_then(|uri| self.api().get_metadata(&uri).map_err(|e| e.to_string()))
             .is_ok()
             || self
                 .dir_uri(path)
                 .and_then(|uri| {
-                    self.api
+                    self.api()
                         .read_dir(&uri)
                         .map(|_| ())
                         .map_err(|e| e.to_string())
