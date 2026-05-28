@@ -7,7 +7,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use gix::ObjectId;
-use log::info;
+use log::{error, info};
 
 use super::{
     commit::{commit_if_changed, CommitTrigger},
@@ -68,15 +68,34 @@ pub fn restore_workspace(
         fs.write_file(&abs, bytes)?;
     }
 
-    // Remove anything that exists on disk but not in the target.
+    // Remove anything that exists on disk but not in the target. Keep going
+    // on individual failures so we make as much progress as possible — the
+    // safety commit already preserves the prior state — then surface a
+    // combined error so the caller knows the restore was incomplete.
+    let mut delete_failures: Vec<(PathBuf, String)> = Vec::new();
     for cur in current_files {
         if !target_set.contains(&cur) {
             let abs = workspace_root.join(&cur);
-            let _ = fs.remove_file(&abs);
+            if let Err(e) = fs.remove_file(&abs) {
+                error!("vcs::restore_workspace: failed to remove {abs:?}: {e}");
+                delete_failures.push((abs, e));
+                continue;
+            }
             // Best-effort cleanup of now-empty parent dirs. Stops at the
             // workspace root so we don't wipe sibling content.
             prune_empty_parents(fs, workspace_root, &abs);
         }
+    }
+
+    if !delete_failures.is_empty() {
+        let (first_path, first_err) = &delete_failures[0];
+        return Err(format!(
+            "restore to {} incomplete: {} file(s) could not be removed (first: {:?}: {})",
+            commit_id,
+            delete_failures.len(),
+            first_path,
+            first_err
+        ));
     }
 
     info!(
@@ -123,8 +142,16 @@ pub fn restore_file(
             info!("vcs::restore_file: restored {rel_path} from {commit_id}");
         }
         None => {
-            // File didn't exist at that point — restore = delete locally.
-            let _ = fs.remove_file(&abs);
+            // File didn't exist at that point — restore = delete locally. If
+            // it's already absent the target state is achieved; otherwise a
+            // failed remove must be reported so the caller knows the on-disk
+            // state still diverges from the requested commit.
+            if fs.exists(&abs) {
+                fs.remove_file(&abs).map_err(|e| {
+                    error!("vcs::restore_file: failed to remove {abs:?}: {e}");
+                    e
+                })?;
+            }
             info!("vcs::restore_file: deleted {rel_path} (absent in {commit_id})");
         }
     }
