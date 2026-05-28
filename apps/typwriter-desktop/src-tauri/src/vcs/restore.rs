@@ -1,89 +1,75 @@
 // vcs/restore.rs
 //
-// Two operations: restore the whole workspace to a commit, or restore a
-// single file. Both record a safety commit of the current state first so the
-// user can step back if they restored the wrong point.
+// Two operations: restore the whole workspace to a snapshot, or restore a
+// single file. Both record a safety `PreRestore` snapshot of the current
+// state first so the user can step back if they restored the wrong point.
 
+use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
 
-use gix::ObjectId;
 use log::{error, info};
 
-use super::{
-    commit::{commit_if_changed, CommitTrigger},
-    fs::WorkingTreeFs,
-    repo::{open_or_init, IGNORED_TOP_LEVEL},
-};
+use super::commit::{commit_if_changed, CommitTrigger};
+use super::fs::WorkingTreeFs;
+use super::paths::IGNORED_TOP_LEVEL;
+use super::retention::RetentionPolicy;
+use super::store::{find_snapshot_by_id, read_blob};
 
-/// Restore the working tree to match the tree of `commit_id`.
+/// Restore the working tree to match `commit_id`.
 ///
-/// Safety: we first snapshot the current state (regardless of whether
-/// anything had changed since HEAD) as a `pre-restore` commit, so the
-/// previous state is still reachable in history. Then we walk the target
-/// tree, write each blob to disk, and delete any path that exists locally
-/// but isn't in the target.
+/// Safety: snapshot the current state as a `PreRestore` first (so the prior
+/// state is still reachable in history), then write each blob to disk and
+/// remove any path that exists locally but isn't in the target.
 ///
-/// `.git/` and `.typwriter/` are skipped on both the read and write sides.
+/// `.git/` and `.typwriter/` are skipped on both sides — restoring must
+/// never wipe our own metadata.
 pub fn restore_workspace(
-    repo_root: &Path,
     workspace_root: &Path,
     fs: &impl WorkingTreeFs,
     commit_id: &str,
 ) -> Result<(), String> {
-    // If it skips because there's nothing to commit, that's still fine — the
-    // user can already step back via HEAD. Real snapshot failures must abort
-    // before we overwrite the working tree.
+    // Safety snapshot. If it skips because nothing changed since HEAD,
+    // that's still fine — HEAD itself is the rollback target. Real failures
+    // must abort before we touch the working tree.
     commit_if_changed(
-        repo_root,
         workspace_root,
         fs,
         CommitTrigger::PreRestore,
         "Pre-restore snapshot",
+        &RetentionPolicy::unlimited(),
     )?;
 
-    let repo = open_or_init(repo_root)?;
-    let target_commit = parse_oid(commit_id)?;
-    let target_tree = commit_tree(&repo, target_commit)?;
+    let target = find_snapshot_by_id(fs, workspace_root, commit_id)?;
 
-    // First pass: collect every path in the target. This is also what we'll
-    // use to detect deletions (anything on disk not in `targets` gets
-    // removed).
-    let mut target_files: Vec<(PathBuf, Vec<u8>)> = Vec::new();
-    walk_tree(&repo, target_tree, &PathBuf::new(), &mut target_files)?;
-
-    // Second pass: enumerate current working files (minus ignored dirs).
+    // Enumerate current working files so we know what to delete after the
+    // target's files are written.
     let mut current_files: Vec<PathBuf> = Vec::new();
-    walk_dir(fs, workspace_root, workspace_root, &mut current_files)?;
+    walk_working(workspace_root, workspace_root, fs, &mut current_files)?;
 
-    use std::collections::BTreeSet;
-    let target_set: BTreeSet<&PathBuf> = target_files.iter().map(|(p, _)| p).collect();
-
-    // Write target files. Directories are created on demand. Existing files
-    // are overwritten in place; new ones are created.
-    for (rel, bytes) in &target_files {
+    // Write target files. Directories are created on demand; existing files
+    // are overwritten in place.
+    for (rel, hash) in &target.files {
+        let bytes = read_blob(fs, workspace_root, hash)?;
         let abs = workspace_root.join(rel);
         if let Some(parent) = abs.parent() {
             fs.create_dir_all(parent)?;
         }
-        fs.write_file(&abs, bytes)?;
+        fs.write_file(&abs, &bytes)?;
     }
 
-    // Remove anything that exists on disk but not in the target. Keep going
-    // on individual failures so we make as much progress as possible — the
-    // safety commit already preserves the prior state — then surface a
-    // combined error so the caller knows the restore was incomplete.
+    let target_set: BTreeSet<String> = target.files.keys().cloned().collect();
+
     let mut delete_failures: Vec<(PathBuf, String)> = Vec::new();
     for cur in current_files {
-        if !target_set.contains(&cur) {
+        let rel = cur.to_string_lossy().replace('\\', "/");
+        if !target_set.contains(&rel) {
             let abs = workspace_root.join(&cur);
             if let Err(e) = fs.remove_file(&abs) {
                 error!("vcs::restore_workspace: failed to remove {abs:?}: {e}");
                 delete_failures.push((abs, e));
                 continue;
             }
-            // Best-effort cleanup of now-empty parent dirs. Stops at the
-            // workspace root so we don't wipe sibling content.
-            prune_empty_parents(fs, workspace_root, &abs);
+            prune_empty_parents(fs, workspace_root, &workspace_root.join(&cur));
         }
     }
 
@@ -98,20 +84,21 @@ pub fn restore_workspace(
         ));
     }
 
+    // Advance HEAD to the restored snapshot, so subsequent diffs and the
+    // timeline cursor reflect "you are now at this point".
+    super::store::write_head(fs, workspace_root, &target.id)?;
+
     info!(
         "vcs::restore_workspace: restored to {} ({} file(s))",
         commit_id,
-        target_files.len()
+        target.files.len()
     );
     Ok(())
 }
 
-/// Restore a single file from a commit. The rest of the workspace is left
-/// alone. If the file doesn't exist in the target, restore turns into a
-/// delete — the caller can disambiguate via [`crate::vcs::diff_vs_current`]
-/// before invoking this.
+/// Restore a single file. The rest of the workspace is left alone. If the
+/// file didn't exist in the target snapshot, this becomes a delete.
 pub fn restore_file(
-    repo_root: &Path,
     workspace_root: &Path,
     fs: &impl WorkingTreeFs,
     commit_id: &str,
@@ -121,19 +108,19 @@ pub fn restore_file(
     let abs = workspace_child_path(workspace_root, &target_path)?;
 
     commit_if_changed(
-        repo_root,
         workspace_root,
         fs,
         CommitTrigger::PreRestore,
         &format!("Pre-restore (single file): {rel_path}"),
+        &RetentionPolicy::unlimited(),
     )?;
 
-    let repo = open_or_init(repo_root)?;
-    let target_commit = parse_oid(commit_id)?;
-    let target_tree = commit_tree(&repo, target_commit)?;
+    let target = find_snapshot_by_id(fs, workspace_root, commit_id)?;
+    let path_key = target_path.to_string_lossy().replace('\\', "/");
 
-    match find_blob_at(&repo, target_tree, &target_path)? {
-        Some(bytes) => {
+    match target.files.get(&path_key) {
+        Some(hash) => {
+            let bytes = read_blob(fs, workspace_root, hash)?;
             if let Some(parent) = abs.parent() {
                 ensure_existing_ancestor_within_workspace(fs, workspace_root, parent)?;
                 fs.create_dir_all(parent)?;
@@ -142,10 +129,9 @@ pub fn restore_file(
             info!("vcs::restore_file: restored {rel_path} from {commit_id}");
         }
         None => {
-            // File didn't exist at that point — restore = delete locally. If
-            // it's already absent the target state is achieved; otherwise a
-            // failed remove must be reported so the caller knows the on-disk
-            // state still diverges from the requested commit.
+            // File didn't exist at that point → restore = delete locally. If
+            // it's already absent we're done; otherwise a failed remove must
+            // be reported so the caller knows on-disk state still diverges.
             if fs.exists(&abs) {
                 fs.remove_file(&abs).map_err(|e| {
                     error!("vcs::restore_file: failed to remove {abs:?}: {e}");
@@ -211,92 +197,19 @@ fn ensure_existing_ancestor_within_workspace(
     }
 }
 
-fn parse_oid(s: &str) -> Result<ObjectId, String> {
-    ObjectId::from_hex(s.as_bytes()).map_err(|e| format!("invalid commit id {s:?}: {e}"))
-}
-
-fn commit_tree(repo: &gix::Repository, commit_id: ObjectId) -> Result<ObjectId, String> {
-    let obj = repo
-        .find_object(commit_id)
-        .map_err(|e| format!("find_object(commit) failed: {e}"))?;
-    let commit = obj
-        .try_into_commit()
-        .map_err(|e| format!("not a commit: {e}"))?;
-    Ok(commit.tree_id().map_err(|e| e.to_string())?.detach())
-}
-
-/// Owned projection of a tree entry — see `history.rs` for why we don't
-/// keep the borrowed `TreeRef` form around.
-struct OwnedEntry {
-    filename: String,
-    oid: ObjectId,
-    is_tree: bool,
-    is_blob: bool,
-}
-
-fn read_tree_entries(repo: &gix::Repository, id: ObjectId) -> Result<Vec<OwnedEntry>, String> {
-    let obj = repo
-        .find_object(id)
-        .map_err(|e| format!("find_object(tree) failed: {e}"))?;
-    let tree = obj
-        .try_into_tree()
-        .map_err(|e| format!("not a tree: {e}"))?;
-    let tree_ref = tree.decode().map_err(|e| format!("decode tree: {e}"))?;
-    let mut out = Vec::new();
-    for entry in tree_ref.entries.iter() {
-        let Ok(name) = std::str::from_utf8(entry.filename.as_ref()) else {
-            continue;
-        };
-        out.push(OwnedEntry {
-            filename: name.to_string(),
-            oid: entry.oid.to_owned(),
-            is_tree: entry.mode.is_tree(),
-            is_blob: entry.mode.is_blob(),
-        });
-    }
-    Ok(out)
-}
-
-fn walk_tree(
-    repo: &gix::Repository,
-    tree_id: ObjectId,
-    prefix: &Path,
-    out: &mut Vec<(PathBuf, Vec<u8>)>,
-) -> Result<(), String> {
-    let entries = read_tree_entries(repo, tree_id)?;
-    for entry in entries {
-        let path = prefix.join(&entry.filename);
-        if entry.is_tree {
-            walk_tree(repo, entry.oid, &path, out)?;
-        } else if entry.is_blob {
-            let blob = repo
-                .find_object(entry.oid)
-                .map_err(|e| format!("find_object(blob) failed: {e}"))?;
-            let bytes = blob
-                .try_into_blob()
-                .map_err(|e| format!("not a blob: {e}"))?
-                .data
-                .clone();
-            out.push((path, bytes));
-        }
-    }
-    Ok(())
-}
-
-fn walk_dir(
-    fs: &impl WorkingTreeFs,
+fn walk_working(
     workspace_root: &Path,
     dir: &Path,
+    fs: &impl WorkingTreeFs,
     out: &mut Vec<PathBuf>,
 ) -> Result<(), String> {
-    let read = fs.read_dir(dir)?;
-    for entry in read {
-        let name_str = entry.name;
-        if dir == workspace_root && IGNORED_TOP_LEVEL.contains(&name_str.as_str()) {
+    let entries = fs.read_dir(dir)?;
+    for entry in entries {
+        if dir == workspace_root && IGNORED_TOP_LEVEL.contains(&entry.name.as_str()) {
             continue;
         }
         if entry.is_dir {
-            walk_dir(fs, workspace_root, &entry.path, out)?;
+            walk_working(workspace_root, &entry.path, fs, out)?;
         } else if entry.is_file {
             if let Ok(rel) = entry.path.strip_prefix(workspace_root) {
                 out.push(rel.to_path_buf());
@@ -304,52 +217,6 @@ fn walk_dir(
         }
     }
     Ok(())
-}
-
-fn find_blob_at(
-    repo: &gix::Repository,
-    root: ObjectId,
-    rel: &Path,
-) -> Result<Option<Vec<u8>>, String> {
-    let mut current = root;
-    let components: Vec<String> = rel
-        .components()
-        .filter_map(|c| match c {
-            std::path::Component::Normal(s) => s.to_str().map(String::from),
-            _ => None,
-        })
-        .collect();
-    if components.is_empty() {
-        return Ok(None);
-    }
-    let last_idx = components.len() - 1;
-
-    for (i, name) in components.iter().enumerate() {
-        let entries = read_tree_entries(repo, current)?;
-        let Some(entry) = entries.into_iter().find(|e| e.filename == *name) else {
-            return Ok(None);
-        };
-
-        if i == last_idx {
-            if !entry.is_blob {
-                return Ok(None);
-            }
-            let blob = repo
-                .find_object(entry.oid)
-                .map_err(|e| format!("find_object(blob) failed: {e}"))?;
-            let bytes = blob
-                .try_into_blob()
-                .map_err(|e| format!("not a blob: {e}"))?
-                .data
-                .clone();
-            return Ok(Some(bytes));
-        } else if entry.is_tree {
-            current = entry.oid;
-        } else {
-            return Ok(None);
-        }
-    }
-    Ok(None)
 }
 
 fn prune_empty_parents(fs: &impl WorkingTreeFs, workspace_root: &Path, file: &Path) {

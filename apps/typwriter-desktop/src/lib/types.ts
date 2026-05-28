@@ -154,7 +154,7 @@ export type CommitTrigger =
     | 'pre_restore';
 
 export interface RestorePoint {
-    /** Full 40-char hex commit id. */
+    /** Full 64-char sha-256 hex snapshot id. */
     id: string;
     parent_id: string | null;
     message: string;

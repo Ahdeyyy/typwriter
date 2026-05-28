@@ -350,6 +350,16 @@ export function vcsCreateRestorePoint(message: string) {
     );
 }
 
+/** Return the id of the snapshot the working tree currently matches (HEAD),
+ *  or `null` when the workspace has no snapshots yet. After a restore, this
+ *  is the restored point; otherwise it's the most recent commit. */
+export function vcsCurrentId() {
+    return ResultAsync.fromPromise(
+        invoke<string | null>('vcs_current_id'),
+        toErrString
+    );
+}
+
 /** Return the restore-point timeline (newest first). `limit` caps the count. */
 export function vcsListHistory(limit?: number) {
     return ResultAsync.fromPromise(
@@ -417,6 +427,8 @@ export interface AppSettings {
     auto_snapshot_on_save: boolean;
     auto_snapshot_on_compile: boolean;
     auto_snapshot_min_interval_seconds: number;
+    snapshot_retention_max_count: number;
+    snapshot_retention_max_days: number;
 }
 
 export function getAppSettings() {

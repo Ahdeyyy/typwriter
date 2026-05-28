@@ -34,6 +34,11 @@ pub fn vcs_create_restore_point(
 }
 
 #[tauri::command]
+pub fn vcs_current_id(vcs: State<'_, Arc<VcsState>>) -> Result<Option<String>, String> {
+    vcs.current_id()
+}
+
+#[tauri::command]
 pub fn vcs_list_history(
     limit: Option<usize>,
     vcs: State<'_, Arc<VcsState>>,

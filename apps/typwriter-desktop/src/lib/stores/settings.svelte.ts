@@ -102,6 +102,11 @@ interface PersistedSettings {
     autoSnapshotOnSave: boolean;
     autoSnapshotOnCompile: boolean;
     autoSnapshotMinIntervalSeconds: number;
+    /** Cap on the number of *auto* (Save/Compile) snapshots retained.
+     *  `0` = unlimited. Manual/Initial/PreRestore are always preserved. */
+    snapshotRetentionMaxCount: number;
+    /** Maximum age, in days, for *auto* snapshots. `0` = unlimited. */
+    snapshotRetentionMaxDays: number;
 }
 
 const DEFAULTS: PersistedSettings = {
@@ -129,6 +134,8 @@ const DEFAULTS: PersistedSettings = {
     autoSnapshotOnSave: true,
     autoSnapshotOnCompile: true,
     autoSnapshotMinIntervalSeconds: 0,
+    snapshotRetentionMaxCount: 0,
+    snapshotRetentionMaxDays: 0,
 };
 
 const THEME_IDS = new Set<ThemeId>(THEMES.map((theme) => theme.id));
@@ -191,6 +198,8 @@ class SettingsStore {
     autoSnapshotOnSave = $state(INITIAL.autoSnapshotOnSave);
     autoSnapshotOnCompile = $state(INITIAL.autoSnapshotOnCompile);
     autoSnapshotMinIntervalSeconds = $state(INITIAL.autoSnapshotMinIntervalSeconds);
+    snapshotRetentionMaxCount = $state(INITIAL.snapshotRetentionMaxCount);
+    snapshotRetentionMaxDays = $state(INITIAL.snapshotRetentionMaxDays);
 
     fontDirectories = $state<string[]>([]);
     fontsReloading = $state(false);
@@ -221,6 +230,8 @@ class SettingsStore {
                     autoSnapshotOnSave: s.auto_snapshot_on_save,
                     autoSnapshotOnCompile: s.auto_snapshot_on_compile,
                     autoSnapshotMinIntervalSeconds: s.auto_snapshot_min_interval_seconds,
+                    snapshotRetentionMaxCount: s.snapshot_retention_max_count,
+                    snapshotRetentionMaxDays: s.snapshot_retention_max_days,
                 };
                 const nextSettings = INITIAL_LOCAL.hasSettings
                     ? { ...rustSettings, ...INITIAL }
@@ -255,6 +266,8 @@ class SettingsStore {
             autoSnapshotOnSave: this.autoSnapshotOnSave,
             autoSnapshotOnCompile: this.autoSnapshotOnCompile,
             autoSnapshotMinIntervalSeconds: this.autoSnapshotMinIntervalSeconds,
+            snapshotRetentionMaxCount: this.snapshotRetentionMaxCount,
+            snapshotRetentionMaxDays: this.snapshotRetentionMaxDays,
         };
     }
 
@@ -281,6 +294,14 @@ class SettingsStore {
         this.autoSnapshotMinIntervalSeconds = Math.max(
             0,
             Math.min(3600, Math.round(settings.autoSnapshotMinIntervalSeconds)),
+        );
+        this.snapshotRetentionMaxCount = Math.max(
+            0,
+            Math.min(10_000, Math.round(settings.snapshotRetentionMaxCount)),
+        );
+        this.snapshotRetentionMaxDays = Math.max(
+            0,
+            Math.min(3650, Math.round(settings.snapshotRetentionMaxDays)),
         );
     }
 
@@ -317,6 +338,8 @@ class SettingsStore {
             auto_snapshot_on_save: current.autoSnapshotOnSave,
             auto_snapshot_on_compile: current.autoSnapshotOnCompile,
             auto_snapshot_min_interval_seconds: current.autoSnapshotMinIntervalSeconds,
+            snapshot_retention_max_count: current.snapshotRetentionMaxCount,
+            snapshot_retention_max_days: current.snapshotRetentionMaxDays,
         }).mapErr((err) => {
             logError('settings.persist setAppSettings failed:', err);
             return err;
@@ -418,6 +441,16 @@ class SettingsStore {
         this.persist();
     }
 
+    setSnapshotRetentionMaxCount(value: number) {
+        this.snapshotRetentionMaxCount = Math.max(0, Math.min(10_000, Math.round(value)));
+        this.persist();
+    }
+
+    setSnapshotRetentionMaxDays(value: number) {
+        this.snapshotRetentionMaxDays = Math.max(0, Math.min(3650, Math.round(value)));
+        this.persist();
+    }
+
     resetToDefaults() {
         this.uiFontFamily = DEFAULTS.uiFontFamily;
         this.editorFontFamily = DEFAULTS.editorFontFamily;
@@ -438,6 +471,8 @@ class SettingsStore {
         this.autoSnapshotOnSave = DEFAULTS.autoSnapshotOnSave;
         this.autoSnapshotOnCompile = DEFAULTS.autoSnapshotOnCompile;
         this.autoSnapshotMinIntervalSeconds = DEFAULTS.autoSnapshotMinIntervalSeconds;
+        this.snapshotRetentionMaxCount = DEFAULTS.snapshotRetentionMaxCount;
+        this.snapshotRetentionMaxDays = DEFAULTS.snapshotRetentionMaxDays;
         this.persist();
     }
 

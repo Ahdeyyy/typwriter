@@ -609,6 +609,58 @@
               </div>
             </div>
 
+            <div class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3">
+              <div class="min-w-0">
+                <p class="text-sm font-medium">Keep most recent auto-snapshots</p>
+                <p class="truncate text-xs text-muted-foreground">
+                  Cap on auto-snapshots from save / compile. Manual restore points and the initial / pre-restore safety points are never pruned. Set to 0 for unlimited.
+                </p>
+              </div>
+              <div class="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="0"
+                  max="500"
+                  step="10"
+                  value={settings.snapshotRetentionMaxCount}
+                  oninput={(e) =>
+                    settings.setSnapshotRetentionMaxCount(parseInt(e.currentTarget.value, 10))}
+                  class="w-32 accent-primary"
+                />
+                <span class="w-20 text-right text-sm tabular-nums">
+                  {settings.snapshotRetentionMaxCount === 0
+                    ? "unlimited"
+                    : settings.snapshotRetentionMaxCount}
+                </span>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3">
+              <div class="min-w-0">
+                <p class="text-sm font-medium">Discard auto-snapshots older than</p>
+                <p class="truncate text-xs text-muted-foreground">
+                  Maximum age (in days) for auto-snapshots before they're swept on the next snapshot. Manual / initial / pre-restore points are exempt. Set to 0 for unlimited.
+                </p>
+              </div>
+              <div class="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="0"
+                  max="365"
+                  step="1"
+                  value={settings.snapshotRetentionMaxDays}
+                  oninput={(e) =>
+                    settings.setSnapshotRetentionMaxDays(parseInt(e.currentTarget.value, 10))}
+                  class="w-32 accent-primary"
+                />
+                <span class="w-20 text-right text-sm tabular-nums">
+                  {settings.snapshotRetentionMaxDays === 0
+                    ? "unlimited"
+                    : `${settings.snapshotRetentionMaxDays}d`}
+                </span>
+              </div>
+            </div>
+
           </div>
         </section>
 

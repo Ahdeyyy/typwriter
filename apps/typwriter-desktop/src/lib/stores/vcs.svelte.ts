@@ -16,6 +16,7 @@ import type { RestorePoint, WorkspaceDiff, FileDiff } from '$lib/types';
 import {
     triggerPreview,
     vcsCreateRestorePoint,
+    vcsCurrentId,
     vcsDiffBetween,
     vcsDiffVsCurrent,
     vcsListHistory,
@@ -38,6 +39,12 @@ class VcsStore {
      *  between the two. */
     primaryId = $state<string | null>(null);
     secondaryId = $state<string | null>(null);
+
+    /** Backend HEAD — the snapshot id the working tree currently matches.
+     *  Used by the timeline to highlight the "you are here" point. Updated
+     *  on `refresh()` and after every restore. `null` when the workspace
+     *  has no snapshots yet. */
+    currentId = $state<string | null>(null);
 
     /** Currently displayed diff payload (or null if nothing's selected yet). */
     diff = $state<WorkspaceDiff | null>(null);
@@ -98,15 +105,22 @@ class VcsStore {
 
     refresh(limit?: number): ResultAsync<void, string> {
         this.loading = true;
+        // Pull HEAD in parallel with the history list — both are cheap, and
+        // we want the "you are here" highlight to land in the same paint as
+        // the timeline so nodes don't visibly re-style on first mount.
         return vcsListHistory(limit)
             .map((entries) => {
                 this.history = entries;
-                this.loading = false;
                 // Reset selections if they no longer exist (e.g. after a
                 // history rewrite — not currently possible, but cheap).
                 const ids = new Set(entries.map((e) => e.id));
                 if (this.primaryId && !ids.has(this.primaryId)) this.primaryId = null;
                 if (this.secondaryId && !ids.has(this.secondaryId)) this.secondaryId = null;
+            })
+            .andThen(() => vcsCurrentId())
+            .map((id) => {
+                this.currentId = id;
+                this.loading = false;
             })
             .mapErr((err) => {
                 this.loading = false;
@@ -255,6 +269,7 @@ class VcsStore {
         this.history = [];
         this.primaryId = null;
         this.secondaryId = null;
+        this.currentId = null;
         this.diff = null;
     }
 }

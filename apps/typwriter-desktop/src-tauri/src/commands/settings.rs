@@ -54,6 +54,11 @@ pub struct AppSettings {
     pub auto_snapshot_on_save: bool,
     pub auto_snapshot_on_compile: bool,
     pub auto_snapshot_min_interval_seconds: u32,
+    /// Cap on the number of *auto* (Save/Compile) snapshots retained. `0` =
+    /// unlimited. Manual / Initial / PreRestore are always preserved.
+    pub snapshot_retention_max_count: u32,
+    /// Maximum age, in days, for *auto* snapshots. `0` = unlimited.
+    pub snapshot_retention_max_days: u32,
 }
 
 impl Default for AppSettings {
@@ -81,6 +86,8 @@ impl Default for AppSettings {
             auto_snapshot_on_save: true,
             auto_snapshot_on_compile: true,
             auto_snapshot_min_interval_seconds: 0,
+            snapshot_retention_max_count: 0,
+            snapshot_retention_max_days: 0,
         }
     }
 }

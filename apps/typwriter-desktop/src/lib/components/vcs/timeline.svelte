@@ -387,39 +387,61 @@
                 {#each bucket.entries as entry (entry.id)}
                   {@const sel = selectionStateOf(entry.id)}
                   {@const swatch = vcs.colorForCommit(entry.id)}
+                  {@const isCurrent = vcs.currentId === entry.id}
                   <li>
                     <ContextMenu.Root>
                       <ContextMenu.Trigger class="block w-full">
                         <div
                           class="group relative flex w-full items-start gap-2.5 pl-2.5 pr-2 py-1 text-left text-sm hover:bg-muted/60
                                  {sel === 'primary' ? 'bg-muted' : ''}
-                                 {sel === 'secondary' ? 'bg-muted/50' : ''}"
+                                 {sel === 'secondary' ? 'bg-muted/50' : ''}
+                                 {isCurrent ? 'is-current' : ''}"
                         >
                           <button
                             type="button"
                             class="flex flex-1 items-start gap-2.5 text-left min-w-0"
                             onclick={(ev) => onclick(ev, entry)}
                           >
-                            <!-- Branch-colored node. Selected state uses the
-                                 branch color itself as a glow ring with a
-                                 background-colored offset so the dot reads as
-                                 "lit up" without losing its identity. -->
+                            <!-- Branch-colored node. Three layered states:
+                                   • selection (primary / secondary) — branch
+                                     color glow / ring; says "you picked this".
+                                   • current (HEAD) — node fill swaps to
+                                     `--primary` and gets a contrasting
+                                     `--ring` halo; says "you are here".
+                                   When both apply, current wins on the fill
+                                   and the selection's glow stacks around it. -->
                             <span
                               class="mt-1.5 size-2 shrink-0 rounded-full transition-[box-shadow,transform] duration-150
                                      {sel === 'primary' ? 'scale-110' : ''}
-                                     {sel === 'secondary' ? 'scale-105' : ''}"
-                              style:background-color={swatch}
-                              style:box-shadow={sel === "primary"
-                                ? `0 0 0 1.5px var(--background), 0 0 0 3px ${swatch}, 0 0 8px ${swatch}`
-                                : sel === "secondary"
-                                  ? `0 0 0 1.5px var(--background), 0 0 0 2.5px ${swatch}`
-                                  : "none"}
+                                     {sel === 'secondary' ? 'scale-105' : ''}
+                                     {isCurrent ? 'scale-125' : ''}"
+                              style:background-color={isCurrent ? "var(--primary)" : swatch}
+                              style:box-shadow={
+                                isCurrent && sel === "primary"
+                                  ? `0 0 0 1.5px var(--background), 0 0 0 3px var(--ring), 0 0 9px var(--ring), 0 0 0 5px ${swatch}`
+                                  : isCurrent
+                                    ? `0 0 0 1.5px var(--background), 0 0 0 2.5px var(--ring), 0 0 8px var(--ring)`
+                                    : sel === "primary"
+                                      ? `0 0 0 1.5px var(--background), 0 0 0 3px ${swatch}, 0 0 8px ${swatch}`
+                                      : sel === "secondary"
+                                        ? `0 0 0 1.5px var(--background), 0 0 0 2.5px ${swatch}`
+                                        : "none"
+                              }
                               aria-hidden="true"
                             ></span>
 
                             <div class="min-w-0 flex-1">
                               <div class="flex items-baseline gap-2">
                                 <span class="truncate font-medium leading-snug">{entry.message}</span>
+                                {#if isCurrent}
+                                  <span
+                                    class="shrink-0 rounded-sm px-1 py-px text-[9px] font-medium uppercase tracking-wide leading-none"
+                                    style="background: color-mix(in srgb, var(--ring) 18%, transparent); color: var(--ring);"
+                                    title="The workspace currently matches this restore point."
+                                  >
+                                    Here
+                                  </span>
+                                {/if}
                                 <span class="ml-auto shrink-0 text-[10px] text-muted-foreground tabular-nums">
                                   {relTime(entry.timestamp_seconds)}
                                 </span>

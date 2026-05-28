@@ -40,8 +40,8 @@ use commands::{
         set_typst_font_directories,
     },
     vcs::{
-        vcs_create_restore_point, vcs_diff_between, vcs_diff_vs_current, vcs_list_history,
-        vcs_restore_file, vcs_restore_workspace,
+        vcs_create_restore_point, vcs_current_id, vcs_diff_between, vcs_diff_vs_current,
+        vcs_list_history, vcs_restore_file, vcs_restore_workspace,
     },
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
@@ -247,6 +247,7 @@ pub fn run() {
             format_workspace_typ_files,
             // versioning / restore points
             vcs_create_restore_point,
+            vcs_current_id,
             vcs_list_history,
             vcs_diff_vs_current,
             vcs_diff_between,
