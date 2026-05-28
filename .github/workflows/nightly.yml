@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+    outputs:
+      release_title: ${{ steps.create.outputs.release_title }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,16 +29,19 @@ jobs:
           gh release delete nightly --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
 
       - name: Create empty nightly release
+        id: create
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SHA_SHORT="$(git rev-parse --short HEAD)"
+          RELEASE_TITLE="Nightly ($SHA_SHORT)"
           gh release create nightly \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Nightly ($SHA_SHORT)" \
+            --title "$RELEASE_TITLE" \
             --notes "Rolling nightly build from master @ $GITHUB_SHA. Built $(date -u +'%Y-%m-%d %H:%M UTC')." \
             --prerelease \
             --target "$GITHUB_SHA"
+          echo "release_title=$RELEASE_TITLE" >> "$GITHUB_OUTPUT"
 
   nightly-desktop:
     needs: prepare
@@ -91,7 +96,7 @@ jobs:
         with:
           projectPath: apps/typwriter-desktop
           tagName: nightly
-          releaseName: "Nightly"
+          releaseName: ${{ needs.prepare.outputs.release_title }}
           releaseBody: "Rolling nightly build from master."
           releaseDraft: false
           prerelease: true
@@ -319,7 +324,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly
-          name: "Nightly"
+          name: ${{ needs.prepare.outputs.release_title }}
           prerelease: true
           draft: false
           files: release-apks/*.apk
