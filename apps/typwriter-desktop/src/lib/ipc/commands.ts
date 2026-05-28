@@ -54,6 +54,15 @@ export function safTreeUriToPath(uri: string) {
     );
 }
 
+/** Android-only: register a SAF workspace tree URI so backend VCS operations
+ *  can use android-fs instead of direct filesystem access. */
+export function registerSafWorkspaceRoot(dirUri: { uri: string; documentTopTreeUri: string | null }) {
+    return ResultAsync.fromPromise(
+        invoke<string>('register_saf_workspace_root', { dirUri }),
+        toErrString
+    );
+}
+
 export function setMainFile(path: string) {
     return ResultAsync.fromPromise(invoke<void>('set_main_file', { path }), toErrString);
 }

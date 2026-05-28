@@ -12,7 +12,10 @@ use std::path::{Path, PathBuf};
 use gix::ObjectId;
 use serde::Serialize;
 
-use super::repo::{open_or_init, IGNORED_TOP_LEVEL};
+use super::{
+    fs::WorkingTreeFs,
+    repo::{open_or_init, IGNORED_TOP_LEVEL},
+};
 
 /// Anything bigger than this we treat as "too large to diff inline". Keeps
 /// the IPC payload reasonable and avoids choking the renderer on huge logs.
@@ -48,12 +51,17 @@ pub struct WorkspaceDiff {
 
 /// Diff between a commit and the current working tree. The commit is the
 /// `before`; the working tree (what the user sees right now) is the `after`.
-pub fn diff_vs_current(workspace_root: &Path, commit_id: &str) -> Result<WorkspaceDiff, String> {
-    let repo = open_or_init(workspace_root)?;
+pub fn diff_vs_current(
+    repo_root: &Path,
+    workspace_root: &Path,
+    fs: &impl WorkingTreeFs,
+    commit_id: &str,
+) -> Result<WorkspaceDiff, String> {
+    let repo = open_or_init(repo_root)?;
     let from_oid = parse_commit_id(commit_id)?;
     let from_tree = commit_tree(&repo, from_oid)?;
     let from_files = collect_tree_files(&repo, from_tree)?;
-    let cur_files = collect_working_files(workspace_root)?;
+    let cur_files = collect_working_files(workspace_root, fs)?;
 
     let mut files: Vec<FileDiff> = Vec::new();
     let names: Vec<String> = merged_names(&from_files, &cur_files);
@@ -68,12 +76,8 @@ pub fn diff_vs_current(workspace_root: &Path, commit_id: &str) -> Result<Workspa
 }
 
 /// Diff between two commits. `from` is the `before` side, `to` is the `after`.
-pub fn diff_between(
-    workspace_root: &Path,
-    from_id: &str,
-    to_id: &str,
-) -> Result<WorkspaceDiff, String> {
-    let repo = open_or_init(workspace_root)?;
+pub fn diff_between(repo_root: &Path, from_id: &str, to_id: &str) -> Result<WorkspaceDiff, String> {
+    let repo = open_or_init(repo_root)?;
     let from_oid = parse_commit_id(from_id)?;
     let to_oid = parse_commit_id(to_id)?;
     let from_tree = commit_tree(&repo, from_oid)?;
@@ -249,35 +253,35 @@ fn collect_tree_into(
     Ok(())
 }
 
-fn collect_working_files(workspace_root: &Path) -> Result<Vec<FileBytes>, String> {
+fn collect_working_files(
+    workspace_root: &Path,
+    fs: &impl WorkingTreeFs,
+) -> Result<Vec<FileBytes>, String> {
     let mut out = Vec::new();
-    collect_working_into(workspace_root, workspace_root, &mut out)?;
+    collect_working_into(workspace_root, workspace_root, fs, &mut out)?;
     Ok(out)
 }
 
 fn collect_working_into(
     workspace_root: &Path,
     dir: &Path,
+    fs: &impl WorkingTreeFs,
     out: &mut Vec<FileBytes>,
 ) -> Result<(), String> {
-    let read = std::fs::read_dir(dir).map_err(|e| format!("read_dir {dir:?}: {e}"))?;
-    for entry in read.flatten() {
-        let name = entry.file_name();
-        let Some(name_str) = name.to_str() else {
-            continue;
-        };
-        if dir == workspace_root && IGNORED_TOP_LEVEL.contains(&name_str) {
+    let read = fs.read_dir(dir)?;
+    for entry in read {
+        let name_str = entry.name;
+        if dir == workspace_root && IGNORED_TOP_LEVEL.contains(&name_str.as_str()) {
             continue;
         }
-        let path = entry.path();
-        let Ok(ft) = entry.file_type() else { continue };
-        if ft.is_dir() {
-            collect_working_into(workspace_root, &path, out)?;
-        } else if ft.is_file() {
-            let bytes = std::fs::read(&path).map_err(|e| format!("read {path:?}: {e}"))?;
-            let rel = path
+        if entry.is_dir {
+            collect_working_into(workspace_root, &entry.path, fs, out)?;
+        } else if entry.is_file {
+            let bytes = fs.read_file(&entry.path)?;
+            let rel = entry
+                .path
                 .strip_prefix(workspace_root)
-                .map_err(|_| format!("path outside root: {path:?}"))?;
+                .map_err(|_| format!("path outside root: {:?}", entry.path))?;
             out.push(FileBytes {
                 path: rel.to_string_lossy().replace('\\', "/"),
                 bytes,

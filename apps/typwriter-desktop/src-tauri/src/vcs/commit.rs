@@ -12,10 +12,7 @@
 // the index never updates. Users who care can run `git reset` once. For an
 // internal "save snapshots automatically" feature, that's fine.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::path::Path;
 
 use gix::{
     objs::{
@@ -27,7 +24,10 @@ use gix::{
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 
-use super::repo::{open_or_init, signature_now, IGNORED_TOP_LEVEL};
+use super::{
+    fs::WorkingTreeFs,
+    repo::{open_or_init, signature_now, IGNORED_TOP_LEVEL},
+};
 
 /// What caused this commit. Encoded in the commit message so the timeline can
 /// distinguish "user said save it" from "auto-snapshot after compile".
@@ -82,13 +82,15 @@ impl CommitTrigger {
 /// tree, and only commit if they differ. Returns the new commit's hex id on
 /// success, or `None` when there was nothing to commit.
 pub fn commit_if_changed(
+    repo_root: &Path,
     workspace_root: &Path,
+    fs: &impl WorkingTreeFs,
     trigger: CommitTrigger,
     message: &str,
 ) -> Result<Option<String>, String> {
-    let repo = open_or_init(workspace_root)?;
+    let repo = open_or_init(repo_root)?;
 
-    let new_tree_id = build_tree(&repo, workspace_root, workspace_root)
+    let new_tree_id = build_tree(&repo, fs, workspace_root, workspace_root)
         .map_err(|e| format!("vcs::commit: build_tree failed: {e}"))?;
 
     // Look up the parent commit and its tree id. An unborn HEAD means we're
@@ -167,32 +169,23 @@ fn commit_tree_id(repo: &gix::Repository, commit_id: ObjectId) -> Result<ObjectI
 /// metadata directory at the root is special.
 fn build_tree(
     repo: &gix::Repository,
+    fs: &impl WorkingTreeFs,
     workspace_root: &Path,
     dir: &Path,
 ) -> Result<ObjectId, String> {
     let mut entries: Vec<Entry> = Vec::new();
-    let read = fs::read_dir(dir).map_err(|e| format!("read_dir {dir:?}: {e}"))?;
+    let read = fs.read_dir(dir)?;
 
-    for entry in read.flatten() {
-        let name = entry.file_name();
-        let name_str = match name.to_str() {
-            Some(s) => s.to_string(),
-            None => continue, // skip non-UTF-8 names
-        };
+    for entry in read {
+        let name_str = entry.name;
 
         // Top-level ignored dirs are tested by path equality against root.
         if dir == workspace_root && IGNORED_TOP_LEVEL.contains(&name_str.as_str()) {
             continue;
         }
 
-        let path: PathBuf = entry.path();
-        let file_type = match entry.file_type() {
-            Ok(ft) => ft,
-            Err(_) => continue,
-        };
-
-        if file_type.is_dir() {
-            let sub_id = build_tree(repo, workspace_root, &path)?;
+        if entry.is_dir {
+            let sub_id = build_tree(repo, fs, workspace_root, &entry.path)?;
             // gix represents tree entries via `Entry { mode, filename, oid }`
             // where mode is a packed u16. EntryKind::Tree.into() is the
             // canonical 040000 mode.
@@ -201,11 +194,11 @@ fn build_tree(
                 filename: name_str.into(),
                 oid: sub_id,
             });
-        } else if file_type.is_file() {
-            let bytes = fs::read(&path).map_err(|e| format!("read file {path:?}: {e}"))?;
+        } else if entry.is_file {
+            let bytes = fs.read_file(&entry.path)?;
             let blob_id = repo
                 .write_blob(bytes)
-                .map_err(|e| format!("write_blob {path:?}: {e}"))?
+                .map_err(|e| format!("write_blob {:?}: {e}", entry.path))?
                 .detach();
             entries.push(Entry {
                 mode: EntryKind::Blob.into(),

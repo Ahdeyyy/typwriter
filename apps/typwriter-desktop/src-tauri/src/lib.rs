@@ -47,8 +47,9 @@ use commands::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
         delete_folder, export_workspace_to_dir_uri, get_file_tree, get_mobile_workspaces_dir,
         get_recent_workspaces, get_workspace_tabs, import_files, import_files_from_uris,
-        list_mobile_workspaces, move_file, move_folder, open_folder, remove_recent_workspace,
-        rename_file, saf_tree_uri_to_path, save_workspace_tabs, set_main_file,
+        list_mobile_workspaces, move_file, move_folder, open_folder, register_saf_workspace_root,
+        remove_recent_workspace, rename_file, saf_tree_uri_to_path, save_workspace_tabs,
+        set_main_file,
     },
 };
 
@@ -137,7 +138,7 @@ pub fn run() {
                 fonts_loaded: AtomicBool::new(false),
             });
             let world = Arc::new(EditorWorld::new(root, handle.clone()));
-            let vcs = Arc::new(VcsState::new());
+            let vcs = Arc::new(VcsState::new(handle.clone()));
             let pipeline = Arc::new(PreviewPipeline::new(
                 world.clone(),
                 handle.clone(),
@@ -188,6 +189,7 @@ pub fn run() {
             get_mobile_workspaces_dir,
             list_mobile_workspaces,
             saf_tree_uri_to_path,
+            register_saf_workspace_root,
             set_main_file,
             get_file_tree,
             get_recent_workspaces,

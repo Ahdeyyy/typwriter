@@ -27,6 +27,7 @@
 
 mod commit;
 mod diff;
+mod fs;
 mod history;
 mod repo;
 mod restore;
@@ -36,11 +37,17 @@ pub use commit::CommitTrigger;
 pub use diff::{FileDiff, FileDiffStatus, WorkspaceDiff};
 pub use history::RestorePoint;
 
+#[cfg(target_os = "android")]
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use log::{info, warn};
 use parking_lot::{Mutex, RwLock};
+#[cfg(target_os = "android")]
+use tauri::Manager;
+
+use fs::LocalWorkingTreeFs;
 
 /// User preferences governing automatic snapshot (commit) creation.
 /// Lives behind an `Arc<RwLock<_>>` managed by Tauri; refreshed whenever the
@@ -91,24 +98,35 @@ impl SnapshotPolicy {
 /// Lookups are cheap: `gix::open` is a header-read, not a full scan.
 pub struct VcsState {
     root: RwLock<Option<PathBuf>>,
+    #[cfg(target_os = "android")]
+    app_handle: tauri::AppHandle,
+    #[cfg(target_os = "android")]
+    saf_roots: RwLock<HashMap<PathBuf, tauri_plugin_android_fs::FileUri>>,
     /// Time of the last auto-snapshot. Used to throttle Save / Compile
     /// triggers when the user has configured a `min_interval_seconds`.
     /// `None` until the first successful auto-commit.
     last_auto_snapshot: Mutex<Option<Instant>>,
 }
 
-impl Default for VcsState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl VcsState {
-    pub fn new() -> Self {
+    pub fn new(_app_handle: tauri::AppHandle) -> Self {
         Self {
             root: RwLock::new(None),
+            #[cfg(target_os = "android")]
+            app_handle: _app_handle,
+            #[cfg(target_os = "android")]
+            saf_roots: RwLock::new(HashMap::new()),
             last_auto_snapshot: Mutex::new(None),
         }
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn remember_saf_root(
+        &self,
+        workspace_root: PathBuf,
+        uri: tauri_plugin_android_fs::FileUri,
+    ) {
+        self.saf_roots.write().insert(workspace_root, uri);
     }
 
     /// Bind the VCS to a workspace root. Initializes the repo if missing and
@@ -118,9 +136,17 @@ impl VcsState {
     pub fn attach(&self, workspace_root: &Path) {
         *self.root.write() = Some(workspace_root.to_path_buf());
 
-        match repo::open_or_init(workspace_root) {
+        let repo_root = match self.repo_root_for(workspace_root) {
+            Ok(path) => path,
+            Err(err) => {
+                warn!("vcs::attach: repo root unavailable root={workspace_root:?} err=\"{err}\"");
+                return;
+            }
+        };
+
+        match repo::open_or_init(&repo_root) {
             Ok(_repo) => {
-                info!("vcs::attach: repo ok root={workspace_root:?}");
+                info!("vcs::attach: repo ok root={workspace_root:?} repo={repo_root:?}");
                 // Seed the timeline with an initial commit if HEAD is unborn.
                 // Either succeeds or we just live without one; not fatal.
                 if let Err(err) =
@@ -140,6 +166,35 @@ impl VcsState {
         self.root.read().clone()
     }
 
+    #[cfg(target_os = "android")]
+    fn working_tree_fs(&self, root: &Path) -> fs::AndroidWorkingTreeFs<tauri::Wry> {
+        use tauri_plugin_android_fs::AndroidFsExt;
+
+        let api = self.app_handle.android_fs();
+        if let Some(uri) = self.saf_roots.read().get(root).cloned() {
+            fs::AndroidWorkingTreeFs::new_with_root(api, root.to_path_buf(), uri)
+        } else {
+            fs::AndroidWorkingTreeFs::new(api)
+        }
+    }
+
+    #[cfg(target_os = "android")]
+    fn repo_root_for(&self, workspace_root: &Path) -> Result<PathBuf, String> {
+        let base = self
+            .app_handle
+            .path()
+            .app_data_dir()
+            .map_err(|e| format!("resolve app data dir: {e}"))?
+            .join("vcs");
+        std::fs::create_dir_all(&base).map_err(|e| format!("create vcs dir {base:?}: {e}"))?;
+        Ok(base.join(stable_workspace_key(workspace_root)))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    fn repo_root_for(&self, workspace_root: &Path) -> Result<PathBuf, String> {
+        Ok(workspace_root.to_path_buf())
+    }
+
     /// Create a commit iff the working tree differs from HEAD. Returns the
     /// new commit's hex id, or `None` when there was nothing to commit.
     ///
@@ -153,7 +208,17 @@ impl VcsState {
         let Some(root) = self.workspace_root() else {
             return Ok(None);
         };
-        commit::commit_if_changed(&root, trigger, message)
+        let repo_root = self.repo_root_for(&root)?;
+        #[cfg(target_os = "android")]
+        {
+            let fs = self.working_tree_fs(&root);
+            return commit::commit_if_changed(&repo_root, &root, &fs, trigger, message);
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let fs = LocalWorkingTreeFs;
+            commit::commit_if_changed(&repo_root, &root, &fs, trigger, message)
+        }
     }
 
     /// Auto-commit gated by the user's [`SnapshotPolicy`]. Skips the commit
@@ -199,32 +264,74 @@ impl VcsState {
     /// Return the commit history of the workspace, newest first.
     pub fn list_history(&self, limit: Option<usize>) -> Result<Vec<RestorePoint>, String> {
         let root = self.workspace_root().ok_or("No workspace open")?;
-        history::list_history(&root, limit)
+        let repo_root = self.repo_root_for(&root)?;
+        history::list_history(&repo_root, limit)
     }
 
     /// Diff a restore point against the current working tree.
     pub fn diff_vs_current(&self, commit_id: &str) -> Result<WorkspaceDiff, String> {
         let root = self.workspace_root().ok_or("No workspace open")?;
-        diff::diff_vs_current(&root, commit_id)
+        let repo_root = self.repo_root_for(&root)?;
+        #[cfg(target_os = "android")]
+        {
+            let fs = self.working_tree_fs(&root);
+            return diff::diff_vs_current(&repo_root, &root, &fs, commit_id);
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let fs = LocalWorkingTreeFs;
+            diff::diff_vs_current(&repo_root, &root, &fs, commit_id)
+        }
     }
 
     /// Diff two restore points against each other.
     pub fn diff_between(&self, from_id: &str, to_id: &str) -> Result<WorkspaceDiff, String> {
         let root = self.workspace_root().ok_or("No workspace open")?;
-        diff::diff_between(&root, from_id, to_id)
+        let repo_root = self.repo_root_for(&root)?;
+        diff::diff_between(&repo_root, from_id, to_id)
     }
 
     /// Restore the entire workspace to a given commit. Records a safety
     /// commit of the current state first so the action is reversible.
     pub fn restore_workspace(&self, commit_id: &str) -> Result<(), String> {
         let root = self.workspace_root().ok_or("No workspace open")?;
-        restore::restore_workspace(&root, commit_id)
+        let repo_root = self.repo_root_for(&root)?;
+        #[cfg(target_os = "android")]
+        {
+            let fs = self.working_tree_fs(&root);
+            return restore::restore_workspace(&repo_root, &root, &fs, commit_id);
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let fs = LocalWorkingTreeFs;
+            restore::restore_workspace(&repo_root, &root, &fs, commit_id)
+        }
     }
 
     /// Restore a single file from a commit, leaving the rest of the workspace
     /// alone.
     pub fn restore_file(&self, commit_id: &str, path: &str) -> Result<(), String> {
         let root = self.workspace_root().ok_or("No workspace open")?;
-        restore::restore_file(&root, commit_id, path)
+        let repo_root = self.repo_root_for(&root)?;
+        #[cfg(target_os = "android")]
+        {
+            let fs = self.working_tree_fs(&root);
+            return restore::restore_file(&repo_root, &root, &fs, commit_id, path);
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let fs = LocalWorkingTreeFs;
+            restore::restore_file(&repo_root, &root, &fs, commit_id, path)
+        }
     }
+}
+
+#[cfg(target_os = "android")]
+fn stable_workspace_key(path: &Path) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in path.to_string_lossy().as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
 }

@@ -4,16 +4,16 @@
 // single file. Both record a safety commit of the current state first so the
 // user can step back if they restored the wrong point.
 
-use std::{
-    fs,
-    path::{Component, Path, PathBuf},
-};
+use std::path::{Component, Path, PathBuf};
 
 use gix::ObjectId;
 use log::info;
 
-use super::commit::{commit_if_changed, CommitTrigger};
-use super::repo::{open_or_init, IGNORED_TOP_LEVEL};
+use super::{
+    commit::{commit_if_changed, CommitTrigger},
+    fs::WorkingTreeFs,
+    repo::{open_or_init, IGNORED_TOP_LEVEL},
+};
 
 /// Restore the working tree to match the tree of `commit_id`.
 ///
@@ -24,17 +24,24 @@ use super::repo::{open_or_init, IGNORED_TOP_LEVEL};
 /// but isn't in the target.
 ///
 /// `.git/` and `.typwriter/` are skipped on both the read and write sides.
-pub fn restore_workspace(workspace_root: &Path, commit_id: &str) -> Result<(), String> {
+pub fn restore_workspace(
+    repo_root: &Path,
+    workspace_root: &Path,
+    fs: &impl WorkingTreeFs,
+    commit_id: &str,
+) -> Result<(), String> {
     // If it skips because there's nothing to commit, that's still fine — the
     // user can already step back via HEAD. Real snapshot failures must abort
     // before we overwrite the working tree.
     commit_if_changed(
+        repo_root,
         workspace_root,
+        fs,
         CommitTrigger::PreRestore,
         "Pre-restore snapshot",
     )?;
 
-    let repo = open_or_init(workspace_root)?;
+    let repo = open_or_init(repo_root)?;
     let target_commit = parse_oid(commit_id)?;
     let target_tree = commit_tree(&repo, target_commit)?;
 
@@ -46,7 +53,7 @@ pub fn restore_workspace(workspace_root: &Path, commit_id: &str) -> Result<(), S
 
     // Second pass: enumerate current working files (minus ignored dirs).
     let mut current_files: Vec<PathBuf> = Vec::new();
-    walk_dir(workspace_root, workspace_root, &mut current_files)?;
+    walk_dir(fs, workspace_root, workspace_root, &mut current_files)?;
 
     use std::collections::BTreeSet;
     let target_set: BTreeSet<&PathBuf> = target_files.iter().map(|(p, _)| p).collect();
@@ -56,19 +63,19 @@ pub fn restore_workspace(workspace_root: &Path, commit_id: &str) -> Result<(), S
     for (rel, bytes) in &target_files {
         let abs = workspace_root.join(rel);
         if let Some(parent) = abs.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("mkdir {parent:?}: {e}"))?;
+            fs.create_dir_all(parent)?;
         }
-        fs::write(&abs, bytes).map_err(|e| format!("write {abs:?}: {e}"))?;
+        fs.write_file(&abs, bytes)?;
     }
 
     // Remove anything that exists on disk but not in the target.
     for cur in current_files {
         if !target_set.contains(&cur) {
             let abs = workspace_root.join(&cur);
-            let _ = fs::remove_file(&abs);
+            let _ = fs.remove_file(&abs);
             // Best-effort cleanup of now-empty parent dirs. Stops at the
             // workspace root so we don't wipe sibling content.
-            prune_empty_parents(workspace_root, &abs);
+            prune_empty_parents(fs, workspace_root, &abs);
         }
     }
 
@@ -84,35 +91,40 @@ pub fn restore_workspace(workspace_root: &Path, commit_id: &str) -> Result<(), S
 /// alone. If the file doesn't exist in the target, restore turns into a
 /// delete — the caller can disambiguate via [`crate::vcs::diff_vs_current`]
 /// before invoking this.
-pub fn restore_file(workspace_root: &Path, commit_id: &str, rel_path: &str) -> Result<(), String> {
+pub fn restore_file(
+    repo_root: &Path,
+    workspace_root: &Path,
+    fs: &impl WorkingTreeFs,
+    commit_id: &str,
+    rel_path: &str,
+) -> Result<(), String> {
     let target_path = normalize_restore_path(rel_path)?;
-    let workspace_root_abs = workspace_root
-        .canonicalize()
-        .map_err(|e| format!("canonicalize workspace root {workspace_root:?}: {e}"))?;
-    let abs = workspace_child_path(&workspace_root_abs, &target_path)?;
+    let abs = workspace_child_path(workspace_root, &target_path)?;
 
     commit_if_changed(
+        repo_root,
         workspace_root,
+        fs,
         CommitTrigger::PreRestore,
         &format!("Pre-restore (single file): {rel_path}"),
     )?;
 
-    let repo = open_or_init(workspace_root)?;
+    let repo = open_or_init(repo_root)?;
     let target_commit = parse_oid(commit_id)?;
     let target_tree = commit_tree(&repo, target_commit)?;
 
     match find_blob_at(&repo, target_tree, &target_path)? {
         Some(bytes) => {
             if let Some(parent) = abs.parent() {
-                ensure_existing_ancestor_within_workspace(&workspace_root_abs, parent)?;
-                fs::create_dir_all(parent).map_err(|e| format!("mkdir {parent:?}: {e}"))?;
+                ensure_existing_ancestor_within_workspace(fs, workspace_root, parent)?;
+                fs.create_dir_all(parent)?;
             }
-            fs::write(&abs, &bytes).map_err(|e| format!("write {abs:?}: {e}"))?;
+            fs.write_file(&abs, &bytes)?;
             info!("vcs::restore_file: restored {rel_path} from {commit_id}");
         }
         None => {
             // File didn't exist at that point — restore = delete locally.
-            let _ = fs::remove_file(&abs);
+            let _ = fs.remove_file(&abs);
             info!("vcs::restore_file: deleted {rel_path} (absent in {commit_id})");
         }
     }
@@ -152,19 +164,17 @@ fn workspace_child_path(workspace_root: &Path, rel_path: &Path) -> Result<PathBu
 }
 
 fn ensure_existing_ancestor_within_workspace(
+    fs: &impl WorkingTreeFs,
     workspace_root: &Path,
     parent: &Path,
 ) -> Result<(), String> {
     let mut ancestor = parent;
-    while !ancestor.exists() {
+    while !fs.exists(ancestor) {
         ancestor = ancestor
             .parent()
             .ok_or_else(|| format!("restore parent {parent:?} has no existing ancestor"))?;
     }
 
-    let ancestor = ancestor
-        .canonicalize()
-        .map_err(|e| format!("canonicalize restore parent {ancestor:?}: {e}"))?;
     if ancestor.starts_with(workspace_root) {
         Ok(())
     } else {
@@ -246,22 +256,22 @@ fn walk_tree(
     Ok(())
 }
 
-fn walk_dir(workspace_root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-    let read = fs::read_dir(dir).map_err(|e| format!("read_dir {dir:?}: {e}"))?;
-    for entry in read.flatten() {
-        let name = entry.file_name();
-        let Some(name_str) = name.to_str() else {
-            continue;
-        };
-        if dir == workspace_root && IGNORED_TOP_LEVEL.contains(&name_str) {
+fn walk_dir(
+    fs: &impl WorkingTreeFs,
+    workspace_root: &Path,
+    dir: &Path,
+    out: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    let read = fs.read_dir(dir)?;
+    for entry in read {
+        let name_str = entry.name;
+        if dir == workspace_root && IGNORED_TOP_LEVEL.contains(&name_str.as_str()) {
             continue;
         }
-        let path = entry.path();
-        let Ok(ft) = entry.file_type() else { continue };
-        if ft.is_dir() {
-            walk_dir(workspace_root, &path, out)?;
-        } else if ft.is_file() {
-            if let Ok(rel) = path.strip_prefix(workspace_root) {
+        if entry.is_dir {
+            walk_dir(fs, workspace_root, &entry.path, out)?;
+        } else if entry.is_file {
+            if let Ok(rel) = entry.path.strip_prefix(workspace_root) {
                 out.push(rel.to_path_buf());
             }
         }
@@ -315,21 +325,18 @@ fn find_blob_at(
     Ok(None)
 }
 
-fn prune_empty_parents(workspace_root: &Path, file: &Path) {
+fn prune_empty_parents(fs: &impl WorkingTreeFs, workspace_root: &Path, file: &Path) {
     let mut cur = file.parent();
     while let Some(dir) = cur {
         if dir == workspace_root {
             break;
         }
-        match fs::read_dir(dir) {
-            Ok(mut it) => {
-                if it.next().is_some() {
-                    break;
-                }
-            }
+        match fs.read_dir(dir) {
+            Ok(entries) if entries.is_empty() => {}
+            Ok(_) => break,
             Err(_) => break,
         }
-        if fs::remove_dir(dir).is_err() {
+        if fs.remove_dir(dir).is_err() {
             break;
         }
         cur = dir.parent();

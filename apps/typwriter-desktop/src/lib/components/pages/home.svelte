@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import { page } from "@/stores/page.svelte";
   import Button from "../ui/button/button.svelte";
-  import { getRecentWorkspaces, createWorkspace, isFontsLoaded, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath, safTreeUriToPath } from "$lib/ipc/commands";
+  import { getRecentWorkspaces, createWorkspace, isFontsLoaded, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath, registerSafWorkspaceRoot } from "$lib/ipc/commands";
   import { onAppFontsLoaded, type UnlistenFn } from "$lib/ipc/events";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
@@ -41,9 +41,10 @@
     try {
       const uri = await AndroidFs.showOpenDirPicker({ localOnly: true });
       if (!uri) return null;
-      const result = await safTreeUriToPath(uri.uri);
+      await AndroidFs.persistPickerUriPermission(uri);
+      const result = await registerSafWorkspaceRoot(uri);
       if (result.isErr()) {
-        logError("safTreeUriToPath failed:", result.error);
+        logError("registerSafWorkspaceRoot failed:", result.error);
         toast.error(`Couldn't use that folder: ${result.error}`);
         return null;
       }
