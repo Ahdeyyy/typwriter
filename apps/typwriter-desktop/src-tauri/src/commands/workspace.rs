@@ -314,9 +314,11 @@ pub fn import_files_from_uris(
 #[tauri::command]
 pub fn get_recent_workspaces(
     workspace: State<'_, Arc<WorkspaceState>>,
+    include_thumbnails: Option<bool>,
 ) -> Vec<RecentWorkspaceEntry> {
-    info!("get_recent_workspaces: called");
-    let result = workspace.get_recent_workspaces_with_thumbnails();
+    let include_thumbnails = include_thumbnails.unwrap_or(true);
+    info!("get_recent_workspaces: called include_thumbnails={include_thumbnails}");
+    let result = workspace.get_recent_workspaces(include_thumbnails);
     info!("get_recent_workspaces: returning {} entries", result.len());
     result
 }

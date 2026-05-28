@@ -84,7 +84,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
         logError("defaultWindowIcon failed:", err);
       }
     }
-    const result = await getRecentWorkspaces();
+    const result = await getRecentWorkspaces({ includeThumbnails: false });
     result.match(
       (entries) => { recentWorkspaces = entries.slice(0, 3); },
       (err) => { logError("Failed to load recent workspaces:", err); }

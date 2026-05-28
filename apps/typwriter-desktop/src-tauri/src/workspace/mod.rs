@@ -305,8 +305,8 @@ impl WorkspaceState {
         store::clear_recent_workspaces(&self.app_handle);
     }
 
-    /// Return the recent workspaces list enriched with names and thumbnails.
-    pub fn get_recent_workspaces_with_thumbnails(&self) -> Vec<RecentWorkspaceEntry> {
+    /// Return the recent workspaces list enriched with names and, when requested, thumbnails.
+    pub fn get_recent_workspaces(&self, include_thumbnails: bool) -> Vec<RecentWorkspaceEntry> {
         let paths = store::get_recent_workspaces(&self.app_handle);
 
         paths
@@ -318,8 +318,12 @@ impl WorkspaceState {
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| p.clone());
 
-                let thumbnail = store::read_thumbnail(&path_buf)
-                    .map(|bytes| base64::engine::general_purpose::STANDARD.encode(&bytes));
+                let thumbnail = if include_thumbnails {
+                    store::read_thumbnail(&path_buf)
+                        .map(|bytes| base64::engine::general_purpose::STANDARD.encode(&bytes))
+                } else {
+                    None
+                };
 
                 RecentWorkspaceEntry {
                     path: p,

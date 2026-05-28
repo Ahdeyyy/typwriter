@@ -40,6 +40,7 @@ pub use history::RestorePoint;
 #[cfg(target_os = "android")]
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use log::{info, warn};
@@ -133,9 +134,31 @@ impl VcsState {
     /// records an initial restore point so the history view is never empty
     /// (better UX than "no commits yet"). Errors are logged and swallowed —
     /// versioning failing must never block opening a workspace.
-    pub fn attach(&self, workspace_root: &Path) {
+    pub fn attach(self: &Arc<Self>, workspace_root: &Path) {
         *self.root.write() = Some(workspace_root.to_path_buf());
+        *self.last_auto_snapshot.lock() = None;
 
+        #[cfg(target_os = "android")]
+        {
+            let this = Arc::clone(self);
+            let workspace_root = workspace_root.to_path_buf();
+            if let Err(err) = std::thread::Builder::new()
+                .name("typwriter-vcs-attach".into())
+                .spawn(move || this.attach_repo(&workspace_root))
+            {
+                warn!(
+                    "vcs::attach: failed to spawn background attach root={workspace_root:?} err=\"{err}\""
+                );
+            }
+        }
+
+        #[cfg(not(target_os = "android"))]
+        {
+            self.attach_repo(workspace_root);
+        }
+    }
+
+    fn attach_repo(&self, workspace_root: &Path) {
         let repo_root = match self.repo_root_for(workspace_root) {
             Ok(path) => path,
             Err(err) => {
@@ -149,9 +172,11 @@ impl VcsState {
                 info!("vcs::attach: repo ok root={workspace_root:?} repo={repo_root:?}");
                 // Seed the timeline with an initial commit if HEAD is unborn.
                 // Either succeeds or we just live without one; not fatal.
-                if let Err(err) =
-                    self.commit_if_changed(CommitTrigger::Initial, "Initial restore point")
-                {
+                if let Err(err) = self.commit_if_changed_for_root(
+                    workspace_root,
+                    CommitTrigger::Initial,
+                    "Initial restore point",
+                ) {
                     warn!("vcs::attach: initial commit skipped err=\"{err}\"");
                 }
             }
@@ -208,16 +233,25 @@ impl VcsState {
         let Some(root) = self.workspace_root() else {
             return Ok(None);
         };
-        let repo_root = self.repo_root_for(&root)?;
+        self.commit_if_changed_for_root(&root, trigger, message)
+    }
+
+    fn commit_if_changed_for_root(
+        &self,
+        root: &Path,
+        trigger: CommitTrigger,
+        message: &str,
+    ) -> Result<Option<String>, String> {
+        let repo_root = self.repo_root_for(root)?;
         #[cfg(target_os = "android")]
         {
-            let fs = self.working_tree_fs(&root);
-            return commit::commit_if_changed(&repo_root, &root, &fs, trigger, message);
+            let fs = self.working_tree_fs(root);
+            return commit::commit_if_changed(&repo_root, root, &fs, trigger, message);
         }
         #[cfg(not(target_os = "android"))]
         {
             let fs = LocalWorkingTreeFs;
-            commit::commit_if_changed(&repo_root, &root, &fs, trigger, message)
+            commit::commit_if_changed(&repo_root, root, &fs, trigger, message)
         }
     }
 

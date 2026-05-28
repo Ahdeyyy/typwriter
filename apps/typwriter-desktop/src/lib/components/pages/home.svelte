@@ -89,7 +89,7 @@
 
   async function loadRecent() {
     loading = true;
-    const result = await getRecentWorkspaces();
+    const result = await getRecentWorkspaces({ includeThumbnails: !platform.isMobile });
     result.match(
       (entries) => {
         recentWorkspaces = entries;

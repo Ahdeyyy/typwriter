@@ -125,9 +125,11 @@ export function exportWorkspaceToDirUri(
     );
 }
 
-export function getRecentWorkspaces() {
+export function getRecentWorkspaces(options: { includeThumbnails?: boolean } = {}) {
     return ResultAsync.fromPromise(
-        invoke<RecentWorkspaceEntry[]>('get_recent_workspaces'),
+        invoke<RecentWorkspaceEntry[]>('get_recent_workspaces', {
+            includeThumbnails: options.includeThumbnails ?? true,
+        }),
         toErrString
     );
 }
