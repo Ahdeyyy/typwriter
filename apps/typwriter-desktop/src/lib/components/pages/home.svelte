@@ -16,6 +16,7 @@
   import { logError } from "$lib/logger";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import ModeSwitcher from "$lib/components/sidebar/mode-switcher.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
@@ -225,12 +226,17 @@
 <Tooltip.Provider>
 <div class="flex h-full w-full flex-col">
   <Titlebar variant="minimal" title="Typwriter" />
-  <main class="relative flex flex-1 flex-col items-center justify-center gap-5 p-4">
+  <main class="relative flex min-h-0 flex-1 flex-col">
     {#if !platform.isMobile}
-      <div class="absolute right-3 top-3">
+      <div class="absolute right-3 top-3 z-10">
         <ModeSwitcher />
       </div>
     {/if}
+  <!-- ScrollArea (same component as the settings page) gives a design-system
+       scrollbar. min-h-full + justify-center keeps the content centered when it
+       fits and scrolls cleanly when the viewport is too short to show every row. -->
+  <ScrollArea.Root class="h-full">
+  <div class="flex min-h-full w-full flex-col items-center justify-center gap-5 p-4">
   <!-- Recent workspaces -->
   <section class="w-full max-w-3xl">
     <div class="mb-4 flex items-center justify-between gap-3">
@@ -428,7 +434,7 @@
     </Button>
   </div>
 
-  <div class="flex items-center gap-1">
+  <div class="flex flex-wrap items-center justify-center gap-1">
     <Button
       variant="link"
       size="sm"
@@ -493,6 +499,8 @@
       </Button>
     {/if}
   </div>
+  </div>
+  </ScrollArea.Root>
   </main>
 </div>
 </Tooltip.Provider>
