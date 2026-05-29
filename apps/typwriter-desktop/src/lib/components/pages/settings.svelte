@@ -837,6 +837,18 @@
     --primary: oklch(0.922 0 0);
     --accent: oklch(0.922 0 0);
   }
+  /* Glass shares the default palette; the translucent background bar hints at
+     the frosted surfaces this theme applies. */
+  .theme-swatch[data-theme="glass"] {
+    --background: oklch(1 0 0 / 0.5);
+    --primary: oklch(0.205 0 0);
+    --accent: oklch(0.205 0 0);
+  }
+  .theme-swatch.dark[data-theme="glass"] {
+    --background: oklch(0.145 0 0 / 0.5);
+    --primary: oklch(0.922 0 0);
+    --accent: oklch(0.922 0 0);
+  }
   .theme-swatch[data-theme="nord"] {
     --background: oklch(0.96 0.01 250);
     --primary: oklch(0.52 0.10 245);

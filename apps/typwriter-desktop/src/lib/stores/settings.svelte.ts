@@ -32,6 +32,11 @@ export const BUNDLED_UI_FONTS: readonly string[] = [
     'DM Sans Variable',
     'Work Sans Variable',
     'Manrope Variable',
+    'Figtree Variable',
+    'Plus Jakarta Sans Variable',
+    'Space Grotesk Variable',
+    'Lexend Variable',
+    'Outfit Variable',
     'Atkinson Hyperlegible',
     'Iosevka',
     // Serif
@@ -39,6 +44,10 @@ export const BUNDLED_UI_FONTS: readonly string[] = [
     'Merriweather Variable',
     'Crimson Pro Variable',
     'Playfair Display Variable',
+    'Source Serif 4 Variable',
+    'Bitter Variable',
+    'Newsreader Variable',
+    'EB Garamond Variable',
 ];
 
 export const BUNDLED_EDITOR_FONTS: readonly string[] = [
@@ -47,14 +56,21 @@ export const BUNDLED_EDITOR_FONTS: readonly string[] = [
     'Geist Mono Variable',
     'Source Code Pro Variable',
     'Roboto Mono Variable',
+    'Spline Sans Mono Variable',
+    'Red Hat Mono Variable',
+    'Martian Mono Variable',
+    'Inconsolata Variable',
     'IBM Plex Mono',
     'Cascadia Code',
     'Ubuntu Mono',
+    'Space Mono',
+    'DM Mono',
     'Iosevka',
 ];
 
 export type ThemeId =
     | 'default'
+    | 'glass'
     | 'nord'
     | 'dracula'
     | 'solarized'
@@ -64,6 +80,7 @@ export type ThemeId =
 
 export const THEMES: { id: ThemeId; label: string; description: string }[] = [
     { id: 'default', label: 'Default', description: 'The original Typwriter palette.' },
+    { id: 'glass', label: 'Glass', description: 'Default palette, frosted translucent surfaces.' },
     { id: 'nord', label: 'Nord', description: 'Calm, arctic blues.' },
     { id: 'dracula', label: 'Dracula', description: 'Vivid purples on near-black.' },
     { id: 'solarized', label: 'Solarized', description: 'Eye-friendly warm beiges.' },
