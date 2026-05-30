@@ -5,7 +5,10 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_android_fs::{api::api_sync::AndroidFs, AndroidFsExt, FileUri};
 
-use crate::workspace::{FileTreeEntry, RecentWorkspaceEntry, WorkspaceState};
+use crate::{
+    vcs::VcsState,
+    workspace::{FileTreeEntry, RecentWorkspaceEntry, WorkspaceState},
+};
 
 const MOBILE_WORKSPACES_DIR: &str = "Typwriter";
 
@@ -311,9 +314,11 @@ pub fn import_files_from_uris(
 #[tauri::command]
 pub fn get_recent_workspaces(
     workspace: State<'_, Arc<WorkspaceState>>,
+    include_thumbnails: Option<bool>,
 ) -> Vec<RecentWorkspaceEntry> {
-    info!("get_recent_workspaces: called");
-    let result = workspace.get_recent_workspaces_with_thumbnails();
+    let include_thumbnails = include_thumbnails.unwrap_or(true);
+    info!("get_recent_workspaces: called include_thumbnails={include_thumbnails}");
+    let result = workspace.get_recent_workspaces(include_thumbnails);
     info!("get_recent_workspaces: returning {} entries", result.len());
     result
 }
@@ -507,6 +512,23 @@ pub fn saf_tree_uri_to_path(uri: String) -> Result<String, String> {
     let resolved = resolve_saf_tree_uri(&uri)?;
     let path = resolved.to_string_lossy().into_owned();
     info!("saf_tree_uri_to_path: ok path={path:?}");
+    Ok(path)
+}
+
+/// Android-only: remember the SAF tree URI for a picked workspace and return
+/// the path form used by the rest of the app. VCS operations use the stored
+/// URI to read/write through Android's Storage Access Framework.
+#[tauri::command]
+pub fn register_saf_workspace_root(
+    dir_uri: FileUri,
+    _vcs: State<'_, Arc<VcsState>>,
+) -> Result<String, String> {
+    info!("register_saf_workspace_root: uri={:?}", dir_uri.uri);
+    let resolved = resolve_saf_tree_uri(&dir_uri.uri)?;
+    #[cfg(target_os = "android")]
+    _vcs.remember_saf_root(resolved.clone(), dir_uri);
+    let path = resolved.to_string_lossy().into_owned();
+    info!("register_saf_workspace_root: ok path={path:?}");
     Ok(path)
 }
 

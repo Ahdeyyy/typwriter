@@ -11,4 +11,5 @@ pub mod format;
 pub mod logs;
 pub mod preview;
 pub mod settings;
+pub mod vcs;
 pub mod workspace;

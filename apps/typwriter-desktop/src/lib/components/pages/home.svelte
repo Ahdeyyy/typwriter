@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import { page } from "@/stores/page.svelte";
   import Button from "../ui/button/button.svelte";
-  import { getRecentWorkspaces, createWorkspace, isFontsLoaded, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath, safTreeUriToPath } from "$lib/ipc/commands";
+  import { getRecentWorkspaces, createWorkspace, isFontsLoaded, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath, registerSafWorkspaceRoot } from "$lib/ipc/commands";
   import { onAppFontsLoaded, type UnlistenFn } from "$lib/ipc/events";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
@@ -16,6 +16,7 @@
   import { logError } from "$lib/logger";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import ModeSwitcher from "$lib/components/sidebar/mode-switcher.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
@@ -41,9 +42,10 @@
     try {
       const uri = await AndroidFs.showOpenDirPicker({ localOnly: true });
       if (!uri) return null;
-      const result = await safTreeUriToPath(uri.uri);
+      await AndroidFs.persistPickerUriPermission(uri);
+      const result = await registerSafWorkspaceRoot(uri);
       if (result.isErr()) {
-        logError("safTreeUriToPath failed:", result.error);
+        logError("registerSafWorkspaceRoot failed:", result.error);
         toast.error(`Couldn't use that folder: ${result.error}`);
         return null;
       }
@@ -88,7 +90,7 @@
 
   async function loadRecent() {
     loading = true;
-    const result = await getRecentWorkspaces();
+    const result = await getRecentWorkspaces({ includeThumbnails: !platform.isMobile });
     result.match(
       (entries) => {
         recentWorkspaces = entries;
@@ -224,12 +226,17 @@
 <Tooltip.Provider>
 <div class="flex h-full w-full flex-col">
   <Titlebar variant="minimal" title="Typwriter" />
-  <main class="relative flex flex-1 flex-col items-center justify-center gap-5 p-4">
+  <main class="relative flex min-h-0 flex-1 flex-col">
     {#if !platform.isMobile}
-      <div class="absolute right-3 top-3">
+      <div class="absolute right-3 top-3 z-10">
         <ModeSwitcher />
       </div>
     {/if}
+  <!-- ScrollArea (same component as the settings page) gives a design-system
+       scrollbar. min-h-full + justify-center keeps the content centered when it
+       fits and scrolls cleanly when the viewport is too short to show every row. -->
+  <ScrollArea.Root class="h-full">
+  <div class="flex min-h-full w-full flex-col items-center justify-center gap-5 p-4">
   <!-- Recent workspaces -->
   <section class="w-full max-w-3xl">
     <div class="mb-4 flex items-center justify-between gap-3">
@@ -427,7 +434,7 @@
     </Button>
   </div>
 
-  <div class="flex items-center gap-1">
+  <div class="flex flex-wrap items-center justify-center gap-1">
     <Button
       variant="link"
       size="sm"
@@ -492,6 +499,8 @@
       </Button>
     {/if}
   </div>
+  </div>
+  </ScrollArea.Root>
   </main>
 </div>
 </Tooltip.Provider>

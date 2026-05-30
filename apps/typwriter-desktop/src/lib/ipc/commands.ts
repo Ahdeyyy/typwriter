@@ -12,7 +12,9 @@ import type {
     CompileReason,
     PdfExportConfig,
     PngExportConfig,
-    SvgExportConfig
+    SvgExportConfig,
+    RestorePoint,
+    WorkspaceDiff
 } from '$lib/types';
 
 const toErrString = (e: unknown): string => String(e);
@@ -48,6 +50,15 @@ export function listMobileWorkspaces() {
 export function safTreeUriToPath(uri: string) {
     return ResultAsync.fromPromise(
         invoke<string>('saf_tree_uri_to_path', { uri }),
+        toErrString
+    );
+}
+
+/** Android-only: register a SAF workspace tree URI so backend VCS operations
+ *  can use android-fs instead of direct filesystem access. */
+export function registerSafWorkspaceRoot(dirUri: { uri: string; documentTopTreeUri: string | null }) {
+    return ResultAsync.fromPromise(
+        invoke<string>('register_saf_workspace_root', { dirUri }),
         toErrString
     );
 }
@@ -114,9 +125,11 @@ export function exportWorkspaceToDirUri(
     );
 }
 
-export function getRecentWorkspaces() {
+export function getRecentWorkspaces(options: { includeThumbnails?: boolean } = {}) {
     return ResultAsync.fromPromise(
-        invoke<RecentWorkspaceEntry[]>('get_recent_workspaces'),
+        invoke<RecentWorkspaceEntry[]>('get_recent_workspaces', {
+            includeThumbnails: options.includeThumbnails ?? true,
+        }),
         toErrString
     );
 }
@@ -326,6 +339,65 @@ export function exportSvgToDirUri(
     );
 }
 
+// ─── Versioning / Restore points ──────────────────────────────────────────────
+
+/** Create a user-driven restore point. Returns the new commit hex id, or
+ *  `null` if the working tree was already identical to HEAD. */
+export function vcsCreateRestorePoint(message: string) {
+    return ResultAsync.fromPromise(
+        invoke<string | null>('vcs_create_restore_point', { message }),
+        toErrString
+    );
+}
+
+/** Return the id of the snapshot the working tree currently matches (HEAD),
+ *  or `null` when the workspace has no snapshots yet. After a restore, this
+ *  is the restored point; otherwise it's the most recent commit. */
+export function vcsCurrentId() {
+    return ResultAsync.fromPromise(
+        invoke<string | null>('vcs_current_id'),
+        toErrString
+    );
+}
+
+/** Return the restore-point timeline (newest first). `limit` caps the count. */
+export function vcsListHistory(limit?: number) {
+    return ResultAsync.fromPromise(
+        invoke<RestorePoint[]>('vcs_list_history', { limit: limit ?? null }),
+        toErrString
+    );
+}
+
+export function vcsDiffVsCurrent(commitId: string) {
+    return ResultAsync.fromPromise(
+        invoke<WorkspaceDiff>('vcs_diff_vs_current', { commitId }),
+        toErrString
+    );
+}
+
+export function vcsDiffBetween(fromId: string, toId: string) {
+    return ResultAsync.fromPromise(
+        invoke<WorkspaceDiff>('vcs_diff_between', { fromId, toId }),
+        toErrString
+    );
+}
+
+/** Hard-reset the working tree to `commitId`. Records a safety commit first. */
+export function vcsRestoreWorkspace(commitId: string) {
+    return ResultAsync.fromPromise(
+        invoke<void>('vcs_restore_workspace', { commitId }),
+        toErrString
+    );
+}
+
+/** Restore a single file from `commitId`. Records a safety commit first. */
+export function vcsRestoreFile(commitId: string, path: string) {
+    return ResultAsync.fromPromise(
+        invoke<void>('vcs_restore_file', { commitId, path }),
+        toErrString
+    );
+}
+
 // ─── App init ─────────────────────────────────────────────────────────────────
 
 export function isFontsLoaded() {
@@ -349,6 +421,14 @@ export interface AppSettings {
     spellcheck: boolean;
     tab_width: number;
     word_wrap: boolean;
+    auto_save_enabled: boolean;
+    auto_save_delay_ms: number;
+    format_before_save: boolean;
+    auto_snapshot_on_save: boolean;
+    auto_snapshot_on_compile: boolean;
+    auto_snapshot_min_interval_seconds: number;
+    snapshot_retention_max_count: number;
+    snapshot_retention_max_days: number;
 }
 
 export function getAppSettings() {

@@ -11,6 +11,7 @@ import {
 } from '$lib/ipc/commands';
 import type { CompileReason } from '$lib/types';
 import { workspace } from './workspace.svelte';
+import { settings } from './settings.svelte';
 import { normalize, basename } from '$lib/paths';
 import { logError } from '$lib/logger';
 import { toast } from 'svelte-sonner';
@@ -49,7 +50,6 @@ export interface TabInfo {
     isLoading: boolean;
 }
 
-const IDLE_SAVE_DELAY = 1500;
 // Small enough to feel instant (~half a frame at 60Hz), large enough to
 // swallow same-frame keystroke bursts so we don't fire one IPC per key.
 const TYPING_PREVIEW_INTERVAL = 8;
@@ -303,6 +303,16 @@ class EditorStore {
         }
 
         this._clearIdleSave(tab.id);
+
+        // Optional format-on-save for .typ files. Errors are logged and
+        // swallowed — a failed format must not block the user's save.
+        if (settings.formatBeforeSave && tab.relPath.endsWith('.typ')) {
+            const result = await this.formatTabById(tab.id);
+            if (result.isErr()) {
+                logError('format-on-save failed:', result.error);
+            }
+        }
+
         await this._flushShadowWrite(tab);
 
         const contentToSave = tab.content;
@@ -330,6 +340,58 @@ class EditorStore {
     async flushAllTabs(): Promise<void> {
         for (const tab of [...this.tabs]) {
             await this.flushTab(tab.id);
+        }
+    }
+
+    /** Force every open tab to re-read its content from disk and replay that
+     *  content into CodeMirror. Used after operations that mutate the working
+     *  tree outside the editor — currently the VCS restore path.
+     *
+     *  Any in-memory unsaved edits are intentionally dropped: the user opted
+     *  into a restore. We also discard the shadow buffer per file so the next
+     *  compile sees the on-disk content, not stale shadow bytes. Tabs whose
+     *  file no longer exists are closed quietly. */
+    async reloadAllTabsFromDisk(): Promise<void> {
+        for (const tab of [...this.tabs]) {
+            this._clearTimers(tab.id);
+            // Drop the shadow buffer; disk is now the source of truth.
+            if (tab.viewMode === 'text') {
+                discardShadow(tab.absPath).mapErr((err) =>
+                    logError('reloadAllTabsFromDisk: discardShadow:', err)
+                );
+            }
+            if (tab.viewMode === 'unsupported') {
+                continue;
+            }
+
+            const response = await readFile(tab.absPath);
+            if (response.isErr()) {
+                // File is gone (e.g. restore deleted it). Close the tab.
+                await this.closeTab(tab.id, { flush: false });
+                continue;
+            }
+
+            if (tab.viewMode === 'image') {
+                if (response.value.type === 'image') {
+                    tab.imageSrc = imageAssetSrc(response.value.path);
+                }
+                tab.hasUnsavedChanges = false;
+                continue;
+            }
+
+            if (response.value.type !== 'text') {
+                continue;
+            }
+            const content = response.value.content;
+            tab.content = content;
+            tab.hasUnsavedChanges = false;
+            // Push the new content through the regular sync channel so the
+            // CodeMirror updateListener doesn't fight us.
+            this.contentSyncRequest = {
+                tabId: tab.id,
+                content,
+                version: ++this._contentSyncVersion,
+            };
         }
     }
 
@@ -430,9 +492,10 @@ class EditorStore {
 
     private _scheduleIdleSave(tab: TabInfo): void {
         this._clearIdleSave(tab.id);
+        if (!settings.autoSaveEnabled) return;
         this._idleSaveTimers.set(tab.id, setTimeout(() => {
             void this.flushTab(tab.id).catch(() => {});
-        }, IDLE_SAVE_DELAY));
+        }, settings.autoSaveDelayMs));
     }
 
     private _requestPreview(reason: CompileReason): void {

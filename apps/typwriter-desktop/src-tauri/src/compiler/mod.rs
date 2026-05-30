@@ -9,14 +9,15 @@
 mod cache;
 mod compile;
 mod diff;
+mod disk_cache;
 mod render;
 
-pub use cache::{fingerprint_to_hex, parse_fingerprint};
+pub use cache::{key_to_path, parse_key, zoom_to_bucket, PageCacheKey};
 pub use compile::{
     collect_workspace_diagnostics, compile_document, dedup_merge, CompileOutput,
     SerializedDiagnostic,
 };
-pub use diff::{diff_pages, fingerprint_pages, PageFingerprint};
+pub use diff::fingerprint_pages;
 pub use render::render_page;
 
 use std::{
@@ -30,15 +31,18 @@ use std::{
 };
 
 use log::{error, info, warn};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::vcs::{CommitTrigger, SnapshotPolicy, VcsState};
 use crate::workspace::WorkspaceState;
 use crate::world::EditorWorld;
 use cache::PageCache;
+use disk_cache::DiskCache;
+use std::path::Path;
 use typst::layout::PagedDocument;
 
 // IPC payloads
@@ -57,9 +61,10 @@ struct TotalPagesPayload {
 #[derive(Serialize, Clone)]
 struct PageUpdatedPayload {
     index: usize,
-    // Hex-encoded `PageFingerprint`. The webview fetches the PNG bytes from
-    // `previewimg://localhost/{fingerprint}.png`, which keeps the IPC event
-    // tiny and lets the browser cache by URL.
+    // URL path component (`{fp_hex}-{zoom_bucket}`). The webview fetches the
+    // PNG bytes from `previewimg://localhost/{path}.png`, which keeps the IPC
+    // event tiny and lets the browser cache by URL. The field name is
+    // historical — preserved so the frontend payload type doesn't change.
     fingerprint: String,
 }
 
@@ -217,8 +222,22 @@ fn drain_latest_reason(rx: &Receiver<CompileReason>, initial: CompileReason) -> 
 
 pub struct PreviewPipeline {
     world: Arc<EditorWorld>,
-    last_fingerprints: Mutex<Vec<PageFingerprint>>,
+    /// What the frontend has been told about, paired with the bytes that were
+    /// in the cache at emit time. `Some((fp, zoom))` means "we emitted this
+    /// `(fp, zoom)` key for the slot and the cache had bytes for it at that
+    /// moment"; `None` means the slot exists but has never been emitted.
+    ///
+    /// Updated atomically — a single write at the end of (or each exit point
+    /// from) `compile_and_emit`. The mid-flight write the old code did caused
+    /// aborted compiles to leave the frontend pointing at fingerprints that
+    /// had never been rendered.
+    last_emitted: Mutex<Vec<Option<PageCacheKey>>>,
     page_cache: Mutex<PageCache>,
+    /// Persistent on-disk mirror of `page_cache`, scoped to the open workspace.
+    /// `None` until a workspace is attached via [`Self::attach_disk_cache`].
+    /// Lookups fall through to disk on in-memory LRU misses, and renders write
+    /// to both layers so subsequent app sessions skip re-rendering.
+    disk_cache: Mutex<Option<DiskCache>>,
     // The most recently successfully compiled document.
     // Held so IDE features (hover, go-to-def, jump-from-click) can use it.
     pub last_document: Mutex<Option<Arc<PagedDocument>>>,
@@ -232,15 +251,19 @@ pub struct PreviewPipeline {
     compile_tx: Sender<CompileReason>,
     compile_rx: Mutex<Option<Receiver<CompileReason>>>,
     request_counter: AtomicU64,
+    /// Version-control state. Used to auto-commit a restore point whenever
+    /// a compile succeeds (the user's "good known state").
+    vcs: Arc<VcsState>,
 }
 
 impl PreviewPipeline {
-    pub fn new(world: Arc<EditorWorld>, app_handle: AppHandle) -> Self {
+    pub fn new(world: Arc<EditorWorld>, app_handle: AppHandle, vcs: Arc<VcsState>) -> Self {
         let (compile_tx, compile_rx) = mpsc::channel();
         Self {
             world,
-            last_fingerprints: Mutex::new(Vec::new()),
+            last_emitted: Mutex::new(Vec::new()),
             page_cache: Mutex::new(PageCache::default()),
+            disk_cache: Mutex::new(None),
             last_document: Mutex::new(None),
             app_handle,
             zoom: Mutex::new(2.0),
@@ -249,6 +272,7 @@ impl PreviewPipeline {
             compile_tx,
             compile_rx: Mutex::new(Some(compile_rx)),
             request_counter: AtomicU64::new(0),
+            vcs,
         }
     }
 
@@ -263,44 +287,73 @@ impl PreviewPipeline {
     }
 
     pub fn invalidate_cache(&self) {
+        // In-memory state only. The on-disk cache is intentionally preserved
+        // across workspace open / main-file change / clear-main — it is the
+        // persistent layer and its keys (content-hash + zoom) are immune to
+        // accidental collision with stale state.
         self.page_cache.lock().clear();
-        *self.last_fingerprints.lock() = Vec::new();
+        *self.last_emitted.lock() = Vec::new();
         *self.last_document.lock() = None;
     }
 
-    /// Re-emit total-pages and every cached page. Used when a new webview
-    /// (e.g. the popped-out preview window) needs to populate its UI from the
-    /// existing compiled state without forcing a recompile.
+    /// Bind the persistent on-disk cache to a workspace root. Subsequent
+    /// renders write PNGs into `<root>/.typwriter/cache/previews/`, and
+    /// page-byte lookups fall through to disk on LRU misses. Existing files
+    /// in that directory are picked up — that's what makes re-opening a
+    /// workspace serve the preview without recompiling.
+    pub fn attach_disk_cache(&self, workspace_root: &Path) {
+        let cache = disk_cache::open_default(workspace_root);
+        *self.disk_cache.lock() = Some(cache);
+    }
+
+    /// Re-emit total-pages and every previously-emitted page key. Used when a
+    /// new webview (e.g. the popped-out preview window) needs to populate its
+    /// UI from the existing compiled state without forcing a recompile.
     pub fn emit_current_state(&self) {
-        // Snapshot fingerprints under the lock; bytes live in the cache and
-        // are fetched on demand via the `previewimg` URI scheme.
-        let fingerprints: Vec<PageFingerprint> = self.last_fingerprints.lock().clone();
-        let count = fingerprints.len();
+        let emitted: Vec<Option<PageCacheKey>> = self.last_emitted.lock().clone();
+        let count = emitted.len();
 
         let _ = self
             .app_handle
             .emit("preview:total-pages", TotalPagesPayload { count });
-        for (idx, fp) in fingerprints.into_iter().enumerate() {
-            let _ = self.app_handle.emit(
-                "preview:page-updated",
-                PageUpdatedPayload {
-                    index: idx,
-                    fingerprint: fingerprint_to_hex(fp),
-                },
-            );
+        for (idx, slot) in emitted.into_iter().enumerate() {
+            if let Some(key) = slot {
+                let _ = self.app_handle.emit(
+                    "preview:page-updated",
+                    PageUpdatedPayload {
+                        index: idx,
+                        fingerprint: key_to_path(key),
+                    },
+                );
+            }
         }
     }
 
-    /// Look up the PNG bytes for a fingerprint. Used by the `previewimg`
+    /// Look up the PNG bytes for a cache key. Used by the `previewimg`
     /// URI scheme handler to serve images to the webview without going
     /// through the JS bridge.
-    pub fn page_bytes(&self, fp: PageFingerprint) -> Option<Vec<u8>> {
-        self.page_cache.lock().get(fp).cloned()
+    ///
+    /// Lookup order: in-memory LRU → on-disk cache. A disk hit re-hydrates the
+    /// LRU so a hot key stops hitting the filesystem after the first request.
+    pub fn page_bytes(&self, key: PageCacheKey) -> Option<Vec<u8>> {
+        if let Some(bytes) = self.page_cache.lock().get(key).cloned() {
+            return Some(bytes);
+        }
+        let bytes = {
+            let mut disk = self.disk_cache.lock();
+            disk.as_mut()?.get(key)?
+        };
+        self.page_cache.lock().insert(key, bytes.clone());
+        Some(bytes)
     }
 
     pub fn set_zoom(&self, zoom: f32) {
         *self.zoom.lock() = zoom;
-        self.invalidate_cache();
+        // No cache invalidation: zoom is part of the cache key, so renderings
+        // at the previous scale remain valid (a zoom-out then zoom-in is a
+        // pure cache hit). A subsequent `request_compile(Zoom)` will re-emit
+        // every page with the new key, picking up cached bytes where they
+        // exist and rendering only where they don't.
     }
 
     pub fn set_visible_page(&self, page: usize) {
@@ -373,7 +426,7 @@ impl PreviewPipeline {
                 .app_handle
                 .emit("preview:page-removed", PageRemovedPayload { index: i });
         }
-        *self.last_fingerprints.lock() = Vec::new();
+        *self.last_emitted.lock() = Vec::new();
         *self.last_document.lock() = None;
     }
 
@@ -385,7 +438,7 @@ impl PreviewPipeline {
         // errors on every cycle. Clear preview + diagnostics and bail.
         if !self.world.has_main() {
             info!("compile revision={revision} reason={reason:?} skipped — no main file");
-            let old_count = self.last_fingerprints.lock().len();
+            let old_count = self.last_emitted.lock().len();
             self.clear_preview(old_count);
             if let Err(err) = self.app_handle.emit(
                 "compile:diagnostics",
@@ -434,7 +487,7 @@ impl PreviewPipeline {
         let doc = match document {
             Some(doc) => doc,
             None => {
-                let old_count = self.last_fingerprints.lock().len();
+                let old_count = self.last_emitted.lock().len();
                 self.clear_preview(old_count);
                 info!(
                     "compile revision={revision} reason={reason:?} produced no document ({:.1}ms)",
@@ -451,8 +504,22 @@ impl PreviewPipeline {
         }
 
         let new_fps = fingerprint_pages(&doc);
-        let old_fps = self.last_fingerprints.lock().clone();
-        let (changed_indices, removed_count) = diff_pages(&old_fps, &new_fps);
+        let zoom = *self.zoom.lock();
+        let zoom_bucket = zoom_to_bucket(zoom);
+        let visible_page = *self.visible_page.lock();
+
+        // Snapshot the previous emit state (per slot). `new_emitted` is the
+        // *working copy* we mutate as we successfully emit; it gets committed
+        // to `self.last_emitted` exactly once, at the end of this function or
+        // at any stale-request exit. This is what fixes the blank-pages bug:
+        // an aborted compile no longer leaves the canonical state ahead of
+        // what the frontend has actually been told.
+        let prev_emitted: Vec<Option<PageCacheKey>> = self.last_emitted.lock().clone();
+        let mut new_emitted: Vec<Option<PageCacheKey>> = Vec::with_capacity(new_fps.len());
+        for i in 0..new_fps.len() {
+            new_emitted.push(prev_emitted.get(i).copied().unwrap_or(None));
+        }
+        let removed_count = prev_emitted.len().saturating_sub(new_fps.len());
 
         let _ = self.app_handle.emit(
             "preview:total-pages",
@@ -467,39 +534,65 @@ impl PreviewPipeline {
                 .emit("preview:page-removed", PageRemovedPayload { index: i });
         }
 
-        let zoom = *self.zoom.lock();
-        let visible_page = *self.visible_page.lock();
-
-        // For each changed index we emit immediately if the cache already
-        // has bytes for that fingerprint. The bytes themselves never cross
-        // the IPC bridge — the webview pulls them via `previewimg://`.
-        let mut cache_hits: Vec<(usize, PageFingerprint)> = Vec::new();
+        // A slot needs (re-)emission if either:
+        //   (a) the target key `(fp, zoom)` differs from what we last told
+        //       the frontend, OR
+        //   (b) the LRU has since evicted bytes for the previously-emitted
+        //       key (the frontend would 404 on fetch) and the disk cache
+        //       also doesn't have the bytes.
+        //
+        // The eviction case turns the otherwise quiet "nothing changed"
+        // path into a real recovery: a zoom + idle period that evicted
+        // cached pages will re-render them on the next compile cycle.
+        //
+        // "Bytes available" combines in-memory LRU and on-disk cache; a disk
+        // hit counts as a cache hit (no re-render needed) because the URI
+        // handler will lazily hydrate the LRU on the next fetch. This is
+        // what makes re-opening a workspace serve the preview without
+        // recompiling every page.
+        let mut cache_hits: Vec<usize> = Vec::new();
         let mut cache_misses: Vec<usize> = Vec::new();
         {
             let cache = self.page_cache.lock();
-            for &idx in &changed_indices {
-                let fp = new_fps[idx];
-                if cache.peek(fp).is_some() {
-                    cache_hits.push((idx, fp));
+            let mut disk = self.disk_cache.lock();
+            for i in 0..new_fps.len() {
+                let target: PageCacheKey = (new_fps[i], zoom_bucket);
+                let in_lru = cache.peek(target).is_some();
+                let on_disk = !in_lru && disk.as_mut().map(|d| d.contains(target)).unwrap_or(false);
+                let has_bytes = in_lru || on_disk;
+                let already_emitted = prev_emitted.get(i).copied().flatten() == Some(target);
+                if already_emitted && has_bytes {
+                    // Frontend already has this key and the bytes are still
+                    // reachable (LRU or disk). Nothing to do; new_emitted[i]
+                    // is already correct (copied from prev_emitted above).
+                    continue;
+                }
+                if has_bytes {
+                    cache_hits.push(i);
                 } else {
-                    cache_misses.push(idx);
+                    cache_misses.push(i);
                 }
             }
         }
 
-        cache_hits.sort_by_key(|(idx, _)| if *idx == visible_page { 0 } else { 1 });
-        for (idx, fp) in cache_hits {
+        // Render the visible page first, then everything else.
+        cache_hits.sort_by_key(|idx| if *idx == visible_page { 0 } else { 1 });
+
+        for idx in cache_hits {
             if self.is_stale_request(request_mark) {
                 info!("compile revision={revision} reason={reason:?} stopped stale cache emit");
+                *self.last_emitted.lock() = new_emitted;
                 return;
             }
+            let key: PageCacheKey = (new_fps[idx], zoom_bucket);
             let _ = self.app_handle.emit(
                 "preview:page-updated",
                 PageUpdatedPayload {
                     index: idx,
-                    fingerprint: fingerprint_to_hex(fp),
+                    fingerprint: key_to_path(key),
                 },
             );
+            new_emitted[idx] = Some(key);
         }
 
         let render_t = Instant::now();
@@ -512,27 +605,28 @@ impl PreviewPipeline {
                 info!(
                     "compile revision={revision} reason={reason:?} stopped stale priority render"
                 );
+                *self.last_emitted.lock() = new_emitted;
                 return;
             }
-            let fp = new_fps[*idx];
+            let key: PageCacheKey = (new_fps[*idx], zoom_bucket);
             let page = &doc.pages[*idx];
             match render_page(page, zoom) {
                 Ok(png) => {
-                    self.page_cache.lock().insert(fp, png);
+                    if let Some(disk) = self.disk_cache.lock().as_mut() {
+                        disk.insert(key, &png);
+                    }
+                    self.page_cache.lock().insert(key, png);
                     let _ = self.app_handle.emit(
                         "preview:page-updated",
                         PageUpdatedPayload {
                             index: *idx,
-                            fingerprint: fingerprint_to_hex(fp),
+                            fingerprint: key_to_path(key),
                         },
                     );
+                    new_emitted[*idx] = Some(key);
                 }
                 Err(err) => error!("render error page={idx} err=\"{err}\""),
             }
-        }
-
-        if !priority_misses.is_empty() {
-            *self.last_fingerprints.lock() = new_fps.clone();
         }
 
         if !rest_misses.is_empty() {
@@ -540,15 +634,16 @@ impl PreviewPipeline {
                 info!(
                     "compile revision={revision} reason={reason:?} skipped stale background render"
                 );
+                *self.last_emitted.lock() = new_emitted;
                 return;
             }
-            let rendered: Vec<(usize, PageFingerprint, Vec<u8>)> = rest_misses
+            let rendered: Vec<(usize, PageCacheKey, Vec<u8>)> = rest_misses
                 .par_iter()
                 .filter_map(|&idx| {
-                    let fp = new_fps[idx];
+                    let key: PageCacheKey = (new_fps[idx], zoom_bucket);
                     let page = &doc.pages[idx];
                     match render_page(page, zoom) {
-                        Ok(png) => Some((idx, fp, png)),
+                        Ok(png) => Some((idx, key, png)),
                         Err(err) => {
                             error!("render error page={idx} err=\"{err}\"");
                             None
@@ -558,29 +653,66 @@ impl PreviewPipeline {
                 .collect();
 
             let mut cache = self.page_cache.lock();
-            for (idx, fp, png) in rendered {
+            for (idx, key, png) in rendered {
                 if self.is_stale_request(request_mark) {
                     info!("compile revision={revision} reason={reason:?} stopped stale page emit");
+                    drop(cache);
+                    *self.last_emitted.lock() = new_emitted;
                     return;
                 }
-                cache.insert(fp, png);
+                // Disk write first (with bytes still owned by us) so the LRU
+                // insert can consume `png`. Order is functionally irrelevant
+                // — both layers see the same key on success.
+                if let Some(disk) = self.disk_cache.lock().as_mut() {
+                    disk.insert(key, &png);
+                }
+                cache.insert(key, png);
                 let _ = self.app_handle.emit(
                     "preview:page-updated",
                     PageUpdatedPayload {
                         index: idx,
-                        fingerprint: fingerprint_to_hex(fp),
+                        fingerprint: key_to_path(key),
                     },
                 );
+                new_emitted[idx] = Some(key);
             }
         }
 
-        *self.last_fingerprints.lock() = new_fps;
+        *self.last_emitted.lock() = new_emitted;
         *self.last_document.lock() = Some(Arc::new(doc));
 
         // Generate thumbnail when the workspace is opened and the main file is compiled.
         if reason == CompileReason::MainFile {
             if let Some(ws) = self.app_handle.try_state::<Arc<WorkspaceState>>() {
                 ws.generate_thumbnail();
+            }
+        }
+
+        // Auto-commit a "compile succeeded" restore point. We deliberately
+        // skip Zoom (purely a render change) and MainFile (just opened the
+        // workspace, the initial-commit hook already covered it). The
+        // dedupe inside `commit_if_changed` makes this a no-op when the
+        // working tree hasn't changed since the last commit (e.g. when save
+        // already committed a moment ago).
+        let should_snapshot = matches!(
+            reason,
+            CompileReason::Typing
+                | CompileReason::Save
+                | CompileReason::Watcher
+                | CompileReason::Explicit
+        );
+        if should_snapshot {
+            let policy = self
+                .app_handle
+                .try_state::<Arc<RwLock<SnapshotPolicy>>>()
+                .map(|s| s.read().clone())
+                .unwrap_or_default();
+            if let Err(err) = self.vcs.auto_commit_if_changed(
+                CommitTrigger::Compile,
+                "Auto-snapshot after compile",
+                &policy,
+            ) {
+                warn!("compile auto-commit failed err=\"{err}\"");
             }
         }
 

@@ -12,11 +12,13 @@
   import PreviewMobile from "$lib/components/sidebar/preview.mobile.svelte";
   import EditorPane from "$lib/components/editor/editor-pane.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
+  import DiffOverlay from "$lib/components/vcs/diff-overlay.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";
   import { platform } from "$lib/stores/platform.svelte";
   import { settings } from "$lib/stores/settings.svelte";
+  import { vcs } from "$lib/stores/vcs.svelte";
   import { workspace, basename } from "$lib/stores/workspace.svelte";
   import { onPreviewSourceJump } from "$lib/ipc/events";
   import { logError } from "$lib/logger";
@@ -150,6 +152,11 @@
   <div class="flex min-h-0 w-full flex-1">
     <AppSidebar />
     <main class="relative flex h-full min-w-0 flex-1 overflow-hidden">
+      <!-- Diff overlay (mounted on demand by the history pane) -->
+      {#if vcs.diffPaneOpen}
+        <DiffOverlay />
+      {/if}
+
       {#if platform.isMobile}
         <!-- Mobile title bar -->
         <div class="absolute inset-x-0 top-0 z-20 flex h-12 items-center justify-between px-2 pointer-events-none">

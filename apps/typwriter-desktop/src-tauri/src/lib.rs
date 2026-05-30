@@ -2,16 +2,19 @@
 
 mod commands;
 mod compiler;
+mod vcs;
 mod workspace;
 mod world;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use compiler::{parse_fingerprint, PreviewPipeline};
+use compiler::{parse_key, PreviewPipeline};
+use parking_lot::RwLock;
 use tauri::{Emitter, Manager};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 use typst_kit::fonts::FontSearcher;
+use vcs::VcsState;
 use workspace::WorkspaceState;
 use world::EditorWorld;
 
@@ -36,12 +39,17 @@ use commands::{
         get_app_settings, import_font_directory_uri, list_font_families, set_app_settings,
         set_typst_font_directories,
     },
+    vcs::{
+        vcs_create_restore_point, vcs_current_id, vcs_diff_between, vcs_diff_vs_current,
+        vcs_list_history, vcs_restore_file, vcs_restore_workspace,
+    },
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
         delete_folder, export_workspace_to_dir_uri, get_file_tree, get_mobile_workspaces_dir,
         get_recent_workspaces, get_workspace_tabs, import_files, import_files_from_uris,
-        list_mobile_workspaces, move_file, move_folder, open_folder, remove_recent_workspace,
-        rename_file, saf_tree_uri_to_path, save_workspace_tabs, set_main_file,
+        list_mobile_workspaces, move_file, move_folder, open_folder, register_saf_workspace_root,
+        remove_recent_workspace, rename_file, saf_tree_uri_to_path, save_workspace_tabs,
+        set_main_file,
     },
 };
 
@@ -52,6 +60,7 @@ pub struct AppInit {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
@@ -59,13 +68,15 @@ pub fn run() {
     }
     builder
         .register_uri_scheme_protocol("previewimg", |ctx, request| {
-            // URL form on Windows/Android: http://previewimg.localhost/{fingerprint}.png
-            // URL form on macOS/iOS/Linux: previewimg://localhost/{fingerprint}.png
+            // URL form on Windows/Android: http://previewimg.localhost/{key}.png
+            // URL form on macOS/iOS/Linux: previewimg://localhost/{key}.png
             //
-            // The path is `/{fingerprint}[.png]`. We strip the leading `/`
-            // (and the optional `.png` extension is tolerated by
-            // `parse_fingerprint`) and look the bytes up in the live
-            // `PreviewPipeline`.
+            // The path is `/{fingerprint}-{zoom}[.png]`. We strip the leading
+            // `/` and parse the composite key. Including the zoom in the URL
+            // is what lets the webview's HTTP cache distinguish renderings of
+            // the same content at different scales — the response is marked
+            // `immutable`, so a content-only URL would serve stale bytes after
+            // a zoom change.
             let path = request.uri().path().trim_start_matches('/');
             let not_found = || {
                 tauri::http::Response::builder()
@@ -75,21 +86,22 @@ pub fn run() {
                     .expect("static response should build")
             };
 
-            let Some(fp) = parse_fingerprint(path) else {
+            let Some(key) = parse_key(path) else {
                 return not_found();
             };
             let Some(pipeline) = ctx.app_handle().try_state::<Arc<PreviewPipeline>>() else {
                 return not_found();
             };
-            let Some(bytes) = pipeline.page_bytes(fp) else {
+            let Some(bytes) = pipeline.page_bytes(key) else {
                 return not_found();
             };
 
             tauri::http::Response::builder()
                 .status(tauri::http::StatusCode::OK)
                 .header(tauri::http::header::CONTENT_TYPE, "image/png")
-                // The URL is the content hash, so the bytes are immutable for
-                // the lifetime of the cache entry. Let the webview cache them.
+                // Key encodes both content hash and zoom, so bytes are
+                // immutable for the lifetime of the cache entry. The webview
+                // is free to cache aggressively.
                 .header(
                     tauri::http::header::CACHE_CONTROL,
                     "public, max-age=31536000, immutable",
@@ -127,18 +139,33 @@ pub fn run() {
                 fonts_loaded: AtomicBool::new(false),
             });
             let world = Arc::new(EditorWorld::new(root, handle.clone()));
-            let pipeline = Arc::new(PreviewPipeline::new(world.clone(), handle.clone()));
+            let vcs = Arc::new(VcsState::new(handle.clone()));
+            let pipeline = Arc::new(PreviewPipeline::new(
+                world.clone(),
+                handle.clone(),
+                vcs.clone(),
+            ));
             pipeline.start_worker();
             let workspace = Arc::new(WorkspaceState::new(
                 world.clone(),
                 pipeline.clone(),
+                vcs.clone(),
                 handle.clone(),
+            ));
+
+            // Snapshot policy mirrors the user's persisted prefs. Seeded
+            // here so save/compile workers see the right values on the very
+            // first event; refreshed on every `set_app_settings` call.
+            let snapshot_policy = Arc::new(RwLock::new(
+                commands::settings::snapshot_policy_from_handle(&handle),
             ));
 
             app.manage(init.clone());
             app.manage(world.clone());
             app.manage(pipeline);
             app.manage(workspace);
+            app.manage(vcs);
+            app.manage(snapshot_policy);
 
             // ── Background font loading ─────────────────────────────────────
             // Pick up any extra font directories the user configured in a
@@ -163,6 +190,7 @@ pub fn run() {
             get_mobile_workspaces_dir,
             list_mobile_workspaces,
             saf_tree_uri_to_path,
+            register_saf_workspace_root,
             set_main_file,
             get_file_tree,
             get_recent_workspaces,
@@ -217,6 +245,14 @@ pub fn run() {
             format_typst_cursor_virtual,
             format_typst_file,
             format_workspace_typ_files,
+            // versioning / restore points
+            vcs_create_restore_point,
+            vcs_current_id,
+            vcs_list_history,
+            vcs_diff_vs_current,
+            vcs_diff_between,
+            vcs_restore_workspace,
+            vcs_restore_file,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|err| {

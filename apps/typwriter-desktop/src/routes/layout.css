@@ -7,11 +7,39 @@
 @import "@fontsource-variable/roboto-flex";
 @import "@fontsource-variable/source-sans-3";
 @import "@fontsource-variable/noto-sans";
+@import "@fontsource-variable/nunito";
+@import "@fontsource-variable/dm-sans";
+@import "@fontsource-variable/work-sans";
+@import "@fontsource-variable/manrope";
 @import "@fontsource/atkinson-hyperlegible";
+@import "@fontsource-variable/figtree";
+@import "@fontsource-variable/plus-jakarta-sans";
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/lexend";
+@import "@fontsource-variable/outfit";
+@import "@fontsource-variable/lora";
+@import "@fontsource-variable/merriweather";
+@import "@fontsource-variable/crimson-pro";
+@import "@fontsource-variable/playfair-display";
+@import "@fontsource-variable/source-serif-4";
+@import "@fontsource-variable/bitter";
+@import "@fontsource-variable/newsreader";
+@import "@fontsource-variable/eb-garamond";
 @import "@fontsource-variable/jetbrains-mono";
 @import "@fontsource-variable/fira-code";
 @import "@fontsource-variable/geist-mono";
 @import "@fontsource-variable/source-code-pro";
+@import "@fontsource-variable/roboto-mono";
+@import "@fontsource-variable/spline-sans-mono";
+@import "@fontsource-variable/red-hat-mono";
+@import "@fontsource-variable/martian-mono";
+@import "@fontsource-variable/inconsolata";
+@import "@fontsource/ibm-plex-mono";
+@import "@fontsource/cascadia-code";
+@import "@fontsource/ubuntu-mono";
+@import "@fontsource/space-mono";
+@import "@fontsource/dm-mono";
+@import "@fontsource/iosevka";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -44,6 +72,15 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* VCS timeline branch node colours — 8-step vibrant palette */
+  --vcs-node-0: oklch(0.57 0.19 255);  /* blue        */
+  --vcs-node-1: oklch(0.57 0.15 185);  /* teal        */
+  --vcs-node-2: oklch(0.57 0.16 145);  /* green       */
+  --vcs-node-3: oklch(0.61 0.15 75);   /* amber       */
+  --vcs-node-4: oklch(0.59 0.17 45);   /* orange      */
+  --vcs-node-5: oklch(0.57 0.19 15);   /* rose        */
+  --vcs-node-6: oklch(0.59 0.18 335);  /* pink        */
+  --vcs-node-7: oklch(0.57 0.20 295);  /* violet      */
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -106,6 +143,15 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* VCS timeline branch node colours — dark mode (slightly lighter/brighter) */
+  --vcs-node-0: oklch(0.72 0.16 255);
+  --vcs-node-1: oklch(0.72 0.14 185);
+  --vcs-node-2: oklch(0.72 0.15 145);
+  --vcs-node-3: oklch(0.75 0.14 75);
+  --vcs-node-4: oklch(0.72 0.16 45);
+  --vcs-node-5: oklch(0.70 0.17 15);
+  --vcs-node-6: oklch(0.72 0.16 335);
+  --vcs-node-7: oklch(0.72 0.18 295);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -145,6 +191,102 @@
    Each preset re-defines only the palette tokens; shadows / radii / fonts
    inherit from the default block above.
    ────────────────────────────────────────────────────────────────────────── */
+
+/* ── Glass ─────────────────────────────────────────────────────────────────
+   Same neutral palette as the default theme, but surface tokens are made
+   translucent and the floating chrome (popovers, menus, dialogs, sidebar,
+   tab bar) is frosted with a backdrop blur. Only the translucency/blur tokens
+   are overridden here; everything else inherits from the default :root / .dark
+   blocks above, so the colours stay identical to the base theme.
+   ────────────────────────────────────────────────────────────────────────── */
+:root[data-theme="glass"] {
+  --card: oklch(1 0 0 / 0.55);
+  --popover: oklch(1 0 0 / 0.78);
+  --secondary: oklch(0.97 0 0 / 0.55);
+  --muted: oklch(0.97 0 0 / 0.5);
+  --border: oklch(0.145 0 0 / 0.1);
+  --input: oklch(0.145 0 0 / 0.08);
+  --sidebar: oklch(0.985 0 0 / 0.55);
+  --sidebar-accent: oklch(0.97 0 0 / 0.6);
+  --sidebar-border: oklch(0.145 0 0 / 0.08);
+}
+.dark[data-theme="glass"] {
+  --card: oklch(0.205 0 0 / 0.55);
+  --popover: oklch(0.205 0 0 / 0.8);
+  --secondary: oklch(0.269 0 0 / 0.5);
+  --muted: oklch(0.269 0 0 / 0.45);
+  --border: oklch(1 0 0 / 0.1);
+  --input: oklch(1 0 0 / 0.12);
+  --sidebar: oklch(0.205 0 0 / 0.55);
+  --sidebar-accent: oklch(0.269 0 0 / 0.5);
+  --sidebar-border: oklch(1 0 0 / 0.08);
+}
+
+/* Shared elevation: a soft drop shadow lifts each raised surface off the
+   content behind it, a hairline top highlight gives the "glass edge". */
+[data-theme="glass"] [data-slot="card"],
+[data-theme="glass"] [data-slot="popover-content"],
+[data-theme="glass"] [data-slot="dropdown-menu-content"],
+[data-theme="glass"] [data-slot="context-menu-content"],
+[data-theme="glass"] [data-slot="dropdown-menu-sub-content"],
+[data-theme="glass"] [data-slot="context-menu-sub-content"],
+[data-theme="glass"] [data-slot="menubar-content"],
+[data-theme="glass"] [data-slot="select-content"],
+[data-theme="glass"] [data-slot="tooltip-content"],
+[data-theme="glass"] [data-slot="hover-card-content"],
+[data-theme="glass"] [data-slot="dialog-content"],
+[data-theme="glass"] [data-slot="sheet-content"],
+[data-theme="glass"] [data-slot="command"],
+[data-theme="glass"] [data-slot="sidebar-inner"],
+[data-theme="glass"] .search-panel,
+[data-theme="glass"] .cm-tooltip-autocomplete,
+[data-theme="glass"] .cm-tooltip.cm-completionInfo {
+  box-shadow:
+    0 4px 16px -4px rgb(0 0 0 / 0.18),
+    0 1px 4px -1px rgb(0 0 0 / 0.10),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.14);
+}
+
+/* Frost the surfaces that don't already blur themselves. Dropdown and context
+   menus are excluded: they frost via a ::before backdrop-blur and stacking a
+   second backdrop-filter on the same element cancels it — they get the
+   elevation shadow above and keep their built-in blur. */
+[data-theme="glass"] [data-slot="card"],
+[data-theme="glass"] [data-slot="popover-content"],
+[data-theme="glass"] [data-slot="menubar-content"],
+[data-theme="glass"] [data-slot="select-content"],
+[data-theme="glass"] [data-slot="tooltip-content"],
+[data-theme="glass"] [data-slot="hover-card-content"],
+[data-theme="glass"] [data-slot="dialog-content"],
+[data-theme="glass"] [data-slot="sheet-content"],
+[data-theme="glass"] [data-slot="command"],
+[data-theme="glass"] [data-slot="sidebar-inner"] {
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+}
+
+/* Context and dropdown menus self-blur via ::before — crank it up in glass. */
+[data-theme="glass"] [data-slot="context-menu-content"]::before,
+[data-theme="glass"] [data-slot="context-menu-sub-content"]::before,
+[data-theme="glass"] [data-slot="dropdown-menu-content"]::before,
+[data-theme="glass"] [data-slot="dropdown-menu-sub-content"]::before {
+  backdrop-filter: blur(80px) saturate(220%) !important;
+  -webkit-backdrop-filter: blur(80px) saturate(220%) !important;
+}
+
+/* Search panel and CodeMirror popups get stronger blur + more transparency. */
+[data-theme="glass"] .search-panel {
+  background-color: color-mix(in srgb, var(--popover) 55%, transparent);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+}
+
+[data-theme="glass"] .cm-tooltip-autocomplete,
+[data-theme="glass"] .cm-tooltip.cm-completionInfo {
+  background-color: color-mix(in srgb, var(--popover) 65%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
 
 /* ── Nord ──────────────────────────────────────────────────────────────── */
 :root[data-theme="nord"] {

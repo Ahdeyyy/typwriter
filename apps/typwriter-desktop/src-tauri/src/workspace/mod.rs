@@ -30,6 +30,7 @@ use typst::syntax::{FileId, VirtualPath};
 
 use crate::{
     compiler::{render_page, CompileReason, PreviewPipeline},
+    vcs::VcsState,
     world::EditorWorld,
 };
 use path::{ExternalPath, WorkspacePath};
@@ -65,6 +66,9 @@ pub struct WorkspaceState {
     last_thumbnail_at: Mutex<Option<Instant>>,
     world: Arc<EditorWorld>,
     pipeline: Arc<PreviewPipeline>,
+    /// Local-only version history. Bound to the current workspace via
+    /// `VcsState::attach` whenever a folder is opened.
+    pub vcs: Arc<VcsState>,
     pub app_handle: AppHandle,
 }
 
@@ -72,6 +76,7 @@ impl WorkspaceState {
     pub fn new(
         world: Arc<EditorWorld>,
         pipeline: Arc<PreviewPipeline>,
+        vcs: Arc<VcsState>,
         app_handle: AppHandle,
     ) -> Self {
         Self {
@@ -82,6 +87,7 @@ impl WorkspaceState {
             last_thumbnail_at: Mutex::new(None),
             world,
             pipeline,
+            vcs,
             app_handle,
         }
     }
@@ -106,9 +112,18 @@ impl WorkspaceState {
         *self._watcher.lock() = None;
         *self.last_thumbnail_at.lock() = None;
 
-        // Update the EditorWorld root and flush all caches.
+        // Update the EditorWorld root and flush all in-memory caches. The
+        // on-disk preview cache is rebound to the new workspace below — its
+        // contents survive across opens (per workspace), so re-opening shows
+        // the existing preview without recompiling.
         self.world.set_root(path.clone());
         self.pipeline.invalidate_cache();
+        self.pipeline.attach_disk_cache(&path);
+
+        // Bind the version-history system to this workspace. Initializes a
+        // `.git` repo on first open and seeds an initial restore point so the
+        // timeline is never empty.
+        self.vcs.attach(&path);
 
         // Start a new watcher for the new root.
         let new_watcher = watcher::start_watcher(
@@ -290,8 +305,8 @@ impl WorkspaceState {
         store::clear_recent_workspaces(&self.app_handle);
     }
 
-    /// Return the recent workspaces list enriched with names and thumbnails.
-    pub fn get_recent_workspaces_with_thumbnails(&self) -> Vec<RecentWorkspaceEntry> {
+    /// Return the recent workspaces list enriched with names and, when requested, thumbnails.
+    pub fn get_recent_workspaces(&self, include_thumbnails: bool) -> Vec<RecentWorkspaceEntry> {
         let paths = store::get_recent_workspaces(&self.app_handle);
 
         paths
@@ -303,8 +318,12 @@ impl WorkspaceState {
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| p.clone());
 
-                let thumbnail = store::read_thumbnail(&path_buf)
-                    .map(|bytes| base64::engine::general_purpose::STANDARD.encode(&bytes));
+                let thumbnail = if include_thumbnails {
+                    store::read_thumbnail(&path_buf)
+                        .map(|bytes| base64::engine::general_purpose::STANDARD.encode(&bytes))
+                } else {
+                    None
+                };
 
                 RecentWorkspaceEntry {
                     path: p,

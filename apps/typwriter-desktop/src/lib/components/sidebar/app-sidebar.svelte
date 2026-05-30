@@ -7,6 +7,7 @@
     Home01Icon,
     ArrowDown01Icon,
     Settings01Icon,
+    GitCommitIcon,
   } from "@hugeicons/core-free-icons";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -22,6 +23,8 @@
   import FileTree from "$lib/components/sidebar/filetree.svelte";
   import FileTreeMobile from "$lib/components/sidebar/filetree.mobile.svelte";
   import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
+  import HistoryPane from "$lib/components/vcs/timeline.svelte";
+  import { vcs } from "$lib/stores/vcs.svelte";
   import ModeSwitcher from "./mode-switcher.svelte";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { defaultWindowIcon } from '@tauri-apps/api/app';
@@ -50,7 +53,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
     return canvas.toDataURL('image/png');
 }
 
-  type Section = "files" | "diagnostics";
+  type Section = "files" | "diagnostics" | "history";
 
   let iconImage: HTMLImageElement | undefined = $state(undefined);
 
@@ -81,7 +84,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
         logError("defaultWindowIcon failed:", err);
       }
     }
-    const result = await getRecentWorkspaces();
+    const result = await getRecentWorkspaces({ includeThumbnails: false });
     result.match(
       (entries) => { recentWorkspaces = entries.slice(0, 3); },
       (err) => { logError("Failed to load recent workspaces:", err); }
@@ -186,8 +189,13 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
       {:else}
         <FileTree />
       {/if}
-    {:else}
+    {:else if activeSection === "diagnostics"}
       <DiagnosticsPane onclose={() => sidebarCtx.setOpen(false)} />
+    {:else if activeSection === "history"}
+      <HistoryPane
+        onclose={() => sidebarCtx.setOpen(false)}
+        onopenDiff={() => (vcs.diffPaneOpen = true)}
+      />
     {/if}
   </Sidebar.Content>
 
@@ -243,6 +251,23 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="top">Diagnostics</Tooltip.Content>
+      </Tooltip.Root>
+
+      <!-- History toggle -->
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              class="relative size-8 shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground {sidebarCtx.open && activeSection === 'history' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/70'}"
+              onclick={() => toggleSection("history")}
+            >
+              <HugeiconsIcon icon={GitCommitIcon} class="size-4" />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content side="top">History</Tooltip.Content>
       </Tooltip.Root>
 
       <!-- Home -->

@@ -93,7 +93,7 @@
 
 {#if editorSearch.open}
   <div
-    class="search-panel absolute top-1 right-5 z-50 flex items-start gap-1 rounded-md border border-border bg-popover px-1 py-1 text-popover-foreground shadow-md"
+    class="search-panel absolute top-1 right-5 z-50 flex items-start gap-2 rounded-md border border-border bg-popover px-2 py-2 text-popover-foreground shadow-md"
     role="search"
     aria-label="Find and replace"
   >
@@ -344,9 +344,9 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    height: 1.25rem;
-    width: 1.25rem;
-    border-radius: 3px;
+    height: 1.5rem;
+    width: 1.5rem;
+    border-radius: 4px;
     color: var(--foreground);
     transition: background-color 120ms;
   }

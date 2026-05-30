@@ -143,3 +143,42 @@ export interface CompileStatePayload {
 export interface WorkspaceFilesChangedPayload {
     paths: string[];
 }
+
+// ─── Versioning / Restore points ──────────────────────────────────────────────
+
+export type CommitTrigger =
+    | 'initial'
+    | 'manual'
+    | 'save'
+    | 'compile'
+    | 'pre_restore';
+
+export interface RestorePoint {
+    /** Full 64-char sha-256 hex snapshot id. */
+    id: string;
+    parent_id: string | null;
+    message: string;
+    trigger: CommitTrigger;
+    timestamp_seconds: number;
+    /** Workspace-relative, forward-slash paths whose tree entry differs from
+     *  the parent's. For the initial commit, every file is listed. */
+    changed_files: string[];
+}
+
+export type FileDiffStatus = 'added' | 'removed' | 'modified';
+
+export interface FileDiff {
+    /** Workspace-relative, forward-slash path. */
+    path: string;
+    status: FileDiffStatus;
+    /** `true` when either side is non-UTF-8 or above the size cap. */
+    binary: boolean;
+    before: string | null;
+    after: string | null;
+    before_bytes: number;
+    after_bytes: number;
+}
+
+export interface WorkspaceDiff {
+    files: FileDiff[];
+}

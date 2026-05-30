@@ -10,6 +10,7 @@ use std::{path::Path, sync::Arc, time::Instant};
 
 use ecow::EcoString;
 use log::{debug, error, info, warn};
+use parking_lot::RwLock;
 use serde::Serialize;
 use tauri::State;
 use typst::{
@@ -24,6 +25,7 @@ use typst_ide::IdeWorld;
 
 use crate::{
     compiler::{CompileReason, PreviewPipeline},
+    vcs::{CommitTrigger, SnapshotPolicy, VcsState},
     workspace::WorkspaceState,
     world::EditorWorld,
 };
@@ -278,6 +280,8 @@ pub fn save_file(
     world: State<'_, Arc<EditorWorld>>,
     workspace: State<'_, Arc<WorkspaceState>>,
     pipeline: State<'_, Arc<PreviewPipeline>>,
+    vcs: State<'_, Arc<VcsState>>,
+    snapshot_policy: State<'_, Arc<RwLock<SnapshotPolicy>>>,
 ) -> Result<(), String> {
     let t = Instant::now();
     info!("save_file: path={path:?} content_bytes={}", content.len());
@@ -305,6 +309,21 @@ pub fn save_file(
 
     if workspace.should_generate_thumbnail_for(abs) {
         workspace.generate_thumbnail();
+    }
+
+    // Auto-commit a restore point. Cheap when no-op: `commit_if_changed`
+    // diffs the working tree against HEAD and short-circuits if nothing
+    // changed (e.g. user hit save without edits).
+    let file_label = abs
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| path.clone());
+    let policy = snapshot_policy.read().clone();
+    if let Err(err) =
+        vcs.auto_commit_if_changed(CommitTrigger::Save, &format!("Saved {file_label}"), &policy)
+    {
+        warn!("save_file: vcs commit failed err=\"{err}\"");
     }
 
     pipeline.request_compile(CompileReason::Save);
