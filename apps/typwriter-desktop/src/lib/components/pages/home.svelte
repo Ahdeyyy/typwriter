@@ -6,10 +6,11 @@
   import { onAppFontsLoaded, type UnlistenFn } from "$lib/ipc/events";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { onboarding } from "$lib/stores/onboarding.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { AndroidFs } from "tauri-plugin-android-fs-api";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, File01Icon, KeyboardIcon, Settings01Icon } from "@hugeicons/core-free-icons";
+  import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, File01Icon, KeyboardIcon, Settings01Icon, Mortarboard01Icon } from "@hugeicons/core-free-icons";
   import { openUrl, openPath } from "@tauri-apps/plugin-opener";
   import { updater } from "$lib/stores/updater.svelte";
   import { toast } from "svelte-sonner";
@@ -60,6 +61,21 @@
   // ── Font readiness ──────────────────────────────────────────────────────────
 
   let unlistenFonts: UnlistenFn | null = null;
+  let onboardingChecked = false;
+
+  /** Auto-show the tutorial once, on first launch, after fonts are ready (it
+   *  compiles examples). Desktop only for this pass. The Rust-side flag is the
+   *  source of truth, so this is a no-op on every subsequent launch. */
+  async function maybeAutoShowOnboarding() {
+    if (onboardingChecked || platform.isMobile) return;
+    onboardingChecked = true;
+    const result = await onboarding.shouldAutoShow();
+    if (result.isOk() && result.value) {
+      page.navigate("onboarding");
+    } else if (result.isErr()) {
+      logError("Failed to read onboarding flag:", result.error);
+    }
+  }
 
   onMount(async () => {
     loadRecent();
@@ -68,6 +84,7 @@
     const ready = await isFontsLoaded();
     if (ready.isOk() && ready.value) {
       fontsReady = true;
+      maybeAutoShowOnboarding();
     } else {
       fontToastId = toast.loading("Loading fonts…");
       const result = await onAppFontsLoaded(() => {
@@ -76,6 +93,7 @@
           toast.dismiss(fontToastId);
           fontToastId = undefined;
         }
+        maybeAutoShowOnboarding();
       });
       if (result.isOk()) unlistenFonts = result.value;
     }
@@ -457,6 +475,17 @@
       </Button>
       <ModeSwitcher />
     {:else}
+      <Button
+        variant="link"
+        size="sm"
+        class="gap-1.5 text-muted-foreground"
+        onclick={() => page.navigate("onboarding")}
+        disabled={!fontsReady}
+      >
+        <HugeiconsIcon icon={Mortarboard01Icon} class="size-3.5" />
+        Tutorial
+      </Button>
+
       <Button
         variant="link"
         size="sm"

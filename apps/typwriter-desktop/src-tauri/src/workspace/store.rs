@@ -15,7 +15,7 @@ use std::time::Instant;
 
 use log::{info, warn};
 use serde_json::{json, Value as JsonValue};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
 
 const STORE_FILE: &str = "app_data.json";
@@ -32,6 +32,12 @@ const KEY_WORKSPACE_OPEN_TABS: &str = "workspace_open_tabs";
 /// Add `root` to the front of the recent-workspaces list, deduplicating
 /// and capping at [`MAX_RECENT`] entries.
 pub fn add_recent_workspace(handle: &AppHandle, root: &Path) {
+    // The onboarding tutorial drives a disposable scratch workspace under
+    // app-data; it must never surface in the user's recent-workspaces list.
+    if is_onboarding_workspace(handle, root) {
+        return;
+    }
+
     let t = Instant::now();
     let Ok(store) = handle.store(STORE_FILE) else {
         warn!("store: could not open {STORE_FILE}");
@@ -60,6 +66,17 @@ pub fn add_recent_workspace(handle: &AppHandle, root: &Path) {
         "store: added recent workspace ({:.1}ms)",
         t.elapsed().as_secs_f64() * 1000.0
     );
+}
+
+/// True when `root` is the onboarding tutorial's scratch workspace
+/// (`<app_data>/onboarding`). `Path` equality compares parsed components, so
+/// it is insensitive to `/` vs `\` separators.
+fn is_onboarding_workspace(handle: &AppHandle, root: &Path) -> bool {
+    handle
+        .path()
+        .app_data_dir()
+        .map(|base| base.join("onboarding").as_path() == root)
+        .unwrap_or(false)
 }
 
 /// Remove a single workspace path from the recent list.

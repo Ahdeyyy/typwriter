@@ -19,7 +19,7 @@ use workspace::WorkspaceState;
 use world::EditorWorld;
 
 use commands::{
-    app::is_fonts_loaded,
+    app::{is_fonts_loaded, prepare_onboarding_workspace},
     click::{jump_from_click, jump_from_cursor},
     editor::{
         discard_shadow, get_completions, get_definitions, get_tooltip, read_file, save_file,
@@ -36,8 +36,8 @@ use commands::{
     logs::get_log_file_path,
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     settings::{
-        get_app_settings, import_font_directory_uri, list_font_families, set_app_settings,
-        set_typst_font_directories,
+        get_app_settings, get_onboarding_completed, import_font_directory_uri, list_font_families,
+        set_app_settings, set_onboarding_completed, set_typst_font_directories,
     },
     vcs::{
         vcs_create_restore_point, vcs_current_id, vcs_diff_between, vcs_diff_vs_current,
@@ -184,6 +184,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // app init
             is_fonts_loaded,
+            prepare_onboarding_workspace,
             // workspace / file-system
             open_folder,
             create_workspace,
@@ -230,6 +231,8 @@ pub fn run() {
             // settings
             get_app_settings,
             set_app_settings,
+            get_onboarding_completed,
+            set_onboarding_completed,
             list_font_families,
             set_typst_font_directories,
             import_font_directory_uri,

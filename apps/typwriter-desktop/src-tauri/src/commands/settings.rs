@@ -26,6 +26,11 @@ const ANDROID_FONTS_SUBDIR: &str = "Fonts";
 const STORE_FILE: &str = "app_data.json";
 const KEY_FONT_DIRECTORIES: &str = "settings.font_directories";
 const KEY_UI_SETTINGS: &str = "settings.ui";
+/// Whether the onboarding tutorial has been shown (completed OR skipped).
+/// Stored under its own key — deliberately *not* part of `AppSettings` — so the
+/// Settings page round-tripping the whole struct through `set_app_settings`
+/// can't accidentally reset it via serde defaults.
+const KEY_ONBOARDING_COMPLETED: &str = "settings.onboarding_completed";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -149,6 +154,30 @@ pub fn load_font_directories(handle: &AppHandle) -> Vec<PathBuf> {
 #[tauri::command]
 pub fn get_app_settings(handle: AppHandle) -> AppSettings {
     read_settings(&handle)
+}
+
+#[tauri::command]
+pub fn get_onboarding_completed(handle: AppHandle) -> bool {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        warn!("settings: could not open {STORE_FILE}");
+        return false;
+    };
+    store
+        .get(KEY_ONBOARDING_COMPLETED)
+        .and_then(|v: JsonValue| serde_json::from_value(v).ok())
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+pub fn set_onboarding_completed(handle: AppHandle, completed: bool) {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        warn!("settings: could not open {STORE_FILE}");
+        return;
+    };
+    store.set(KEY_ONBOARDING_COMPLETED, json!(completed));
+    if let Err(err) = store.save() {
+        warn!("settings: failed to save store: {err}");
+    }
 }
 
 #[tauri::command]
