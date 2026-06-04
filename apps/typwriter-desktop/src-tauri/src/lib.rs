@@ -128,6 +128,27 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .on_window_event(|window, event| {
+            // The preview pane can be popped out into its own `preview` window.
+            // It outlives the main window (and keeps the process alive), so
+            // closing the main window would otherwise leave it orphaned on
+            // screen. Tear it down whenever the main window goes away — handled
+            // here in Rust so it fires on every close path, not just the ones
+            // where the frontend gets to run its cleanup.
+            if window.label() == "main"
+                && matches!(
+                    event,
+                    tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed
+                )
+            {
+                if let Some(preview) = window.app_handle().get_webview_window("preview") {
+                    // `destroy` rather than `close`: a forced teardown that the
+                    // preview window's own JS can't prevent, so the orphan is
+                    // guaranteed to go away.
+                    let _ = preview.destroy();
+                }
+            }
+        })
         .setup(|app| {
             let handle = app.handle().clone();
 
