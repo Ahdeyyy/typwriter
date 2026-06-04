@@ -93,13 +93,16 @@ impl SnapshotPolicy {
     }
 
     /// Does this trigger fall under the auto-snapshot gate? Manual / Initial
-    /// / PreRestore always bypass — those are user-driven or safety-critical
-    /// and never throttled by user prefs.
+    /// / PreRestore / FileOp always bypass — those are user-driven or
+    /// safety-critical and never throttled by user prefs.
     pub fn allows(&self, trigger: CommitTrigger) -> bool {
         match trigger {
             CommitTrigger::Save => self.on_save,
             CommitTrigger::Compile => self.on_compile,
-            CommitTrigger::Manual | CommitTrigger::Initial | CommitTrigger::PreRestore => true,
+            CommitTrigger::Manual
+            | CommitTrigger::Initial
+            | CommitTrigger::PreRestore
+            | CommitTrigger::FileOp => true,
         }
     }
 }

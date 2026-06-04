@@ -304,6 +304,12 @@ pub fn import_files_from_uris(
         );
     }
 
+    let count = sources.len();
+    workspace.snapshot_file_op(&format!(
+        "Imported {count} file{}",
+        if count == 1 { "" } else { "s" }
+    ));
+
     info!(
         "import_files_from_uris: ok ({:.1}ms)",
         t.elapsed().as_secs_f64() * 1000.0

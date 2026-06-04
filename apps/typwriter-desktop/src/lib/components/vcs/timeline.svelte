@@ -23,6 +23,7 @@
     Tag01Icon,
     GitCompareIcon,
     FloppyDiskIcon,
+    FileEditIcon,
     MoreHorizontalIcon,
     PlusSignIcon,
     ArrowDown01Icon,
@@ -60,6 +61,7 @@
     save: "Save",
     compile: "Compile",
     pre_restore: "Pre-restore",
+    file_op: "File change",
   };
 
   const triggerIcon: Record<CommitTrigger, typeof PlayIcon> = {
@@ -68,6 +70,7 @@
     save: FloppyDiskIcon,
     compile: PlayIcon,
     pre_restore: ArrowReloadHorizontalIcon,
+    file_op: FileEditIcon,
   };
 
   function shortId(id: string): string {

@@ -35,6 +35,9 @@ pub enum CommitTrigger {
     Compile,
     /// Snapshot of working state captured before restoring (safety net).
     PreRestore,
+    /// Triggered by a structural file operation (create / delete / rename /
+    /// move / import) so the change can be undone from the timeline.
+    FileOp,
 }
 
 impl CommitTrigger {
@@ -45,15 +48,21 @@ impl CommitTrigger {
             CommitTrigger::Save => "save",
             CommitTrigger::Compile => "compile",
             CommitTrigger::PreRestore => "pre-restore",
+            CommitTrigger::FileOp => "file-op",
         }
     }
 
-    /// Manual / Initial / PreRestore snapshots are user-driven or
-    /// safety-critical — they never get pruned by retention rules.
+    /// Manual / Initial / PreRestore / FileOp snapshots are user-driven or
+    /// safety-critical — they never get pruned by retention rules. FileOp
+    /// points record structural changes (delete / rename / move) and are the
+    /// recovery anchor for them, so they must survive aggressive retention.
     pub fn is_preserved(self) -> bool {
         matches!(
             self,
-            CommitTrigger::Manual | CommitTrigger::Initial | CommitTrigger::PreRestore
+            CommitTrigger::Manual
+                | CommitTrigger::Initial
+                | CommitTrigger::PreRestore
+                | CommitTrigger::FileOp
         )
     }
 }

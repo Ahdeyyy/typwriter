@@ -30,7 +30,7 @@ use typst::syntax::{FileId, VirtualPath};
 
 use crate::{
     compiler::{render_page, CompileReason, PreviewPipeline},
-    vcs::VcsState,
+    vcs::{CommitTrigger, VcsState},
     world::EditorWorld,
 };
 use path::{ExternalPath, WorkspacePath};
@@ -367,6 +367,30 @@ impl WorkspaceState {
             .map_err(|e| e.to_string())
     }
 
+    /// Capture a restore point recording a structural file operation so it can
+    /// be undone from the timeline. File operations are user-intentional and
+    /// infrequent, so they always snapshot (no save/compile policy gate) and
+    /// are preserved from retention. The snapshot is taken *after* the
+    /// operation, matching `save_file`: HEAD ends up matching disk, and the
+    /// recoverable prior state lives in the preceding restore point.
+    ///
+    /// Failures are logged and swallowed — versioning must never block file
+    /// management, mirroring the rest of the VCS integration.
+    pub(crate) fn snapshot_file_op(&self, message: &str) {
+        match self.vcs.commit_if_changed(CommitTrigger::FileOp, message) {
+            Ok(Some(id)) => {
+                let short = &id[..id.len().min(8)];
+                info!("WorkspaceState::snapshot_file_op: {short} — {message}");
+            }
+            Ok(None) => {
+                info!("WorkspaceState::snapshot_file_op: no change to snapshot — {message}");
+            }
+            Err(err) => {
+                warn!("WorkspaceState::snapshot_file_op: failed err=\"{err}\" — {message}");
+            }
+        }
+    }
+
     // ─── FS operations ─────────────────────────────────────────────────────
 
     /// Create an empty file at `path`.
@@ -386,6 +410,7 @@ impl WorkspaceState {
             error!("WorkspaceState::create_file: create failed abs={abs:?} err=\"{e}\"");
             e.to_string()
         })?;
+        self.snapshot_file_op(&format!("Created {}", basename(path)));
         info!(
             "WorkspaceState::create_file: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -402,6 +427,9 @@ impl WorkspaceState {
             error!("WorkspaceState::create_folder: failed abs={abs:?} err=\"{e}\"");
             e.to_string()
         })?;
+        // Empty directories aren't tracked by the content-addressed store, so
+        // this is typically a no-op; kept for uniformity across file ops.
+        self.snapshot_file_op(&format!("Created folder {}", basename(path)));
         info!(
             "WorkspaceState::create_folder: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -431,6 +459,7 @@ impl WorkspaceState {
         {
             self.clear_main_file();
         }
+        self.snapshot_file_op(&format!("Deleted {}", basename(path)));
         info!(
             "WorkspaceState::delete_file: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -460,6 +489,12 @@ impl WorkspaceState {
             self.world.invalidate_file(id);
         }
         self.update_main_file_path(&src_abs, &dst_abs, false)?;
+        let message = if dirname(src) == dirname(dst) {
+            format!("Renamed {} → {}", basename(src), basename(dst))
+        } else {
+            format!("Moved {} → {}", basename(src), dst)
+        };
+        self.snapshot_file_op(&message);
         info!(
             "WorkspaceState::rename_file: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -503,6 +538,7 @@ impl WorkspaceState {
         {
             self.clear_main_file();
         }
+        self.snapshot_file_op(&format!("Deleted folder {}", basename(path)));
         info!(
             "WorkspaceState::delete_folder: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -562,6 +598,12 @@ impl WorkspaceState {
             );
         }
 
+        let count = sources.len();
+        self.snapshot_file_op(&format!(
+            "Imported {count} file{} into {}",
+            if count == 1 { "" } else { "s" },
+            basename(dest_dir)
+        ));
         info!(
             "WorkspaceState::import_files: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -588,6 +630,12 @@ impl WorkspaceState {
             e.to_string()
         })?;
         self.update_main_file_path(&src_abs, &dst_abs, true)?;
+        let message = if dirname(src) == dirname(dst) {
+            format!("Renamed folder {} → {}", basename(src), basename(dst))
+        } else {
+            format!("Moved folder {} → {}", basename(src), dst)
+        };
+        self.snapshot_file_op(&message);
         info!(
             "WorkspaceState::move_folder: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -738,4 +786,23 @@ fn collect_files_recursive(dir: &Path) -> Vec<PathBuf> {
 fn rewrite_path_prefix(path: &Path, src_prefix: &Path, dst_prefix: &Path) -> Option<PathBuf> {
     let suffix = path.strip_prefix(src_prefix).ok()?;
     Some(dst_prefix.join(suffix))
+}
+
+/// Last path segment of a workspace-relative (forward- or back-slash) path,
+/// used to build human-readable restore-point messages.
+fn basename(path: &str) -> &str {
+    path.trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(path)
+}
+
+/// Parent portion of a workspace-relative path, or `""` for a top-level entry.
+/// Used to distinguish a rename (same parent) from a move (different parent).
+fn dirname(path: &str) -> &str {
+    let trimmed = path.trim_end_matches(['/', '\\']);
+    match trimmed.rfind(['/', '\\']) {
+        Some(idx) => &trimmed[..idx],
+        None => "",
+    }
 }

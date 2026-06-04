@@ -151,7 +151,8 @@ export type CommitTrigger =
     | 'manual'
     | 'save'
     | 'compile'
-    | 'pre_restore';
+    | 'pre_restore'
+    | 'file_op';
 
 export interface RestorePoint {
     /** Full 64-char sha-256 hex snapshot id. */
