@@ -1,15 +1,15 @@
 use std::path::Path;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::Arc;
 
 use log::info;
 use serde::Deserialize;
 use tauri::{AppHandle, Manager, State};
 
-use crate::AppInit;
+use crate::world::EditorWorld;
 
 #[tauri::command]
-pub fn is_fonts_loaded(init: State<'_, Arc<AppInit>>) -> bool {
-    init.fonts_loaded.load(Ordering::Acquire)
+pub fn is_fonts_loaded(world: State<'_, Arc<EditorWorld>>) -> bool {
+    world.fonts_ready()
 }
 
 /// One seed file for the onboarding workspace: a bare file name plus its

@@ -6,14 +6,12 @@ mod vcs;
 mod workspace;
 mod world;
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use compiler::{parse_key, PreviewPipeline};
 use parking_lot::RwLock;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
-use typst_kit::fonts::FontSearcher;
 use vcs::VcsState;
 use workspace::WorkspaceState;
 use world::EditorWorld;
@@ -52,11 +50,6 @@ use commands::{
         set_main_file,
     },
 };
-
-/// Lightweight state managed immediately so the frontend can query readiness.
-pub struct AppInit {
-    pub fonts_loaded: AtomicBool,
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -156,9 +149,6 @@ pub fn run() {
             let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
             // ── Shared state (managed immediately — fonts arrive later) ──────
-            let init = Arc::new(AppInit {
-                fonts_loaded: AtomicBool::new(false),
-            });
             let world = Arc::new(EditorWorld::new(root, handle.clone()));
             let vcs = Arc::new(VcsState::new(handle.clone()));
             let pipeline = Arc::new(PreviewPipeline::new(
@@ -181,24 +171,16 @@ pub fn run() {
                 commands::settings::snapshot_policy_from_handle(&handle),
             ));
 
-            app.manage(init.clone());
             app.manage(world.clone());
             app.manage(pipeline);
             app.manage(workspace);
             app.manage(vcs);
             app.manage(snapshot_policy);
 
-            // ── Background font loading ─────────────────────────────────────
-            // Pick up any extra font directories the user configured in a
-            // previous session so their custom fonts are available from the
-            // first compile.
-            let extra_font_dirs = commands::settings::load_font_directories(&handle);
-            std::thread::spawn(move || {
-                let font_results = FontSearcher::new().search_with(&extra_font_dirs);
-                world.load_fonts(font_results.book, font_results.fonts);
-                init.fonts_loaded.store(true, Ordering::Release);
-                let _ = handle.emit("app:fonts-loaded", ());
-            });
+            // Fonts are loaded lazily: the first workspace open (and, as a
+            // safety net, the first compile) calls `EditorWorld::ensure_fonts_loading`,
+            // so the system font scan overlaps the rest of the open path instead
+            // of blocking startup. See `world::mod`.
 
             Ok(())
         })

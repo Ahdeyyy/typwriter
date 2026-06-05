@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount } from "svelte";
   import { page } from "@/stores/page.svelte";
   import Button from "../ui/button/button.svelte";
-  import { getRecentWorkspaces, createWorkspace, isFontsLoaded, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath, registerSafWorkspaceRoot } from "$lib/ipc/commands";
-  import { onAppFontsLoaded, type UnlistenFn } from "$lib/ipc/events";
+  import { getRecentWorkspaces, createWorkspace, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath, registerSafWorkspaceRoot } from "$lib/ipc/commands";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { onboarding } from "$lib/stores/onboarding.svelte";
@@ -25,8 +24,6 @@
 
   let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
   let loading = $state(true);
-  let fontsReady = $state(false);
-  let fontToastId = $state<string | number | undefined>();
 
   // New workspace dialog state
   let newWorkspaceOpen = $state(false);
@@ -58,14 +55,14 @@
     }
   }
 
-  // ── Font readiness ──────────────────────────────────────────────────────────
+  // ── Onboarding ────────────────────────────────────────────────────────────
 
-  let unlistenFonts: UnlistenFn | null = null;
   let onboardingChecked = false;
 
-  /** Auto-show the tutorial once, on first launch, after fonts are ready (it
-   *  compiles examples). Desktop only for this pass. The Rust-side flag is the
-   *  source of truth, so this is a no-op on every subsequent launch. */
+  /** Auto-show the tutorial once, on first launch. It compiles examples, but
+   *  fonts now load lazily on the first compile, so there's nothing to wait for
+   *  here. Desktop only for this pass. The Rust-side flag is the source of
+   *  truth, so this is a no-op on every subsequent launch. */
   async function maybeAutoShowOnboarding() {
     if (onboardingChecked || platform.isMobile) return;
     onboardingChecked = true;
@@ -77,31 +74,9 @@
     }
   }
 
-  onMount(async () => {
+  onMount(() => {
     loadRecent();
-
-    // Check if fonts already loaded (handles race condition)
-    const ready = await isFontsLoaded();
-    if (ready.isOk() && ready.value) {
-      fontsReady = true;
-      maybeAutoShowOnboarding();
-    } else {
-      fontToastId = toast.loading("Loading fonts…");
-      const result = await onAppFontsLoaded(() => {
-        fontsReady = true;
-        if (fontToastId !== undefined) {
-          toast.dismiss(fontToastId);
-          fontToastId = undefined;
-        }
-        maybeAutoShowOnboarding();
-      });
-      if (result.isOk()) unlistenFonts = result.value;
-    }
-  });
-
-  onDestroy(() => {
-    unlistenFonts?.();
-    if (fontToastId !== undefined) toast.dismiss(fontToastId);
+    maybeAutoShowOnboarding();
   });
 
   // ── Workspace operations ────────────────────────────────────────────────────
@@ -299,7 +274,6 @@
               variant="outline"
               class="h-auto md:h-auto w-full justify-start gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-left font-normal hover:bg-accent hover:text-accent-foreground"
               onclick={() => handleOpenRecent(entry.path)}
-              disabled={!fontsReady}
             >
               <HugeiconsIcon icon={Folder01Icon} class="size-5 shrink-0 text-muted-foreground" />
               <div class="min-w-0 flex-1">
@@ -326,7 +300,6 @@
                        <button
                          class="group/card flex w-full flex-col overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:bg-accent disabled:pointer-events-none cursor-pointer disabled:opacity-50"
                          onclick={() => handleOpenRecent(entry.path)}
-                         disabled={!fontsReady}
                        >
                          <!-- Thumbnail -->
                          <div class="flex h-28 w-full items-center justify-center overflow-hidden bg-muted">
@@ -373,7 +346,7 @@
     <Dialog.Root bind:open={newWorkspaceOpen}>
       <Dialog.Trigger>
         {#snippet child({ props })}
-          <Button {...props} variant="outline" class="gap-2" disabled={!fontsReady}>
+          <Button {...props} variant="outline" class="gap-2">
             <HugeiconsIcon icon={FolderAddIcon} class="size-4" />
             New Workspace
           </Button>
@@ -446,7 +419,7 @@
       </Dialog.Content>
     </Dialog.Root>
 
-    <Button onclick={handleOpenNew} class="gap-2" disabled={!fontsReady}>
+    <Button onclick={handleOpenNew} class="gap-2">
       <HugeiconsIcon icon={FolderOpenIcon} class="size-4" />
       Open Folder
     </Button>
@@ -480,7 +453,6 @@
         size="sm"
         class="gap-1.5 text-muted-foreground"
         onclick={() => page.navigate("onboarding")}
-        disabled={!fontsReady}
       >
         <HugeiconsIcon icon={Mortarboard01Icon} class="size-3.5" />
         Tutorial

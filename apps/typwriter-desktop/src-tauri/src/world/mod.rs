@@ -5,15 +5,18 @@ pub use progress::TauriProgress;
 
 use chrono::Datelike;
 use ecow::EcoString;
-use log::info;
-use parking_lot::{Mutex, RwLock};
+use log::{error, info};
+use parking_lot::{Condvar, Mutex, RwLock};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, OnceLock,
+    },
     time::Instant,
 };
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use tauri::Manager;
 use typst::{
@@ -62,6 +65,18 @@ pub struct EditorWorld {
 
     /// Empty fallback for `World::book()` before fonts arrive
     empty_book: LazyHash<FontBook>,
+
+    /// Single-spawn guard for the lazy background font load. Fonts are no
+    /// longer searched at startup — the first workspace open / first compile
+    /// kicks the search off, so the scan overlaps the rest of the open path.
+    font_load_started: AtomicBool,
+
+    /// `true` once a font set has been installed. Paired with `fonts_cv` so the
+    /// compile worker can block until fonts exist instead of compiling against
+    /// the empty fallback book (which would render fonts-less pages and poison
+    /// the on-disk preview cache with them).
+    fonts_ready: Mutex<bool>,
+    fonts_cv: Condvar,
 
     /// In-memory source cache: files the editor has open / has read
     /// Key: FileId, Value: the Source (typst's parsed form)
@@ -141,6 +156,9 @@ impl EditorWorld {
             library: OnceLock::new(),
             font_data: RwLock::new(None),
             empty_book: LazyHash::new(FontBook::from_fonts(&[])),
+            font_load_started: AtomicBool::new(false),
+            fonts_ready: Mutex::new(false),
+            fonts_cv: Condvar::new(),
             source_cache: Mutex::new(HashMap::new()),
             file_cache: Mutex::new(HashMap::new()),
             shadow: RwLock::new(HashMap::new()),
@@ -161,6 +179,60 @@ impl EditorWorld {
             book: LazyHash::new(book),
         }));
         *self.font_data.write() = Some(data);
+        // Mark ready and wake any compile worker blocked in
+        // `wait_until_fonts_loaded`. Keeping this in lockstep with `font_data`
+        // means "ready" always implies a usable font set is installed — true
+        // for both the initial lazy load and later settings-driven reloads.
+        *self.fonts_ready.lock() = true;
+        self.fonts_cv.notify_all();
+    }
+
+    /// Whether a font set has been installed yet.
+    pub fn fonts_ready(&self) -> bool {
+        *self.fonts_ready.lock()
+    }
+
+    /// Block the calling thread until fonts are available. The compile worker
+    /// calls this before its first compile so it never renders against the
+    /// empty fallback book.
+    pub fn wait_until_fonts_loaded(&self) {
+        let mut ready = self.fonts_ready.lock();
+        while !*ready {
+            self.fonts_cv.wait(&mut ready);
+        }
+    }
+
+    /// Kick off the background font search exactly once. Idempotent — cheap to
+    /// call on every workspace open and every compile (a single atomic swap
+    /// after the first). The system font scan can take seconds, so it runs on
+    /// its own thread; when it finishes the fonts are installed (which wakes
+    /// `wait_until_fonts_loaded`) and `app:fonts-loaded` is emitted.
+    pub fn ensure_fonts_loading(self: &Arc<Self>) {
+        if self.font_load_started.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let world = Arc::clone(self);
+        std::thread::spawn(move || {
+            let extra_dirs = crate::commands::settings::load_font_directories(&world.app_handle);
+            // A corrupt font file or a stalled font directory can panic the
+            // fontdb scan. Catch it so the compile worker is never left blocked
+            // forever — fall back to embedded fonts only, which don't touch the
+            // filesystem.
+            let searched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                FontSearcher::new().search_with(&extra_dirs)
+            }));
+            match searched {
+                Ok(fonts) => world.load_fonts(fonts.book, fonts.fonts),
+                Err(_) => {
+                    error!("ensure_fonts_loading: font search panicked; falling back to embedded fonts only");
+                    let fonts = FontSearcher::new().include_system_fonts(false).search();
+                    world.load_fonts(fonts.book, fonts.fonts);
+                }
+            }
+            if let Err(err) = world.app_handle.emit("app:fonts-loaded", ()) {
+                error!("ensure_fonts_loading: emit app:fonts-loaded failed err=\"{err}\"");
+            }
+        });
     }
 
     /// Run a font search (system + embedded + the given extra directories)
@@ -210,6 +282,20 @@ impl EditorWorld {
     /// without it, typst would emit "cannot find main file" for every cycle.
     pub fn has_main(&self) -> bool {
         self.main.read().is_some()
+    }
+
+    /// Workspace-relative path of the current main file, normalized to forward
+    /// slashes. `None` when no main file is set. Used to tag the persisted
+    /// preview manifest so a manifest left over for a *different* main file is
+    /// ignored on the next open.
+    pub fn main_rel(&self) -> Option<String> {
+        let id = (*self.main.read())?;
+        Some(
+            id.vpath()
+                .as_rootless_path()
+                .to_string_lossy()
+                .replace('\\', "/"),
+        )
     }
 
     /// Update the workspace root and flush all file caches.

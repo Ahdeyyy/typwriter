@@ -42,7 +42,7 @@ use crate::workspace::WorkspaceState;
 use crate::world::EditorWorld;
 use cache::PageCache;
 use disk_cache::DiskCache;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use typst::layout::PagedDocument;
 
 // IPC payloads
@@ -238,6 +238,10 @@ pub struct PreviewPipeline {
     /// Lookups fall through to disk on in-memory LRU misses, and renders write
     /// to both layers so subsequent app sessions skip re-rendering.
     disk_cache: Mutex<Option<DiskCache>>,
+    /// Workspace root of the attached disk cache. Held so the preview manifest
+    /// (which lives alongside the cached PNGs) can be read/written without
+    /// threading the path through every call.
+    workspace_root: Mutex<Option<PathBuf>>,
     // The most recently successfully compiled document.
     // Held so IDE features (hover, go-to-def, jump-from-click) can use it.
     pub last_document: Mutex<Option<Arc<PagedDocument>>>,
@@ -264,6 +268,7 @@ impl PreviewPipeline {
             last_emitted: Mutex::new(Vec::new()),
             page_cache: Mutex::new(PageCache::default()),
             disk_cache: Mutex::new(None),
+            workspace_root: Mutex::new(None),
             last_document: Mutex::new(None),
             app_handle,
             zoom: Mutex::new(2.0),
@@ -304,6 +309,61 @@ impl PreviewPipeline {
     pub fn attach_disk_cache(&self, workspace_root: &Path) {
         let cache = disk_cache::open_default(workspace_root);
         *self.disk_cache.lock() = Some(cache);
+        *self.workspace_root.lock() = Some(workspace_root.to_path_buf());
+    }
+
+    /// Paint the previously-rendered preview from disk *before* the next compile
+    /// runs. Reads the manifest written by the last successful compile; if it's
+    /// for `main_rel` and its pages still have bytes on disk, emits them and
+    /// seeds `last_emitted` so the subsequent (font-blocked) compile reconciles
+    /// via the normal diff instead of re-emitting unchanged pages.
+    ///
+    /// This is what lets a re-opened workspace show its preview immediately
+    /// while fonts load and the document recompiles in the background.
+    pub fn restore_preview(&self, main_rel: &str) {
+        let Some(root) = self.workspace_root.lock().clone() else {
+            return;
+        };
+        let Some((manifest_main, pages)) = disk_cache::read_manifest(&root) else {
+            return;
+        };
+        if manifest_main != main_rel || pages.is_empty() {
+            return;
+        }
+
+        let count = pages.len();
+        let mut emitted: Vec<Option<PageCacheKey>> = vec![None; count];
+        let mut painted = 0usize;
+        {
+            let mut disk = self.disk_cache.lock();
+            let Some(disk) = disk.as_mut() else {
+                return;
+            };
+            let _ = self
+                .app_handle
+                .emit("preview:total-pages", TotalPagesPayload { count });
+            for (idx, slot) in pages.iter().enumerate() {
+                let Some(key) = slot else { continue };
+                if !disk.contains(*key) {
+                    continue;
+                }
+                let _ = self.app_handle.emit(
+                    "preview:page-updated",
+                    PageUpdatedPayload {
+                        index: idx,
+                        fingerprint: key_to_path(*key),
+                    },
+                );
+                emitted[idx] = Some(*key);
+                painted += 1;
+            }
+        }
+
+        if painted == 0 {
+            return;
+        }
+        *self.last_emitted.lock() = emitted;
+        info!("restore_preview: painted {painted}/{count} cached page(s) for main={main_rel:?}");
     }
 
     /// Re-emit total-pages and every previously-emitted page key. Used when a
@@ -451,6 +511,15 @@ impl PreviewPipeline {
             }
             return;
         }
+
+        // Fonts load lazily (first workspace open). Make sure the search has
+        // been kicked off and block until a font set is installed — compiling
+        // against the empty fallback book would render fonts-less pages and
+        // cache them to disk. The wait is usually already satisfied because the
+        // search was started at workspace-open time and overlapped the rest of
+        // the open path.
+        self.world.ensure_fonts_loading();
+        self.world.wait_until_fonts_loaded();
 
         let CompileOutput {
             document,
@@ -675,6 +744,16 @@ impl PreviewPipeline {
                     },
                 );
                 new_emitted[idx] = Some(key);
+            }
+        }
+
+        // Persist the page manifest (best effort) so the next open can paint
+        // this preview from disk before the font-blocked recompile finishes.
+        if new_emitted.iter().any(Option::is_some) {
+            if let (Some(root), Some(main_rel)) =
+                (self.workspace_root.lock().clone(), self.world.main_rel())
+            {
+                disk_cache::write_manifest(&root, &main_rel, &new_emitted);
             }
         }
 

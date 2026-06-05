@@ -120,6 +120,12 @@ impl WorkspaceState {
         self.pipeline.invalidate_cache();
         self.pipeline.attach_disk_cache(&path);
 
+        // Kick the (lazy) font search off now so the system scan overlaps the
+        // rest of the open path — watcher start, cache attach, frontend
+        // round-trips — and is usually finished by the time the first compile
+        // needs it. Idempotent, so the compile worker calling it again is free.
+        self.world.ensure_fonts_loading();
+
         // Bind the version-history system to this workspace. Initializes a
         // `.git` repo on first open and seeds an initial restore point so the
         // timeline is never empty.
@@ -155,13 +161,19 @@ impl WorkspaceState {
             if main_path.exists() {
                 info!("WorkspaceState::open_folder: restoring main file main={main:?}");
                 let _ = self.set_main_file(main_path.clone());
-                self.pipeline.request_compile(CompileReason::MainFile);
                 // Compute the workspace-relative path for the frontend (forward slashes).
                 restored_main = main_path
                     .strip_prefix(&path)
                     .ok()
                     .and_then(|r| r.to_str())
                     .map(|s| s.replace('\\', "/"));
+                // Paint the previously-rendered preview from disk straight away,
+                // so the user sees pages while fonts load and the document
+                // recompiles in the background. The compile below reconciles.
+                if let Some(rel) = &restored_main {
+                    self.pipeline.restore_preview(rel);
+                }
+                self.pipeline.request_compile(CompileReason::MainFile);
             } else {
                 warn!(
                     "WorkspaceState::open_folder: persisted main file no longer exists main={main:?}"
