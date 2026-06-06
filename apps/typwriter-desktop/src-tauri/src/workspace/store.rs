@@ -10,6 +10,7 @@
 //
 // Thumbnail PNGs are written directly to `<workspace_root>/.typwriter/thumbnail.png`.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant;
 
@@ -178,12 +179,15 @@ pub fn get_workspace_main_file(handle: &AppHandle, root: &Path) -> Option<String
 
 // ─── Per-workspace open tabs ─────────────────────────────────────────────────
 
-/// Persist the list of open tabs and the active tab for the workspace at `root`.
+/// Persist the list of open tabs, the active tab, and any unsaved editor
+/// buffers (`relPath -> content`) for the workspace at `root`. The unsaved map
+/// powers hot-exit restore: edits that never reached disk survive a teardown.
 pub fn save_workspace_tabs(
     handle: &AppHandle,
     root: &Path,
     tabs: Vec<String>,
     active_tab_id: Option<String>,
+    unsaved: HashMap<String, String>,
 ) {
     let t = Instant::now();
     let Ok(store) = handle.store(STORE_FILE) else {
@@ -209,6 +213,7 @@ pub fn save_workspace_tabs(
         json!({
             "tabs": tabs,
             "activeTabId": active_tab_id,
+            "unsaved": unsaved,
         }),
     );
 
@@ -224,7 +229,7 @@ pub fn save_workspace_tabs(
 pub fn get_workspace_tabs(
     handle: &AppHandle,
     root: &Path,
-) -> Option<(Vec<String>, Option<String>)> {
+) -> Option<(Vec<String>, Option<String>, HashMap<String, String>)> {
     let store = handle.store(STORE_FILE).ok()?;
     let root_key = root.to_string_lossy().to_string();
 
@@ -245,8 +250,14 @@ pub fn get_workspace_tabs(
     let active_tab_id: Option<String> = entry
         .get("activeTabId")
         .and_then(|v| v.as_str().map(|s| s.to_string()));
+    // `unsaved` is absent for stores written before hot-exit landed — default
+    // to empty so older state still restores cleanly.
+    let unsaved: HashMap<String, String> = entry
+        .get("unsaved")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
 
-    Some((tabs, active_tab_id))
+    Some((tabs, active_tab_id, unsaved))
 }
 
 // ─── .typwriter folder & thumbnail ───────────────────────────────────────────

@@ -10,6 +10,9 @@
   import { settings } from "$lib/stores/settings.svelte";
   import { onAppFontsLoaded } from "$lib/ipc/events";
   import { installKeyboardAvoider } from "$lib/hooks/mobile-keyboard";
+  import { workspace } from "$lib/stores/workspace.svelte";
+  import { editor } from "$lib/stores/editor.svelte";
+  import { editorSearch } from "$lib/stores/editor-search.svelte";
 
   const { children } = $props();
   let appliedTheme: string | undefined;
@@ -23,6 +26,41 @@
     // No-op on desktop. Keeps focused inputs above the soft keyboard on
     // Android by listening to visualViewport changes.
     return installKeyboardAvoider();
+  });
+
+  // ── Persist + flush before the app is suspended/killed ────────────────────
+  //
+  // On mobile the OS can tear down the WebView (and the Rust process with it)
+  // the moment the app is backgrounded — none of the in-app flush paths
+  // (closeTab / leave / init) run, so unsaved content that lives only in
+  // memory would be lost. `visibilitychange → hidden` and `pagehide` are the
+  // reliable web-lifecycle signals that fire *before* that teardown.
+  $effect(() => {
+    if (typeof document === "undefined") return;
+
+    const flush = () => {
+      // Force CodeMirror to commit any in-progress IME composition (Gboard
+      // composes a word before it lands in the document) so the latest
+      // keystrokes are mirrored into the store before we persist.
+      editorSearch.getActiveView()?.contentDOM.blur();
+      // Snapshot the (now durable) unsaved buffers, then save dirty tabs to
+      // disk. persistTabs is synchronous up to the IPC call; flushAllTabs is
+      // best-effort — if the OS suspends mid-flush, the durable snapshot from
+      // persistTabs still covers us via hot-exit restore.
+      workspace.persistTabs();
+      void editor.flushAllTabs();
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flush);
+    };
   });
 
   onMount(async () => {

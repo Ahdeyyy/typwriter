@@ -17,6 +17,7 @@ mod watcher;
 use log::{error, info, warn};
 use parking_lot::{Mutex, RwLock};
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
@@ -348,15 +349,23 @@ impl WorkspaceState {
 
     // ─── Open tabs persistence ──────────────────────────────────────────────
 
-    pub fn save_workspace_tabs(&self, tabs: Vec<String>, active_tab_id: Option<String>) {
+    pub fn save_workspace_tabs(
+        &self,
+        tabs: Vec<String>,
+        active_tab_id: Option<String>,
+        unsaved: HashMap<String, String>,
+    ) {
         let root = self.root.read();
         let Some(root) = root.as_ref() else {
             return;
         };
-        store::save_workspace_tabs(&self.app_handle, root, tabs, active_tab_id);
+        store::save_workspace_tabs(&self.app_handle, root, tabs, active_tab_id, unsaved);
     }
 
-    pub fn get_workspace_tabs(&self, root: &str) -> Option<(Vec<String>, Option<String>)> {
+    pub fn get_workspace_tabs(
+        &self,
+        root: &str,
+    ) -> Option<(Vec<String>, Option<String>, HashMap<String, String>)> {
         store::get_workspace_tabs(&self.app_handle, &PathBuf::from(root))
     }
 

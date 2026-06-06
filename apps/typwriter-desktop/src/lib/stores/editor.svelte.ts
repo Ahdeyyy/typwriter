@@ -12,6 +12,7 @@ import {
 import type { CompileReason } from '$lib/types';
 import { workspace } from './workspace.svelte';
 import { settings } from './settings.svelte';
+import { platform } from './platform.svelte';
 import { normalize, basename } from '$lib/paths';
 import { logError } from '$lib/logger';
 import { toast } from 'svelte-sonner';
@@ -81,11 +82,11 @@ class EditorStore {
         this.cursorJumpRequest = { tabId, offset };
     }
 
-    openFile(relPath: string): ResultAsync<void, string> {
-        return ResultAsync.fromPromise(this._openFile(relPath), (err) => String(err));
+    openFile(relPath: string, unsavedContent?: string): ResultAsync<void, string> {
+        return ResultAsync.fromPromise(this._openFile(relPath, unsavedContent), (err) => String(err));
     }
 
-    private async _openFile(relPath: string): Promise<void> {
+    private async _openFile(relPath: string, unsavedContent?: string): Promise<void> {
         const id = normalize(relPath);
         if (this.activeTabId && this.activeTabId !== id) {
             await this.flushActiveTab();
@@ -124,6 +125,21 @@ class EditorStore {
         workspace.schedulePersistTabs();
 
         if (viewMode === 'unsupported') {
+            return;
+        }
+
+        // Hot-exit restore: if durable unsaved content was captured before the
+        // app was torn down (e.g. the OS killed the WebView while backgrounded),
+        // seed the buffer from it instead of the now-stale disk copy, and mark
+        // the tab dirty so it still needs an explicit save. Also re-seed the
+        // Rust shadow so the next compile renders the restored buffer.
+        if (typeof unsavedContent === 'string' && viewMode === 'text') {
+            tab.content = unsavedContent;
+            tab.hasUnsavedChanges = true;
+            tab.isLoading = false;
+            updateFileContent(tab.absPath, unsavedContent).mapErr((err) =>
+                logError('restore unsaved shadow write failed:', err)
+            );
             return;
         }
 
@@ -240,6 +256,9 @@ class EditorStore {
 
         this._scheduleTypingPreview(tab);
         this._scheduleIdleSave(tab);
+        // Persist the unsaved buffer to durable storage (debounced) so it
+        // survives a non-graceful teardown — see getTabState / hot-exit restore.
+        workspace.schedulePersistTabs();
     }
 
     formatActiveFile(): ResultAsync<void, string> {
@@ -327,6 +346,9 @@ class EditorStore {
         // their newer content still needs to be persisted on the next pass.
         if (tab.content === contentToSave) {
             tab.hasUnsavedChanges = false;
+            // The tab is clean now; re-persist so it drops out of the durable
+            // unsaved map and a later restore doesn't resurrect stale edits.
+            workspace.schedulePersistTabs();
         }
     }
 
@@ -493,9 +515,15 @@ class EditorStore {
     private _scheduleIdleSave(tab: TabInfo): void {
         this._clearIdleSave(tab.id);
         if (!settings.autoSaveEnabled) return;
+        // On mobile, the OS can suspend/kill the app at any moment, so cap the
+        // idle-save delay aggressively to shrink the window where edits live
+        // only in memory.
+        const delay = platform.isMobile
+            ? Math.min(settings.autoSaveDelayMs, 600)
+            : settings.autoSaveDelayMs;
         this._idleSaveTimers.set(tab.id, setTimeout(() => {
             void this.flushTab(tab.id).catch(() => {});
-        }, settings.autoSaveDelayMs));
+        }, delay));
     }
 
     private _requestPreview(reason: CompileReason): void {
@@ -562,10 +590,20 @@ class EditorStore {
         map.set(newId, timer);
     }
 
-    getTabState(): { tabs: string[]; activeTabId: string | null } {
+    getTabState(): { tabs: string[]; activeTabId: string | null; unsaved: Record<string, string> } {
+        // Capture the live buffer of every dirty, editable text tab so it can be
+        // restored verbatim after a teardown (hot exit). Clean tabs are omitted
+        // — their content is already on disk.
+        const unsaved: Record<string, string> = {};
+        for (const t of this.tabs) {
+            if (t.isEditable && t.hasUnsavedChanges) {
+                unsaved[t.relPath] = t.content;
+            }
+        }
         return {
             tabs: this.tabs.map((t) => t.relPath),
             activeTabId: this.activeTabId,
+            unsaved,
         };
     }
 

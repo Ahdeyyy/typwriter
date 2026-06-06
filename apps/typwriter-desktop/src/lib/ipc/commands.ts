@@ -142,16 +142,22 @@ export function clearRecentWorkspaces() {
     return ResultAsync.fromPromise(invoke<void>('clear_recent_workspaces'), toErrString);
 }
 
-export function saveWorkspaceTabs(tabs: string[], activeTabId: string | null) {
+export function saveWorkspaceTabs(
+    tabs: string[],
+    activeTabId: string | null,
+    unsaved: Record<string, string> = {}
+) {
     return ResultAsync.fromPromise(
-        invoke<void>('save_workspace_tabs', { tabs, activeTabId }),
+        invoke<void>('save_workspace_tabs', { tabs, activeTabId, unsaved }),
         toErrString
     );
 }
 
 export function getWorkspaceTabs(root: string) {
     return ResultAsync.fromPromise(
-        invoke<[string[], string | null] | null>('get_workspace_tabs', { root }),
+        invoke<[string[], string | null, Record<string, string>] | null>('get_workspace_tabs', {
+            root,
+        }),
         toErrString
     );
 }

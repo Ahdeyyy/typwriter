@@ -399,6 +399,21 @@
         if (!update.docChanged) return;
         editor.handleTabContentChange(tabId, update.state.doc.toString());
       }),
+      // Mobile: save on blur. The soft keyboard dismissing or the app being
+      // backgrounded blurs the editor; persisting here shrinks the window
+      // where edits live only in memory before the OS can kill the WebView.
+      ...(platform.isMobile
+        ? [
+            EditorView.domEventHandlers({
+              blur: () => {
+                editor
+                  .saveTabById(tabId)
+                  .mapErr((err) => logError("save-on-blur error:", err));
+                return false;
+              },
+            }),
+          ]
+        : []),
       EditorView.updateListener.of((update) => {
         if (!update.selectionSet) return;
         const tab = editor.tabs.find((t) => t.id === tabId);

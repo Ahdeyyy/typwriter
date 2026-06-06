@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, sync::Arc, time::Instant};
+use std::{collections::HashMap, fs, path::PathBuf, sync::Arc, time::Instant};
 
 use log::{error, info};
 use serde::Serialize;
@@ -345,16 +345,17 @@ pub fn clear_recent_workspaces(workspace: State<'_, Arc<WorkspaceState>>) {
 pub fn save_workspace_tabs(
     tabs: Vec<String>,
     active_tab_id: Option<String>,
+    unsaved: HashMap<String, String>,
     workspace: State<'_, Arc<WorkspaceState>>,
 ) {
-    workspace.save_workspace_tabs(tabs, active_tab_id);
+    workspace.save_workspace_tabs(tabs, active_tab_id, unsaved);
 }
 
 #[tauri::command]
 pub fn get_workspace_tabs(
     root: String,
     workspace: State<'_, Arc<WorkspaceState>>,
-) -> Option<(Vec<String>, Option<String>)> {
+) -> Option<(Vec<String>, Option<String>, HashMap<String, String>)> {
     workspace.get_workspace_tabs(&root)
 }
 

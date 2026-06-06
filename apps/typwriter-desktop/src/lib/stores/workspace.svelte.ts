@@ -230,9 +230,10 @@ class WorkspaceStore {
         const data = result.value;
         if (!data) return;
 
-        const [tabPaths, activeTabId] = data;
+        const [tabPaths, activeTabId, unsaved] = data;
         for (const relPath of tabPaths) {
-            await editor.openFile(relPath).match(
+            const override = unsaved?.[relPath] ?? unsaved?.[normalize(relPath)];
+            await editor.openFile(relPath, override).match(
                 () => {},
                 (err) => logError(`restore tab failed for ${relPath}:`, err),
             );
@@ -470,7 +471,7 @@ class WorkspaceStore {
     persistTabs(): void {
         if (!this.rootPath) return;
         const state = editor.getTabState();
-        saveWorkspaceTabs(state.tabs, state.activeTabId).mapErr((err) => {
+        saveWorkspaceTabs(state.tabs, state.activeTabId, state.unsaved).mapErr((err) => {
             logError('saveWorkspaceTabs failed:', err);
         });
     }
