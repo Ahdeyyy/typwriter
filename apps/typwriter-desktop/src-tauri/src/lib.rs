@@ -128,6 +128,10 @@ pub fn run() {
             // screen. Tear it down whenever the main window goes away — handled
             // here in Rust so it fires on every close path, not just the ones
             // where the frontend gets to run its cleanup.
+            // The preview popout is desktop-only (mobile has no multi-window),
+            // and `WebviewWindow::destroy` is itself a desktop-only API, so the
+            // whole teardown is gated behind `#[cfg(desktop)]`.
+            #[cfg(desktop)]
             if window.label() == "main"
                 && matches!(
                     event,
