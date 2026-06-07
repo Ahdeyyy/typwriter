@@ -47,6 +47,14 @@ pub struct EditorWorld {
     /// Workspace root on disk — updatable when the user opens a new folder.
     root: RwLock<PathBuf>,
 
+    /// SAF-aware filesystem provider. A workspace folder picked through
+    /// Android's Storage Access Framework is invisible to `std::fs` (the app
+    /// holds no broad storage permission), so source files, images and other
+    /// assets must be read through android-fs. `VcsState` owns the registry of
+    /// SAF roots and hands back the right [`WorkingTreeFs`] accessor; off
+    /// Android (and for the app-managed dir) this is always a std::fs accessor.
+    vcs: Arc<crate::vcs::VcsState>,
+
     /// The file currently set as "main" by the user. `None` when no main
     /// file has been chosen — we deliberately avoid a sentinel `FileId`
     /// here since any plausible sentinel path (e.g. `main.typ`) could
@@ -139,7 +147,7 @@ impl EditorWorld {
         }
     }
 
-    pub fn new(root: PathBuf, app_handle: AppHandle) -> Self {
+    pub fn new(root: PathBuf, app_handle: AppHandle, vcs: Arc<crate::vcs::VcsState>) -> Self {
         let pkg = app_handle.package_info();
         let user_agent = format!("{}/{}", pkg.name, pkg.version);
         let downloader = Downloader::new(user_agent.clone());
@@ -152,6 +160,7 @@ impl EditorWorld {
             PackageStorage::new(cache_dir, package_dir, Downloader::new(user_agent));
         Self {
             root: RwLock::new(root),
+            vcs,
             main: RwLock::new(None),
             library: OnceLock::new(),
             font_data: RwLock::new(None),
@@ -340,6 +349,39 @@ impl EditorWorld {
         self.file_cache.lock().remove(&id);
     }
 
+    /// Read a file's raw bytes for the compiler, routing workspace-local files
+    /// through the SAF-aware accessor. A folder picked via Android's Storage
+    /// Access Framework is unreachable with `std::fs`, so source files and
+    /// embedded assets (`image(...)`, `include`/`read` targets) must be read
+    /// through android-fs. Package files live in the app-private cache, which is
+    /// always reachable with `std::fs` on every platform — and lie outside the
+    /// workspace root — so they keep the direct path.
+    fn read_file_bytes(&self, id: FileId) -> FileResult<Vec<u8>> {
+        let path = self.id_to_path(id)?;
+
+        if id.package().is_some() {
+            return std::fs::read(&path).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    FileError::NotFound(path)
+                } else {
+                    FileError::AccessDenied
+                }
+            });
+        }
+
+        let root = self.root.read().clone();
+        let fs = self.vcs.working_tree_fs_for(&root);
+        fs.read_file(&path).map_err(|_| {
+            // `WorkingTreeFs` collapses io errors to strings; recover the
+            // NotFound/AccessDenied distinction typst relies on with a probe.
+            if fs.exists(&path) {
+                FileError::AccessDenied
+            } else {
+                FileError::NotFound(path)
+            }
+        })
+    }
+
     /// Map a FileId back to an absolute path on disk.
     ///
     /// For local files, joins the root with the virtual path.
@@ -398,15 +440,9 @@ impl World for EditorWorld {
         let text = if let Some(content) = self.shadow.read().get(&id) {
             content.clone()
         } else {
-            // 3. Fall back to disk (may trigger a package download)
-            let path = self.id_to_path(id)?;
-            std::fs::read_to_string(&path).map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    FileError::NotFound(path.clone())
-                } else {
-                    FileError::AccessDenied
-                }
-            })?
+            // 3. Fall back to disk/SAF (may trigger a package download)
+            let bytes = self.read_file_bytes(id)?;
+            String::from_utf8(bytes).map_err(|_| FileError::AccessDenied)?
         };
 
         let source = Source::new(id, text);
@@ -418,9 +454,7 @@ impl World for EditorWorld {
         if let Some(bytes) = self.file_cache.lock().get(&id) {
             return Ok(bytes.clone());
         }
-        let path = self.id_to_path(id)?;
-        let bytes = std::fs::read(&path).map_err(|_| FileError::NotFound(path))?;
-        let bytes = Bytes::new(bytes);
+        let bytes = Bytes::new(self.read_file_bytes(id)?);
         self.file_cache.lock().insert(id, bytes.clone());
         Ok(bytes)
     }

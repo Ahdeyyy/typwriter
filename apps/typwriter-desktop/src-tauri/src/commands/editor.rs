@@ -8,6 +8,7 @@
 
 use std::{path::Path, sync::Arc, time::Instant};
 
+use base64::Engine;
 use ecow::EcoString;
 use log::{debug, error, info, warn};
 use parking_lot::RwLock;
@@ -134,8 +135,18 @@ pub enum JumpResponse {
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FileContentResponse {
-    Text { content: String },
-    Image { path: String, mime: String },
+    Text {
+        content: String,
+    },
+    Image {
+        path: String,
+        mime: String,
+        /// Inline `data:` URL with the image bytes, populated only when the
+        /// workspace root is behind Android's Storage Access Framework — there
+        /// `convertFileSrc`/the asset protocol can't reach the file, so the
+        /// frontend renders these bytes directly instead of fetching `path`.
+        data: Option<String>,
+    },
     Unsupported,
 }
 
@@ -143,9 +154,18 @@ pub enum FileContentResponse {
 
 /// Read a file from disk and return its content.
 /// Text files are returned as UTF-8 strings; image files are returned as paths
-/// that the frontend can convert into Tauri asset URLs.
+/// that the frontend can convert into Tauri asset URLs (or, for SAF roots, as
+/// inline `data:` URLs since the asset protocol can't reach them).
+///
+/// Reads route through the workspace's [`WorkingTreeFs`], so a folder picked
+/// via Android's Storage Access Framework — invisible to `std::fs` — is
+/// readable just like an app-managed or desktop folder.
 #[tauri::command]
-pub fn read_file(path: String) -> Result<FileContentResponse, String> {
+pub fn read_file(
+    path: String,
+    workspace: State<'_, Arc<WorkspaceState>>,
+    vcs: State<'_, Arc<VcsState>>,
+) -> Result<FileContentResponse, String> {
     let t = Instant::now();
     info!("read_file: path={path:?}");
 
@@ -155,6 +175,13 @@ pub fn read_file(path: String) -> Result<FileContentResponse, String> {
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
+
+    // Resolve the SAF-aware accessor for the current workspace root. An empty
+    // root (no workspace open) maps to a plain std::fs accessor, since `abs` is
+    // always an absolute path the local filesystem can serve directly.
+    let root = workspace.root.read().clone().unwrap_or_default();
+    let fs = vcs.working_tree_fs_for(&root);
+    let is_saf = vcs.is_saf_root(&root);
 
     // Determine MIME type for image extensions
     let mime = match ext.as_str() {
@@ -171,6 +198,31 @@ pub fn read_file(path: String) -> Result<FileContentResponse, String> {
     };
 
     if let Some(mime) = mime {
+        // On a SAF root the asset protocol (std::fs-backed) can't reach the
+        // file, so read the bytes through android-fs and ship them inline as a
+        // data URL. Elsewhere keep returning a path the frontend turns into an
+        // asset URL — cheap, and avoids base64-bloating every image over IPC.
+        if is_saf {
+            let bytes = fs.read_file(abs).map_err(|e| {
+                error!(
+                    "read_file: saf read image failed path={path:?} err=\"{e}\" ({:.1}ms)",
+                    t.elapsed().as_secs_f64() * 1000.0
+                );
+                e
+            })?;
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            info!(
+                "read_file: ok saf image mime={mime} bytes={} ({:.1}ms)",
+                bytes.len(),
+                t.elapsed().as_secs_f64() * 1000.0
+            );
+            return Ok(FileContentResponse::Image {
+                path: abs.to_string_lossy().into_owned(),
+                mime: mime.to_string(),
+                data: Some(format!("data:{mime};base64,{encoded}")),
+            });
+        }
+
         let metadata = std::fs::metadata(abs).map_err(|e| {
             error!(
                 "read_file: io error reading image metadata path={path:?} err=\"{e}\" ({:.1}ms)",
@@ -186,6 +238,7 @@ pub fn read_file(path: String) -> Result<FileContentResponse, String> {
         return Ok(FileContentResponse::Image {
             path: abs.to_string_lossy().into_owned(),
             mime: mime.to_string(),
+            data: None,
         });
     }
 
@@ -217,9 +270,16 @@ pub fn read_file(path: String) -> Result<FileContentResponse, String> {
     );
 
     if is_text {
-        let content = std::fs::read_to_string(abs).map_err(|e| {
+        let bytes = fs.read_file(abs).map_err(|e| {
             error!(
                 "read_file: io error reading text path={path:?} err=\"{e}\" ({:.1}ms)",
+                t.elapsed().as_secs_f64() * 1000.0
+            );
+            e
+        })?;
+        let content = String::from_utf8(bytes).map_err(|e| {
+            error!(
+                "read_file: non-utf8 text path={path:?} err=\"{e}\" ({:.1}ms)",
                 t.elapsed().as_secs_f64() * 1000.0
             );
             e.to_string()
@@ -296,13 +356,18 @@ pub fn save_file(
         e.to_string()
     })?;
 
-    std::fs::write(abs, content.as_bytes()).map_err(|e| {
-        error!(
-            "save_file: io error path={path:?} err=\"{e}\" ({:.1}ms)",
-            t.elapsed().as_secs_f64() * 1000.0
-        );
-        e.to_string()
-    })?;
+    // Write through the SAF-aware accessor so saving works on a folder picked
+    // via Android's Storage Access Framework, not just on std::fs paths.
+    let root = workspace.root.read().clone().unwrap_or_default();
+    vcs.working_tree_fs_for(&root)
+        .write_file(abs, content.as_bytes())
+        .map_err(|e| {
+            error!(
+                "save_file: io error path={path:?} err=\"{e}\" ({:.1}ms)",
+                t.elapsed().as_secs_f64() * 1000.0
+            );
+            e
+        })?;
 
     // Remove the shadow since disk now matches the editor content.
     world.shadow_remove(id);

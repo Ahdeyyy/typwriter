@@ -231,17 +231,8 @@ class WorkspaceStore {
         if (!data) return;
 
         const [tabPaths, activeTabId, unsaved] = data;
-        for (const relPath of tabPaths) {
-            const override = unsaved?.[relPath] ?? unsaved?.[normalize(relPath)];
-            await editor.openFile(relPath, override).match(
-                () => {},
-                (err) => logError(`restore tab failed for ${relPath}:`, err),
-            );
-        }
-
-        if (activeTabId && editor.tabs.find((t) => t.id === activeTabId)) {
-            await editor.activateTab(activeTabId);
-        }
+        // Loads every tab's content concurrently and activates the saved tab.
+        await editor.restoreTabs(tabPaths, activeTabId, unsaved ?? {});
 
         if (editor.activeTab) {
             this.activeFilePath = editor.activeTab.relPath;

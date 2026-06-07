@@ -38,6 +38,13 @@ function imageAssetSrc(path: string): string {
     return convertFileSrc(normalize(path));
 }
 
+/** Resolve the <img> src for an image read response. SAF workspace roots can't
+ *  be reached by the asset protocol, so the backend ships the bytes inline as a
+ *  `data:` URL — prefer it when present, otherwise convert the path. */
+function imageSrcFromResponse(res: { path: string; data?: string | null }): string {
+    return res.data ?? imageAssetSrc(res.path);
+}
+
 export interface TabInfo {
     id: string;
     relPath: string;
@@ -155,6 +162,88 @@ class EditorStore {
         workspace.schedulePersistTabs();
     }
 
+    /** Restore a set of tabs at workspace-open time.
+     *
+     *  Tab descriptors are created synchronously so the tab-bar order matches
+     *  the persisted order, then every tab's on-disk content is loaded
+     *  *concurrently*. Reading each file is an IPC round-trip; doing them one
+     *  after another (the previous per-tab `openFile` loop) made workspace open
+     *  scale linearly with tab count — painfully so on mobile where IPC latency
+     *  dominates. Unsaved (hot-exit) buffers are seeded without a disk read.
+     *
+     *  Assumes the editor was just reset (no existing tabs) — the workspace
+     *  open path calls `reset()` before this. */
+    async restoreTabs(
+        tabPaths: string[],
+        activeTabId: string | null,
+        unsaved: Record<string, string>,
+    ): Promise<void> {
+        const loads: Promise<void>[] = [];
+
+        for (const relPath of tabPaths) {
+            const id = normalize(relPath);
+            if (this.tabs.find((t) => t.id === id)) {
+                continue;
+            }
+
+            const absPath = workspace.toAbs(id);
+            const ext = extOf(id);
+            const viewMode: ViewMode = IMAGE_EXTS.has(ext)
+                ? 'image'
+                : TEXT_EXTS.has(ext)
+                    ? 'text'
+                    : 'unsupported';
+
+            const tab: TabInfo = {
+                id,
+                relPath: id,
+                absPath,
+                name: basename(id),
+                viewMode,
+                isEditable: viewMode === 'text',
+                content: '',
+                imageSrc: null,
+                hasUnsavedChanges: false,
+                isLoading: viewMode !== 'unsupported',
+            };
+            this.tabs.push(tab);
+
+            if (viewMode === 'unsupported') {
+                continue;
+            }
+
+            // Hot-exit restore: seed from the durable unsaved buffer instead of
+            // the now-stale disk copy, mark the tab dirty, and re-seed the Rust
+            // shadow so the next compile renders the restored buffer. Mirrors
+            // the unsaved-content branch in `_openFile`.
+            const override = unsaved[relPath] ?? unsaved[id];
+            if (typeof override === 'string' && viewMode === 'text') {
+                tab.content = override;
+                tab.hasUnsavedChanges = true;
+                tab.isLoading = false;
+                updateFileContent(tab.absPath, override).mapErr((err) =>
+                    logError('restore unsaved shadow write failed:', err)
+                );
+                continue;
+            }
+
+            loads.push(
+                this._loadTabContent(id, absPath, viewMode).catch((err) =>
+                    logError(`restore tab failed for ${relPath}:`, err)
+                )
+            );
+        }
+
+        await Promise.all(loads);
+
+        // Activate the previously-active tab, falling back to the first one.
+        this.activeTabId =
+            activeTabId && this.tabs.some((t) => t.id === activeTabId)
+                ? activeTabId
+                : (this.tabs[0]?.id ?? null);
+        workspace.schedulePersistTabs();
+    }
+
     private async _loadTabContent(tabId: string, absPath: string, viewMode: ViewMode): Promise<void> {
         const response = await readFile(absPath);
         const liveTab = this.tabs.find((t) => t.id === tabId);
@@ -170,7 +259,7 @@ class EditorStore {
             if (response.value.type !== 'image') {
                 throw new Error(`Expected image, got ${response.value.type}`);
             }
-            liveTab.imageSrc = imageAssetSrc(response.value.path);
+            liveTab.imageSrc = imageSrcFromResponse(response.value);
             liveTab.content = '';
         } else {
             if (response.value.type !== 'text') {
@@ -254,7 +343,17 @@ class EditorStore {
         tab.content = content;
         tab.hasUnsavedChanges = true;
 
-        this._scheduleTypingPreview(tab);
+        // Live, per-keystroke preview is a desktop-only luxury. On mobile it is
+        // (a) invisible — the preview is a separate, toggled view that is not
+        // shown while editing — and (b) ruinously expensive: each tick ships the
+        // *entire* document across the WebView IPC bridge on the main thread and
+        // queues a recompile, which is exactly what makes typing freeze. On
+        // mobile the shadow buffer and the preview are instead refreshed by
+        // idle-save, save-on-blur, and the editor→preview view toggle — all of
+        // which save the file and trigger a recompile (see save_file in Rust).
+        if (!platform.isMobile) {
+            this._scheduleTypingPreview(tab);
+        }
         this._scheduleIdleSave(tab);
         // Persist the unsaved buffer to durable storage (debounced) so it
         // survives a non-graceful teardown — see getTabState / hot-exit restore.
@@ -395,7 +494,7 @@ class EditorStore {
 
             if (tab.viewMode === 'image') {
                 if (response.value.type === 'image') {
-                    tab.imageSrc = imageAssetSrc(response.value.path);
+                    tab.imageSrc = imageSrcFromResponse(response.value);
                 }
                 tab.hasUnsavedChanges = false;
                 continue;

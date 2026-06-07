@@ -43,7 +43,9 @@ export type JumpResponse =
 /** Internally-tagged union (discriminant: `type`). */
 export type FileContentResponse =
     | { type: 'text'; content: string }
-    | { type: 'image'; path: string; mime: string }
+    // `data` is an inline `data:` URL, set only for SAF workspace roots where
+    // the asset protocol can't reach `path`; the frontend prefers it when present.
+    | { type: 'image'; path: string; mime: string; data?: string | null }
     | { type: 'unsupported' };
 
 // ─── Click / Jump ─────────────────────────────────────────────────────────────

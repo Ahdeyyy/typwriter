@@ -153,8 +153,12 @@ pub fn run() {
             let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
             // ── Shared state (managed immediately — fonts arrive later) ──────
-            let world = Arc::new(EditorWorld::new(root, handle.clone()));
+            // `vcs` is constructed first: it owns the SAF-root registry and the
+            // `WorkingTreeFs` provider the world reads source files through, so
+            // a folder picked via Android's Storage Access Framework is fully
+            // usable (open / edit / compile), not just listable.
             let vcs = Arc::new(VcsState::new(handle.clone()));
+            let world = Arc::new(EditorWorld::new(root, handle.clone(), vcs.clone()));
             let pipeline = Arc::new(PreviewPipeline::new(
                 world.clone(),
                 handle.clone(),
