@@ -354,7 +354,16 @@
 			<div class="flex items-center gap-2 text-sm font-medium">
 				<HugeiconsIcon icon={AndroidIcon} size={15} class="text-muted-foreground" />
 				Android
+				<span
+					class="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[0.625rem] font-medium tracking-wide text-amber-600 uppercase dark:text-amber-400"
+				>
+					Experimental
+				</span>
 			</div>
+			<p class="text-xs text-muted-foreground">
+				The Android build is highly experimental — expect bugs, missing features, and breaking
+				changes. Back up your work and don't rely on it for anything important yet.
+			</p>
 			{#if androidAssets.length > 0}
 				{#each androidAssets as asset (asset.name)}
 					<Button

@@ -17,6 +17,7 @@ mod watcher;
 use log::{error, info, warn};
 use parking_lot::{Mutex, RwLock};
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
@@ -30,7 +31,7 @@ use typst::syntax::{FileId, VirtualPath};
 
 use crate::{
     compiler::{render_page, CompileReason, PreviewPipeline},
-    vcs::VcsState,
+    vcs::{CommitTrigger, VcsState, WorkingTreeFs},
     world::EditorWorld,
 };
 use path::{ExternalPath, WorkspacePath};
@@ -120,6 +121,12 @@ impl WorkspaceState {
         self.pipeline.invalidate_cache();
         self.pipeline.attach_disk_cache(&path);
 
+        // Kick the (lazy) font search off now so the system scan overlaps the
+        // rest of the open path — watcher start, cache attach, frontend
+        // round-trips — and is usually finished by the time the first compile
+        // needs it. Idempotent, so the compile worker calling it again is free.
+        self.world.ensure_fonts_loading();
+
         // Bind the version-history system to this workspace. Initializes a
         // `.git` repo on first open and seeds an initial restore point so the
         // timeline is never empty.
@@ -155,13 +162,19 @@ impl WorkspaceState {
             if main_path.exists() {
                 info!("WorkspaceState::open_folder: restoring main file main={main:?}");
                 let _ = self.set_main_file(main_path.clone());
-                self.pipeline.request_compile(CompileReason::MainFile);
                 // Compute the workspace-relative path for the frontend (forward slashes).
                 restored_main = main_path
                     .strip_prefix(&path)
                     .ok()
                     .and_then(|r| r.to_str())
                     .map(|s| s.replace('\\', "/"));
+                // Paint the previously-rendered preview from disk straight away,
+                // so the user sees pages while fonts load and the document
+                // recompiles in the background. The compile below reconciles.
+                if let Some(rel) = &restored_main {
+                    self.pipeline.restore_preview(rel);
+                }
+                self.pipeline.request_compile(CompileReason::MainFile);
             } else {
                 warn!(
                     "WorkspaceState::open_folder: persisted main file no longer exists main={main:?}"
@@ -336,15 +349,23 @@ impl WorkspaceState {
 
     // ─── Open tabs persistence ──────────────────────────────────────────────
 
-    pub fn save_workspace_tabs(&self, tabs: Vec<String>, active_tab_id: Option<String>) {
+    pub fn save_workspace_tabs(
+        &self,
+        tabs: Vec<String>,
+        active_tab_id: Option<String>,
+        unsaved: HashMap<String, String>,
+    ) {
         let root = self.root.read();
         let Some(root) = root.as_ref() else {
             return;
         };
-        store::save_workspace_tabs(&self.app_handle, root, tabs, active_tab_id);
+        store::save_workspace_tabs(&self.app_handle, root, tabs, active_tab_id, unsaved);
     }
 
-    pub fn get_workspace_tabs(&self, root: &str) -> Option<(Vec<String>, Option<String>)> {
+    pub fn get_workspace_tabs(
+        &self,
+        root: &str,
+    ) -> Option<(Vec<String>, Option<String>, HashMap<String, String>)> {
         store::get_workspace_tabs(&self.app_handle, &PathBuf::from(root))
     }
 
@@ -367,25 +388,61 @@ impl WorkspaceState {
             .map_err(|e| e.to_string())
     }
 
+    /// SAF-aware filesystem accessor for the current workspace root. Every
+    /// structural file op routes its disk work through this so a folder picked
+    /// via Android's Storage Access Framework (unreachable with `std::fs`) is
+    /// mutable, not just listable. Off Android / for the managed dir this is a
+    /// plain std::fs accessor.
+    fn working_fs(&self) -> Result<Box<dyn WorkingTreeFs>, String> {
+        let root = self.root.read().clone().ok_or("No workspace open")?;
+        Ok(self.vcs.working_tree_fs_for(&root))
+    }
+
+    /// Capture a restore point recording a structural file operation so it can
+    /// be undone from the timeline. File operations are user-intentional and
+    /// infrequent, so they always snapshot (no save/compile policy gate) and
+    /// are preserved from retention. The snapshot is taken *after* the
+    /// operation, matching `save_file`: HEAD ends up matching disk, and the
+    /// recoverable prior state lives in the preceding restore point.
+    ///
+    /// Failures are logged and swallowed — versioning must never block file
+    /// management, mirroring the rest of the VCS integration.
+    pub(crate) fn snapshot_file_op(&self, message: &str) {
+        match self.vcs.commit_if_changed(CommitTrigger::FileOp, message) {
+            Ok(Some(id)) => {
+                let short = &id[..id.len().min(8)];
+                info!("WorkspaceState::snapshot_file_op: {short} — {message}");
+            }
+            Ok(None) => {
+                info!("WorkspaceState::snapshot_file_op: no change to snapshot — {message}");
+            }
+            Err(err) => {
+                warn!("WorkspaceState::snapshot_file_op: failed err=\"{err}\" — {message}");
+            }
+        }
+    }
+
     // ─── FS operations ─────────────────────────────────────────────────────
 
     /// Create an empty file at `path`.
     pub fn create_file(&self, path: &str) -> Result<(), String> {
         let t = Instant::now();
         let abs = self.resolve(path)?;
+        let fs = self.working_fs()?;
         info!("WorkspaceState::create_file: abs={abs:?}");
         if let Some(parent) = abs.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
+            fs.create_dir_all(parent).map_err(|e| {
                 error!(
                     "WorkspaceState::create_file: create_dir_all failed abs={abs:?} err=\"{e}\""
                 );
-                e.to_string()
+                e
             })?;
         }
-        std::fs::File::create(&abs).map_err(|e| {
+        fs.write_file(&abs, b"").map_err(|e| {
             error!("WorkspaceState::create_file: create failed abs={abs:?} err=\"{e}\"");
-            e.to_string()
+            e
         })?;
+        self.snapshot_file_op(&format!("Created {}", basename(path)));
         info!(
             "WorkspaceState::create_file: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -398,10 +455,13 @@ impl WorkspaceState {
         let t = Instant::now();
         let abs = self.resolve(path)?;
         info!("WorkspaceState::create_folder: abs={abs:?}");
-        std::fs::create_dir_all(&abs).map_err(|e| {
+        self.working_fs()?.create_dir_all(&abs).map_err(|e| {
             error!("WorkspaceState::create_folder: failed abs={abs:?} err=\"{e}\"");
-            e.to_string()
+            e
         })?;
+        // Empty directories aren't tracked by the content-addressed store, so
+        // this is typically a no-op; kept for uniformity across file ops.
+        self.snapshot_file_op(&format!("Created folder {}", basename(path)));
         info!(
             "WorkspaceState::create_folder: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -414,9 +474,9 @@ impl WorkspaceState {
         let t = Instant::now();
         let abs = self.resolve(path)?;
         info!("WorkspaceState::delete_file: abs={abs:?}");
-        std::fs::remove_file(&abs).map_err(|e| {
+        self.working_fs()?.remove_file(&abs).map_err(|e| {
             error!("WorkspaceState::delete_file: failed abs={abs:?} err=\"{e}\"");
-            e.to_string()
+            e
         })?;
         if let Some(id) = self.world.path_to_id(&abs) {
             self.world.shadow_remove(id);
@@ -431,6 +491,7 @@ impl WorkspaceState {
         {
             self.clear_main_file();
         }
+        self.snapshot_file_op(&format!("Deleted {}", basename(path)));
         info!(
             "WorkspaceState::delete_file: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -443,16 +504,17 @@ impl WorkspaceState {
         let t = Instant::now();
         let src_abs = self.resolve(src)?;
         let dst_abs = self.resolve(dst)?;
+        let fs = self.working_fs()?;
         info!("WorkspaceState::rename_file: src={src_abs:?} dst={dst_abs:?}");
         if let Some(parent) = dst_abs.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
+            fs.create_dir_all(parent).map_err(|e| {
                 error!("WorkspaceState::rename_file: create_dir_all failed dst_parent={parent:?} err=\"{e}\"");
-                e.to_string()
+                e
             })?;
         }
-        std::fs::rename(&src_abs, &dst_abs).map_err(|e| {
+        fs.rename(&src_abs, &dst_abs).map_err(|e| {
             error!("WorkspaceState::rename_file: rename failed src={src_abs:?} dst={dst_abs:?} err=\"{e}\"");
-            e.to_string()
+            e
         })?;
         // Invalidate old id; new id will be cached on next access.
         if let Some(id) = self.world.path_to_id(&src_abs) {
@@ -460,6 +522,12 @@ impl WorkspaceState {
             self.world.invalidate_file(id);
         }
         self.update_main_file_path(&src_abs, &dst_abs, false)?;
+        let message = if dirname(src) == dirname(dst) {
+            format!("Renamed {} → {}", basename(src), basename(dst))
+        } else {
+            format!("Moved {} → {}", basename(src), dst)
+        };
+        self.snapshot_file_op(&message);
         info!(
             "WorkspaceState::rename_file: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -473,26 +541,28 @@ impl WorkspaceState {
     pub fn delete_folder(&self, path: &str) -> Result<(), String> {
         let t = Instant::now();
         let abs = self.resolve(path)?;
+        let fs = self.working_fs()?;
         info!("WorkspaceState::delete_folder: abs={abs:?}");
 
         // Invalidate caches for every file inside the directory before removing.
-        if abs.is_dir() {
-            let files = collect_files_recursive(&abs);
-            info!(
-                "WorkspaceState::delete_folder: invalidating {} cached file(s)",
-                files.len()
-            );
-            for file_path in files {
-                if let Some(id) = self.world.path_to_id(&file_path) {
-                    self.world.shadow_remove(id);
-                    self.world.invalidate_file(id);
-                }
+        // `collect_files_recursive` returns empty for a non-directory (or a SAF
+        // path std::fs can't see), so the cache walk goes through the accessor
+        // too — `is_dir()` would always be false for a SAF folder.
+        let files = collect_files_recursive(fs.as_ref(), &abs);
+        info!(
+            "WorkspaceState::delete_folder: invalidating {} cached file(s)",
+            files.len()
+        );
+        for file_path in files {
+            if let Some(id) = self.world.path_to_id(&file_path) {
+                self.world.shadow_remove(id);
+                self.world.invalidate_file(id);
             }
         }
 
-        std::fs::remove_dir_all(&abs).map_err(|e| {
+        fs.remove_dir_all(&abs).map_err(|e| {
             error!("WorkspaceState::delete_folder: failed abs={abs:?} err=\"{e}\"");
-            e.to_string()
+            e
         })?;
         if self
             .main_file
@@ -503,6 +573,7 @@ impl WorkspaceState {
         {
             self.clear_main_file();
         }
+        self.snapshot_file_op(&format!("Deleted folder {}", basename(path)));
         info!(
             "WorkspaceState::delete_folder: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -520,12 +591,15 @@ impl WorkspaceState {
     pub fn import_files(&self, sources: &[String], dest_dir: &str) -> Result<(), String> {
         let t = Instant::now();
         let dest = self.resolve(dest_dir)?;
+        let fs = self.working_fs()?;
         info!(
             "WorkspaceState::import_files: dest={dest:?} count={}",
             sources.len()
         );
 
-        if !dest.is_dir() {
+        // A readable directory listing confirms `dest` exists and is a folder.
+        // `dest.is_dir()` (std::fs) would wrongly report `false` for a SAF root.
+        if fs.read_dir(&dest).is_err() {
             let e = format!("{} is not a directory", dest.display());
             error!("WorkspaceState::import_files: err=\"{e}\"");
             return Err(e);
@@ -533,6 +607,9 @@ impl WorkspaceState {
 
         for src_str in sources {
             let src_path = ExternalPath::new(src_str).map_err(|e| e.to_string())?;
+            // Source files come from a system picker / external location and are
+            // read with std::fs; only the destination (inside the workspace) may
+            // sit behind SAF, so the write goes through the accessor.
             if !src_path.as_path().is_file() {
                 let e = format!("Source is not a file: {}", src_path.as_path().display());
                 error!("WorkspaceState::import_files: err=\"{e}\"");
@@ -547,14 +624,18 @@ impl WorkspaceState {
                 e
             })?;
             let dst_path = dest.join(file_name);
-            if dst_path.exists() {
+            if fs.exists(&dst_path) {
                 let e = format!("File already exists: {}", dst_path.display());
                 error!("WorkspaceState::import_files: err=\"{e}\"");
                 return Err(e);
             }
-            std::fs::copy(src_path.as_path(), &dst_path).map_err(|e| {
-                error!("WorkspaceState::import_files: copy failed src={src_path:?} dst={dst_path:?} err=\"{e}\"");
+            let bytes = std::fs::read(src_path.as_path()).map_err(|e| {
+                error!("WorkspaceState::import_files: read failed src={src_path:?} err=\"{e}\"");
                 e.to_string()
+            })?;
+            fs.write_file(&dst_path, &bytes).map_err(|e| {
+                error!("WorkspaceState::import_files: write failed dst={dst_path:?} err=\"{e}\"");
+                e
             })?;
             info!(
                 "WorkspaceState::import_files: copied {:?} -> {:?}",
@@ -562,6 +643,12 @@ impl WorkspaceState {
             );
         }
 
+        let count = sources.len();
+        self.snapshot_file_op(&format!(
+            "Imported {count} file{} into {}",
+            if count == 1 { "" } else { "s" },
+            basename(dest_dir)
+        ));
         info!(
             "WorkspaceState::import_files: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -574,20 +661,27 @@ impl WorkspaceState {
         let t = Instant::now();
         let src_abs = self.resolve(src)?;
         let dst_abs = self.resolve(dst)?;
+        let fs = self.working_fs()?;
         info!("WorkspaceState::move_folder: src={src_abs:?} dst={dst_abs:?}");
         if let Some(parent) = dst_abs.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
+            fs.create_dir_all(parent).map_err(|e| {
                 error!("WorkspaceState::move_folder: create_dir_all failed dst_parent={parent:?} err=\"{e}\"");
-                e.to_string()
+                e
             })?;
         }
-        std::fs::rename(&src_abs, &dst_abs).map_err(|e| {
+        fs.rename(&src_abs, &dst_abs).map_err(|e| {
             error!(
                 "WorkspaceState::move_folder: failed src={src_abs:?} dst={dst_abs:?} err=\"{e}\""
             );
-            e.to_string()
+            e
         })?;
         self.update_main_file_path(&src_abs, &dst_abs, true)?;
+        let message = if dirname(src) == dirname(dst) {
+            format!("Renamed folder {} → {}", basename(src), basename(dst))
+        } else {
+            format!("Moved folder {} → {}", basename(src), dst)
+        };
+        self.snapshot_file_op(&message);
         info!(
             "WorkspaceState::move_folder: ok ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
@@ -610,7 +704,24 @@ impl WorkspaceState {
                 })?
                 .clone()
         };
-        Ok(read_dir_recursive(&root, &root))
+
+        // Read through the SAF-aware accessor: a folder picked via Android's
+        // Storage Access Framework is unreachable with std::fs (no broad storage
+        // permission), so we must list it through android-fs. The managed
+        // app-scoped dir and all desktop paths fall back to std::fs.
+        let fs = self.vcs.working_tree_fs_for(&root);
+
+        // Surface an unreadable root as an explicit error instead of silently
+        // returning an empty tree. A silent empty result is indistinguishable
+        // from a genuinely empty workspace, which is how an inaccessible root
+        // ends up looking like a workspace with no files. An empty-but-readable
+        // root is still a valid empty tree and returns Ok(vec![]).
+        fs.read_dir(&root).map_err(|e| {
+            error!("WorkspaceState::get_file_tree: cannot read root={root:?} err=\"{e}\"");
+            format!("Cannot read workspace folder {}: {e}", root.display())
+        })?;
+
+        Ok(read_dir_recursive(fs.as_ref(), &root, &root))
     }
 }
 
@@ -661,32 +772,39 @@ impl WorkspaceState {
 
 // ─── Directory reading ────────────────────────────────────────────────────────
 
-fn read_dir_recursive(root: &Path, dir: &Path) -> Vec<FileTreeEntry> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        warn!("read_dir_recursive: failed to read dir={dir:?}");
-        return vec![];
+/// Directories never shown in the file tree and never descended into. Mirrors
+/// the watcher's ignore list (`watcher::IGNORED_DIRS`) so the tree walk doesn't
+/// spend time (and IPC payload) recursing through huge generated/dependency
+/// folders. Dot-prefixed names (`.git`, `.typwriter`, `.svelte-kit`) are already
+/// filtered separately; these are the non-dotfile cases.
+const IGNORED_TREE_DIRS: &[&str] = &["node_modules", "target", "dist"];
+
+fn read_dir_recursive(fs: &dyn WorkingTreeFs, root: &Path, dir: &Path) -> Vec<FileTreeEntry> {
+    let entries = match fs.read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) => {
+            warn!("read_dir_recursive: failed to read dir={dir:?} err=\"{err}\"");
+            return vec![];
+        }
     };
 
     let mut result: Vec<FileTreeEntry> = entries
+        .into_iter()
         .filter_map(|entry| {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(err) => {
-                    warn!("read_dir_recursive: skipped entry in dir={dir:?} err=\"{err}\"");
-                    return None;
-                }
-            };
-            let path = entry.path();
-            let name = path.file_name()?.to_str()?.to_string();
+            let name = entry.name;
             // Skip hidden files/dirs (e.g. .git).
             if name.starts_with('.') {
                 return None;
             }
-            let rel = path.strip_prefix(root).ok()?;
+            let is_dir = entry.is_dir;
+            // Don't surface or descend into generated/dependency directories.
+            if is_dir && IGNORED_TREE_DIRS.contains(&name.as_str()) {
+                return None;
+            }
+            let rel = entry.path.strip_prefix(root).ok()?;
             let path_str = rel.to_str()?.to_string();
-            let is_dir = path.is_dir();
             let children = if is_dir {
-                read_dir_recursive(root, &path)
+                read_dir_recursive(fs, root, &entry.path)
             } else {
                 vec![]
             };
@@ -709,27 +827,23 @@ fn read_dir_recursive(root: &Path, dir: &Path) -> Vec<FileTreeEntry> {
     result
 }
 
-/// Recursively collect all file paths under `dir`.
-fn collect_files_recursive(dir: &Path) -> Vec<PathBuf> {
+/// Recursively collect all file paths under `dir`, through the SAF-aware
+/// accessor so a folder picked via the Storage Access Framework is walked too.
+fn collect_files_recursive(fs: &dyn WorkingTreeFs, dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        warn!("collect_files_recursive: failed to read dir={dir:?}");
-        return files;
+    let entries = match fs.read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) => {
+            warn!("collect_files_recursive: failed to read dir={dir:?} err=\"{err}\"");
+            return files;
+        }
     };
 
     for entry in entries {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(err) => {
-                warn!("collect_files_recursive: skipped entry in dir={dir:?} err=\"{err}\"");
-                continue;
-            }
-        };
-        let path = entry.path();
-        if path.is_dir() {
-            files.extend(collect_files_recursive(&path));
+        if entry.is_dir {
+            files.extend(collect_files_recursive(fs, &entry.path));
         } else {
-            files.push(path);
+            files.push(entry.path);
         }
     }
     files
@@ -738,4 +852,23 @@ fn collect_files_recursive(dir: &Path) -> Vec<PathBuf> {
 fn rewrite_path_prefix(path: &Path, src_prefix: &Path, dst_prefix: &Path) -> Option<PathBuf> {
     let suffix = path.strip_prefix(src_prefix).ok()?;
     Some(dst_prefix.join(suffix))
+}
+
+/// Last path segment of a workspace-relative (forward- or back-slash) path,
+/// used to build human-readable restore-point messages.
+fn basename(path: &str) -> &str {
+    path.trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(path)
+}
+
+/// Parent portion of a workspace-relative path, or `""` for a top-level entry.
+/// Used to distinguish a rename (same parent) from a move (different parent).
+fn dirname(path: &str) -> &str {
+    let trimmed = path.trim_end_matches(['/', '\\']);
+    match trimmed.rfind(['/', '\\']) {
+        Some(idx) => &trimmed[..idx],
+        None => "",
+    }
 }

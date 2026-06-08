@@ -10,12 +10,13 @@
 //
 // Thumbnail PNGs are written directly to `<workspace_root>/.typwriter/thumbnail.png`.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant;
 
 use log::{info, warn};
 use serde_json::{json, Value as JsonValue};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
 
 const STORE_FILE: &str = "app_data.json";
@@ -32,6 +33,12 @@ const KEY_WORKSPACE_OPEN_TABS: &str = "workspace_open_tabs";
 /// Add `root` to the front of the recent-workspaces list, deduplicating
 /// and capping at [`MAX_RECENT`] entries.
 pub fn add_recent_workspace(handle: &AppHandle, root: &Path) {
+    // The onboarding tutorial drives a disposable scratch workspace under
+    // app-data; it must never surface in the user's recent-workspaces list.
+    if is_onboarding_workspace(handle, root) {
+        return;
+    }
+
     let t = Instant::now();
     let Ok(store) = handle.store(STORE_FILE) else {
         warn!("store: could not open {STORE_FILE}");
@@ -60,6 +67,17 @@ pub fn add_recent_workspace(handle: &AppHandle, root: &Path) {
         "store: added recent workspace ({:.1}ms)",
         t.elapsed().as_secs_f64() * 1000.0
     );
+}
+
+/// True when `root` is the onboarding tutorial's scratch workspace
+/// (`<app_data>/onboarding`). `Path` equality compares parsed components, so
+/// it is insensitive to `/` vs `\` separators.
+fn is_onboarding_workspace(handle: &AppHandle, root: &Path) -> bool {
+    handle
+        .path()
+        .app_data_dir()
+        .map(|base| base.join("onboarding").as_path() == root)
+        .unwrap_or(false)
 }
 
 /// Remove a single workspace path from the recent list.
@@ -161,12 +179,15 @@ pub fn get_workspace_main_file(handle: &AppHandle, root: &Path) -> Option<String
 
 // ─── Per-workspace open tabs ─────────────────────────────────────────────────
 
-/// Persist the list of open tabs and the active tab for the workspace at `root`.
+/// Persist the list of open tabs, the active tab, and any unsaved editor
+/// buffers (`relPath -> content`) for the workspace at `root`. The unsaved map
+/// powers hot-exit restore: edits that never reached disk survive a teardown.
 pub fn save_workspace_tabs(
     handle: &AppHandle,
     root: &Path,
     tabs: Vec<String>,
     active_tab_id: Option<String>,
+    unsaved: HashMap<String, String>,
 ) {
     let t = Instant::now();
     let Ok(store) = handle.store(STORE_FILE) else {
@@ -192,6 +213,7 @@ pub fn save_workspace_tabs(
         json!({
             "tabs": tabs,
             "activeTabId": active_tab_id,
+            "unsaved": unsaved,
         }),
     );
 
@@ -207,7 +229,7 @@ pub fn save_workspace_tabs(
 pub fn get_workspace_tabs(
     handle: &AppHandle,
     root: &Path,
-) -> Option<(Vec<String>, Option<String>)> {
+) -> Option<(Vec<String>, Option<String>, HashMap<String, String>)> {
     let store = handle.store(STORE_FILE).ok()?;
     let root_key = root.to_string_lossy().to_string();
 
@@ -228,8 +250,14 @@ pub fn get_workspace_tabs(
     let active_tab_id: Option<String> = entry
         .get("activeTabId")
         .and_then(|v| v.as_str().map(|s| s.to_string()));
+    // `unsaved` is absent for stores written before hot-exit landed — default
+    // to empty so older state still restores cleanly.
+    let unsaved: HashMap<String, String> = entry
+        .get("unsaved")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
 
-    Some((tabs, active_tab_id))
+    Some((tabs, active_tab_id, unsaved))
 }
 
 // ─── .typwriter folder & thumbnail ───────────────────────────────────────────

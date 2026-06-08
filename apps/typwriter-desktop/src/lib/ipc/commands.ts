@@ -142,16 +142,22 @@ export function clearRecentWorkspaces() {
     return ResultAsync.fromPromise(invoke<void>('clear_recent_workspaces'), toErrString);
 }
 
-export function saveWorkspaceTabs(tabs: string[], activeTabId: string | null) {
+export function saveWorkspaceTabs(
+    tabs: string[],
+    activeTabId: string | null,
+    unsaved: Record<string, string> = {}
+) {
     return ResultAsync.fromPromise(
-        invoke<void>('save_workspace_tabs', { tabs, activeTabId }),
+        invoke<void>('save_workspace_tabs', { tabs, activeTabId, unsaved }),
         toErrString
     );
 }
 
 export function getWorkspaceTabs(root: string) {
     return ResultAsync.fromPromise(
-        invoke<[string[], string | null] | null>('get_workspace_tabs', { root }),
+        invoke<[string[], string | null, Record<string, string>] | null>('get_workspace_tabs', {
+            root,
+        }),
         toErrString
     );
 }
@@ -402,6 +408,36 @@ export function vcsRestoreFile(commitId: string, path: string) {
 
 export function isFontsLoaded() {
     return ResultAsync.fromPromise(invoke<boolean>('is_fonts_loaded'), toErrString);
+}
+
+// ─── Onboarding ─────────────────────────────────────────────────────────────────
+
+/** A single seed file for the onboarding workspace. */
+export interface OnboardingFile {
+    name: string;
+    content: string;
+}
+
+/** Create (or re-seed) the disposable onboarding workspace under app-data and
+ *  return its absolute path. Each tutorial step is seeded as its own `*.typ`
+ *  file before the workspace is opened. */
+export function prepareOnboardingWorkspace(files: OnboardingFile[]) {
+    return ResultAsync.fromPromise(
+        invoke<string>('prepare_onboarding_workspace', { files }),
+        toErrString
+    );
+}
+
+/** Whether onboarding has been shown (completed OR skipped). */
+export function getOnboardingCompleted() {
+    return ResultAsync.fromPromise(invoke<boolean>('get_onboarding_completed'), toErrString);
+}
+
+export function setOnboardingCompleted(completed: boolean) {
+    return ResultAsync.fromPromise(
+        invoke<void>('set_onboarding_completed', { completed }),
+        toErrString
+    );
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────

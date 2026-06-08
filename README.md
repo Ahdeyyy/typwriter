@@ -4,6 +4,8 @@
 
 **Typwriter** is a flexible, modern editor for [Typst](https://typst.app/), built with Tauri and Svelte. It allows you to write Typst documents, see a live preview of the compiled output, and export your documents directly to PDF, SVG and PNG.
 
+Note: Android version is currently buggy and not recommended for real use, I won't focus on it for now.
+
 ## Features
 
 I have implemented most of the editor features in the official [web app](https://typst.app/)

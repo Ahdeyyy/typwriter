@@ -3,9 +3,10 @@ import Home from "$lib/components/pages/home.svelte"
 import Workspace from "$lib/components/pages/workspace.svelte"
 import Keymaps from "$lib/components/pages/keymaps.svelte"
 import Settings from "$lib/components/pages/settings.svelte"
+import Onboarding from "$lib/components/pages/onboarding.svelte"
 import type { Component } from "svelte"
 
-type PageName = "home" | "workspace" | "keymaps" | "settings"
+type PageName = "home" | "workspace" | "keymaps" | "settings" | "onboarding"
 
 type PageDefinition = {
     name: PageName
@@ -28,6 +29,10 @@ export const pages = {
     "settings": {
         name: "settings",
         component: Settings,
+    },
+    "onboarding": {
+        name: "onboarding",
+        component: Onboarding,
     },
 } satisfies Record<PageName, PageDefinition>
 

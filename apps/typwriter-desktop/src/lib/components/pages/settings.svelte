@@ -15,6 +15,7 @@
     FileCodeIcon,
     FloppyDiskIcon,
     GitCommitIcon,
+    BookOpen01Icon,
   } from "@hugeicons/core-free-icons";
   import Button from "$lib/components/ui/button/button.svelte";
   import { Switch } from "$lib/components/ui/switch/index.js";
@@ -33,7 +34,7 @@
   } from "$lib/stores/settings.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { AndroidFs } from "tauri-plugin-android-fs-api";
-  import { importFontDirectoryUri, safTreeUriToPath } from "$lib/ipc/commands";
+  import { importFontDirectoryUri, safTreeUriToPath, setOnboardingCompleted } from "$lib/ipc/commands";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
 
@@ -137,6 +138,14 @@
   }
   function selectDarkTheme(id: ThemeId) {
     settings.setDarkTheme(id);
+  }
+
+  async function handleResetTutorial() {
+    const result = await setOnboardingCompleted(false);
+    result.match(
+      () => toast.success("Tutorial reset — it will show again on next launch"),
+      (err) => toast.error(`Couldn't reset the tutorial: ${err}`),
+    );
   }
 
   function resetSettings() {
@@ -744,6 +753,39 @@
                 onCheckedChange={(v) => settings.setAutoCheckUpdates(v)}
               />
             </label>
+          </section>
+
+          <!-- ── Tutorial ────────────────────────────────────────────────── -->
+          <section>
+            <div class="mb-3 flex items-center gap-2">
+              <HugeiconsIcon icon={BookOpen01Icon} class="size-4 text-muted-foreground" />
+              <h2 class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+                Tutorial
+              </h2>
+            </div>
+            <p class="mb-4 text-sm text-muted-foreground">
+              The onboarding tutorial shows once on first launch. Reset it to mark
+              it as not yet completed so it appears again the next time Typwriter
+              starts.
+            </p>
+
+            <div class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3">
+              <div class="min-w-0">
+                <p class="text-sm font-medium">Reset tutorial</p>
+                <p class="truncate text-xs text-muted-foreground">
+                  Sets the "tutorial completed" flag back to false.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                class="gap-2 shrink-0"
+                onclick={handleResetTutorial}
+              >
+                <HugeiconsIcon icon={RefreshIcon} class="size-4" />
+                Reset tutorial
+              </Button>
+            </div>
           </section>
         {/if}
 

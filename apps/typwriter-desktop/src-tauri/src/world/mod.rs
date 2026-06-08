@@ -5,15 +5,18 @@ pub use progress::TauriProgress;
 
 use chrono::Datelike;
 use ecow::EcoString;
-use log::info;
-use parking_lot::{Mutex, RwLock};
+use log::{error, info};
+use parking_lot::{Condvar, Mutex, RwLock};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, OnceLock,
+    },
     time::Instant,
 };
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use tauri::Manager;
 use typst::{
@@ -44,6 +47,14 @@ pub struct EditorWorld {
     /// Workspace root on disk — updatable when the user opens a new folder.
     root: RwLock<PathBuf>,
 
+    /// SAF-aware filesystem provider. A workspace folder picked through
+    /// Android's Storage Access Framework is invisible to `std::fs` (the app
+    /// holds no broad storage permission), so source files, images and other
+    /// assets must be read through android-fs. `VcsState` owns the registry of
+    /// SAF roots and hands back the right [`WorkingTreeFs`] accessor; off
+    /// Android (and for the app-managed dir) this is always a std::fs accessor.
+    vcs: Arc<crate::vcs::VcsState>,
+
     /// The file currently set as "main" by the user. `None` when no main
     /// file has been chosen — we deliberately avoid a sentinel `FileId`
     /// here since any plausible sentinel path (e.g. `main.typ`) could
@@ -62,6 +73,18 @@ pub struct EditorWorld {
 
     /// Empty fallback for `World::book()` before fonts arrive
     empty_book: LazyHash<FontBook>,
+
+    /// Single-spawn guard for the lazy background font load. Fonts are no
+    /// longer searched at startup — the first workspace open / first compile
+    /// kicks the search off, so the scan overlaps the rest of the open path.
+    font_load_started: AtomicBool,
+
+    /// `true` once a font set has been installed. Paired with `fonts_cv` so the
+    /// compile worker can block until fonts exist instead of compiling against
+    /// the empty fallback book (which would render fonts-less pages and poison
+    /// the on-disk preview cache with them).
+    fonts_ready: Mutex<bool>,
+    fonts_cv: Condvar,
 
     /// In-memory source cache: files the editor has open / has read
     /// Key: FileId, Value: the Source (typst's parsed form)
@@ -124,7 +147,7 @@ impl EditorWorld {
         }
     }
 
-    pub fn new(root: PathBuf, app_handle: AppHandle) -> Self {
+    pub fn new(root: PathBuf, app_handle: AppHandle, vcs: Arc<crate::vcs::VcsState>) -> Self {
         let pkg = app_handle.package_info();
         let user_agent = format!("{}/{}", pkg.name, pkg.version);
         let downloader = Downloader::new(user_agent.clone());
@@ -137,10 +160,14 @@ impl EditorWorld {
             PackageStorage::new(cache_dir, package_dir, Downloader::new(user_agent));
         Self {
             root: RwLock::new(root),
+            vcs,
             main: RwLock::new(None),
             library: OnceLock::new(),
             font_data: RwLock::new(None),
             empty_book: LazyHash::new(FontBook::from_fonts(&[])),
+            font_load_started: AtomicBool::new(false),
+            fonts_ready: Mutex::new(false),
+            fonts_cv: Condvar::new(),
             source_cache: Mutex::new(HashMap::new()),
             file_cache: Mutex::new(HashMap::new()),
             shadow: RwLock::new(HashMap::new()),
@@ -161,6 +188,60 @@ impl EditorWorld {
             book: LazyHash::new(book),
         }));
         *self.font_data.write() = Some(data);
+        // Mark ready and wake any compile worker blocked in
+        // `wait_until_fonts_loaded`. Keeping this in lockstep with `font_data`
+        // means "ready" always implies a usable font set is installed — true
+        // for both the initial lazy load and later settings-driven reloads.
+        *self.fonts_ready.lock() = true;
+        self.fonts_cv.notify_all();
+    }
+
+    /// Whether a font set has been installed yet.
+    pub fn fonts_ready(&self) -> bool {
+        *self.fonts_ready.lock()
+    }
+
+    /// Block the calling thread until fonts are available. The compile worker
+    /// calls this before its first compile so it never renders against the
+    /// empty fallback book.
+    pub fn wait_until_fonts_loaded(&self) {
+        let mut ready = self.fonts_ready.lock();
+        while !*ready {
+            self.fonts_cv.wait(&mut ready);
+        }
+    }
+
+    /// Kick off the background font search exactly once. Idempotent — cheap to
+    /// call on every workspace open and every compile (a single atomic swap
+    /// after the first). The system font scan can take seconds, so it runs on
+    /// its own thread; when it finishes the fonts are installed (which wakes
+    /// `wait_until_fonts_loaded`) and `app:fonts-loaded` is emitted.
+    pub fn ensure_fonts_loading(self: &Arc<Self>) {
+        if self.font_load_started.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let world = Arc::clone(self);
+        std::thread::spawn(move || {
+            let extra_dirs = crate::commands::settings::load_font_directories(&world.app_handle);
+            // A corrupt font file or a stalled font directory can panic the
+            // fontdb scan. Catch it so the compile worker is never left blocked
+            // forever — fall back to embedded fonts only, which don't touch the
+            // filesystem.
+            let searched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                FontSearcher::new().search_with(&extra_dirs)
+            }));
+            match searched {
+                Ok(fonts) => world.load_fonts(fonts.book, fonts.fonts),
+                Err(_) => {
+                    error!("ensure_fonts_loading: font search panicked; falling back to embedded fonts only");
+                    let fonts = FontSearcher::new().include_system_fonts(false).search();
+                    world.load_fonts(fonts.book, fonts.fonts);
+                }
+            }
+            if let Err(err) = world.app_handle.emit("app:fonts-loaded", ()) {
+                error!("ensure_fonts_loading: emit app:fonts-loaded failed err=\"{err}\"");
+            }
+        });
     }
 
     /// Run a font search (system + embedded + the given extra directories)
@@ -212,6 +293,20 @@ impl EditorWorld {
         self.main.read().is_some()
     }
 
+    /// Workspace-relative path of the current main file, normalized to forward
+    /// slashes. `None` when no main file is set. Used to tag the persisted
+    /// preview manifest so a manifest left over for a *different* main file is
+    /// ignored on the next open.
+    pub fn main_rel(&self) -> Option<String> {
+        let id = (*self.main.read())?;
+        Some(
+            id.vpath()
+                .as_rootless_path()
+                .to_string_lossy()
+                .replace('\\', "/"),
+        )
+    }
+
     /// Update the workspace root and flush all file caches.
     pub fn set_root(&self, path: PathBuf) {
         *self.root.write() = path;
@@ -252,6 +347,39 @@ impl EditorWorld {
     pub fn invalidate_file(&self, id: FileId) {
         self.source_cache.lock().remove(&id);
         self.file_cache.lock().remove(&id);
+    }
+
+    /// Read a file's raw bytes for the compiler, routing workspace-local files
+    /// through the SAF-aware accessor. A folder picked via Android's Storage
+    /// Access Framework is unreachable with `std::fs`, so source files and
+    /// embedded assets (`image(...)`, `include`/`read` targets) must be read
+    /// through android-fs. Package files live in the app-private cache, which is
+    /// always reachable with `std::fs` on every platform — and lie outside the
+    /// workspace root — so they keep the direct path.
+    fn read_file_bytes(&self, id: FileId) -> FileResult<Vec<u8>> {
+        let path = self.id_to_path(id)?;
+
+        if id.package().is_some() {
+            return std::fs::read(&path).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    FileError::NotFound(path)
+                } else {
+                    FileError::AccessDenied
+                }
+            });
+        }
+
+        let root = self.root.read().clone();
+        let fs = self.vcs.working_tree_fs_for(&root);
+        fs.read_file(&path).map_err(|_| {
+            // `WorkingTreeFs` collapses io errors to strings; recover the
+            // NotFound/AccessDenied distinction typst relies on with a probe.
+            if fs.exists(&path) {
+                FileError::AccessDenied
+            } else {
+                FileError::NotFound(path)
+            }
+        })
     }
 
     /// Map a FileId back to an absolute path on disk.
@@ -312,15 +440,9 @@ impl World for EditorWorld {
         let text = if let Some(content) = self.shadow.read().get(&id) {
             content.clone()
         } else {
-            // 3. Fall back to disk (may trigger a package download)
-            let path = self.id_to_path(id)?;
-            std::fs::read_to_string(&path).map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    FileError::NotFound(path.clone())
-                } else {
-                    FileError::AccessDenied
-                }
-            })?
+            // 3. Fall back to disk/SAF (may trigger a package download)
+            let bytes = self.read_file_bytes(id)?;
+            String::from_utf8(bytes).map_err(|_| FileError::AccessDenied)?
         };
 
         let source = Source::new(id, text);
@@ -332,9 +454,7 @@ impl World for EditorWorld {
         if let Some(bytes) = self.file_cache.lock().get(&id) {
             return Ok(bytes.clone());
         }
-        let path = self.id_to_path(id)?;
-        let bytes = std::fs::read(&path).map_err(|_| FileError::NotFound(path))?;
-        let bytes = Bytes::new(bytes);
+        let bytes = Bytes::new(self.read_file_bytes(id)?);
         self.file_cache.lock().insert(id, bytes.clone());
         Ok(bytes)
     }

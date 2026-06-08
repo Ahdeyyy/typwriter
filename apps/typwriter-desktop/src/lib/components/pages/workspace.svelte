@@ -168,7 +168,14 @@
             variant="ghost"
             size="icon-lg"
             class="bg-background/30 backdrop-blur-sm shadow-sm rounded-full pointer-events-auto"
-            onclick={() => (mobileView = mobileView === "editor" ? "preview" : "editor")}
+            onclick={() => {
+              // Leaving the editor for the preview: flush so the rendered
+              // preview reflects the latest edits and the buffer is on disk.
+              if (mobileView === "editor") {
+                void editor.flushActiveTab();
+              }
+              mobileView = mobileView === "editor" ? "preview" : "editor";
+            }}
             aria-label={mobileView === "editor" ? "Show preview" : "Show editor"}
           >
             <HugeiconsIcon

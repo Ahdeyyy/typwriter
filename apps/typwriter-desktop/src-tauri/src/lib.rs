@@ -6,20 +6,18 @@ mod vcs;
 mod workspace;
 mod world;
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use compiler::{parse_key, PreviewPipeline};
 use parking_lot::RwLock;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
-use typst_kit::fonts::FontSearcher;
 use vcs::VcsState;
 use workspace::WorkspaceState;
 use world::EditorWorld;
 
 use commands::{
-    app::is_fonts_loaded,
+    app::{is_fonts_loaded, prepare_onboarding_workspace},
     click::{jump_from_click, jump_from_cursor},
     editor::{
         discard_shadow, get_completions, get_definitions, get_tooltip, read_file, save_file,
@@ -36,8 +34,8 @@ use commands::{
     logs::get_log_file_path,
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     settings::{
-        get_app_settings, import_font_directory_uri, list_font_families, set_app_settings,
-        set_typst_font_directories,
+        get_app_settings, get_onboarding_completed, import_font_directory_uri, list_font_families,
+        set_app_settings, set_onboarding_completed, set_typst_font_directories,
     },
     vcs::{
         vcs_create_restore_point, vcs_current_id, vcs_diff_between, vcs_diff_vs_current,
@@ -52,11 +50,6 @@ use commands::{
         set_main_file,
     },
 };
-
-/// Lightweight state managed immediately so the frontend can query readiness.
-pub struct AppInit {
-    pub fonts_loaded: AtomicBool,
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -128,6 +121,31 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .on_window_event(|window, event| {
+            // The preview pane can be popped out into its own `preview` window.
+            // It outlives the main window (and keeps the process alive), so
+            // closing the main window would otherwise leave it orphaned on
+            // screen. Tear it down whenever the main window goes away — handled
+            // here in Rust so it fires on every close path, not just the ones
+            // where the frontend gets to run its cleanup.
+            // The preview popout is desktop-only (mobile has no multi-window),
+            // and `WebviewWindow::destroy` is itself a desktop-only API, so the
+            // whole teardown is gated behind `#[cfg(desktop)]`.
+            #[cfg(desktop)]
+            if window.label() == "main"
+                && matches!(
+                    event,
+                    tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed
+                )
+            {
+                if let Some(preview) = window.app_handle().get_webview_window("preview") {
+                    // `destroy` rather than `close`: a forced teardown that the
+                    // preview window's own JS can't prevent, so the orphan is
+                    // guaranteed to go away.
+                    let _ = preview.destroy();
+                }
+            }
+        })
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -135,11 +153,12 @@ pub fn run() {
             let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
             // ── Shared state (managed immediately — fonts arrive later) ──────
-            let init = Arc::new(AppInit {
-                fonts_loaded: AtomicBool::new(false),
-            });
-            let world = Arc::new(EditorWorld::new(root, handle.clone()));
+            // `vcs` is constructed first: it owns the SAF-root registry and the
+            // `WorkingTreeFs` provider the world reads source files through, so
+            // a folder picked via Android's Storage Access Framework is fully
+            // usable (open / edit / compile), not just listable.
             let vcs = Arc::new(VcsState::new(handle.clone()));
+            let world = Arc::new(EditorWorld::new(root, handle.clone(), vcs.clone()));
             let pipeline = Arc::new(PreviewPipeline::new(
                 world.clone(),
                 handle.clone(),
@@ -160,30 +179,23 @@ pub fn run() {
                 commands::settings::snapshot_policy_from_handle(&handle),
             ));
 
-            app.manage(init.clone());
             app.manage(world.clone());
             app.manage(pipeline);
             app.manage(workspace);
             app.manage(vcs);
             app.manage(snapshot_policy);
 
-            // ── Background font loading ─────────────────────────────────────
-            // Pick up any extra font directories the user configured in a
-            // previous session so their custom fonts are available from the
-            // first compile.
-            let extra_font_dirs = commands::settings::load_font_directories(&handle);
-            std::thread::spawn(move || {
-                let font_results = FontSearcher::new().search_with(&extra_font_dirs);
-                world.load_fonts(font_results.book, font_results.fonts);
-                init.fonts_loaded.store(true, Ordering::Release);
-                let _ = handle.emit("app:fonts-loaded", ());
-            });
+            // Fonts are loaded lazily: the first workspace open (and, as a
+            // safety net, the first compile) calls `EditorWorld::ensure_fonts_loading`,
+            // so the system font scan overlaps the rest of the open path instead
+            // of blocking startup. See `world::mod`.
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             // app init
             is_fonts_loaded,
+            prepare_onboarding_workspace,
             // workspace / file-system
             open_folder,
             create_workspace,
@@ -230,6 +242,8 @@ pub fn run() {
             // settings
             get_app_settings,
             set_app_settings,
+            get_onboarding_completed,
+            set_onboarding_completed,
             list_font_families,
             set_typst_font_directories,
             import_font_directory_uri,

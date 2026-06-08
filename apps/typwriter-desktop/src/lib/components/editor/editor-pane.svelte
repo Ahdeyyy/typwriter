@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { FileCodeIcon, BlockedIcon } from "@hugeicons/core-free-icons";
   import TabBar from "$lib/components/editor/tab-bar.svelte";
@@ -8,12 +9,26 @@
   import TypstToolbar from "$lib/components/editor/typst-toolbar.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { platform } from "$lib/stores/platform.svelte";
+  import { logError } from "$lib/logger";
 
   const isTypstActive = $derived(
     editor.activeTab?.viewMode === "text" &&
     !editor.activeTab.isLoading &&
     editor.activeTab.relPath.endsWith(".typ"),
   );
+
+  // Navigating to another page (Settings, Home, …) unmounts the workspace and
+  // with it this editor — destroying the CodeMirror views. On mobile the
+  // save-on-blur handler already commits edits to disk before that happens;
+  // desktop has no such path, so flush here too. flushAllTabs reads each tab's
+  // buffer from the store (kept current by the update listener), not from the
+  // now-torn-down CM views, so it's unaffected by the unmount order. Dirty
+  // tabs are saved; clean ones are a no-op.
+  onDestroy(() => {
+    void editor.flushAllTabs().catch((err) =>
+      logError("editor-pane unmount flush failed:", err),
+    );
+  });
 </script>
 
 <div class="flex h-full flex-col bg-background {platform.isMobile ? 'pb-2' : ''}">

@@ -54,8 +54,8 @@ use std::time::Instant;
 use log::{info, warn};
 use parking_lot::{Mutex, RwLock};
 
-#[cfg(not(target_os = "android"))]
 use fs::LocalWorkingTreeFs;
+pub use fs::WorkingTreeFs;
 
 /// User preferences governing automatic snapshot creation. Lives behind an
 /// `Arc<RwLock<_>>` managed by Tauri; refreshed whenever the frontend
@@ -93,13 +93,16 @@ impl SnapshotPolicy {
     }
 
     /// Does this trigger fall under the auto-snapshot gate? Manual / Initial
-    /// / PreRestore always bypass — those are user-driven or safety-critical
-    /// and never throttled by user prefs.
+    /// / PreRestore / FileOp always bypass — those are user-driven or
+    /// safety-critical and never throttled by user prefs.
     pub fn allows(&self, trigger: CommitTrigger) -> bool {
         match trigger {
             CommitTrigger::Save => self.on_save,
             CommitTrigger::Compile => self.on_compile,
-            CommitTrigger::Manual | CommitTrigger::Initial | CommitTrigger::PreRestore => true,
+            CommitTrigger::Manual
+            | CommitTrigger::Initial
+            | CommitTrigger::PreRestore
+            | CommitTrigger::FileOp => true,
         }
     }
 }
@@ -185,6 +188,45 @@ impl VcsState {
 
     fn workspace_root(&self) -> Option<PathBuf> {
         self.root.read().clone()
+    }
+
+    /// Build a filesystem accessor for *reading* the working tree at `root`
+    /// (e.g. the sidebar file tree). On Android a SAF-picked folder lives behind
+    /// the Storage Access Framework and is invisible to `std::fs` — the app holds
+    /// no broad storage permission — so it must be read through android-fs. The
+    /// auto-managed, app-scoped workspaces dir is reachable with `std::fs`
+    /// directly, and so is every desktop path. Mirrors how snapshots read the
+    /// working tree, keeping the file tree and version history in lockstep.
+    pub fn working_tree_fs_for(&self, root: &Path) -> Box<dyn WorkingTreeFs> {
+        #[cfg(target_os = "android")]
+        {
+            if let Some(uri) = self.saf_roots.read().get(root).cloned() {
+                return Box::new(fs::AndroidWorkingTreeFs::new_with_root(
+                    self.app_handle.clone(),
+                    root.to_path_buf(),
+                    uri,
+                ));
+            }
+        }
+        let _ = root;
+        Box::new(LocalWorkingTreeFs)
+    }
+
+    /// Whether `root` is a folder picked through Android's Storage Access
+    /// Framework — i.e. one that `std::fs` (and the `convertFileSrc` asset
+    /// protocol) cannot reach. Always `false` off Android. Callers use this to
+    /// decide when to ship file bytes inline instead of handing the frontend a
+    /// std::fs path.
+    pub fn is_saf_root(&self, root: &Path) -> bool {
+        #[cfg(target_os = "android")]
+        {
+            return self.saf_roots.read().contains_key(root);
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = root;
+            false
+        }
     }
 
     #[cfg(target_os = "android")]

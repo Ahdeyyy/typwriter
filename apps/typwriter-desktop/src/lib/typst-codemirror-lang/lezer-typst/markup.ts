@@ -839,6 +839,12 @@ function parseMarkupUntilNewline(s: Scanner, ctx: TypstParseContext): Elt[] {
       continue
     }
 
+    // Link: auto-detect http:// or https://
+    if (ch === Ch.h) {
+      const elt = tryParseLink(s)
+      if (elt) { flushText(); elts.push(elt); continue }
+    }
+
     // Line comment
     if (ch === Ch.Slash && s.peek(1) === Ch.Slash) {
       flushText()

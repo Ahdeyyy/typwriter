@@ -30,6 +30,7 @@ use std::{
 
 use log::{info, warn};
 use lru::LruCache;
+use serde::{Deserialize, Serialize};
 
 use super::cache::{key_to_path, parse_key, PageCacheKey};
 
@@ -178,6 +179,70 @@ impl DiskCache {
 
 fn file_path(dir: &Path, key: PageCacheKey) -> PathBuf {
     dir.join(format!("{}.png", key_to_path(key)))
+}
+
+// ─── Preview manifest ──────────────────────────────────────────────────────
+//
+// The disk cache stores PNG bytes keyed by `(fingerprint, zoom)`, but nothing
+// records which fingerprints, in what order, made up the last preview — and
+// you can't know that without compiling first. The manifest closes that gap: a
+// tiny JSON file listing the page keys (in page order) of the last successful
+// compile, tagged with the main file it belongs to. On open we can paint those
+// cached pages immediately, before the (font-blocked) compile produces fresh
+// fingerprints, then let the normal diff reconcile.
+
+/// Ordered page keys of the last successful preview. `pages[i]` is the cache
+/// key for page `i` (`None` if that page failed to render), encoded as the same
+/// `<hex>-<zoom>` string used by the `previewimg://` URL.
+#[derive(Serialize, Deserialize)]
+struct PreviewManifest {
+    main: String,
+    pages: Vec<Option<String>>,
+}
+
+fn manifest_path(root: &Path) -> PathBuf {
+    root.join(".typwriter")
+        .join("cache")
+        .join("preview-manifest.json")
+}
+
+/// Persist the ordered page keys of the current preview, tagged with `main`
+/// (the workspace-relative main file path). Best-effort: failures are logged
+/// and otherwise ignored.
+pub fn write_manifest(root: &Path, main: &str, pages: &[Option<PageCacheKey>]) {
+    let manifest = PreviewManifest {
+        main: main.to_string(),
+        pages: pages
+            .iter()
+            .map(|slot| slot.map(key_to_path))
+            .collect(),
+    };
+    let path = manifest_path(root);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    match serde_json::to_vec(&manifest) {
+        Ok(bytes) => {
+            if let Err(err) = fs::write(&path, bytes) {
+                warn!("write_manifest: write failed path={path:?} err=\"{err}\"");
+            }
+        }
+        Err(err) => warn!("write_manifest: serialize failed err=\"{err}\""),
+    }
+}
+
+/// Read the persisted preview manifest. Returns `(main, pages)` where `pages[i]`
+/// is the cache key for page `i` (or `None`). `None` when no manifest exists or
+/// it can't be parsed.
+pub fn read_manifest(root: &Path) -> Option<(String, Vec<Option<PageCacheKey>>)> {
+    let bytes = fs::read(manifest_path(root)).ok()?;
+    let manifest: PreviewManifest = serde_json::from_slice(&bytes).ok()?;
+    let pages = manifest
+        .pages
+        .iter()
+        .map(|slot| slot.as_deref().and_then(parse_key))
+        .collect();
+    Some((manifest.main, pages))
 }
 
 impl Default for DiskCache {
