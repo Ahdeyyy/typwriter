@@ -8,7 +8,7 @@ The Typst editor. Tauri 2 + SvelteKit (static adapter) + a Rust core that wraps 
 - Frontend package manager is `bun`; Rust is `cargo`.
 - Validate Rust changes with `cargo check` in `src-tauri/` (full builds are slow and can OOM on Windows — see root memory).
 - Do **not** run the dev server to "view" the app — it's a Tauri shell, not a browser app.
-- After editing `src/lib/typst-codemirror-lang/typst.grammar`, run `bun run generate-parser` to regenerate the Lezer parser.
+- The Typst CodeMirror parser is hand-written TypeScript in `src/lib/typst-codemirror-lang/lezer-typst/` (no `typst.grammar`, no codegen) — edit those sources directly.
 
 ## Architecture
 
@@ -30,7 +30,7 @@ The Typst editor. Tauri 2 + SvelteKit (static adapter) + a Rust core that wraps 
 - `lib/stores/` — Svelte 5 class-singleton stores (`workspace`, `editor`, `preview`, `diagnostics`, `editor-search`, `page`, `platform`, `settings`, `updater`). All `$state`/`$derived` lives inside a class; module-level `$state` exports lose reactivity.
 - `lib/ipc/` — `commands.ts` (thin wrappers around `invoke`) and `events.ts` (typed Tauri event listeners).
 - `lib/services/` — orchestration on top of IPC (`workspace-file-service`, `export-service`).
-- `lib/typst-codemirror-lang/` — Lezer grammar + generated parser for Typst syntax highlighting in CodeMirror. Regenerate with `bun run generate-parser` whenever `typst.grammar` changes.
+- `lib/typst-codemirror-lang/` — Typst syntax highlighting for CodeMirror. The parser is **hand-written TypeScript** in `lezer-typst/` (`parser.ts`, `scanner.ts`, `markup.ts`, `math.ts`, `code.ts`, …) built on `@lezer/lr` — no `typst.grammar`, no codegen; edit the parser sources directly.
 - `lib/hooks/`, `lib/utils.ts`, `lib/async.ts`, `lib/logger.ts`, `lib/preview-url.ts`, `lib/paths.ts` — shared helpers.
 
 ### Tauri config

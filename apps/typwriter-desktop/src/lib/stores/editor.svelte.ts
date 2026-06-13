@@ -17,22 +17,7 @@ import { normalize, basename } from '$lib/paths';
 import { logError } from '$lib/logger';
 import { toast } from 'svelte-sonner';
 
-const TEXT_EXTS = new Set([
-    '.typ', '.txt', '.md', '.markdown', '.json', '.toml',
-    '.yaml', '.yml', '.html', '.htm', '.css', '.js', '.ts',
-    '.xml', '.csv', '.ini', '.env', '.sh', '.rs', '.bib',
-]);
-
-const IMAGE_EXTS = new Set([
-    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico', '.avif', '.tiff',
-]);
-
 export type ViewMode = 'text' | 'image' | 'unsupported';
-
-function extOf(path: string): string {
-    const dot = path.lastIndexOf('.');
-    return dot >= 0 ? path.slice(dot).toLowerCase() : '';
-}
 
 function imageAssetSrc(path: string): string {
     return convertFileSrc(normalize(path));
@@ -106,51 +91,24 @@ class EditorStore {
             return;
         }
 
-        const absPath = workspace.toAbs(id);
-        const ext = extOf(id);
-        const viewMode: ViewMode = IMAGE_EXTS.has(ext)
-            ? 'image'
-            : TEXT_EXTS.has(ext)
-                ? 'text'
-                : 'unsupported';
-
-        const tab: TabInfo = {
-            id,
-            relPath: id,
-            absPath,
-            name: basename(id),
-            viewMode,
-            isEditable: viewMode === 'text',
-            content: '',
-            imageSrc: null,
-            hasUnsavedChanges: false,
-            isLoading: viewMode !== 'unsupported',
-        };
-
+        const tab = this._createLoadingTab(id);
         this.tabs.push(tab);
         this.activeTabId = id;
         workspace.schedulePersistTabs();
-
-        if (viewMode === 'unsupported') {
-            return;
-        }
 
         // Hot-exit restore: if durable unsaved content was captured before the
         // app was torn down (e.g. the OS killed the WebView while backgrounded),
         // seed the buffer from it instead of the now-stale disk copy, and mark
         // the tab dirty so it still needs an explicit save. Also re-seed the
-        // Rust shadow so the next compile renders the restored buffer.
-        if (typeof unsavedContent === 'string' && viewMode === 'text') {
-            tab.content = unsavedContent;
-            tab.hasUnsavedChanges = true;
-            tab.isLoading = false;
-            updateFileContent(tab.absPath, unsavedContent).mapErr((err) =>
-                logError('restore unsaved shadow write failed:', err)
-            );
+        // Rust shadow so the next compile renders the restored buffer. Unsaved
+        // buffers are only ever captured for editable text tabs, so it's safe
+        // to treat the override as text without consulting the backend.
+        if (typeof unsavedContent === 'string') {
+            this._seedUnsavedText(tab, unsavedContent);
             return;
         }
 
-        await this._loadTabContent(id, absPath, viewMode);
+        await this._loadTabContent(id);
     }
 
     async activateTab(tabId: string): Promise<void> {
@@ -186,49 +144,21 @@ class EditorStore {
                 continue;
             }
 
-            const absPath = workspace.toAbs(id);
-            const ext = extOf(id);
-            const viewMode: ViewMode = IMAGE_EXTS.has(ext)
-                ? 'image'
-                : TEXT_EXTS.has(ext)
-                    ? 'text'
-                    : 'unsupported';
-
-            const tab: TabInfo = {
-                id,
-                relPath: id,
-                absPath,
-                name: basename(id),
-                viewMode,
-                isEditable: viewMode === 'text',
-                content: '',
-                imageSrc: null,
-                hasUnsavedChanges: false,
-                isLoading: viewMode !== 'unsupported',
-            };
+            const tab = this._createLoadingTab(id);
             this.tabs.push(tab);
-
-            if (viewMode === 'unsupported') {
-                continue;
-            }
 
             // Hot-exit restore: seed from the durable unsaved buffer instead of
             // the now-stale disk copy, mark the tab dirty, and re-seed the Rust
             // shadow so the next compile renders the restored buffer. Mirrors
             // the unsaved-content branch in `_openFile`.
             const override = unsaved[relPath] ?? unsaved[id];
-            if (typeof override === 'string' && viewMode === 'text') {
-                tab.content = override;
-                tab.hasUnsavedChanges = true;
-                tab.isLoading = false;
-                updateFileContent(tab.absPath, override).mapErr((err) =>
-                    logError('restore unsaved shadow write failed:', err)
-                );
+            if (typeof override === 'string') {
+                this._seedUnsavedText(tab, override);
                 continue;
             }
 
             loads.push(
-                this._loadTabContent(id, absPath, viewMode).catch((err) =>
+                this._loadTabContent(id).catch((err) =>
                     logError(`restore tab failed for ${relPath}:`, err)
                 )
             );
@@ -244,8 +174,51 @@ class EditorStore {
         workspace.schedulePersistTabs();
     }
 
-    private async _loadTabContent(tabId: string, absPath: string, viewMode: ViewMode): Promise<void> {
-        const response = await readFile(absPath);
+    /** Build a tab in its provisional loading state. The backend's `read_file`
+     *  response is the single authority on `viewMode`/`isEditable` (see
+     *  `_loadTabContent`); until it resolves we assume text so the tab bar and
+     *  editor pane (which gate on `isLoading`) show a loading skeleton rather
+     *  than flashing the wrong viewer. */
+    private _createLoadingTab(id: string): TabInfo {
+        return {
+            id,
+            relPath: id,
+            absPath: workspace.toAbs(id),
+            name: basename(id),
+            viewMode: 'text',
+            isEditable: false,
+            content: '',
+            imageSrc: null,
+            hasUnsavedChanges: false,
+            isLoading: true,
+        };
+    }
+
+    /** Seed a tab from a durable unsaved (hot-exit) buffer. Such buffers are
+     *  only ever captured for editable text tabs, so we render as text without
+     *  a backend round-trip and re-seed the Rust shadow so the next compile
+     *  sees the restored content. */
+    private _seedUnsavedText(tab: TabInfo, content: string): void {
+        tab.viewMode = 'text';
+        tab.isEditable = true;
+        tab.content = content;
+        tab.hasUnsavedChanges = true;
+        tab.isLoading = false;
+        updateFileContent(tab.absPath, content).mapErr((err) =>
+            logError('restore unsaved shadow write failed:', err)
+        );
+    }
+
+    /** Load a tab's content from disk and let the backend response decide how to
+     *  render it. `read_file` classifies by extension and returns `unsupported`
+     *  without reading bytes for unknown types, so this is the single source of
+     *  truth for `viewMode` — the frontend no longer keeps its own allowlist. */
+    private async _loadTabContent(tabId: string): Promise<void> {
+        const tab = this.tabs.find((t) => t.id === tabId);
+        if (!tab) {
+            return;
+        }
+        const response = await readFile(tab.absPath);
         const liveTab = this.tabs.find((t) => t.id === tabId);
         if (!liveTab) {
             return;
@@ -255,17 +228,26 @@ class EditorStore {
             throw new Error(response.error);
         }
 
-        if (viewMode === 'image') {
-            if (response.value.type !== 'image') {
-                throw new Error(`Expected image, got ${response.value.type}`);
-            }
-            liveTab.imageSrc = imageSrcFromResponse(response.value);
-            liveTab.content = '';
-        } else {
-            if (response.value.type !== 'text') {
-                throw new Error(`Expected text, got ${response.value.type}`);
-            }
-            liveTab.content = response.value.content;
+        const res = response.value;
+        switch (res.type) {
+            case 'text':
+                liveTab.viewMode = 'text';
+                liveTab.isEditable = true;
+                liveTab.content = res.content;
+                liveTab.imageSrc = null;
+                break;
+            case 'image':
+                liveTab.viewMode = 'image';
+                liveTab.isEditable = false;
+                liveTab.imageSrc = imageSrcFromResponse(res);
+                liveTab.content = '';
+                break;
+            case 'unsupported':
+                liveTab.viewMode = 'unsupported';
+                liveTab.isEditable = false;
+                liveTab.content = '';
+                liveTab.imageSrc = null;
+                break;
         }
 
         liveTab.isLoading = false;

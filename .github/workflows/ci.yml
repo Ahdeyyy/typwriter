@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./apps/typwriter-desktop/src-tauri -> target"
+          key: ci
+      - name: cargo check
+        working-directory: apps/typwriter-desktop/src-tauri
+        run: cargo check --all-targets
+      - name: cargo test
+        working-directory: apps/typwriter-desktop/src-tauri
+        run: cargo test
+
+  frontend:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - name: svelte-check (desktop app)
+        working-directory: apps/typwriter-desktop
+        run: bun run check
+      - name: typecheck all workspaces
+        run: bun run check-types
