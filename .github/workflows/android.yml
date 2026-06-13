@@ -10,9 +10,25 @@ on:
 
 jobs:
   build-android:
+    name: Build ${{ matrix.name }} Android APKs
     runs-on: ubuntu-22.04
     permissions:
-      contents: write
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: legacy
+            app_path: apps/typwriter-desktop
+            rust_targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+            tauri_args: --apk --split-per-abi
+            artifact_prefix: typwriter_legacy
+          - name: mobile
+            app_path: apps/typwriter-mobile
+            rust_targets: aarch64-linux-android
+            tauri_args: --apk --split-per-abi --target aarch64
+            artifact_prefix: typwriter_mobile
 
     env:
       NDK_VERSION: r26d
@@ -73,8 +89,6 @@ jobs:
             sdk_ndk_bin="$bin"
           done
           shim "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          # Expose the SDK-installed NDK bin dir on PATH for later steps so
-          # /bin/sh inside openssl's Makefile can find the shimmed tools.
           if [ -n "$sdk_ndk_bin" ]; then
             echo "$sdk_ndk_bin" >> "$GITHUB_PATH"
           fi
@@ -86,19 +100,19 @@ jobs:
       - name: Install Rust stable + Android targets
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          targets: ${{ matrix.rust_targets }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: "./apps/typwriter-desktop/src-tauri -> target"
-          key: android
+          workspaces: "./${{ matrix.app_path }}/src-tauri -> target"
+          key: android-${{ matrix.name }}
 
       - name: Install frontend dependencies
         run: bun install
 
       - name: Initialize Tauri Android project
-        working-directory: apps/typwriter-desktop
+        working-directory: ${{ matrix.app_path }}
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
@@ -108,7 +122,7 @@ jobs:
           fi
 
       - name: Setup Android signing
-        working-directory: apps/typwriter-desktop
+        working-directory: ${{ matrix.app_path }}
         run: |
           set -eux
           cd src-tauri/gen/android
@@ -188,7 +202,7 @@ jobs:
           cat app/build.gradle.kts
 
       - name: Build Android APK
-        working-directory: apps/typwriter-desktop
+        working-directory: ${{ matrix.app_path }}
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
@@ -209,19 +223,19 @@ jobs:
           RANLIB_armv7-linux-androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
           RANLIB_i686-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
           RANLIB_x86_64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
-        run: bunx tauri android build --apk --split-per-abi
+        run: bunx tauri android build ${{ matrix.tauri_args }}
 
       - name: Get app version
         id: version
         run: |
-          VERSION=$(jq -r .version apps/typwriter-desktop/src-tauri/tauri.conf.json)
+          VERSION=$(jq -r .version ${{ matrix.app_path }}/src-tauri/tauri.conf.json)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Rename APKs to match desktop naming convention
+      - name: Rename APKs
         run: |
           set -eux
           VERSION="${{ steps.version.outputs.version }}"
-          OUT="apps/typwriter-desktop/src-tauri/gen/android/app/build/outputs/apk"
+          OUT="${{ matrix.app_path }}/src-tauri/gen/android/app/build/outputs/apk"
           mkdir -p release-apks
           shopt -s globstar nullglob
           for apk in "$OUT"/**/*.apk; do
@@ -232,9 +246,42 @@ jobs:
             abi="${base#app-}"
             abi="${abi%.apk}"
             abi="${abi%-release}"
-            cp "$apk" "release-apks/typwriter_${VERSION}_${abi}.apk"
+            cp "$apk" "release-apks/${{ matrix.artifact_prefix }}_${VERSION}_${abi}.apk"
           done
           ls -la release-apks/
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apks-${{ matrix.name }}
+          path: release-apks/*.apk
+          if-no-files-found: error
+
+  publish-android:
+    name: Publish Android APKs
+    needs: build-android
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get release version
+        id: version
+        run: |
+          VERSION=$(jq -r .version apps/typwriter-desktop/src-tauri/tauri.conf.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download APK artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: android-apks-*
+          path: release-apks
+          merge-multiple: true
+
+      - name: List APKs
+        run: ls -la release-apks/
 
       - name: Publish APKs to draft release
         uses: softprops/action-gh-release@v2
