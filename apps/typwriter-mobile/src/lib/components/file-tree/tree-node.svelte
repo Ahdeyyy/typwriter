@@ -41,14 +41,22 @@
   // finger barely moved between pointerdown and pointerup).
   let startX = 0;
   let startY = 0;
+  let longpressed = false;
   const TAP_SLOP = 10;
 
   function onPointerDown(e: PointerEvent) {
     startX = e.clientX;
     startY = e.clientY;
+    longpressed = false;
   }
 
   function onPointerUp(e: PointerEvent) {
+    // A long press already opened the action drawer; don't also treat the
+    // release as a tap (which for a file would open it and close the tree).
+    if (longpressed) {
+      longpressed = false;
+      return;
+    }
     if (Math.hypot(e.clientX - startX, e.clientY - startY) > TAP_SLOP) return;
     if (node.isDir) {
       if (isOpen) expanded.delete(node.relPath);
@@ -65,7 +73,12 @@
     style="padding-left: {depth * 0.75 + 0.5}rem;"
     onpointerdown={onPointerDown}
     onpointerup={onPointerUp}
-    use:longpress={{ onLongpress: () => onLongpress(node) }}
+    use:longpress={{
+      onLongpress: () => {
+        longpressed = true;
+        onLongpress(node);
+      },
+    }}
   >
     {#if node.isDir}
       <Icon
