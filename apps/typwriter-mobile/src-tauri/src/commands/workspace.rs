@@ -213,22 +213,21 @@ pub fn set_last_file(
     write_meta(&root, &meta)
 }
 
-/// Persist the app-wide fonts source folder (or clear it with `None`). The
-/// folder is loaded into the compiler on the next launch (see `fonts_dirs`).
+/// Open the platform folder picker and persist the chosen folder as the
+/// app-wide fonts source. Returns the folder's display name, or `None` if the
+/// user cancelled. On Android this uses the SAF directory picker so the fonts
+/// are reachable after a restart; the fonts are loaded on the next launch (see
+/// `fonts::load_extra_fonts`).
 #[tauri::command]
-pub fn set_fonts_dir(dir: Option<String>, app: AppHandle) -> Result<(), String> {
-    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&app_data).map_err(|e| e.to_string())?;
-    let file = app_data.join("fonts_dir.txt");
-    match dir {
-        Some(d) if !d.trim().is_empty() => {
-            std::fs::write(&file, d.trim()).map_err(|e| e.to_string())
-        }
-        _ => {
-            let _ = std::fs::remove_file(&file);
-            Ok(())
-        }
-    }
+pub fn pick_fonts_dir(app: AppHandle) -> Result<Option<String>, String> {
+    crate::fonts::pick(&app)
+}
+
+/// Clear the app-wide fonts source (and release any SAF permission). Applied on
+/// the next launch.
+#[tauri::command]
+pub fn clear_fonts_dir(app: AppHandle) -> Result<(), String> {
+    crate::fonts::clear_source(&app)
 }
 
 #[tauri::command]

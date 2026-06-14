@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { getVersion } from "@tauri-apps/api/app";
-  import { open } from "@tauri-apps/plugin-dialog";
   import { toast } from "svelte-sonner";
   import { setMode, userPrefersMode } from "mode-watcher";
   import {
@@ -9,6 +8,7 @@
     PlusSignIcon,
     GithubIcon,
     TextFontIcon,
+    Folder01Icon,
   } from "@hugeicons/core-free-icons";
   import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
@@ -17,22 +17,29 @@
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { app } from "$lib/stores/app.svelte";
   import { settings } from "$lib/stores/settings.svelte";
-  import { setFontsDir } from "$lib/ipc/commands";
+  import { pickFontsDir, clearFontsDir } from "$lib/ipc/commands";
 
-  async function chooseFontsFolder() {
-    const picked = await open({ directory: true, title: "Choose fonts folder" });
-    if (typeof picked !== "string") return;
-    void setFontsDir(picked).match(
-      () => {
-        settings.setFontsDir(picked);
+  let pickingFonts = $state(false);
+
+  function chooseFontsFolder() {
+    if (pickingFonts) return;
+    pickingFonts = true;
+    void pickFontsDir().match(
+      (name) => {
+        pickingFonts = false;
+        if (name === null) return; // cancelled
+        settings.setFontsDir(name);
         toast.success("Fonts folder set — restart the app to load the fonts");
       },
-      (e) => toast.error(`Failed: ${e}`),
+      (e) => {
+        pickingFonts = false;
+        toast.error(`Failed: ${e}`);
+      },
     );
   }
 
   function clearFontsFolder() {
-    void setFontsDir(null).match(
+    void clearFontsDir().match(
       () => {
         settings.setFontsDir(null);
         toast.success("Fonts folder cleared — restart to apply");
@@ -168,10 +175,19 @@
               app launch.
             </p>
             {#if settings.fontsDir}
-              <p class="text-muted-foreground truncate font-mono text-xs">{settings.fontsDir}</p>
+              <div class="bg-muted/50 flex items-center gap-2 rounded-md px-2.5 py-1.5">
+                <Icon icon={Folder01Icon} class="text-muted-foreground size-4 shrink-0" />
+                <span class="truncate text-xs">{settings.fontsDir}</span>
+              </div>
             {/if}
             <div class="flex gap-2">
-              <Button variant="secondary" size="sm" class="flex-1" onclick={chooseFontsFolder}>
+              <Button
+                variant="secondary"
+                size="sm"
+                class="flex-1"
+                disabled={pickingFonts}
+                onclick={chooseFontsFolder}
+              >
                 {settings.fontsDir ? "Change folder" : "Choose folder"}
               </Button>
               {#if settings.fontsDir}

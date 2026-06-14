@@ -74,13 +74,18 @@
   }
 </script>
 
-<div class="flex h-svh flex-col">
+<div class="flex flex-col" style="height: var(--app-height, 100svh);">
   <!-- Top bar -->
   <header
     class="flex h-12 shrink-0 items-center gap-1 border-b px-1"
     style="padding-top: env(safe-area-inset-top);"
   >
-    <Button variant="ghost" size="icon" aria-label="Files" onclick={() => app.openOverlay("filetree")}>
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Toggle files"
+      onclick={() => (app.overlay === "filetree" ? app.closeOverlay() : app.openOverlay("filetree"))}
+    >
       <Icon icon={SidebarLeft01Icon} />
     </Button>
 

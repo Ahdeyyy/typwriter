@@ -29,7 +29,10 @@ export const setMainFile = (relPath: string) => call<null>("set_main_file", { re
 export const setLastFile = (relPath: string | null) => call<null>("set_last_file", { relPath });
 export const setOpenTabs = (openTabs: string[], activeTab: string | null) =>
   call<null>("set_open_tabs", { openTabs, activeTab });
-export const setFontsDir = (dir: string | null) => call<null>("set_fonts_dir", { dir });
+/** Open the native folder picker and persist it as the app-wide fonts source.
+ *  Resolves to the folder's display name, or `null` if the user cancelled. */
+export const pickFontsDir = () => call<string | null>("pick_fonts_dir");
+export const clearFontsDir = () => call<null>("clear_fonts_dir");
 
 // ─── File operations ──────────────────────────────────────────────────────────
 

@@ -7,13 +7,15 @@
     Folder01Icon,
     PencilEdit01Icon,
     Delete02Icon,
+    ArrowRight01Icon,
+    Time04Icon,
+    File02Icon,
   } from "@hugeicons/core-free-icons";
   import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import * as Dialog from "$lib/components/ui/dialog";
   import * as Drawer from "$lib/components/ui/drawer";
-  import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { Skeleton } from "$lib/components/ui/skeleton";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { app } from "$lib/stores/app.svelte";
@@ -28,6 +30,20 @@
   let confirmDelete = $state<WorkspaceMeta | null>(null);
 
   const INVALID = /[/\\:*?"<>|]/;
+
+  // Most-recent first, so "Jump back in" surfaces the freshest workspace.
+  const sorted = $derived(
+    [...workspace.workspaces].sort((a, b) => (b.lastOpenedMs ?? 0) - (a.lastOpenedMs ?? 0)),
+  );
+  const recent = $derived<WorkspaceMeta | null>(sorted[0] ?? null);
+  const rest = $derived(sorted.slice(1));
+
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return "Good morning";
+    if (h < 18) return "Good afternoon";
+    return "Good evening";
+  })();
 
   onMount(() => {
     workspace.refreshList().match(
@@ -79,58 +95,125 @@
   }
 </script>
 
-<div class="flex min-h-svh flex-col" style="padding-top: env(safe-area-inset-top);">
-  <header class="flex items-center justify-between px-4 py-3">
-    <div class="flex items-center gap-2">
-      <Icon icon={PencilEdit01Icon} class="text-primary size-6" />
-      <h1 class="text-lg font-semibold tracking-tight">Typwriter</h1>
+<div class="bg-background flex flex-col" style="height: 100svh; padding-top: env(safe-area-inset-top);">
+  <!-- Header -->
+  <header class="flex shrink-0 items-center justify-between px-5 pt-4 pb-2">
+    <div class="flex items-center gap-2.5">
+      <div class="bg-primary text-primary-foreground flex size-9 items-center justify-center rounded-xl shadow-sm">
+        <Icon icon={PencilEdit01Icon} class="size-5" />
+      </div>
+      <span class="text-base font-semibold tracking-tight">Typwriter</span>
     </div>
-    <Button variant="ghost" size="icon" onclick={() => app.openOverlay("settings")} aria-label="Settings">
-      <Icon icon={Settings01Icon} />
+    <Button
+      variant="ghost"
+      size="icon"
+      class="rounded-full"
+      onclick={() => app.openOverlay("settings")}
+      aria-label="Settings"
+    >
+      <Icon icon={Settings01Icon} class="size-5" />
     </Button>
   </header>
 
-  <div class="flex-1 px-4 pb-4">
+  <!-- Greeting -->
+  <div class="shrink-0 px-5 pt-2 pb-4">
+    <h1 class="text-2xl font-semibold tracking-tight">{greeting}</h1>
+    <p class="text-muted-foreground mt-0.5 text-sm">
+      {#if loading}
+        Loading your workspaces…
+      {:else if workspace.workspaces.length === 0}
+        Create a workspace to start writing.
+      {:else}
+        {workspace.workspaces.length} workspace{workspace.workspaces.length === 1 ? "" : "s"} · pick up where you left off
+      {/if}
+    </p>
+  </div>
+
+  <!-- Content -->
+  <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5" style="padding-bottom: calc(env(safe-area-inset-bottom) + 6rem);">
     {#if loading}
-      <div class="flex flex-col gap-2">
-        {#each Array(3) as _}
-          <Skeleton class="h-16 w-full rounded-lg" />
-        {/each}
+      <div class="flex flex-col gap-3">
+        <Skeleton class="h-28 w-full rounded-3xl" />
+        <Skeleton class="h-16 w-full rounded-2xl" />
+        <Skeleton class="h-16 w-full rounded-2xl" />
       </div>
     {:else if workspace.workspaces.length === 0}
-      <div class="flex flex-col items-center justify-center gap-3 py-20 text-center">
-        <Icon icon={Folder01Icon} class="text-muted-foreground size-12" />
-        <p class="text-muted-foreground text-sm">No workspaces yet.</p>
-        <p class="text-muted-foreground text-xs">Create one to start writing.</p>
+      <div class="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+        <div class="bg-muted text-muted-foreground flex size-20 items-center justify-center rounded-3xl">
+          <Icon icon={File02Icon} class="size-9" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <p class="text-base font-medium">No workspaces yet</p>
+          <p class="text-muted-foreground text-sm">Your Typst documents live in workspaces. Create your first one to begin.</p>
+        </div>
+        <Button class="mt-1 rounded-full px-6" onclick={() => (createOpen = true)}>
+          <Icon icon={Add01Icon} /> New workspace
+        </Button>
       </div>
     {:else}
-      <ScrollArea class="h-[calc(100svh-9rem)]">
+      <!-- Jump back in -->
+      {#if recent}
+        {@const r = recent}
+        <button
+          class="bg-primary text-primary-foreground active:scale-[0.985] relative mb-6 flex w-full flex-col gap-6 overflow-hidden rounded-3xl p-5 text-left shadow-sm transition-transform"
+          onclick={() => openWorkspace(r)}
+          use:longpress={{ onLongpress: () => (menuTarget = r) }}
+        >
+          <!-- Decorative oversized glyph -->
+          <Icon icon={Folder01Icon} class="pointer-events-none absolute -right-5 -bottom-6 size-36 opacity-10" />
+          <span class="text-primary-foreground/70 text-xs font-medium tracking-wide uppercase">Jump back in</span>
+          <div class="flex items-end justify-between gap-3">
+            <div class="min-w-0">
+              <div class="truncate text-2xl font-semibold tracking-tight">{r.name}</div>
+              <div class="text-primary-foreground/70 mt-1 flex items-center gap-1.5 text-xs">
+                <Icon icon={Time04Icon} class="size-3.5" />
+                opened {timeAgo(r.lastOpenedMs)}
+              </div>
+            </div>
+            <div class="bg-primary-foreground/15 flex size-11 shrink-0 items-center justify-center rounded-full">
+              <Icon icon={ArrowRight01Icon} class="size-5" />
+            </div>
+          </div>
+        </button>
+      {/if}
+
+      <!-- All other workspaces -->
+      {#if rest.length > 0}
+        <h2 class="text-muted-foreground mb-2 px-1 text-xs font-medium tracking-wide uppercase">Workspaces</h2>
         <div class="flex flex-col gap-2">
-          {#each workspace.workspaces as meta (meta.path)}
+          {#each rest as meta (meta.path)}
             <button
-              class="bg-card active:bg-accent active:text-accent-foreground flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors"
+              class="bg-card active:bg-accent active:text-accent-foreground flex w-full items-center gap-3.5 rounded-2xl border p-3 text-left transition-colors"
               onclick={() => openWorkspace(meta)}
               use:longpress={{ onLongpress: () => (menuTarget = meta) }}
             >
-              <Icon icon={Folder01Icon} class="text-muted-foreground size-5 shrink-0" />
+              <div class="bg-muted text-muted-foreground flex size-11 shrink-0 items-center justify-center rounded-xl">
+                <Icon icon={Folder01Icon} class="size-5" />
+              </div>
               <div class="min-w-0 flex-1">
                 <div class="truncate text-sm font-medium">{meta.name}</div>
                 <div class="text-muted-foreground text-xs">opened {timeAgo(meta.lastOpenedMs)}</div>
               </div>
+              <Icon icon={ArrowRight01Icon} class="text-muted-foreground/50 size-4 shrink-0" />
             </button>
           {/each}
         </div>
-      </ScrollArea>
+      {/if}
     {/if}
   </div>
-
-  <div class="px-4" style="padding-bottom: calc(env(safe-area-inset-bottom) + 3.5rem);">
-    <Button class="w-full" onclick={() => (createOpen = true)}>
-      <Icon icon={Add01Icon} />
-      New workspace
-    </Button>
-  </div>
 </div>
+
+<!-- Floating "new workspace" action -->
+{#if !loading && workspace.workspaces.length > 0}
+  <button
+    class="bg-primary text-primary-foreground active:scale-95 fixed flex size-14 items-center justify-center rounded-2xl shadow-lg transition-transform"
+    style="right: 1.25rem; bottom: calc(env(safe-area-inset-bottom) + 1.25rem);"
+    onclick={() => (createOpen = true)}
+    aria-label="New workspace"
+  >
+    <Icon icon={Add01Icon} class="size-6" />
+  </button>
+{/if}
 
 <!-- New workspace dialog -->
 <Dialog.Root bind:open={createOpen}>

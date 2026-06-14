@@ -1,8 +1,9 @@
 // world.rs
 //
 // `MobileWorld` — implements `typst::World` + `typst_ide::IdeWorld`. A lean
-// reimagining of the desktop `EditorWorld`: embedded fonts only (loaded
-// synchronously at startup), plain `std::fs` reads (no SAF in v1), and a slot
+// reimagining of the desktop `EditorWorld`: embedded fonts plus any user-picked
+// app-wide font folder (loaded synchronously at startup — directory fonts via
+// `FontSearcher`, SAF-tree fonts as raw buffers), plain `std::fs` reads, and a slot
 // cache that is fully cleared at the start of every compile (`reset()`), so
 // edited files are always re-read from disk — disk is the source of truth.
 
@@ -53,8 +54,12 @@ pub struct MobileWorld {
     main: RwLock<Option<FileId>>,
     library: LazyHash<Library>,
     book: LazyHash<FontBook>,
-    /// Embedded font slots, index-aligned with `book`.
+    /// Embedded + directory-searched font slots, index-aligned with the first
+    /// `fonts.len()` entries of `book`.
     fonts: Vec<FontSlot>,
+    /// Eagerly-loaded fonts read from a SAF tree (Android), index-aligned with
+    /// the book entries that follow the `fonts` slots.
+    extra_fonts: Vec<Font>,
     /// File slot cache: FileId -> (Source | Bytes). Cleared by `reset()`.
     slots: Mutex<HashMap<FileId, FileSlot>>,
     /// Transient per-call overlay (used by `with_overlay` for completions).
@@ -78,6 +83,7 @@ impl MobileWorld {
         package_cache: Option<PathBuf>,
         package_dir: Option<PathBuf>,
         extra_font_dirs: Vec<PathBuf>,
+        extra_font_buffers: Vec<Vec<u8>>,
     ) -> Self {
         let t = Instant::now();
         // Embedded fonts + any user-selected app-wide font folders. No system
@@ -85,10 +91,24 @@ impl MobileWorld {
         let fonts = FontSearcher::new()
             .include_system_fonts(false)
             .search_with(&extra_font_dirs);
+
+        // Fonts read out of a SAF tree (Android) arrive as raw bytes; register
+        // each face into the book, index-aligned after the searched slots.
+        let mut book = fonts.book;
+        let mut extra_fonts = Vec::new();
+        for buffer in extra_font_buffers {
+            let bytes = Bytes::new(buffer);
+            for font in Font::iter(bytes.clone()) {
+                book.push(font.info().clone());
+                extra_fonts.push(font);
+            }
+        }
+
         info!(
-            "MobileWorld::new: {} fonts (+{} extra dir(s)) ({:.1}ms)",
-            fonts.fonts.len(),
+            "MobileWorld::new: {} fonts (+{} dir(s), +{} from picked folder) ({:.1}ms)",
+            fonts.fonts.len() + extra_fonts.len(),
             extra_font_dirs.len(),
+            extra_fonts.len(),
             t.elapsed().as_secs_f64() * 1000.0
         );
         let user_agent = "typwriter-mobile".to_string();
@@ -99,8 +119,9 @@ impl MobileWorld {
             root: RwLock::new(None),
             main: RwLock::new(None),
             library: LazyHash::new(Library::builder().with_features(Features::default()).build()),
-            book: LazyHash::new(fonts.book),
+            book: LazyHash::new(book),
             fonts: fonts.fonts,
+            extra_fonts,
             slots: Mutex::new(HashMap::new()),
             overlay: RwLock::new(HashMap::new()),
             package_storage,
@@ -245,7 +266,12 @@ impl World for MobileWorld {
     }
 
     fn font(&self, index: usize) -> Option<Font> {
-        self.fonts.get(index).and_then(|slot| slot.get())
+        // The book lists searched slots first, then the eagerly-loaded SAF
+        // fonts; mirror that split here.
+        match self.fonts.get(index) {
+            Some(slot) => slot.get(),
+            None => self.extra_fonts.get(index - self.fonts.len()).cloned(),
+        }
     }
 
     fn today(&self, offset: Option<i64>) -> Option<Datetime> {

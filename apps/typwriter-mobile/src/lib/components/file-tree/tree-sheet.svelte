@@ -138,7 +138,7 @@
     if (!o) app.closeOverlay();
   }}
 >
-  <Sheet.Content side="left" class="w-[85vw] max-w-80 p-0">
+  <Sheet.Content side="left" class="w-[85vw] max-w-80 p-0" showCloseButton={false}>
     <div class="flex h-full flex-col" style="padding-top: env(safe-area-inset-top);">
       <div class="flex items-center justify-between gap-2 border-b px-3 py-2">
         <span class="truncate text-sm font-semibold">{workspace.name ?? "Files"}</span>
