@@ -74,7 +74,14 @@
   }
 </script>
 
-<div class="flex flex-col" style="height: var(--app-height, 100svh);">
+<!-- Pinned to the visual-viewport rectangle (see keyboard-visibility) so the
+     shell always sits above the soft keyboard instead of behind it. Falls back
+     to a full-window static-ish box before the keyboard listener publishes the
+     vars. -->
+<div
+  class="fixed flex flex-col"
+  style="top: var(--vv-top, 0px); left: var(--vv-left, 0px); width: var(--vv-width, 100vw); height: var(--app-height, 100svh);"
+>
   <!-- Top bar -->
   <header
     class="flex h-12 shrink-0 items-center gap-1 border-b px-1"

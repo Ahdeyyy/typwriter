@@ -35,8 +35,17 @@
     { icon: ListViewIcon, label: "List", run: (v) => insertLinePrefix(v, "- ") },
   ];
 
-  // Pinned buttons (outside the scroller): preventDefault on pointerdown keeps
-  // editor focus / the keyboard up.
+  // Tapping a button steals focus from the editor's contenteditable on
+  // mousedown, which blurs it and dismisses the soft keyboard. Preventing the
+  // mousedown default keeps focus (and the keyboard) on the editor — every
+  // button carries onmousedown={keepEditorFocus}. It only fires on a tap; a
+  // scroll cancels the synthetic mouse events, so horizontal panning is
+  // unaffected. The "Hide keyboard" button still works since it blurs the
+  // editor explicitly in its handler.
+  function keepEditorFocus(e: MouseEvent) {
+    e.preventDefault();
+  }
+
   function withView(fn: (v: EditorView) => void) {
     return (e: PointerEvent) => {
       e.preventDefault();
@@ -66,6 +75,7 @@
   <button
     class="active:bg-accent active:text-accent-foreground flex min-w-10 shrink-0 items-center justify-center border-r"
     aria-label="Suggestions"
+    onmousedown={keepEditorFocus}
     onpointerdown={withView((v) => completions.trigger(v))}
   >
     <Icon icon={AiMagicIcon} class="size-5" />
@@ -77,6 +87,7 @@
       <button
         class="active:bg-accent active:text-accent-foreground flex min-w-10 shrink-0 items-center justify-center rounded-lg"
         aria-label={cmd.label}
+        onmousedown={keepEditorFocus}
         onpointerdown={tapDown}
         onpointerup={tapUp(cmd.run)}
       >
@@ -87,6 +98,7 @@
     {#each SYMBOLS as sym (sym)}
       <button
         class="active:bg-accent active:text-accent-foreground min-w-10 shrink-0 rounded-lg font-mono text-base"
+        onmousedown={keepEditorFocus}
         onpointerdown={tapDown}
         onpointerup={tapUp((v) => insertOrWrap(v, sym))}
       >
@@ -100,6 +112,7 @@
     <button
       class="active:bg-accent active:text-accent-foreground flex min-w-10 items-center justify-center rounded-lg"
       aria-label="Undo"
+      onmousedown={keepEditorFocus}
       onpointerdown={withView((v) => undo(v))}
     >
       <Icon icon={UndoIcon} class="size-5" />
@@ -107,6 +120,7 @@
     <button
       class="active:bg-accent active:text-accent-foreground flex min-w-10 items-center justify-center rounded-lg"
       aria-label="Redo"
+      onmousedown={keepEditorFocus}
       onpointerdown={withView((v) => redo(v))}
     >
       <Icon icon={RedoIcon} class="size-5" />

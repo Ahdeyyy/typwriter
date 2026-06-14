@@ -54,21 +54,23 @@
   }
 </script>
 
-{#if completions.items.length}
-  <div
-    class="bg-background flex h-10 shrink-0 items-stretch gap-1 overflow-x-auto border-t px-2"
-    style="scrollbar-width: none; touch-action: pan-x;"
-  >
-    {#each completions.items as item, i (item.label + i)}
-      <button
-        class="active:bg-accent active:text-accent-foreground flex shrink-0 items-center gap-1 rounded-full border px-3 font-mono text-sm whitespace-nowrap {i === 0 ? 'border-foreground/40' : ''}"
-        onmousedown={keepEditorFocus}
-        onpointerdown={onPointerDown}
-        onpointerup={(e) => onPointerUp(e, item)}
-      >
-        <Icon icon={iconFor(item.kind)} class="size-3.5 shrink-0" />
-        <span class="max-w-[24ch] truncate">{item.label}</span>
-      </button>
-    {/each}
-  </div>
-{/if}
+<!-- The row is always present (even with no items) so showing/clearing
+     completions never resizes the editor viewport — a resize makes CodeMirror
+     re-anchor its scroll, which reads as an unwanted jump when you tap a symbol
+     that clears the suggestions. -->
+<div
+  class="bg-background flex h-10 shrink-0 items-stretch gap-1 overflow-x-auto border-t px-2"
+  style="scrollbar-width: none; touch-action: pan-x;"
+>
+  {#each completions.items as item, i (item.label + i)}
+    <button
+      class="active:bg-accent active:text-accent-foreground flex shrink-0 items-center gap-1 rounded-full border px-3 font-mono text-sm whitespace-nowrap {i === 0 ? 'border-foreground/40' : ''}"
+      onmousedown={keepEditorFocus}
+      onpointerdown={onPointerDown}
+      onpointerup={(e) => onPointerUp(e, item)}
+    >
+      <Icon icon={iconFor(item.kind)} class="size-3.5 shrink-0" />
+      <span class="max-w-[24ch] truncate">{item.label}</span>
+    </button>
+  {/each}
+</div>
