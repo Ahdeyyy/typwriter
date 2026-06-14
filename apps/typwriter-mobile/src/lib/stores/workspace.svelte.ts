@@ -8,6 +8,7 @@ import * as ipc from "$lib/ipc/commands";
 import { app } from "./app.svelte";
 import { editor } from "./editor.svelte";
 import { settings } from "./settings.svelte";
+import { compileStore } from "./compile.svelte";
 
 class WorkspaceStore {
   workspaces = $state<WorkspaceMeta[]>([]);
@@ -55,8 +56,12 @@ class WorkspaceStore {
   }
 
   setMain(relPath: string): ResultAsync<void, string> {
-    return ipc.setMainFile(relPath).map(() => {
+    return ipc.setMainFile(relPath).andThen(() => {
       this.mainFile = relPath;
+      // A new main file is a new document identity. Persist any pending edits
+      // first (the compiler reads from disk), then drop the stale render and
+      // rebuild the preview in the background so it's ready when next opened.
+      return editor.flush().map(() => compileStore.onMainChanged());
     });
   }
 

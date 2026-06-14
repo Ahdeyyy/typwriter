@@ -45,6 +45,15 @@
 
   let exporting = $state(false);
   let confirmExportOpen = $state(false);
+  let formatting = $state(false);
+
+  async function formatFile() {
+    if (formatting) return;
+    formatting = true;
+    const result = await editor.formatActive();
+    formatting = false;
+    result.mapErr((e) => toast.error(`Format failed: ${e}`));
+  }
 
   async function exportPdf() {
     if (compileStore.stale || compileStore.pages.length === 0) {
@@ -145,7 +154,7 @@
     <CompletionStrip />
     <EditorToolbar />
   {:else}
-    <BottomBar onPreview={openPreview} onExport={exportPdf} {exporting} />
+    <BottomBar onPreview={openPreview} onExport={exportPdf} onFormat={formatFile} {exporting} />
   {/if}
 </div>
 

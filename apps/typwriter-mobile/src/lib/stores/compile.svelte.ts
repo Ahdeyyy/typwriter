@@ -25,6 +25,22 @@ class CompileStore {
     if (app.overlay === "preview") void this.run();
   }
 
+  /**
+   * The active document changed (a new main file was set). Unlike a same-file
+   * edit — where we keep the last render visible until the new one arrives —
+   * a document switch must drop the old pages so the preview never shows the
+   * previous document's content. We then rebuild eagerly in the background so
+   * the render is ready (and correct) the moment the preview is opened.
+   */
+  onMainChanged() {
+    this.pages = [];
+    this.errors = [];
+    this.warnings = [];
+    this.status = "compiling";
+    this.stale = true;
+    void this.run();
+  }
+
   run(): ResultAsync<void, string> {
     this.status = "compiling";
     return ipc.compile().map((res) => {

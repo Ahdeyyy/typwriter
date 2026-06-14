@@ -174,6 +174,36 @@ class EditorStore {
     }, LIVE_COMPILE_MS);
   }
 
+  /**
+   * Format the active `.typ` buffer with typstyle, preserving the caret.
+   * No-op for image / unsupported / non-`.typ` files or an empty new tab.
+   * Cursor maintenance happens in Rust (UTF-8 bytes); the IPC boundary is the
+   * only place we deal in UTF-16 code units.
+   */
+  formatActive(): ResultAsync<void, string> {
+    const view = this.view;
+    if (this.fileKind !== "text" || !this.relPath || !view) return okAsync(undefined);
+    if (!this.relPath.endsWith(".typ")) return okAsync(undefined);
+
+    const original = view.state.doc.toString();
+    const cursor = view.state.selection.main.head;
+    return ipc.formatTypstSourceWithCursor(original, cursor).map((res) => {
+      // The format ran across an IPC await: if the user typed in the meantime,
+      // or the document was already formatted, leave the buffer untouched.
+      if (view.state.doc.toString() !== original) return;
+      if (res.formatted === original) return;
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: res.formatted },
+        selection: { anchor: Math.min(res.cursor, res.formatted.length) },
+        scrollIntoView: true,
+      });
+      // The dispatch fires CM's updateListener (handleDocChanged), marking the
+      // buffer dirty and scheduling autosave; flush now so the change persists
+      // and diagnostics/preview refresh promptly.
+      void this.flush();
+    });
+  }
+
   /** Persist now. Single-flight: concurrent calls coalesce. */
   flush(): ResultAsync<void, string> {
     if (this.inflight) return this.inflight;

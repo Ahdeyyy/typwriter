@@ -60,6 +60,20 @@ export const getCompletions = (
 
 export const compile = () => call<CompileResult>("compile");
 
+// ─── Format ──────────────────────────────────────────────────────────────────
+
+export interface FormatWithCursorResponse {
+  formatted: string;
+  /** Cursor's new offset in UTF-16 code units (matches JS string indexing). */
+  cursor: number;
+}
+
+export const formatTypstSource = (source: string) =>
+  call<string>("format_typst_source", { source });
+/** Format Typst source while tracking the cursor through the rewrite. */
+export const formatTypstSourceWithCursor = (source: string, cursor: number) =>
+  call<FormatWithCursorResponse>("format_typst_cursor_virtual", { source, cursor });
+
 // ─── PDF export (phase 7) ─────────────────────────────────────────────────────
 
 export const exportPdfToUri = () => call<string>("export_pdf_to_uri");

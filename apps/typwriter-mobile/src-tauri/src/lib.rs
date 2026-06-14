@@ -125,6 +125,8 @@ pub fn run() {
             commands::editor::save_file,
             commands::editor::get_completions,
             commands::compile::compile,
+            commands::format::format_typst_source,
+            commands::format::format_typst_cursor_virtual,
             commands::export::export_pdf_to_uri,
             commands::export::export_pdf_to_cache_file,
         ])
