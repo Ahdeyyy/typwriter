@@ -3,9 +3,10 @@
 // the Sparkle button, tap-to-accept. Stale responses are dropped by sequence.
 
 import type { EditorView, ViewUpdate } from "@codemirror/view";
+import { snippet } from "@codemirror/autocomplete";
 import { getCompletions } from "$lib/ipc/commands";
 import { editor } from "$lib/stores/editor.svelte";
-import { autoTriggerApplies, flattenSnippet, type StripItem } from "./completion-logic";
+import { autoTriggerApplies, toStripItem, type StripItem } from "./completion-logic";
 
 const DEBOUNCE_MS = 150;
 const MAX_ITEMS = 20;
@@ -53,7 +54,7 @@ class CompletionStore {
     if (view.state.selection.main.head !== head) return; // cursor moved while waiting
     res.match(
       (r) => {
-        this.items = r.completions.slice(0, MAX_ITEMS).map(flattenSnippet);
+        this.items = r.completions.slice(0, MAX_ITEMS).map(toStripItem);
         this.from = r.from;
         this.anchorCursor = head;
       },
@@ -63,12 +64,9 @@ class CompletionStore {
 
   accept(view: EditorView, item: StripItem) {
     const head = view.state.selection.main.head;
-    const insert = item.apply;
-    view.dispatch({
-      changes: { from: this.from, to: head, insert },
-      selection: { anchor: this.from + (item.cursorOffset >= 0 ? item.cursorOffset : insert.length) },
-      scrollIntoView: true,
-    });
+    // `snippet` inserts the template, selects the first placeholder, and (for
+    // multi-hole templates) installs its own Tab/Escape tabstop keymap.
+    snippet(item.template)(view, null, this.from, head);
     this.clear();
     view.focus();
   }

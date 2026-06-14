@@ -34,6 +34,29 @@ fn packages_dirs(app: &tauri::AppHandle) -> (Option<PathBuf>, Option<PathBuf>) {
     (base.clone(), base)
 }
 
+/// App-wide font directories searched at startup: the conventional
+/// `<documents>/Typwriter/Fonts/` folder plus any user-selected folder
+/// persisted to `<app_data>/fonts_dir.txt` (see `set_fonts_dir`). Only existing
+/// directories are returned. Changes apply on the next launch.
+fn fonts_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(docs) = app.path().document_dir() {
+        let conventional = docs.join("Typwriter").join("Fonts");
+        if conventional.is_dir() {
+            dirs.push(conventional);
+        }
+    }
+    if let Ok(app_data) = app.path().app_data_dir() {
+        if let Ok(saved) = std::fs::read_to_string(app_data.join("fonts_dir.txt")) {
+            let path = PathBuf::from(saved.trim());
+            if path.is_dir() && !dirs.contains(&path) {
+                dirs.push(path);
+            }
+        }
+    }
+    dirs
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -92,7 +115,8 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             let (cache, pkgdir) = packages_dirs(&handle);
-            app.manage(Arc::new(MobileWorld::new(cache, pkgdir)));
+            let font_dirs = fonts_dirs(&handle);
+            app.manage(Arc::new(MobileWorld::new(cache, pkgdir, font_dirs)));
             app.manage(Arc::new(CompileState::default()));
             app.manage(Arc::new(Renderer::new()));
             app.manage(Arc::new(WorkspaceState::default()));
@@ -106,6 +130,8 @@ pub fn run() {
             commands::workspace::get_file_tree,
             commands::workspace::set_main_file,
             commands::workspace::set_last_file,
+            commands::workspace::set_open_tabs,
+            commands::workspace::set_fonts_dir,
             commands::workspace::create_file,
             commands::workspace::create_folder,
             commands::workspace::rename_entry,

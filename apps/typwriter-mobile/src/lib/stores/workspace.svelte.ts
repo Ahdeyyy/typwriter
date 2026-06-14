@@ -7,6 +7,7 @@ import type { FileNode, WorkspaceInfo, WorkspaceMeta } from "$lib/ipc/types";
 import * as ipc from "$lib/ipc/commands";
 import { app } from "./app.svelte";
 import { editor } from "./editor.svelte";
+import { settings } from "./settings.svelte";
 
 class WorkspaceStore {
   workspaces = $state<WorkspaceMeta[]>([]);
@@ -35,11 +36,22 @@ class WorkspaceStore {
       this.root = info.root;
       this.tree = info.tree;
       this.mainFile = info.mainFile;
+      settings.setLastWorkspace(info.name);
       app.openEditor();
-      const initial = info.lastFile ?? info.mainFile;
-      if (initial) void editor.loadFile(initial);
+      // Seed open tabs (persisted), falling back to last/main file.
+      const initialTabs = info.openTabs?.length
+        ? info.openTabs
+        : [info.lastFile ?? info.mainFile].filter((f): f is string => !!f);
+      const active = info.activeTab ?? info.lastFile ?? info.mainFile ?? initialTabs[0] ?? null;
+      editor.seedTabs(initialTabs, active);
       return info;
     });
+  }
+
+  /** Close the current workspace and return home, clearing the auto-open hint. */
+  close() {
+    settings.setLastWorkspace(null);
+    app.goHome();
   }
 
   setMain(relPath: string): ResultAsync<void, string> {

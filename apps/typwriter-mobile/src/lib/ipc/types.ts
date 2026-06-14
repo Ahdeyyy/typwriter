@@ -22,6 +22,10 @@ export interface WorkspaceInfo {
   tree: FileNode;
   mainFile: string | null;
   lastFile: string | null;
+  /** Persisted open editor tabs (workspace-relative paths), restored on open. */
+  openTabs: string[];
+  /** Persisted active tab relPath, or null for an empty "new tab". */
+  activeTab: string | null;
 }
 
 export type FileContent =
@@ -79,4 +83,8 @@ export interface AppSettings {
   showLineNumbers: boolean;
   autosaveMs: number;
   previewScaleBucket: 1 | 2 | 3 | 4;
+  /** Name of the most recently opened workspace, re-opened on launch. */
+  lastWorkspace: string | null;
+  /** App-wide fonts source folder (path or SAF URI) loaded into the compiler. */
+  fontsDir: string | null;
 }

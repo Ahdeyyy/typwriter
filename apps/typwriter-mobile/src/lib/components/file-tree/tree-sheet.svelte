@@ -2,14 +2,15 @@
   import { SvelteSet } from "svelte/reactivity";
   import { toast } from "svelte-sonner";
   import {
-    FilePlus,
-    FolderPlus,
-    PencilSimple,
-    ArrowsOutCardinal,
-    Star,
-    Trash,
-    FolderOpen,
-  } from "phosphor-svelte";
+    FileAddIcon,
+    FolderAddIcon,
+    PencilEdit01Icon,
+    Move02Icon,
+    StarIcon,
+    Delete02Icon,
+    FolderOpenIcon,
+  } from "@hugeicons/core-free-icons";
+  import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import * as Sheet from "$lib/components/ui/sheet";
@@ -143,10 +144,10 @@
         <span class="truncate text-sm font-semibold">{workspace.name ?? "Files"}</span>
         <div class="flex shrink-0 items-center gap-1">
           <Button variant="ghost" size="icon-sm" aria-label="New file" onclick={() => startCreate("newFile", "")}>
-            <FilePlus />
+            <Icon icon={FileAddIcon} />
           </Button>
           <Button variant="ghost" size="icon-sm" aria-label="New folder" onclick={() => startCreate("newFolder", "")}>
-            <FolderPlus />
+            <Icon icon={FolderAddIcon} />
           </Button>
         </div>
       </div>
@@ -183,27 +184,27 @@
       >
         {#if target.isDir}
           <Button variant="ghost" class="justify-start" onclick={() => startCreate("newFile", target.relPath)}>
-            <FilePlus /> New file inside
+            <Icon icon={FileAddIcon} /> New file inside
           </Button>
           <Button variant="ghost" class="justify-start" onclick={() => startCreate("newFolder", target.relPath)}>
-            <FolderPlus /> New folder inside
+            <Icon icon={FolderAddIcon} /> New folder inside
           </Button>
         {:else}
           <Button variant="ghost" class="justify-start" onclick={() => openFile(target.relPath)}>
-            <FolderOpen /> Open
+            <Icon icon={FolderOpenIcon} /> Open
           </Button>
           <Button variant="ghost" class="justify-start" onclick={() => setAsMain(target)}>
-            <Star /> Set as main file
+            <Icon icon={StarIcon} /> Set as main file
           </Button>
         {/if}
         <Button variant="ghost" class="justify-start" onclick={() => startRename(target)}>
-          <PencilSimple /> Rename
+          <Icon icon={PencilEdit01Icon} /> Rename
         </Button>
         <Button variant="ghost" class="justify-start" onclick={() => startMove(target)}>
-          <ArrowsOutCardinal /> Move to…
+          <Icon icon={Move02Icon} /> Move to…
         </Button>
         <Button variant="ghost" class="text-destructive justify-start" onclick={() => startDelete(target)}>
-          <Trash /> Delete
+          <Icon icon={Delete02Icon} /> Delete
         </Button>
       </div>
     {/if}
@@ -226,7 +227,7 @@
       <div class="flex max-h-[50vh] flex-col gap-1 overflow-y-auto">
         {#each workspace.allFolders() as folder (folder.relPath)}
           <Button variant="ghost" class="justify-start font-mono text-xs" onclick={() => doMove(folder.relPath)}>
-            <FolderOpen /> {folder.name}
+            <Icon icon={FolderOpenIcon} /> {folder.name}
           </Button>
         {/each}
       </div>

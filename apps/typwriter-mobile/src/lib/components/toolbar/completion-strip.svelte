@@ -1,31 +1,46 @@
 <script lang="ts">
   import {
-    Function as FunctionIcon,
-    Cube,
-    TextT,
-    Hash,
-    BracketsSquare,
-    At,
-    Sparkle,
-  } from "phosphor-svelte";
-  import type { Component } from "svelte";
+    FunctionSquareIcon,
+    CubeIcon,
+    TextFontIcon,
+    HashIcon,
+    SourceCodeIcon,
+    AtIcon,
+    AiMagicIcon,
+  } from "@hugeicons/core-free-icons";
+  import type { IconSvgElement } from "@hugeicons/svelte";
+  import Icon from "$lib/components/icon.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { completions } from "$lib/editor/completion-controller.svelte";
   import type { StripItem } from "$lib/editor/completion-logic";
 
   // Match the desktop's mapBackendCompletionKind: lowercase substring match.
-  function iconFor(kind: string): Component {
+  function iconFor(kind: string): IconSvgElement {
     const k = kind.toLowerCase();
-    if (k.includes("func")) return FunctionIcon;
-    if (k.includes("module") || k.includes("namespace")) return Cube;
-    if (k.includes("text") || k.includes("string")) return TextT;
-    if (k.includes("constant")) return Hash;
-    if (k.includes("type")) return BracketsSquare;
-    if (k.includes("label") || k.includes("ref")) return At;
-    return Sparkle;
+    if (k.includes("func")) return FunctionSquareIcon;
+    if (k.includes("module") || k.includes("namespace")) return CubeIcon;
+    if (k.includes("text") || k.includes("string")) return TextFontIcon;
+    if (k.includes("constant")) return HashIcon;
+    if (k.includes("type")) return SourceCodeIcon;
+    if (k.includes("label") || k.includes("ref")) return AtIcon;
+    return AiMagicIcon;
   }
 
-  function accept(e: PointerEvent, item: StripItem) {
+  // Tap-vs-scroll: accepting on pointerdown blocked horizontal scrolling. Now we
+  // record the pointerdown position and only accept on pointerup if the finger
+  // barely moved (a tap); a drag scrolls the strip instead.
+  let startX = 0;
+  let startY = 0;
+  const TAP_SLOP = 8;
+
+  function onPointerDown(e: PointerEvent) {
+    startX = e.clientX;
+    startY = e.clientY;
+  }
+
+  function onPointerUp(e: PointerEvent, item: StripItem) {
+    const moved = Math.hypot(e.clientX - startX, e.clientY - startY);
+    if (moved > TAP_SLOP) return; // it was a scroll, not a tap
     e.preventDefault(); // keep editor focus / keyboard up
     if (editor.view) completions.accept(editor.view, item);
   }
@@ -34,15 +49,15 @@
 {#if completions.items.length}
   <div
     class="bg-background flex h-10 shrink-0 items-stretch gap-1 overflow-x-auto border-t px-2"
-    style="scrollbar-width: none;"
+    style="scrollbar-width: none; touch-action: pan-x;"
   >
     {#each completions.items as item, i (item.label + i)}
-      {@const Icon = iconFor(item.kind)}
       <button
-        class="active:bg-accent active:text-accent-foreground flex shrink-0 items-center gap-1 rounded-md border px-3 font-mono text-sm whitespace-nowrap {i === 0 ? 'border-foreground/40' : ''}"
-        onpointerdown={(e) => accept(e, item)}
+        class="active:bg-accent active:text-accent-foreground flex shrink-0 items-center gap-1 rounded-full border px-3 font-mono text-sm whitespace-nowrap {i === 0 ? 'border-foreground/40' : ''}"
+        onpointerdown={onPointerDown}
+        onpointerup={(e) => onPointerUp(e, item)}
       >
-        <Icon class="size-3.5 shrink-0" />
+        <Icon icon={iconFor(item.kind)} class="size-3.5 shrink-0" />
         <span class="max-w-[24ch] truncate">{item.label}</span>
       </button>
     {/each}

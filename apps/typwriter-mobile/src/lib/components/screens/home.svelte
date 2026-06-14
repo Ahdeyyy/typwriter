@@ -1,7 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { toast } from "svelte-sonner";
-  import { Plus, Gear, FolderSimple, PencilSimpleLine, Trash } from "phosphor-svelte";
+  import {
+    Add01Icon,
+    Settings01Icon,
+    Folder01Icon,
+    PencilEdit01Icon,
+    Delete02Icon,
+  } from "@hugeicons/core-free-icons";
+  import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import * as Dialog from "$lib/components/ui/dialog";
@@ -75,11 +82,11 @@
 <div class="flex min-h-svh flex-col" style="padding-top: env(safe-area-inset-top);">
   <header class="flex items-center justify-between px-4 py-3">
     <div class="flex items-center gap-2">
-      <PencilSimpleLine class="text-primary size-6" weight="duotone" />
+      <Icon icon={PencilEdit01Icon} class="text-primary size-6" />
       <h1 class="text-lg font-semibold tracking-tight">Typwriter</h1>
     </div>
     <Button variant="ghost" size="icon" onclick={() => app.openOverlay("settings")} aria-label="Settings">
-      <Gear />
+      <Icon icon={Settings01Icon} />
     </Button>
   </header>
 
@@ -92,7 +99,7 @@
       </div>
     {:else if workspace.workspaces.length === 0}
       <div class="flex flex-col items-center justify-center gap-3 py-20 text-center">
-        <FolderSimple class="text-muted-foreground size-12" weight="duotone" />
+        <Icon icon={Folder01Icon} class="text-muted-foreground size-12" />
         <p class="text-muted-foreground text-sm">No workspaces yet.</p>
         <p class="text-muted-foreground text-xs">Create one to start writing.</p>
       </div>
@@ -105,7 +112,7 @@
               onclick={() => openWorkspace(meta)}
               use:longpress={{ onLongpress: () => (menuTarget = meta) }}
             >
-              <FolderSimple class="text-muted-foreground size-5 shrink-0" weight="duotone" />
+              <Icon icon={Folder01Icon} class="text-muted-foreground size-5 shrink-0" />
               <div class="min-w-0 flex-1">
                 <div class="truncate text-sm font-medium">{meta.name}</div>
                 <div class="text-muted-foreground text-xs">opened {timeAgo(meta.lastOpenedMs)}</div>
@@ -117,9 +124,9 @@
     {/if}
   </div>
 
-  <div class="px-4 pb-6" style="padding-bottom: calc(env(safe-area-inset-bottom) + 1.5rem);">
+  <div class="px-4" style="padding-bottom: calc(env(safe-area-inset-bottom) + 3.5rem);">
     <Button class="w-full" onclick={() => (createOpen = true)}>
-      <Plus />
+      <Icon icon={Add01Icon} />
       New workspace
     </Button>
   </div>
@@ -166,7 +173,7 @@
           menuTarget = null;
         }}
       >
-        <Trash />
+        <Icon icon={Delete02Icon} />
         Delete workspace
       </Button>
     </div>

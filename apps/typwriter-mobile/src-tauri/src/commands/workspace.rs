@@ -145,12 +145,26 @@ pub fn open_workspace(
     meta.last_opened_ms = Some(now_ms());
     write_meta(&dir, &meta)?;
 
-    let last_file = meta
-        .last_file
-        .filter(|rel| resolve_in_root(&dir, rel).map(|p| p.is_file()).unwrap_or(false));
+    let still_exists =
+        |rel: &str| resolve_in_root(&dir, rel).map(|p| p.is_file()).unwrap_or(false);
+
+    let last_file = meta.last_file.clone().filter(|rel| still_exists(rel));
+
+    // Restore open tabs, dropping any whose file no longer exists.
+    let open_tabs: Vec<String> = meta
+        .open_tabs
+        .iter()
+        .filter(|rel| still_exists(rel))
+        .cloned()
+        .collect();
+    let active_tab = meta
+        .active_tab
+        .clone()
+        .filter(|rel| open_tabs.iter().any(|t| t == rel));
 
     info!(
-        "open_workspace: {name:?} main={main_file:?} ({:.1}ms)",
+        "open_workspace: {name:?} main={main_file:?} tabs={} ({:.1}ms)",
+        open_tabs.len(),
         t.elapsed().as_secs_f64() * 1000.0
     );
     Ok(WorkspaceInfo {
@@ -159,6 +173,8 @@ pub fn open_workspace(
         tree: build_tree(&dir),
         main_file,
         last_file,
+        open_tabs,
+        active_tab,
     })
 }
 
@@ -194,6 +210,37 @@ pub fn set_last_file(
     let root = current_root(&workspace)?;
     let mut meta = read_meta(&root);
     meta.last_file = rel_path;
+    write_meta(&root, &meta)
+}
+
+/// Persist the app-wide fonts source folder (or clear it with `None`). The
+/// folder is loaded into the compiler on the next launch (see `fonts_dirs`).
+#[tauri::command]
+pub fn set_fonts_dir(dir: Option<String>, app: AppHandle) -> Result<(), String> {
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&app_data).map_err(|e| e.to_string())?;
+    let file = app_data.join("fonts_dir.txt");
+    match dir {
+        Some(d) if !d.trim().is_empty() => {
+            std::fs::write(&file, d.trim()).map_err(|e| e.to_string())
+        }
+        _ => {
+            let _ = std::fs::remove_file(&file);
+            Ok(())
+        }
+    }
+}
+
+#[tauri::command]
+pub fn set_open_tabs(
+    open_tabs: Vec<String>,
+    active_tab: Option<String>,
+    workspace: State<'_, Arc<WorkspaceState>>,
+) -> Result<(), String> {
+    let root = current_root(&workspace)?;
+    let mut meta = read_meta(&root);
+    meta.open_tabs = open_tabs;
+    meta.active_tab = active_tab;
     write_meta(&root, &meta)
 }
 

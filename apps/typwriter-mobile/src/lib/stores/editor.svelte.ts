@@ -10,6 +10,9 @@ import { compileStore } from "./compile.svelte";
 
 export type FileKind = "text" | "image" | "unsupported";
 
+/** Debounce before a live diagnostics compile (after typing pauses). */
+const LIVE_COMPILE_MS = 400;
+
 class EditorStore {
   relPath = $state<string | null>(null);
   fileKind = $state<FileKind | null>(null);
@@ -18,12 +21,19 @@ class EditorStore {
   saving = $state(false);
   loading = $state(false);
 
+  /** Open editor tabs (workspace-relative file paths), Obsidian-style. */
+  tabs = $state<string[]>([]);
+  /** True when the active tab is an empty "new tab" (no file selected yet). */
+  newTabOpen = $state(false);
+
   /** Text most recently loaded from disk; the editor screen seeds CM with it. */
   loadedText = $state("");
   /** Set by the screen component once the EditorView exists. */
   view: EditorView | null = null;
 
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private liveTimer: ReturnType<typeof setTimeout> | null = null;
+  private tabsTimer: ReturnType<typeof setTimeout> | null = null;
   private inflight: ResultAsync<void, string> | null = null;
   /** Suppresses the dirty flag while we replace the doc programmatically. */
   private suppressChange = false;
@@ -49,6 +59,7 @@ class EditorStore {
   loadFile(relPath: string): ResultAsync<void, string> {
     return this.flush().andThen(() => {
       this.loading = true;
+      this.newTabOpen = false;
       this.relPath = relPath;
       this.imageDataUrl = null;
       return ipc
@@ -65,7 +76,10 @@ class EditorStore {
             this.fileKind = "unsupported";
           }
           this.loading = false;
+          // Ensure this file has a tab and is the active one.
+          if (!this.tabs.includes(relPath)) this.tabs = [...this.tabs, relPath];
           void ipc.setLastFile(relPath);
+          this.persistTabs();
         })
         .mapErr((e) => {
           this.loading = false;
@@ -74,12 +88,90 @@ class EditorStore {
     });
   }
 
+  // ─── Tabs ─────────────────────────────────────────────────────────────────
+
+  /** Restore tabs for a freshly opened workspace and activate one (or none). */
+  seedTabs(tabs: string[], active: string | null) {
+    this.tabs = [...tabs];
+    if (active) {
+      void this.loadFile(active);
+    } else if (tabs.length) {
+      void this.loadFile(tabs[0]);
+    } else {
+      this.newTabOpen = true;
+      this.clearFile();
+    }
+  }
+
+  /** Open an empty "new tab" — the editor shows the open/create/switch options. */
+  openNewTab() {
+    void this.flush();
+    this.newTabOpen = true;
+    this.clearFile();
+    this.persistTabs();
+  }
+
+  /** Close a tab; activate a neighbour, or fall back to an empty new tab. */
+  closeTab(relPath: string) {
+    const idx = this.tabs.indexOf(relPath);
+    if (idx < 0) return;
+    const wasActive = !this.newTabOpen && this.relPath === relPath;
+    const next = this.tabs.filter((t) => t !== relPath);
+    this.tabs = next;
+    if (wasActive) {
+      if (next.length) {
+        void this.loadFile(next[Math.min(idx, next.length - 1)]);
+      } else {
+        void this.flush();
+        this.newTabOpen = true;
+        this.clearFile();
+      }
+    }
+    this.persistTabs();
+  }
+
+  /** Whether `relPath` is the active tab's file. */
+  isActiveTab(relPath: string): boolean {
+    return !this.newTabOpen && this.relPath === relPath;
+  }
+
+  /** Drop the active document (empty-tab / closed-workspace state). */
+  private clearFile() {
+    this.relPath = null;
+    this.fileKind = null;
+    this.loadedText = "";
+    this.imageDataUrl = null;
+    this.dirty = false;
+  }
+
+  /** Reset all tab state (e.g. on closing a workspace). */
+  resetTabs() {
+    this.tabs = [];
+    this.newTabOpen = false;
+    this.clearFile();
+  }
+
+  private persistTabs() {
+    if (this.tabsTimer) clearTimeout(this.tabsTimer);
+    this.tabsTimer = setTimeout(() => {
+      const active = this.newTabOpen ? null : this.relPath;
+      void ipc.setOpenTabs([...this.tabs], active);
+    }, 400);
+  }
+
   /** Called from CM's updateListener on every doc change. NO IPC here. */
   handleDocChanged() {
     if (this.suppressChange) return;
     this.dirty = true;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => void this.flush(), settings.autosaveMs);
+    // Keep diagnostics live: debounce a compile that follows a save. This does
+    // NOT render the preview (renderer stays lazy) — it only refreshes
+    // errors/warnings. Debounced so it never runs on the per-keystroke hot path.
+    if (this.liveTimer) clearTimeout(this.liveTimer);
+    this.liveTimer = setTimeout(() => {
+      void this.flush().andThen(() => compileStore.run());
+    }, LIVE_COMPILE_MS);
   }
 
   /** Persist now. Single-flight: concurrent calls coalesce. */

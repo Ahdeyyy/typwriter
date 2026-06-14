@@ -4,7 +4,13 @@
 // `openOverlay` / `closeOverlay` — never set `overlay` directly.
 
 export type Screen = "home" | "editor";
-export type Overlay = "none" | "filetree" | "preview" | "diagnostics" | "settings";
+export type Overlay =
+  | "none"
+  | "filetree"
+  | "preview"
+  | "diagnostics"
+  | "settings"
+  | "quickswitcher";
 
 interface HistoryState {
   screen?: Screen;

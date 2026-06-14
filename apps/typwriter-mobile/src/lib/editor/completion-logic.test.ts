@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { autoTriggerApplies, flattenSnippet } from "./completion-logic";
+import { autoTriggerApplies, toStripItem, typstApplyToSnippet } from "./completion-logic";
 import type { IpcCompletion } from "$lib/ipc/types";
 
 const c = (over: Partial<IpcCompletion>): IpcCompletion => ({
@@ -10,29 +10,43 @@ const c = (over: Partial<IpcCompletion>): IpcCompletion => ({
   ...over,
 });
 
-describe("flattenSnippet", () => {
-  test("single hole → flattened apply, cursor at hole", () => {
-    const r = flattenSnippet(c({ label: "image", apply: "image(${})" }));
-    expect(r.apply).toBe("image()");
-    expect(r.cursorOffset).toBe(6);
+describe("typstApplyToSnippet", () => {
+  test("named placeholder becomes a selectable field, markers stripped", () => {
+    // `${body}` → CodeMirror field whose text is `body`, selected on insert.
+    expect(typstApplyToSnippet("#image(${body})")).toBe("#image(${body})");
   });
 
-  test("multi-hole flattens all, cursor at first", () => {
-    const r = flattenSnippet(c({ label: "figure", apply: "#figure(${}, caption: [${}])" }));
-    expect(r.apply).toBe("#figure(, caption: [])");
-    expect(r.cursorOffset).toBe("#figure(".length);
+  test("empty placeholder stays an empty (cursor-only) field", () => {
+    expect(typstApplyToSnippet("image(${})")).toBe("image(${})");
   });
 
-  test("no-hole apply passes through with cursorOffset -1", () => {
-    const r = flattenSnippet(c({ label: "pagebreak", apply: "pagebreak()" }));
-    expect(r.apply).toBe("pagebreak()");
-    expect(r.cursorOffset).toBe(-1);
+  test("multiple holes are all preserved as fields", () => {
+    expect(typstApplyToSnippet("figure(${body}, caption: [${caption}])")).toBe(
+      "figure(${body}, caption: [${caption}])",
+    );
   });
 
-  test("null apply falls back to label", () => {
-    const r = flattenSnippet(c({ label: "blue", apply: null }));
-    expect(r.apply).toBe("blue");
-    expect(r.cursorOffset).toBe(-1);
+  test("no-hole apply passes through unchanged", () => {
+    expect(typstApplyToSnippet("pagebreak()")).toBe("pagebreak()");
+  });
+
+  test("literal Typst braces are escaped so they aren't read as fields", () => {
+    // `#{}` is a Typst code block, not a placeholder — escape both braces.
+    expect(typstApplyToSnippet("#{}")).toBe("#\\{\\}");
+    // A literal `{` inside a placeholder's default text is escaped too.
+    expect(typstApplyToSnippet("${a{b}")).toBe("${a\\{b}");
+  });
+});
+
+describe("toStripItem", () => {
+  test("builds template from apply, carries label/kind", () => {
+    const r = toStripItem(c({ kind: "func", label: "image", apply: "image(${})" }));
+    expect(r).toEqual({ label: "image", kind: "func", template: "image(${})" });
+  });
+
+  test("null apply falls back to the label", () => {
+    const r = toStripItem(c({ label: "blue", apply: null }));
+    expect(r.template).toBe("blue");
   });
 });
 

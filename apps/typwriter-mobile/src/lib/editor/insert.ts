@@ -47,6 +47,19 @@ export function wrapPair(view: EditorView, open: string, close: string) {
   }
 }
 
+/** Insert `prefix` at the start of the current line (e.g. "= " for a heading,
+ *  "- " for a list item), keeping the caret after it. */
+export function insertLinePrefix(view: EditorView, prefix: string) {
+  const { head } = view.state.selection.main;
+  const line = view.state.doc.lineAt(head);
+  view.dispatch({
+    changes: { from: line.from, insert: prefix },
+    selection: { anchor: Math.max(head + prefix.length, line.from + prefix.length) },
+    scrollIntoView: true,
+  });
+  view.focus();
+}
+
 /** Dispatch the right action for a toolbar symbol button. */
 export function insertOrWrap(view: EditorView, ch: string) {
   const close = PAIRS[ch];

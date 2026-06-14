@@ -1,7 +1,7 @@
 # typwriter-mobile
 
 A standalone, Android-first Typst editor built with Tauri 2 + SvelteKit. It shares the
-Typwriter *design system* (CSS tokens, Tailwind 4, shadcn-svelte, phosphor icons) with
+Typwriter *design system* (CSS tokens, Tailwind 4, shadcn-svelte, hugeicons) with
 `apps/typwriter-desktop` but **no code** — it's an independent snapshot tuned for touch
 and soft keyboards.
 

@@ -1,7 +1,14 @@
 <script lang="ts">
 	import { Toaster as Sonner, type ToasterProps as SonnerProps } from "svelte-sonner";
 	import { mode } from "mode-watcher";
-	import { CircleNotch, CheckCircle, XCircle, Info, Warning } from "phosphor-svelte";
+	import {
+		Loading03Icon,
+		CheckmarkCircle02Icon,
+		CancelCircleIcon,
+		InformationCircleIcon,
+		Alert02Icon,
+	} from "@hugeicons/core-free-icons";
+	import Icon from "$lib/components/icon.svelte";
 
 	let { ...restProps }: SonnerProps = $props();
 </script>
@@ -13,18 +20,18 @@
 	{...restProps}
 >
 	{#snippet loadingIcon()}
-		<CircleNotch class="size-4 animate-spin" />
+		<Icon icon={Loading03Icon} class="size-4 animate-spin" />
 	{/snippet}
 	{#snippet successIcon()}
-		<CheckCircle class="size-4" />
+		<Icon icon={CheckmarkCircle02Icon} class="size-4" />
 	{/snippet}
 	{#snippet errorIcon()}
-		<XCircle class="size-4" />
+		<Icon icon={CancelCircleIcon} class="size-4" />
 	{/snippet}
 	{#snippet infoIcon()}
-		<Info class="size-4" />
+		<Icon icon={InformationCircleIcon} class="size-4" />
 	{/snippet}
 	{#snippet warningIcon()}
-		<Warning class="size-4" />
+		<Icon icon={Alert02Icon} class="size-4" />
 	{/snippet}
 </Sonner>

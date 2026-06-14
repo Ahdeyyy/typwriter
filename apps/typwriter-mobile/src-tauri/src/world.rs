@@ -74,13 +74,21 @@ impl MobileWorld {
         FileId::new(None, VirtualPath::new("<no-main>"))
     }
 
-    pub fn new(package_cache: Option<PathBuf>, package_dir: Option<PathBuf>) -> Self {
+    pub fn new(
+        package_cache: Option<PathBuf>,
+        package_dir: Option<PathBuf>,
+        extra_font_dirs: Vec<PathBuf>,
+    ) -> Self {
         let t = Instant::now();
-        // Embedded fonts only: synchronous, fast, deterministic. No system scan.
-        let fonts = FontSearcher::new().include_system_fonts(false).search();
+        // Embedded fonts + any user-selected app-wide font folders. No system
+        // scan (deterministic, fast). Extra dirs are loaded recursively.
+        let fonts = FontSearcher::new()
+            .include_system_fonts(false)
+            .search_with(&extra_font_dirs);
         info!(
-            "MobileWorld::new: {} embedded fonts ({:.1}ms)",
+            "MobileWorld::new: {} fonts (+{} extra dir(s)) ({:.1}ms)",
             fonts.fonts.len(),
+            extra_font_dirs.len(),
             t.elapsed().as_secs_f64() * 1000.0
         );
         let user_agent = "typwriter-mobile".to_string();

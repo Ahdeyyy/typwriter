@@ -27,6 +27,9 @@ export const openWorkspace = (name: string) => call<WorkspaceInfo>("open_workspa
 export const getFileTree = () => call<FileNode>("get_file_tree");
 export const setMainFile = (relPath: string) => call<null>("set_main_file", { relPath });
 export const setLastFile = (relPath: string | null) => call<null>("set_last_file", { relPath });
+export const setOpenTabs = (openTabs: string[], activeTab: string | null) =>
+  call<null>("set_open_tabs", { openTabs, activeTab });
+export const setFontsDir = (dir: string | null) => call<null>("set_fonts_dir", { dir });
 
 // ─── File operations ──────────────────────────────────────────────────────────
 

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { X, ArrowsClockwise, Warning, CircleNotch } from "phosphor-svelte";
+  import { Cancel01Icon, RefreshIcon, Alert02Icon, Loading03Icon } from "@hugeicons/core-free-icons";
+  import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { app } from "$lib/stores/app.svelte";
   import { compileStore } from "$lib/stores/compile.svelte";
@@ -89,7 +90,7 @@
     <!-- Top strip -->
     <div class="flex h-12 shrink-0 items-center gap-1 border-b px-1">
       <Button variant="ghost" size="icon" aria-label="Close preview" onclick={() => app.closeOverlay()}>
-        <X />
+        <Icon icon={Cancel01Icon} />
       </Button>
       <div class="flex-1 text-center text-sm font-medium">
         {#if total > 0}
@@ -101,20 +102,20 @@
 
       {#if compileStore.status === "compiling"}
         <span class="text-muted-foreground flex items-center gap-1 px-2 text-xs">
-          <CircleNotch class="size-4 animate-spin" /> Compiling…
+          <Icon icon={Loading03Icon} class="size-4 animate-spin" /> Compiling…
         </span>
       {:else if compileStore.status === "error"}
         <button
           class="text-destructive flex items-center gap-1 px-2 text-xs"
           onclick={() => app.openOverlay("diagnostics")}
         >
-          <Warning class="size-4" weight="fill" />
+          <Icon icon={Alert02Icon} class="size-4" />
           {compileStore.errors.length}
         </button>
       {/if}
 
       <Button variant="ghost" size="icon" aria-label="Recompile" onclick={() => void compileStore.run()}>
-        <ArrowsClockwise />
+        <Icon icon={RefreshIcon} />
       </Button>
     </div>
 

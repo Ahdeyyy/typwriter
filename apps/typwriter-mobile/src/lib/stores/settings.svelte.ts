@@ -17,6 +17,8 @@ class SettingsStore {
   showLineNumbers = $state(false);
   autosaveMs = $state(600);
   previewScaleBucket = $state<1 | 2 | 3 | 4>(defaultBucket());
+  lastWorkspace = $state<string | null>(null);
+  fontsDir = $state<string | null>(null);
 
   private store: Store | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -34,6 +36,8 @@ class SettingsStore {
         this.showLineNumbers = saved.showLineNumbers ?? this.showLineNumbers;
         this.autosaveMs = saved.autosaveMs ?? this.autosaveMs;
         this.previewScaleBucket = saved.previewScaleBucket ?? this.previewScaleBucket;
+        this.lastWorkspace = saved.lastWorkspace ?? this.lastWorkspace;
+        this.fontsDir = saved.fontsDir ?? this.fontsDir;
       }
     } catch (e) {
       console.error("settings: load failed", e);
@@ -46,6 +50,8 @@ class SettingsStore {
       showLineNumbers: this.showLineNumbers,
       autosaveMs: this.autosaveMs,
       previewScaleBucket: this.previewScaleBucket,
+      lastWorkspace: this.lastWorkspace,
+      fontsDir: this.fontsDir,
     };
   }
 
@@ -79,6 +85,14 @@ class SettingsStore {
   }
   setPreviewScaleBucket(bucket: 1 | 2 | 3 | 4) {
     this.previewScaleBucket = bucket;
+    this.save();
+  }
+  setLastWorkspace(name: string | null) {
+    this.lastWorkspace = name;
+    this.save();
+  }
+  setFontsDir(dir: string | null) {
+    this.fontsDir = dir;
     this.save();
   }
 }

@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { toast } from "svelte-sonner";
-  import { List, Eye, DotsThree, FilePdf, Warning, Gear, SignOut } from "phosphor-svelte";
+  import { SidebarLeft01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+  import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import * as Dialog from "$lib/components/ui/dialog";
   import { exportPdfToUri } from "$lib/ipc/commands";
   import { app } from "$lib/stores/app.svelte";
@@ -17,6 +17,10 @@
   import EditorToolbar from "$lib/components/toolbar/editor-toolbar.svelte";
   import CompletionStrip from "$lib/components/toolbar/completion-strip.svelte";
   import PreviewOverlay from "$lib/components/preview/preview-overlay.svelte";
+  import TabBar from "$lib/components/editor/tab-bar.svelte";
+  import EmptyTab from "$lib/components/editor/empty-tab.svelte";
+  import BottomBar from "$lib/components/toolbar/bottom-bar.svelte";
+  import QuickSwitcher from "$lib/components/screens/quick-switcher.svelte";
 
   onMount(() => {
     // Let the history/back integration flush unsaved content when leaving.
@@ -77,11 +81,11 @@
     style="padding-top: env(safe-area-inset-top);"
   >
     <Button variant="ghost" size="icon" aria-label="Files" onclick={() => app.openOverlay("filetree")}>
-      <List />
+      <Icon icon={SidebarLeft01Icon} />
     </Button>
 
     <div class="flex min-w-0 flex-1 items-center justify-center gap-1.5">
-      <span class="truncate text-sm font-medium">{editor.fileName ?? "No file"}</span>
+      <span class="truncate text-sm font-medium">{editor.fileName ?? "New tab"}</span>
       {#if editor.dirty || editor.saving}
         <span class="bg-muted-foreground/70 size-1.5 shrink-0 rounded-full" class:animate-pulse={editor.saving}></span>
       {/if}
@@ -93,38 +97,13 @@
       </Badge>
     {/if}
 
-    <Button variant="ghost" size="icon" aria-label="Preview" onclick={openPreview}>
-      <Eye />
+    <Button variant="ghost" size="icon" aria-label="Search files" onclick={() => app.openOverlay("quickswitcher")}>
+      <Icon icon={Search01Icon} />
     </Button>
-
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger>
-        {#snippet child({ props })}
-          <Button variant="ghost" size="icon" aria-label="More" {...props}>
-            <DotsThree weight="bold" />
-          </Button>
-        {/snippet}
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Content align="end">
-        <DropdownMenu.Item disabled={exporting} onclick={exportPdf}>
-          <FilePdf /> Export PDF
-        </DropdownMenu.Item>
-        <DropdownMenu.Item onclick={() => app.openOverlay("diagnostics")}>
-          <Warning /> Diagnostics
-          {#if compileStore.errors.length > 0}
-            <span class="text-destructive ml-auto text-xs">{compileStore.errors.length}</span>
-          {/if}
-        </DropdownMenu.Item>
-        <DropdownMenu.Item onclick={() => app.openOverlay("settings")}>
-          <Gear /> Settings
-        </DropdownMenu.Item>
-        <DropdownMenu.Separator />
-        <DropdownMenu.Item onclick={() => app.goHome()}>
-          <SignOut /> Close workspace
-        </DropdownMenu.Item>
-      </DropdownMenu.Content>
-    </DropdownMenu.Root>
   </header>
+
+  <!-- Obsidian-style tabs -->
+  <TabBar />
 
   <!-- Editor host -->
   <main class="min-h-0 flex-1">
@@ -145,20 +124,22 @@
     {:else if editor.fileKind === "text"}
       <EditorHost />
     {:else}
-      <div class="text-muted-foreground flex h-full items-center justify-center p-8 text-center text-sm">
-        Open a file from the file tree.
-      </div>
+      <EmptyTab />
     {/if}
   </main>
 
-  {#if editor.fileKind === "text" && !editor.loading}
+  <!-- Toolbar: keyboard-open form (formatting) vs keyboard-closed dock. -->
+  {#if keyboard.visible && editor.fileKind === "text" && !editor.loading}
     <CompletionStrip />
     <EditorToolbar />
+  {:else}
+    <BottomBar onPreview={openPreview} onExport={exportPdf} {exporting} />
   {/if}
 </div>
 
 <TreeSheet />
 <PreviewOverlay />
+<QuickSwitcher />
 
 <!-- Export-with-errors confirmation -->
 <Dialog.Root open={confirmExportOpen} onOpenChange={(o) => { if (!o) confirmExportOpen = false; }}>

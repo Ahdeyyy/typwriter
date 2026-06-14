@@ -1,7 +1,8 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { toast } from "svelte-sonner";
-  import { XCircle, Warning } from "phosphor-svelte";
+  import { CancelCircleIcon, Alert02Icon } from "@hugeicons/core-free-icons";
+  import Icon from "$lib/components/icon.svelte";
   import * as Drawer from "$lib/components/ui/drawer";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { app } from "$lib/stores/app.svelte";
@@ -65,9 +66,9 @@
             >
               <div class="flex items-start gap-2">
                 {#if diag.severity === "error"}
-                  <XCircle class="text-destructive mt-0.5 size-4 shrink-0" weight="fill" />
+                  <Icon icon={CancelCircleIcon} class="text-destructive mt-0.5 size-4 shrink-0" />
                 {:else}
-                  <Warning class="mt-0.5 size-4 shrink-0 text-amber-500" weight="fill" />
+                  <Icon icon={Alert02Icon} class="mt-0.5 size-4 shrink-0 text-amber-500" />
                 {/if}
                 <span class="min-w-0 flex-1 font-mono text-xs break-words">{diag.message}</span>
               </div>

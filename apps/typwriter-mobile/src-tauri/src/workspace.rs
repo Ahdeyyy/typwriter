@@ -41,6 +41,8 @@ pub struct WorkspaceInfo {
     pub tree: FileNode,
     pub main_file: Option<String>,
     pub last_file: Option<String>,
+    pub open_tabs: Vec<String>,
+    pub active_tab: Option<String>,
 }
 
 /// Per-workspace metadata persisted at `<workspace>/.typwriter/mobile.json`.
@@ -50,6 +52,10 @@ pub struct WorkspaceMetaFile {
     pub main_file: Option<String>,
     pub last_file: Option<String>,
     pub last_opened_ms: Option<i64>,
+    #[serde(default)]
+    pub open_tabs: Vec<String>,
+    #[serde(default)]
+    pub active_tab: Option<String>,
 }
 
 const META_DIR: &str = ".typwriter";
