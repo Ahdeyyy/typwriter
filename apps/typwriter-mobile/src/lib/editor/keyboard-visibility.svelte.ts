@@ -7,9 +7,13 @@
 // editor shell sizes itself to that, which docks the toolbar right above the
 // keyboard. `visible` additionally toggles the keyboard-specific toolbar.
 
+import { EditorView } from "@codemirror/view";
+import { editor } from "$lib/stores/editor.svelte";
+
 class KeyboardVisibility {
   visible = $state(false);
   private cleanup: (() => void) | null = null;
+  private lastHeight = 0;
 
   init() {
     if (typeof window === "undefined" || !window.visualViewport) return;
@@ -23,6 +27,14 @@ class KeyboardVisibility {
       const h = Math.round(vv.height);
       root.style.setProperty("--app-height", `${h}px`);
       this.visible = window.innerHeight - vv.height > 150;
+      // The shell just resized but CodeMirror doesn't know its viewport shrank,
+      // so the caret can end up hidden behind the keyboard. Re-center it. Only
+      // on a real height change (keyboard open/resize) — not on plain panning
+      // (scroll events fire onResize too with an unchanged height).
+      if (h !== this.lastHeight) {
+        this.lastHeight = h;
+        if (this.visible) this.scrollCaretIntoView();
+      }
     };
 
     vv.addEventListener("resize", onResize);
@@ -35,10 +47,23 @@ class KeyboardVisibility {
     };
   }
 
+  /** Center the caret in the (now keyboard-shortened) editor viewport. Deferred
+   *  to the next frame so CodeMirror measures against the applied layout. */
+  private scrollCaretIntoView() {
+    const view = editor.view;
+    if (!view) return;
+    requestAnimationFrame(() => {
+      if (!view.dom.isConnected) return;
+      const head = view.state.selection.main.head;
+      view.dispatch({ effects: EditorView.scrollIntoView(head, { y: "center" }) });
+    });
+  }
+
   destroy() {
     this.cleanup?.();
     this.cleanup = null;
     this.visible = false;
+    this.lastHeight = 0;
   }
 }
 

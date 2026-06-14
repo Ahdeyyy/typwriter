@@ -41,8 +41,16 @@
   function onPointerUp(e: PointerEvent, item: StripItem) {
     const moved = Math.hypot(e.clientX - startX, e.clientY - startY);
     if (moved > TAP_SLOP) return; // it was a scroll, not a tap
-    e.preventDefault(); // keep editor focus / keyboard up
+    e.preventDefault();
     if (editor.view) completions.accept(editor.view, item);
+  }
+
+  // Buttons steal focus from the editor's contenteditable on mousedown, which
+  // blurs it and dismisses the soft keyboard. Preventing the mousedown default
+  // keeps focus (and the keyboard) on the editor. Fires only on a tap — a scroll
+  // cancels the synthetic mouse events, so it never interferes with panning.
+  function keepEditorFocus(e: MouseEvent) {
+    e.preventDefault();
   }
 </script>
 
@@ -54,6 +62,7 @@
     {#each completions.items as item, i (item.label + i)}
       <button
         class="active:bg-accent active:text-accent-foreground flex shrink-0 items-center gap-1 rounded-full border px-3 font-mono text-sm whitespace-nowrap {i === 0 ? 'border-foreground/40' : ''}"
+        onmousedown={keepEditorFocus}
         onpointerdown={onPointerDown}
         onpointerup={(e) => onPointerUp(e, item)}
       >
