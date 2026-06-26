@@ -1,6 +1,6 @@
 {
   "name": "typwriter",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "",
   "type": "module",
   "scripts": {
@@ -10,8 +10,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "bun test",
-    "tauri": "tauri",
-    "generate-parser": " bunx lezer-generator ./src/lib/typst-codemirror-lang/typst.grammar -o ./src/lib/typst-codemirror-lang/parser"
+    "tauri": "tauri"
   },
   "license": "MIT",
   "dependencies": {
@@ -91,7 +90,6 @@
     "@hugeicons/core-free-icons": "^4.1.1",
     "@hugeicons/svelte": "^1.1.2",
     "@internationalized/date": "^3.12.0",
-    "@lezer/generator": "^1.8.0",
     "@lucide/svelte": "^1.11.0",
     "@sveltejs/adapter-static": "^3.0.6",
     "@sveltejs/kit": "^2.9.0",

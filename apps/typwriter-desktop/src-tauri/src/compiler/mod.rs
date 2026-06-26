@@ -90,6 +90,22 @@ impl Default for CompileReason {
     }
 }
 
+/// Whether a compile of this `reason` should recompute the whole-workspace
+/// ("extra") diagnostics. Only reasons that can change *other* files' contents
+/// or reachability warrant the (expensive) full walk; `Typing`/`Zoom` reuse the
+/// cached extras since they only affect the main compile, which is fully
+/// re-diagnosed anyway. Exhaustive `match` (no wildcard) so a new variant forces
+/// an explicit decision here.
+fn refreshes_workspace_diags(reason: CompileReason) -> bool {
+    match reason {
+        CompileReason::Save
+        | CompileReason::Watcher
+        | CompileReason::Explicit
+        | CompileReason::MainFile => true,
+        CompileReason::Typing | CompileReason::Zoom => false,
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 #[serde(rename_all = "snake_case")]
 enum CompileStatus {
@@ -232,6 +248,12 @@ pub struct PreviewPipeline {
     /// aborted compiles to leave the frontend pointing at fingerprints that
     /// had never been rendered.
     last_emitted: Mutex<Vec<Option<PageCacheKey>>>,
+    /// Diagnostics from `.typ` files not reachable from the main file
+    /// (errors, warnings). Refreshed only on Save/Watcher/Explicit/MainFile
+    /// compiles — recomputing it fully recompiles every other file in the
+    /// workspace, far too costly to do per keystroke. Reused as-is on
+    /// Typing/Zoom so the emitted diagnostic set stays complete every time.
+    workspace_diags: Mutex<(Vec<SerializedDiagnostic>, Vec<SerializedDiagnostic>)>,
     page_cache: Mutex<PageCache>,
     /// Persistent on-disk mirror of `page_cache`, scoped to the open workspace.
     /// `None` until a workspace is attached via [`Self::attach_disk_cache`].
@@ -266,6 +288,7 @@ impl PreviewPipeline {
         Self {
             world,
             last_emitted: Mutex::new(Vec::new()),
+            workspace_diags: Mutex::new((Vec::new(), Vec::new())),
             page_cache: Mutex::new(PageCache::default()),
             disk_cache: Mutex::new(None),
             workspace_root: Mutex::new(None),
@@ -299,6 +322,10 @@ impl PreviewPipeline {
         self.page_cache.lock().clear();
         *self.last_emitted.lock() = Vec::new();
         *self.last_document.lock() = None;
+        // Drop cached cross-file diagnostics: they belong to the previous
+        // workspace/main-file and must not bleed into the next one. The
+        // following compile uses a non-Typing reason and repopulates them.
+        *self.workspace_diags.lock() = (Vec::new(), Vec::new());
     }
 
     /// Bind the persistent on-disk cache to a workspace root. Subsequent
@@ -542,8 +569,18 @@ impl PreviewPipeline {
             );
         }
 
-        // Collect diagnostics from other .typ files not reachable from the main file
-        let (extra_errors, extra_warnings) = collect_workspace_diagnostics(&*self.world);
+        // Diagnostics from other .typ files not reachable from the main file.
+        // Recomputing this fully recompiles every other file, so we only do it
+        // for reasons that can change those files; Typing/Zoom reuse the cache
+        // so the emitted set stays complete without per-keystroke cost.
+        let (extra_errors, extra_warnings) = if refreshes_workspace_diags(reason) {
+            info!("compile revision={revision} reason={reason:?} refreshing workspace diagnostics");
+            let fresh = collect_workspace_diagnostics(&*self.world);
+            *self.workspace_diags.lock() = fresh.clone();
+            fresh
+        } else {
+            self.workspace_diags.lock().clone()
+        };
         dedup_merge(&mut errors, &mut warnings, extra_errors, extra_warnings);
 
         if let Err(err) = self.app_handle.emit(
@@ -1021,5 +1058,22 @@ impl PreviewPipeline {
             out.push((filename, svg.into_bytes()));
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{refreshes_workspace_diags, CompileReason};
+
+    #[test]
+    fn workspace_diags_refresh_gate_is_exhaustive_and_correct() {
+        // Reasons that can change other files' contents/reachability refresh.
+        assert!(refreshes_workspace_diags(CompileReason::Save));
+        assert!(refreshes_workspace_diags(CompileReason::Watcher));
+        assert!(refreshes_workspace_diags(CompileReason::Explicit));
+        assert!(refreshes_workspace_diags(CompileReason::MainFile));
+        // Hot-path reasons reuse the cache.
+        assert!(!refreshes_workspace_diags(CompileReason::Typing));
+        assert!(!refreshes_workspace_diags(CompileReason::Zoom));
     }
 }

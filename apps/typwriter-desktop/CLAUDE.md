@@ -29,7 +29,7 @@ The Typst editor. Tauri 2 + SvelteKit (static adapter) + a Rust core that wraps 
 - `lib/stores/` — Svelte 5 class-singleton stores (`workspace`, `editor`, `preview`, `diagnostics`, `editor-search`, `page`, `platform`, `settings`, `updater`). All `$state`/`$derived` lives inside a class; module-level `$state` exports lose reactivity.
 - `lib/ipc/` — `commands.ts` (thin wrappers around `invoke`) and `events.ts` (typed Tauri event listeners).
 - `lib/services/` — orchestration on top of IPC (`workspace-file-service`, `export-service`).
-- `lib/typst-codemirror-lang/` — Lezer grammar + generated parser for Typst syntax highlighting in CodeMirror. Regenerate with `bun run generate-parser` whenever `typst.grammar` changes.
+- `lib/typst-codemirror-lang/` — Typst syntax highlighting for CodeMirror. The parser is **hand-written TypeScript** in `lezer-typst/` (`parser.ts`, `scanner.ts`, `markup.ts`, `math.ts`, `code.ts`, …) built on `@lezer/lr` — there is no `typst.grammar` and no codegen step; edit the parser sources directly.
 - `lib/hooks/`, `lib/utils.ts`, `lib/async.ts`, `lib/logger.ts`, `lib/preview-url.ts`, `lib/paths.ts` — shared helpers.
 
 ### Tauri config

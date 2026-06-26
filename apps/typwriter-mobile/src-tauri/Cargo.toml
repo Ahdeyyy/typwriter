@@ -1,0 +1,38 @@
+[package]
+name = "typwriter-mobile"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "mobile_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2" }
+tauri-plugin-dialog = "2"
+tauri-plugin-log = "2"
+tauri-plugin-store = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+parking_lot = "0.12"
+lru = "0.12"
+thiserror = "2"
+chrono = "0.4"
+typst = "0.14.2"
+typst-ide = "0.14.2"
+typst-render = "0.14.2"
+typst-pdf = "0.14.2"
+typst-kit = { version = "0.14.2", features = ["embed-fonts", "packages"] }
+typstyle-core = "0.14.4"
+ecow = { version = "0.2", features = ["serde"] }
+png = "0.18"
+base64 = "0.22"
+tauri-plugin-android-fs = { version = "=28.1.0", features = ["legacy_storage_permission"] }
+
+# Mobile cross-compilation can't find a system OpenSSL; vendor it.
+[target.'cfg(target_os = "android")'.dependencies]
+openssl = { version = "*", features = ["vendored"] }

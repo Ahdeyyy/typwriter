@@ -466,18 +466,28 @@ impl World for EditorWorld {
     }
 
     fn today(&self, offset: Option<i64>) -> Option<Datetime> {
-        let now = chrono::Local::now();
-        let date = if let Some(days) = offset {
-            now + chrono::Duration::days(days)
-        } else {
-            now
-        };
-        Some(Datetime::from_ymd(
-            date.year(),
-            date.month() as u8,
-            date.day() as u8,
-        )?)
+        today_with_offset(chrono::Utc::now(), offset)
     }
+}
+
+/// Resolve "today" for `World::today`. Typst defines `offset` as the UTC
+/// offset in whole hours (it backs `datetime.today(offset: ..)`); `None`
+/// means local time. Pure and runtime-free so it can be unit-tested without
+/// constructing an `EditorWorld`.
+fn today_with_offset(utc_now: chrono::DateTime<chrono::Utc>, offset: Option<i64>) -> Option<Datetime> {
+    use chrono::{FixedOffset, Local};
+    let (year, month, day) = match offset {
+        None => {
+            let now = utc_now.with_timezone(&Local);
+            (now.year(), now.month(), now.day())
+        }
+        Some(hours) => {
+            let secs = i32::try_from(hours).ok()?.checked_mul(3600)?;
+            let now = utc_now.with_timezone(&FixedOffset::east_opt(secs)?);
+            (now.year(), now.month(), now.day())
+        }
+    };
+    Datetime::from_ymd(year, month as u8, day as u8)
 }
 
 impl IdeWorld for EditorWorld {
@@ -571,4 +581,47 @@ fn fetch_package_index(downloader: &Downloader) -> Vec<(PackageSpec, Option<EcoS
         t.elapsed().as_secs_f64() * 1000.0
     );
     packages
+}
+
+#[cfg(test)]
+mod tests {
+    use super::today_with_offset;
+    use chrono::{TimeZone, Utc};
+
+    /// A `Datetime` exposes its components via the typst foundations API; pull
+    /// them back out for assertions.
+    fn ymd(dt: typst::foundations::Datetime) -> (i32, u8, u8) {
+        (
+            dt.year().unwrap(),
+            dt.month().unwrap(),
+            dt.day().unwrap(),
+        )
+    }
+
+    #[test]
+    fn today_offset_is_hours_not_days() {
+        // 2026-06-11 23:30 UTC: still June 11 at UTC, but past midnight east.
+        let now = Utc.with_ymd_and_hms(2026, 6, 11, 23, 30, 0).unwrap();
+
+        assert_eq!(ymd(today_with_offset(now, Some(0)).unwrap()), (2026, 6, 11));
+        // UTC+1 → 00:30 on June 12 (crosses midnight east, not +1 day).
+        assert_eq!(ymd(today_with_offset(now, Some(1)).unwrap()), (2026, 6, 12));
+        // UTC-1 → 22:30 on June 11.
+        assert_eq!(ymd(today_with_offset(now, Some(-1)).unwrap()), (2026, 6, 11));
+    }
+
+    #[test]
+    fn today_absurd_offset_returns_none_without_panic() {
+        let now = Utc.with_ymd_and_hms(2026, 6, 11, 23, 30, 0).unwrap();
+        // ±24h * 365 hours is far outside FixedOffset's ±24h range.
+        assert!(today_with_offset(now, Some(24 * 365)).is_none());
+        assert!(today_with_offset(now, Some(-(24 * 365))).is_none());
+    }
+
+    #[test]
+    fn today_none_offset_uses_local_time() {
+        let now = Utc.with_ymd_and_hms(2026, 6, 11, 23, 30, 0).unwrap();
+        // Exact date depends on the host's local zone; just assert it resolves.
+        assert!(today_with_offset(now, None).is_some());
+    }
 }

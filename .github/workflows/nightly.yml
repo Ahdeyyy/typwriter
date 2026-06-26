@@ -111,6 +111,7 @@ jobs:
     env:
       NDK_VERSION: r26d
       JAVA_VERSION: "17"
+      APP_PATH: apps/typwriter-mobile
 
     steps:
       - uses: actions/checkout@v4
@@ -172,19 +173,19 @@ jobs:
       - name: Install Rust stable + Android targets
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          targets: aarch64-linux-android
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: "./apps/typwriter-desktop/src-tauri -> target"
-          key: nightly-android
+          workspaces: "./apps/typwriter-mobile/src-tauri -> target"
+          key: nightly-mobile
 
       - name: Install frontend dependencies
         run: bun install
 
       - name: Initialize Tauri Android project
-        working-directory: apps/typwriter-desktop
+        working-directory: ${{ env.APP_PATH }}
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
@@ -194,7 +195,7 @@ jobs:
           fi
 
       - name: Setup Android signing
-        working-directory: apps/typwriter-desktop
+        working-directory: ${{ env.APP_PATH }}
         run: |
           set -eux
           cd src-tauri/gen/android
@@ -272,7 +273,7 @@ jobs:
           cat app/build.gradle.kts
 
       - name: Build Android APK
-        working-directory: apps/typwriter-desktop
+        working-directory: ${{ env.APP_PATH }}
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
@@ -290,12 +291,12 @@ jobs:
           RANLIB_armv7-linux-androideabi: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
           RANLIB_i686-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
           RANLIB_x86_64-linux-android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
-        run: bunx tauri android build --apk --split-per-abi
+        run: bunx tauri android build --apk --split-per-abi --target aarch64
 
       - name: Get app version
         id: version
         run: |
-          VERSION=$(jq -r .version apps/typwriter-desktop/src-tauri/tauri.conf.json)
+          VERSION=$(jq -r .version "$APP_PATH/src-tauri/tauri.conf.json")
           SHA_SHORT=$(git rev-parse --short HEAD)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "sha_short=$SHA_SHORT" >> "$GITHUB_OUTPUT"
@@ -305,7 +306,7 @@ jobs:
           set -eux
           VERSION="${{ steps.version.outputs.version }}"
           SHA_SHORT="${{ steps.version.outputs.sha_short }}"
-          OUT="apps/typwriter-desktop/src-tauri/gen/android/app/build/outputs/apk"
+          OUT="$APP_PATH/src-tauri/gen/android/app/build/outputs/apk"
           mkdir -p release-apks
           shopt -s globstar nullglob
           for apk in "$OUT"/**/*.apk; do
@@ -316,7 +317,7 @@ jobs:
             abi="${base#app-}"
             abi="${abi%.apk}"
             abi="${abi%-release}"
-            cp "$apk" "release-apks/typwriter_nightly_${VERSION}-${SHA_SHORT}_${abi}.apk"
+            cp "$apk" "release-apks/typwriter_mobile_nightly_${VERSION}-${SHA_SHORT}_${abi}.apk"
           done
           ls -la release-apks/
 

@@ -23,6 +23,7 @@
     closeBrackets,
     closeBracketsKeymap,
     completeFromList,
+    snippet,
     type Completion,
     type CompletionContext,
     type CompletionResult,
@@ -145,6 +146,33 @@
     return m === "dark" ||  sys === "dark" ? dark : light;
   }
 
+  /**
+   * Convert a typst-ide completion `apply` string into a CodeMirror snippet
+   * template. typst-ide marks placeholders as `${name}` (default text, e.g.
+   * `${body}`) or `${}` (empty). CodeMirror's snippet parser treats `${…}` and
+   * `#{…}` as fields and only honors `\{` / `\}` as escapes — so we escape every
+   * literal brace. That neutralizes Typst's own `#{…}` code blocks and stray
+   * braces while leaving real placeholders as tabstops (the first is selected on
+   * accept; Tab/Escape jump through the rest, empty ones land the cursor only).
+   */
+  function typstApplyToSnippet(apply: string): string {
+    let out = "";
+    for (let i = 0; i < apply.length; i++) {
+      const ch = apply[i];
+      if (ch === "$" && apply[i + 1] === "{") {
+        const end = apply.indexOf("}", i + 2);
+        if (end !== -1) {
+          const inner = apply.slice(i + 2, end);
+          out += "${" + inner.replace(/[{}]/g, "\\$&") + "}";
+          i = end; // for-loop ++ advances past the closing brace
+          continue;
+        }
+      }
+      out += ch === "{" || ch === "}" ? "\\" + ch : ch;
+    }
+    return out;
+  }
+
   function mapBackendCompletionKind(kind: string): Completion["type"] {
     const normalizedKind = kind.toLowerCase();
     if (normalizedKind.includes("func")) return "function";
@@ -213,26 +241,42 @@
         (result) => result.options ?? [],
       );
       const backendPayload = backendResult.isOk() ? backendResult.value : null;
-      const backendOptions: Completion[] = backendPayload
-        ? backendPayload.completions.map((item) => ({
-            label: item.label,
-            type: mapBackendCompletionKind(item.kind),
-            apply: item.apply ?? item.label,
-            detail: item.detail ?? undefined,
-          }))
+      // Keep the raw apply string for the dedup key: typst-ide's `${…}`
+      // placeholders are turned into a CodeMirror snippet (a function apply), so
+      // the option itself no longer carries a stable string to key on.
+      const backendOptions: { option: Completion; key: string }[] = backendPayload
+        ? backendPayload.completions.map((item) => {
+            const rawApply = item.apply ?? item.label;
+            const type = mapBackendCompletionKind(item.kind);
+            return {
+              option: {
+                label: item.label,
+                type,
+                apply: rawApply.includes("${")
+                  ? snippet(typstApplyToSnippet(rawApply))
+                  : rawApply,
+                detail: item.detail ?? undefined,
+              },
+              key: `${item.label}::${rawApply}::${type ?? ""}`,
+            };
+          })
         : [];
 
       const seenKeys = new Set<string>();
       const mergedOptions: Completion[] = [];
-      const pushUnique = (option: Completion) => {
-        const key = `${option.label}::${option.apply ?? ""}::${option.type ?? ""}`;
+      const pushUnique = (option: Completion, key: string) => {
         if (seenKeys.has(key)) return;
         seenKeys.add(key);
         mergedOptions.push(option);
       };
 
-      backendOptions.forEach(pushUnique);
-      languageOptions.forEach(pushUnique);
+      backendOptions.forEach(({ option, key }) => pushUnique(option, key));
+      languageOptions.forEach((option) =>
+        pushUnique(
+          option,
+          `${option.label}::${option.apply ?? ""}::${option.type ?? ""}`,
+        ),
+      );
 
       if (mergedOptions.length === 0) return null;
 

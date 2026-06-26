@@ -1,0 +1,219 @@
+/**
+ * src/themes/light.ts
+ *
+ * "Light" theme for the Typst CodeMirror language.
+ *
+ * Inspired by the aesthetic of printed technical documents:
+ * warm paper background, ink-dark headings, and a carefully
+ * balanced semantic colour palette.
+ * by gemini
+ */
+
+import { EditorView } from "@codemirror/view";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
+
+// ── Palette ──────────────────────────────────────────────────────────────────
+
+const ML = {
+    // ── Chrome ────────────────────────────────────────────────────────────────
+    bg:          "#fefcf8",
+    bgDark:      "#f5f3ee",
+    bgHighlight: "#eef2fb",
+    bgSelection: "#b8d4ff50",
+    border:      "#e8e4dc",
+
+    fg:          "#1a1a1a",
+    fgGutter:    "#787470",
+    fgComment:   "#55514e",
+
+    // ── Syntax ────────────────────────────────────────────────────────────────
+    ink:         "#0d0d0d",
+    crimson:     "#a01a1a",
+    crimsonDark: "#731010",
+    violet:      "#5c3490",
+    cobalt:      "#0d46b5",
+    amber:       "#7a4700",
+    green:       "#125420",
+    terracotta:  "#7a3c00",
+    indigo:      "#5230a8",
+    navy:        "#153f88",
+    teal:        "#0d5c7c",
+    sapphire:    "#025289",
+    muted:       "#434343",
+    faint:       "#545454",
+};
+
+// ── Editor chrome ─────────────────────────────────────────────────────────────
+
+export const lightTheme = EditorView.theme(
+    {
+        "&": {
+            color: "var(--foreground)",
+            backgroundColor: "var(--background)",
+        },
+        ".cm-content": { caretColor: ML.indigo, padding: "0.55rem" },
+        ".cm-cursor, .cm-dropCursor": { borderLeftColor: ML.indigo },
+        "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
+            backgroundColor: ML.bgSelection,
+        },
+        ".cm-panels": { backgroundColor: "var(--muted)", color: "var(--foreground)" },
+        ".cm-panels.cm-panels-top": { borderBottom: "2px solid var(--border)" },
+        ".cm-panels.cm-panels-bottom": { borderTop: "2px solid var(--border)" },
+        ".cm-activeLine": {
+            backgroundColor: "#eef2fb80",
+        },
+        ".cm-searchMatch": {
+            backgroundColor: "#fde047",
+            color: ML.ink,
+            outline: "1px solid #ca8a04",
+            borderRadius: "2px",
+        },
+        ".cm-searchMatch *": {
+            color: `${ML.ink} !important`,
+        },
+        ".cm-searchMatch.cm-searchMatch-selected": {
+            backgroundColor: "#fb923c",
+            color: ML.ink,
+            outline: "1px solid #c2410c",
+        },
+        ".cm-activeLine .cm-searchMatch": {
+            backgroundColor: "#fde047",
+            color: ML.ink,
+        },
+        ".cm-activeLine .cm-searchMatch.cm-searchMatch-selected": {
+            backgroundColor: "#fb923c",
+            color: ML.ink,
+        },
+        ".cm-selectionMatch": { backgroundColor: "#b8d4ff40" },
+        "&.cm-focused .cm-matchingBracket": {
+            backgroundColor: "#2e7d3225",
+            outline: `1px solid #2e7d3250`,
+        },
+        "&.cm-focused .cm-nonmatchingBracket": {
+            backgroundColor: "#be262625",
+        },
+        ".cm-gutters": {
+            backgroundColor: "var(--background)",
+            color: "var(--muted-foreground)",
+            border: "none",
+            borderRight: "1px solid var(--border)",
+        },
+        ".cm-activeLineGutter": {
+            backgroundColor: "var(--secondary)",
+            color: "var(--muted-foreground)",
+        },
+        ".cm-foldPlaceholder": {
+            backgroundColor: "transparent",
+            border: "none",
+            color: "var(--muted-foreground)",
+        },
+        ".cm-tooltip": {
+            border: "1px solid var(--border)",
+            backgroundColor: "var(--popover)",
+        },
+        ".cm-completionMatchedText": {
+            textDecoration: "none",
+            color: ML.cobalt,
+            fontWeight: "bold",
+        },
+        ".cm-typst-comment": {
+            color: `${ML.fgComment} !important`,
+            fontStyle: "italic",
+            textDecoration: "none !important",
+        },
+        ".cm-typst-comment *": {
+            color: `${ML.fgComment} !important`,
+            textDecoration: "none !important",
+        },
+    },
+    { dark: false }
+);
+
+// ── Syntax colours ────────────────────────────────────────────────────────────
+
+export const lightHighlightStyle = HighlightStyle.define([
+
+    // ── Trivia & Comments ───────────────────────────────────────────────────────
+    { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: ML.fgComment, fontStyle: "italic" },
+
+    // ── Markup & Typography ─────────────────────────────────────────────────────
+    { tag: t.heading, color: ML.ink, fontWeight: "900"},
+    { tag: t.strong, color: ML.crimsonDark, fontWeight: "bold" },
+    { tag: t.emphasis, color: ML.violet, fontStyle: "italic" },
+    { tag: t.strikethrough, textDecoration: "line-through" },
+    { tag: t.link, color: ML.cobalt, textDecoration: "underline" },
+
+    // Raw code / monospace mapping
+    {
+        tag: t.monospace,
+        color: ML.terracotta,
+        // backgroundColor: "#f4f0e8",
+        fontFamily: "'Iosevka','JetBrains Mono', 'Fira Code', Consolas, monospace",
+        borderRadius: "2px",
+        padding: "0 2px"
+    },
+
+    // ── Special Typst Markers (Assuming common tag mappings) ────────────────────
+    { tag: t.escape, color: ML.violet },
+    { tag: t.labelName, color: ML.amber },
+    { tag: t.meta, color: ML.crimson }, // Often used for # hashes
+    { tag: t.processingInstruction, color: ML.violet, fontWeight: "bold" }, // Sometimes used for math delimiters
+
+    // ── Code — keywords & operators ─────────────────────────────────────────────
+    { tag: t.keyword, color: ML.crimson },
+    { tag: t.operatorKeyword, color: ML.crimson },
+    { tag: t.modifier, color: ML.crimson },
+    { tag: t.operator, color: ML.muted },
+    { tag: t.arithmeticOperator, color: ML.cobalt }, // Math operators
+    { tag: t.compareOperator, color: ML.muted },
+    { tag: t.updateOperator, color: ML.muted },
+    { tag: t.punctuation, color: ML.faint },
+
+    // ── Code — literals ─────────────────────────────────────────────────────────
+    { tag: t.number, color: ML.terracotta },
+    { tag: t.unit, color: ML.terracotta },
+    { tag: t.string, color: ML.green },
+    { tag: t.bool, color: ML.crimson },
+    { tag: t.null, color: ML.crimson },
+
+    // ── Code — types ────────────────────────────────────────────────────────────
+    { tag: t.typeName, color: ML.sapphire },
+    { tag: t.definition(t.typeName), color: ML.sapphire, fontStyle: "italic" },
+    { tag: t.typeOperator, color: ML.muted },
+    { tag: t.className, color: ML.sapphire },
+
+    // ── Code — identifiers ──────────────────────────────────────────────────────
+    { tag: t.function(t.variableName), color: ML.indigo },
+    { tag: t.special(t.variableName), color: ML.navy }, // Interpolated/Special
+    { tag: t.definition(t.variableName), color: ML.navy },
+    { tag: t.propertyName, color: ML.teal },
+    { tag: t.variableName, color: ML.fg },
+
+    // ── Brackets ────────────────────────────────────────────────────────────────
+    { tag: t.bracket, color: ML.faint },
+    { tag: t.paren, color: ML.faint },
+    { tag: t.squareBracket, color: ML.faint },
+    { tag: t.brace, color: ML.faint },
+
+    // ── Errors ─────────────────────────────────────────────────────────────────
+    {
+        tag: t.invalid,
+        color: ML.crimson,
+        textDecoration: "underline wavy"
+    },
+]);
+
+/**
+ * Convenience export — pass directly to `EditorView.extensions`.
+ *
+ * @example
+ * import { light } from "@codemirror/lang-typst/themes/light";
+ * new EditorView({ extensions: [basicSetup, typst(), light] })
+ */
+export const light = [
+    lightTheme,
+    syntaxHighlighting(lightHighlightStyle),
+];
+
+export default light;
