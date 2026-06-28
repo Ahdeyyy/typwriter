@@ -50,6 +50,7 @@
   } from "@codemirror/lint";
   import { search } from "@codemirror/search";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
+  import { editorFormat } from "$lib/stores/editor-format.svelte";
   import {
     typst,
     light,
@@ -483,6 +484,13 @@
           editorSearch.refreshCounts();
         }
       }),
+      // Keep the formatting toolbar's active state in sync with the cursor.
+      EditorView.updateListener.of((update) => {
+        if (editorSearch.getActiveView() !== update.view) return;
+        if (update.docChanged || update.selectionSet || update.focusChanged) {
+          editorFormat.refresh(update.view);
+        }
+      }),
       // Hover tooltip — only for .typ (avoids unnecessary IPC calls for other file types)
       ...(isTypst
         ? [
@@ -641,6 +649,7 @@
       editorHost.replaceChildren();
       mountedTabId = null;
       editorSearch.setActiveView(null);
+      editorFormat.reset();
       return;
     }
 
@@ -660,6 +669,7 @@
     }
 
     editorSearch.setActiveView(view);
+    editorFormat.refresh(view);
     // Don't steal focus away from the search panel if it's open.
     if (!editorSearch.open) view.focus();
   }
@@ -696,6 +706,7 @@
       tabViews.clear();
       mountedTabId = null;
       editorSearch.setActiveView(null);
+      editorFormat.reset();
     };
   });
 

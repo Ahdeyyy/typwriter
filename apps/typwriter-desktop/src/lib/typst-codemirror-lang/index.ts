@@ -10,5 +10,15 @@ export {
   toggleStrikethrough,
   toggleLineComment,
   toggleBlockComment,
+  setHeadingLevel,
+  toggleBulletList,
+  toggleNumberedList,
+  continueList,
+  insertCodeBlock,
+  insertImage,
+  insertLink,
+  insertTable,
+  computeFormatState,
   typstKeymap,
 } from "./commands"
+export type { FormatState } from "./commands"
