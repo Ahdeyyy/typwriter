@@ -241,7 +241,7 @@
       {#if preview.totalPages === 0}
         <div class="m-auto select-none text-xs text-muted-foreground">
           {#if workspace.mainFile}
-            Loading preview…
+            {preview.isCompiling ? "Compiling…" : "Loading preview…"}
           {:else}
             Select a main `.typ` file in the explorer to render a preview.
           {/if}
@@ -282,7 +282,7 @@
           class="flex h-full select-none items-center justify-center text-xs text-muted-foreground"
         >
           {#if workspace.mainFile}
-            Loading preview…
+            {preview.isCompiling ? "Compiling…" : "Loading preview…"}
           {:else}
             Select a main `.typ` file in the explorer to render a preview.
           {/if}

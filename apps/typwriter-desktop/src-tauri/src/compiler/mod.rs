@@ -320,6 +320,13 @@ pub struct PreviewPipeline {
     compile_tx: Sender<CompileReason>,
     compile_rx: Mutex<Option<Receiver<CompileReason>>>,
     request_counter: AtomicU64,
+    /// The most recent compile-state we told the frontend (Started/Idle).
+    /// Re-emitted by [`Self::emit_current_state`] so a preview pane that mounts
+    /// *after* a compile was kicked off (e.g. the workspace page mounting only
+    /// once the user navigates to it, by which point the original `Started`
+    /// event has already fired) still learns a compile is in flight and shows
+    /// the "Compiling" indicator.
+    last_compile_state: Mutex<CompileStatePayload>,
     /// Version-control state. Used to auto-commit a restore point whenever
     /// a compile succeeds (the user's "good known state").
     vcs: Arc<VcsState>,
@@ -343,6 +350,11 @@ impl PreviewPipeline {
             compile_tx,
             compile_rx: Mutex::new(Some(compile_rx)),
             request_counter: AtomicU64::new(0),
+            last_compile_state: Mutex::new(CompileStatePayload {
+                status: CompileStatus::Idle,
+                revision: 0,
+                reason: CompileReason::default(),
+            }),
             vcs,
         }
     }
@@ -457,6 +469,17 @@ impl PreviewPipeline {
                 );
             }
         }
+
+        // Re-publish the current compile status so a freshly-mounted preview
+        // pane (which missed the original Started event fired before it
+        // listened) reflects an in-flight compile and shows "Compiling".
+        let compile_state = *self.last_compile_state.lock();
+        if let Err(err) = self
+            .app_handle
+            .emit("preview:compile-state", compile_state)
+        {
+            error!("emit preview:compile-state (current state) failed err=\"{err}\"");
+        }
     }
 
     /// Look up the PNG bytes for a cache key. Used by the `previewimg`
@@ -492,6 +515,17 @@ impl PreviewPipeline {
 
     pub fn request_compile(self: &Arc<Self>, reason: CompileReason) {
         self.request_counter.fetch_add(1, Ordering::Relaxed);
+        // Mark "compiling" synchronously, before the worker thread has a chance
+        // to run. `open_folder` calls this while still on the home screen; the
+        // preview pane only mounts (and queries `sync_preview`) once the user is
+        // on the workspace page. Recording Started here guarantees that query
+        // sees an in-flight compile even if it lands before the worker emits its
+        // own Started event — so the "Compiling" indicator always shows.
+        {
+            let mut state = self.last_compile_state.lock();
+            state.status = CompileStatus::Started;
+            state.reason = reason;
+        }
         if let Err(err) = self.compile_tx.send(reason) {
             error!("request_compile: worker queue send failed err=\"{err}\"");
         }
@@ -553,14 +587,15 @@ impl PreviewPipeline {
     }
 
     fn emit_compile_state(&self, status: CompileStatus, revision: u64, reason: CompileReason) {
-        if let Err(err) = self.app_handle.emit(
-            "preview:compile-state",
-            CompileStatePayload {
-                status,
-                revision,
-                reason,
-            },
-        ) {
+        let payload = CompileStatePayload {
+            status,
+            revision,
+            reason,
+        };
+        // Remember it so a preview pane that mounts mid-compile can recover the
+        // current status via `emit_current_state` (sync_preview).
+        *self.last_compile_state.lock() = payload;
+        if let Err(err) = self.app_handle.emit("preview:compile-state", payload) {
             error!("emit preview:compile-state failed err=\"{err}\"");
         }
     }
