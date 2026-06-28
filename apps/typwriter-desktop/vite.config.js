@@ -10,7 +10,25 @@ export default defineConfig(async () => ({
   optimizeDeps: {
     include: ['codemirror']
   },
-  resolve: { dedupe: [] },
+  // Force a single copy of the CodeMirror/Lezer core packages into the bundle.
+  // Plugins like thememirror and @replit/codemirror-* pull older transitive
+  // copies of @codemirror/language / @lezer/common; loading two copies of
+  // @lezer/common collides NodeProp ids and crashes highlighting with
+  // "tags is not iterable". Deduping keeps a single instance.
+  resolve: {
+    dedupe: [
+      "@codemirror/state",
+      "@codemirror/view",
+      "@codemirror/language",
+      "@codemirror/commands",
+      "@codemirror/autocomplete",
+      "@codemirror/search",
+      "@codemirror/lint",
+      "@lezer/common",
+      "@lezer/highlight",
+      "@lezer/lr",
+    ],
+  },
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors
