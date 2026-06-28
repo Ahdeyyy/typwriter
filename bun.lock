@@ -16,7 +16,7 @@
     },
     "apps/typwriter-desktop": {
       "name": "typwriter",
-      "version": "0.8.2",
+      "version": "0.8.3",
       "dependencies": {
         "@citedrive/codemirror-lang-bibtex": "^6.4.1",
         "@codemirror/autocomplete": "^6.20.0",
