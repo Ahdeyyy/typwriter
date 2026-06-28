@@ -21,7 +21,7 @@ import type {
 import { toast } from 'svelte-sonner';
 
 import { workspace, type FileNode } from '$lib/stores/workspace.svelte';
-import { basename, dirname, normalize } from '$lib/paths';
+import { basename, dirname, ensureTypExtension, normalize } from '$lib/paths';
 import { editor } from '$lib/stores/editor.svelte';
 import { exportWorkspaceWithPicker } from '$lib/services/export-service';
 
@@ -303,7 +303,8 @@ export class FiletreeController {
         if (this.pendingCreatePaths.has(sourcePath)) {
             this.pendingCreatePaths.delete(sourcePath);
             const parent = dirname(stripSlash(sourcePath));
-            const targetPath = parent ? `${parent}/${newName}` : newName;
+            const leaf = event.isFolder ? newName : ensureTypExtension(newName);
+            const targetPath = parent ? `${parent}/${leaf}` : leaf;
             const result = await (event.isFolder
                 ? workspace.createFolderAction(targetPath)
                 : workspace.createFileAction(targetPath));
@@ -503,7 +504,7 @@ export class FiletreeController {
         if (!name || !workspace.rootPath) return;
         const result = await (kind === 'folder'
             ? workspace.createFolderAction(name)
-            : workspace.createFileAction(name));
+            : workspace.createFileAction(ensureTypExtension(name)));
         result.mapErr((err) => toast.error(`Create failed: ${err}`));
     }
 
@@ -512,7 +513,8 @@ export class FiletreeController {
     async submitDialogCreate(parent: string, name: string, kind: 'file' | 'folder') {
         const trimmed = name.trim();
         if (!trimmed || !workspace.rootPath) return null;
-        const targetPath = parent ? `${parent}/${trimmed}` : trimmed;
+        const leaf = kind === 'folder' ? trimmed : ensureTypExtension(trimmed);
+        const targetPath = parent ? `${parent}/${leaf}` : leaf;
         const result = await (kind === 'folder'
             ? workspace.createFolderAction(targetPath)
             : workspace.createFileAction(targetPath));

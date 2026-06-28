@@ -8,6 +8,8 @@
     FolderAddIcon,
     UnfoldLessIcon,
     FileImportIcon,
+    File01Icon,
+    Folder01Icon,
   } from "@hugeicons/core-free-icons";
   import { ChevronsUpDownIcon } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -157,16 +159,32 @@
 </div>
 
 <!-- ─── Inline root create input ───────────────────────────────────── -->
+<!-- Mirrors a Pierre tree row / the search input. Pierre's `:host` re-declares
+     the layout vars via their `-override` fallbacks, so the `style:--trees-*`
+     hints on the mount below don't take effect inside the shadow DOM — the tree
+     renders at the package defaults. Hard-code those here to stay aligned:
+       outer inset  = --trees-padding-inline (16px)  → matches the search bar width
+       row padding  = --trees-item-padding-x (8px)   → icon column at 24px
+       gap + icon   = 6px + 16px                      → label at 46px
+       font-size    = 13px,  height = --trees-item-height (26px) -->
 {#if creatingRoot}
-  <div class="shrink-0 border-b border-sidebar-border px-2 py-1">
-    <input
-      bind:this={rootCreateInputEl}
-      class="h-5 w-full rounded border border-input bg-background px-1 text-xs outline-none focus:ring-1 focus:ring-ring"
-      placeholder={creatingRoot === "folder" ? "folder-name" : "file.typ"}
-      bind:value={newRootName}
-      onkeydown={handleRootCreateKey}
-      onblur={cancelRootCreate}
-    />
+  <div class="shrink-0 px-4 mb-1.5">
+    <div
+      class="flex h-[26px] items-center gap-1.5 rounded-md bg-sidebar-accent px-2 ring-1 ring-transparent focus-within:ring-sidebar-ring"
+    >
+      <HugeiconsIcon
+        icon={creatingRoot === "folder" ? Folder01Icon : File01Icon}
+        class="size-4 shrink-0 text-muted-foreground"
+      />
+      <input
+        bind:this={rootCreateInputEl}
+        class="h-full w-full min-w-0 bg-transparent text-[13px] text-sidebar-accent-foreground outline-none placeholder:text-muted-foreground"
+        placeholder={creatingRoot === "folder" ? "folder-name" : "file.typ"}
+        bind:value={newRootName}
+        onkeydown={handleRootCreateKey}
+        onblur={cancelRootCreate}
+      />
+    </div>
   </div>
 {/if}
 
