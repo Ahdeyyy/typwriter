@@ -7,14 +7,20 @@
 // Uses fast PNG compression (level 1 + Sub filter) for preview performance.
 
 use png::{BitDepth, ColorType, Compression, Encoder, Filter};
-use typst::layout::Page;
+use typst::utils::Scalar;
+use typst_layout::Page;
+use typst_render::RenderOptions;
 
 /// Render a single page to PNG bytes using fast compression.
 ///
 /// `scale` is the number of device pixels per typst "point" (pt).
 /// A scale of `1.0` gives 72 dpi; `2.0` gives 144 dpi (retina-equivalent).
 pub fn render_page(page: &Page, scale: f32) -> Result<Vec<u8>, String> {
-    let pixmap = typst_render::render(page, scale);
+    let opts = RenderOptions {
+        pixel_per_pt: Scalar::new(scale as f64),
+        ..Default::default()
+    };
+    let pixmap = typst_render::render(page, &opts);
     let width = pixmap.width();
     let height = pixmap.height();
     let data = pixmap.data();

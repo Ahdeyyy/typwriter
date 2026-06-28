@@ -15,21 +15,19 @@ use std::{path::Path, sync::Arc, time::Instant};
 use log::{debug, error, info};
 use tauri::State;
 use typst::{
-    layout::{Abs, PagedDocument, Point},
+    introspection::PagedPosition,
+    layout::{Abs, Frame, FrameItem, Point},
+    syntax::Span,
     World,
 };
+use typst_ide::IdeWorld;
+use typst_layout::PagedDocument;
 
 use crate::{
     commands::editor::{serialize_jump, utf16_to_byte, JumpResponse},
     compiler::PreviewPipeline,
     world::EditorWorld,
 };
-
-/// Maximum byte distance we probe left/right of the cursor when disambiguating
-/// preview positions for an ambiguous source location. 128 bytes is roughly
-/// one typical line of code — far enough to find an unambiguous anchor token,
-/// short enough that probing stays well under a millisecond.
-const MAX_CURSOR_SHIFT_BYTES: usize = 128;
 
 // ─── Preview → Editor ─────────────────────────────────────────────────────────
 
@@ -62,10 +60,10 @@ pub fn jump_from_click(
     })?;
     let doc: &PagedDocument = &doc_arc;
 
-    if page >= doc.pages.len() {
+    if page >= doc.pages().len() {
         let e = format!(
             "page index {page} out of bounds (doc has {} pages)",
-            doc.pages.len()
+            doc.pages().len()
         );
         error!(
             "jump_from_click: err=\"{e}\" ({:.1}ms)",
@@ -74,8 +72,8 @@ pub fn jump_from_click(
         return Err(e);
     }
 
-    let frame = &doc.pages[page].frame;
-    let jump = typst_ide::jump_from_click(&**world, doc, frame, point);
+    let frame = &doc.pages()[page].frame;
+    let jump = typst_ide::jump_from_click_in_frame(&**world, doc, frame, point);
     let found = jump.is_some();
     debug!(
         "jump_from_click: ok found={found} ({:.1}ms)",
@@ -87,10 +85,11 @@ pub fn jump_from_click(
 
 // ─── Editor → Preview ─────────────────────────────────────────────────────────
 
-/// Convert the editor cursor (byte offset inside a source file) to preview
-/// position. When the engine returns multiple candidates, probe nearby byte
-/// offsets on both sides of the cursor to disambiguate which preview position
-/// best matches the current caret location.
+/// Convert the editor cursor (byte offset inside a source file) to a preview
+/// position. The engine (`typst_ide::jump_from_cursor`) reports one position per
+/// page a span touches and can't say which page the caret's own character is on,
+/// so we resolve the page ourselves by matching the rendered glyph nearest the
+/// caret across the whole document (see [`find_caret_position`]).
 ///
 /// `path`   — absolute or workspace-relative path to the source file
 /// `cursor` — byte offset of the cursor within the source text
@@ -137,7 +136,7 @@ pub fn jump_from_cursor(
 
     let positions = typst_ide::jump_from_cursor(doc, &source, byte_cursor);
     let count = positions.len();
-    let resolved = resolve_preview_position(doc, &source, text, byte_cursor, positions);
+    let resolved = resolve_preview_position(&**world, doc, &source, byte_cursor, positions);
     info!(
         "jump_from_cursor: ok — {count} position(s), resolved={} ({:.1}ms)",
         resolved.is_some(),
@@ -159,128 +158,189 @@ pub struct PreviewPositionResponse {
     pub y: f64,
 }
 
+/// Pick the preview page+point for the caret from the candidates
+/// `typst_ide::jump_from_cursor` produced. It reports one position per page on
+/// which the caret's *exact* source offset is rendered:
+///
+/// * **Zero** — the caret isn't on rendered content (inside code, a diagram
+///   body, a blank gap). Return `None` so the preview stays put rather than
+///   yanking somewhere while the user edits code.
+/// * **One** — the offset renders in a single place. Use [`find_caret_position`]
+///   to pin the precise glyph the caret sits on; that's correct whenever the
+///   offset isn't rendered more than once.
+/// * **More than one** — the same offset renders on several pages: a heading
+///   echoed in an `#outline`, a reference, or a running header. The glyph scan
+///   can't tell the body copy from the echo (it tie-breaks to the earliest
+///   page — i.e. the outline), so disambiguate by round-tripping each candidate
+///   back through the click resolver. An outline / reference entry is a *link*
+///   and resolves to a [`typst_ide::Jump::Position`]; only the genuine body text
+///   resolves to a [`typst_ide::Jump::File`] in this source — that's the page
+///   the caret is really on. We deliberately ignore the File jump's byte offset:
+///   it's the clicked glyph's anchor, never the caret's exact offset, so the old
+///   `== cursor` equality could essentially never hold. If nothing round-trips
+///   (every copy is a link), fall back to the glyph scan.
 fn resolve_preview_position(
+    world: &dyn IdeWorld,
     doc: &PagedDocument,
     source: &typst::syntax::Source,
-    text: &str,
     cursor: usize,
-    positions: Vec<typst::layout::Position>,
-) -> Option<typst::layout::Position> {
+    positions: Vec<PagedPosition>,
+) -> Option<PagedPosition> {
     match positions.len() {
         0 => None,
-        1 => positions.into_iter().next(),
-        2 => positions.into_iter().last(),
-        _ => {
-            let left_probe =
-                find_unique_probe_position(doc, source, text, cursor, ProbeDirection::Left);
-            let right_probe =
-                find_unique_probe_position(doc, source, text, cursor, ProbeDirection::Right);
-
-            let mut best_index = 0usize;
-            let mut best_score = f64::INFINITY;
-
-            for (index, candidate) in positions.iter().enumerate() {
-                let mut score = 0.0;
-                let mut anchors = 0usize;
-
-                if let Some(left) = left_probe.as_ref() {
-                    score += preview_position_distance(candidate, left);
-                    anchors += 1;
-                }
-
-                if let Some(right) = right_probe.as_ref() {
-                    score += preview_position_distance(candidate, right);
-                    anchors += 1;
-                }
-
-                if anchors == 0 {
-                    score = index as f64;
-                }
-
-                if score < best_score {
-                    best_score = score;
-                    best_index = index;
-                }
-            }
-
-            positions.into_iter().nth(best_index)
-        }
+        1 => find_caret_position(doc, source, cursor),
+        _ => positions
+            .iter()
+            .find(|position| round_trips_to_body(world, doc, source, position))
+            .copied()
+            .or_else(|| find_caret_position(doc, source, cursor)),
     }
 }
 
-fn find_unique_probe_position(
+/// Whether clicking `position` lands back on body text in `source` (a
+/// [`typst_ide::Jump::File`]) rather than on a link such as an `#outline` entry
+/// (which resolves to a [`typst_ide::Jump::Position`]).
+///
+/// `jump_from_cursor` hands us a glyph's **baseline** point, but
+/// `jump_from_click`'s hit-test box for a glyph is `[baseline - text.size,
+/// baseline]` — so the raw baseline sits exactly on the box's bottom edge. Large
+/// fonts (a level-1 heading) happen to register the hit; smaller ones (level-2+
+/// sub-headings) fall off the edge and resolve to nothing, which sent the caret
+/// to the outline copy on the wrong page. Nudging a fraction of a point up and
+/// to the right moves the click into the glyph interior, so any font taller than
+/// the nudge registers — verified across heading levels 1–3. We ignore the File
+/// jump's byte offset (it's the clicked glyph's anchor, not the caret's offset).
+fn round_trips_to_body(
+    world: &dyn IdeWorld,
     doc: &PagedDocument,
     source: &typst::syntax::Source,
-    text: &str,
+    position: &PagedPosition,
+) -> bool {
+    let probe = PagedPosition {
+        page: position.page,
+        point: Point::new(
+            position.point.x + Abs::pt(0.5),
+            position.point.y - Abs::pt(0.5),
+        ),
+    };
+    matches!(
+        typst_ide::jump_from_click(world, doc, &probe),
+        Some(typst_ide::Jump::File(id, _)) if id == source.id()
+    )
+}
+
+/// Resolve the caret to the exact page+point of the rendered glyph nearest it.
+///
+/// `typst_ide::jump_from_cursor` reports one position per page a span touches
+/// and can't disambiguate which page the caret is actually on. Instead of
+/// trusting that per-page list, we scan every glyph rendered from the caret's
+/// file across the entire document, recover each glyph's *absolute* source byte
+/// offset (its span's node start + `glyph.span.1`), and pick the glyph the
+/// caret sits on — the one at/just-before the caret, or, failing that, the
+/// nearest one after it. Because the offset is absolute, a paragraph that wraps
+/// across a page break resolves to the correct page on either side, and a caret
+/// in a non-text gap naturally falls back to the preceding rendered character
+/// (the behaviour the old probe heuristics approximated).
+///
+/// Returns `None` only when the caret's file rendered no glyphs at all.
+fn find_caret_position(
+    doc: &PagedDocument,
+    source: &typst::syntax::Source,
     cursor: usize,
-    direction: ProbeDirection,
-) -> Option<typst::layout::Position> {
-    let mut probe = clamp_to_char_boundary(text, cursor.min(text.len()));
-    let mut shifted = 0usize;
+) -> Option<PagedPosition> {
+    let file = source.id();
 
-    while shifted < MAX_CURSOR_SHIFT_BYTES {
-        let next = match direction {
-            ProbeDirection::Left => previous_char_boundary(text, probe)?,
-            ProbeDirection::Right => next_char_boundary(text, probe)?,
-        };
+    // The absolute byte offset of a glyph is `start-of-its-span + glyph.span.1`.
+    // Resolving a span to its byte range walks the syntax tree, so memoize it:
+    // every glyph in a text run shares one span, making this a handful of lookups
+    // rather than one per glyph.
+    let mut span_starts: std::collections::HashMap<Span, usize> = std::collections::HashMap::new();
 
-        shifted += probe.abs_diff(next);
-        if shifted > MAX_CURSOR_SHIFT_BYTES {
-            break;
+    // Track the single best glyph, keyed by `caret_rank`. The rank's last
+    // element is the page index, so the winner carries its own page.
+    let mut best: Option<((u8, usize, usize), Point)> = None;
+
+    for (index, page) in doc.pages().iter().enumerate() {
+        find_glyphs(&page.frame, &mut |span, span_offset, point| {
+            // Only glyphs rendered from *this* file can carry the caret; spans
+            // from imports/packages map into a different source text.
+            if span.id() != Some(file) {
+                return;
+            }
+            let start = match span_starts.get(&span) {
+                Some(&start) => start,
+                None => {
+                    // `Source::find` returns the node for the span (and already
+                    // filters to this file); its range start anchors the glyph.
+                    let Some(node) = source.find(span) else {
+                        return;
+                    };
+                    let start = node.range().start;
+                    span_starts.insert(span, start);
+                    start
+                }
+            };
+            let offset = start + span_offset as usize;
+            let rank = caret_rank(offset, index, cursor);
+            if best
+                .as_ref()
+                .map_or(true, |(best_rank, _)| rank < *best_rank)
+            {
+                best = Some((rank, point));
+            }
+        });
+    }
+
+    let (rank, point) = best?;
+    let page =
+        std::num::NonZeroUsize::new(rank.2 + 1).expect("page indices are 1-based and non-zero");
+    Some(PagedPosition { page, point })
+}
+
+/// Ordering key that selects the glyph the caret sits on. Compared
+/// lexicographically as `(side, distance, page)`:
+///
+/// * `side` — `0` for a glyph at/just-before the caret, `1` for one after it. A
+///   text cursor belongs to the character on its left, so any before-or-at glyph
+///   beats every after glyph regardless of distance.
+/// * `distance` — bytes between the glyph and the caret; nearest wins within a
+///   side.
+/// * `page` — breaks exact-offset ties (the same offset rendered on several
+///   pages, e.g. reused diagram content) in reading order.
+fn caret_rank(offset: usize, page: usize, cursor: usize) -> (u8, usize, usize) {
+    if offset <= cursor {
+        (0, cursor - offset, page)
+    } else {
+        (1, offset - cursor, page)
+    }
+}
+
+/// Walk a frame, invoking `f(span, span_offset, point)` for *every* glyph it
+/// renders. Mirrors typst-ide's `find_in_frame`, but reports all glyphs (with
+/// their source span and per-glyph byte offset) rather than only the first
+/// matching one per page — which is what lets the caller match the glyph nearest
+/// the caret across the whole document.
+fn find_glyphs(frame: &Frame, f: &mut dyn FnMut(Span, u16, Point)) {
+    for &(pos, ref item) in frame.items() {
+        match item {
+            FrameItem::Group(group) => {
+                find_glyphs(&group.frame, &mut |span, offset, point| {
+                    f(span, offset, pos + point.transform(group.transform))
+                });
+            }
+            FrameItem::Text(text) => {
+                let mut x = pos.x;
+                for glyph in &text.glyphs {
+                    f(glyph.span.0, glyph.span.1, Point::new(x, pos.y));
+                    x += glyph.x_advance.at(text.size);
+                }
+            }
+            _ => {}
         }
-
-        probe = next;
-        let mut positions = typst_ide::jump_from_cursor(doc, source, probe).into_iter();
-        let first = positions.next()?;
-
-        if positions.next().is_none() {
-            return Some(first);
-        }
     }
-
-    None
 }
 
-fn previous_char_boundary(text: &str, index: usize) -> Option<usize> {
-    let index = clamp_to_char_boundary(text, index);
-    if index == 0 {
-        return None;
-    }
-
-    text[..index]
-        .char_indices()
-        .next_back()
-        .map(|(offset, _)| offset)
-}
-
-fn next_char_boundary(text: &str, index: usize) -> Option<usize> {
-    let index = clamp_to_char_boundary(text, index);
-    if index >= text.len() {
-        return None;
-    }
-
-    let mut iter = text[index..].char_indices();
-    let (_, ch) = iter.next()?;
-    Some(index + ch.len_utf8())
-}
-
-fn clamp_to_char_boundary(text: &str, index: usize) -> usize {
-    let mut clamped = index.min(text.len());
-    while clamped > 0 && !text.is_char_boundary(clamped) {
-        clamped -= 1;
-    }
-    clamped
-}
-
-fn preview_position_distance(a: &typst::layout::Position, b: &typst::layout::Position) -> f64 {
-    let page_delta = a.page.get().abs_diff(b.page.get()) as f64;
-    let dx = (a.point.x - b.point.x).to_pt();
-    let dy = (a.point.y - b.point.y).to_pt();
-
-    page_delta * 10_000.0 + dx * dx + dy * dy
-}
-
-fn preview_position_response(position: typst::layout::Position) -> PreviewPositionResponse {
+fn preview_position_response(position: PagedPosition) -> PreviewPositionResponse {
     PreviewPositionResponse {
         page: position.page.get() - 1,
         x: position.point.x.to_pt(),
@@ -288,8 +348,276 @@ fn preview_position_response(position: typst::layout::Position) -> PreviewPositi
     }
 }
 
-#[derive(Clone, Copy)]
-enum ProbeDirection {
-    Left,
-    Right,
+#[cfg(test)]
+mod tests {
+    use super::{caret_rank, preview_position_response, resolve_preview_position};
+    use crate::world::local_file_id;
+    use ecow::EcoString;
+    use std::num::NonZeroUsize;
+    use std::path::{Path, PathBuf};
+    use typst::diag::{FileError, FileResult};
+    use typst::foundations::{Bytes, Datetime, Duration};
+    use typst::introspection::PagedPosition;
+    use typst::layout::{Abs, Point};
+    use typst::syntax::package::PackageSpec;
+    use typst::syntax::{FileId, Source};
+    use typst::text::{Font, FontBook};
+    use typst::utils::LazyHash;
+    use typst::{Library, LibraryExt, World};
+    use typst_ide::IdeWorld;
+    use typst_kit::fonts::{self, FontStore};
+    use typst_layout::PagedDocument;
+
+    /// Build a 1-based `PagedPosition` at `(x, y)` typst points on `page`.
+    fn pos(page: usize, x: f64, y: f64) -> PagedPosition {
+        PagedPosition {
+            page: NonZeroUsize::new(page).expect("page indices are 1-based and non-zero"),
+            point: Point::new(Abs::pt(x), Abs::pt(y)),
+        }
+    }
+
+    // ─── In-memory world for end-to-end resolution tests ────────────────────────
+    //
+    // `resolve_preview_position`'s interesting branch round-trips real preview
+    // positions through `typst_ide::jump_from_click`, so it can only be exercised
+    // against a genuinely compiled `PagedDocument`. `EditorWorld` needs a Tauri
+    // handle plus background font/condvar machinery a unit test can't stand up, so
+    // we provide a single-file `World` + `IdeWorld` backed by the embedded fonts
+    // and the standard library — everything layout and the jump APIs require.
+
+    struct TestWorld {
+        library: LazyHash<Library>,
+        fonts: FontStore,
+        main: FileId,
+        source: Source,
+    }
+
+    impl TestWorld {
+        fn new(text: &str) -> Self {
+            let main = local_file_id(Path::new("main.typ"))
+                .expect("main.typ is a valid project-relative path");
+            let mut fonts = FontStore::new();
+            fonts.extend(fonts::embedded());
+            Self {
+                library: LazyHash::new(Library::builder().build()),
+                fonts,
+                main,
+                source: Source::new(main, text.to_string()),
+            }
+        }
+
+        /// Compile to a paged document, asserting the fixture itself is valid so a
+        /// broken fixture fails loudly rather than as a confusing `None`.
+        fn compile(&self) -> PagedDocument {
+            typst::compile::<PagedDocument>(self)
+                .output
+                .expect("test fixture compiles without errors")
+        }
+    }
+
+    impl World for TestWorld {
+        fn library(&self) -> &LazyHash<Library> {
+            &self.library
+        }
+        fn book(&self) -> &LazyHash<FontBook> {
+            self.fonts.book()
+        }
+        fn main(&self) -> FileId {
+            self.main
+        }
+        fn source(&self, id: FileId) -> FileResult<Source> {
+            if id == self.main {
+                Ok(self.source.clone())
+            } else {
+                Err(FileError::NotFound(PathBuf::from("<test: unknown file>")))
+            }
+        }
+        fn file(&self, _id: FileId) -> FileResult<Bytes> {
+            Err(FileError::NotFound(PathBuf::from("<test: no assets>")))
+        }
+        fn font(&self, index: usize) -> Option<Font> {
+            self.fonts.font(index)
+        }
+        fn today(&self, _offset: Option<Duration>) -> Option<Datetime> {
+            None
+        }
+    }
+
+    impl IdeWorld for TestWorld {
+        fn upcast(&self) -> &dyn World {
+            self
+        }
+        fn packages(&self) -> &[(PackageSpec, Option<EcoString>)] {
+            &[]
+        }
+        fn files(&self) -> Vec<FileId> {
+            vec![self.main]
+        }
+    }
+
+    /// Compile `text`, place the caret at byte offset `cursor`, and resolve the
+    /// preview position exactly as the `jump_from_cursor` command does.
+    fn resolve_at(text: &str, cursor: usize) -> Option<PagedPosition> {
+        let world = TestWorld::new(text);
+        let doc = world.compile();
+        let source = world.source(world.main).expect("main source is available");
+        let positions = typst_ide::jump_from_cursor(&doc, &source, cursor);
+        resolve_preview_position(&world, &doc, &source, cursor, positions)
+    }
+
+    /// One outline page followed by three single-heading pages, one heading per
+    /// level. Each heading's text therefore renders twice — once in the `#outline`
+    /// on page 1, once on its own body page — which is the duplicate-render case
+    /// the round-trip exists to disambiguate.
+    const OUTLINE_FIXTURE: &str = "\
+#outline()
+#pagebreak()
+= Alpha
+#pagebreak()
+== Beta
+#pagebreak()
+=== Gamma
+";
+
+    /// Byte offset one character into the body occurrence of `heading` (inside the
+    /// `Text` node, where `jump_from_cursor` will find a span).
+    fn caret_in_heading(text: &str, heading: &str) -> usize {
+        text.find(heading)
+            .unwrap_or_else(|| panic!("fixture should contain heading {heading:?}"))
+            + 1
+    }
+
+    // ─── preview_position_response ──────────────────────────────────────────
+
+    #[test]
+    fn response_converts_one_based_page_to_zero_based() {
+        let r = preview_position_response(pos(1, 10.0, 20.0));
+        assert_eq!(r.page, 0, "page 1 in the doc is index 0 in the preview");
+        assert!((r.x - 10.0).abs() < 1e-9);
+        assert!((r.y - 20.0).abs() < 1e-9);
+
+        // A later page must not be off-by-one — this is the classic "preview
+        // lands one page away" failure.
+        assert_eq!(preview_position_response(pos(5, 0.0, 0.0)).page, 4);
+    }
+
+    // ─── caret_rank ─────────────────────────────────────────────────────────
+    //
+    // The ordering that picks which rendered glyph the caret sits on once every
+    // glyph in the document has been collected. It is the whole game now: a span
+    // rendered on several pages (a wrapped paragraph, a reused fletcher label)
+    // contributes one glyph per page, and the smallest `caret_rank` decides the
+    // page. Compared as `(side, distance, page)`.
+
+    #[test]
+    fn caret_rank_prefers_glyph_at_or_before_caret() {
+        let cursor = 17;
+        // The glyph exactly at the caret is the best possible match (side 0,
+        // zero distance) — page is irrelevant when offset/distance already win.
+        assert_eq!(caret_rank(17, 9, cursor), (0, 0, 9));
+        // A glyph just before the caret beats one just after, even though both
+        // are one byte away — this is the page-N-vs-page-(N+1) tie-break at a
+        // page break.
+        assert!(caret_rank(16, 5, cursor) < caret_rank(18, 5, cursor));
+        // Among before-or-at glyphs, the nearest (largest offset ≤ cursor) wins.
+        assert!(caret_rank(16, 5, cursor) < caret_rank(0, 5, cursor));
+        // A far-before glyph still beats any after-caret glyph (the cursor
+        // belongs to the character on its left).
+        assert!(caret_rank(0, 5, cursor) < caret_rank(18, 5, cursor));
+        // Among after-caret glyphs, the nearest wins.
+        assert!(caret_rank(18, 5, cursor) < caret_rank(49, 5, cursor));
+    }
+
+    #[test]
+    fn caret_rank_breaks_exact_offset_ties_by_page() {
+        let cursor = 100;
+        // The same source offset rendered on two pages (reused diagram content):
+        // identical side + distance, so the earlier page wins (reading order).
+        assert!(caret_rank(100, 2, cursor) < caret_rank(100, 4, cursor));
+        // Likewise for a before-caret offset shared across pages.
+        assert!(caret_rank(80, 1, cursor) < caret_rank(80, 6, cursor));
+    }
+
+    #[test]
+    fn caret_rank_distance_outranks_page() {
+        let cursor = 100;
+        // A nearer glyph on a *later* page still beats a farther glyph on an
+        // earlier page — distance is compared before the page tiebreak, so a
+        // wrapped paragraph resolves to the page holding the caret's own line,
+        // not merely the first page the span touches.
+        assert!(caret_rank(99, 7, cursor) < caret_rank(80, 1, cursor));
+    }
+
+    // ─── resolve_preview_position (end-to-end) ──────────────────────────────────
+
+    #[test]
+    fn outline_duplicates_the_heading_render() {
+        // Precondition for the tests below: with an #outline, a heading's text
+        // really does render on two pages (the outline copy on page 1 and the
+        // body copy), so `jump_from_cursor` returns several candidates. If typst's
+        // outline behaviour ever stopped reusing the heading span, these tests
+        // would no longer exercise the disambiguation and this guard would catch
+        // it.
+        let world = TestWorld::new(OUTLINE_FIXTURE);
+        let doc = world.compile();
+        let source = world.source(world.main).unwrap();
+        let cursor = caret_in_heading(OUTLINE_FIXTURE, "Alpha");
+
+        let pages: Vec<usize> = typst_ide::jump_from_cursor(&doc, &source, cursor)
+            .iter()
+            .map(|p| p.page.get())
+            .collect();
+
+        assert!(
+            pages.contains(&1),
+            "one copy of the heading is rendered in the outline on page 1 ({pages:?})",
+        );
+        assert!(
+            pages.contains(&2),
+            "the other copy is the body heading on page 2 ({pages:?})",
+        );
+    }
+
+    #[test]
+    fn resolves_each_heading_level_to_its_body_page_not_the_outline() {
+        // The whole reason the round-trip exists: a heading echoed in an #outline
+        // renders on page 1 too, and the glyph scan alone would tie-break to that
+        // earliest (outline) page. The round-trip must instead land on the body
+        // page, where the heading resolves to a Jump::File rather than the
+        // outline's Jump::Position link. Covers level-1, -2 and -3 headings.
+        for (heading, body_page) in [("Alpha", 2usize), ("Beta", 3), ("Gamma", 4)] {
+            let cursor = caret_in_heading(OUTLINE_FIXTURE, heading);
+            let resolved = resolve_at(OUTLINE_FIXTURE, cursor)
+                .unwrap_or_else(|| panic!("{heading}: expected a resolved preview position"));
+            assert_eq!(
+                resolved.page.get(),
+                body_page,
+                "{heading}: caret in the body heading must resolve to its body page, \
+                 not the duplicate rendered in the outline on page 1",
+            );
+        }
+    }
+
+    #[test]
+    fn single_render_resolves_to_its_page() {
+        // No outline → the body text renders exactly once, so there's nothing to
+        // disambiguate and resolution falls to the glyph scan, which lands on the
+        // page holding the caret's text.
+        let text = "First page.\n#pagebreak()\nSecond page paragraph.\n";
+        let cursor = text.find("Second").unwrap() + 1;
+        let resolved = resolve_at(text, cursor).expect("rendered text resolves to a position");
+        assert_eq!(resolved.page.get(), 2, "the paragraph sits on page 2");
+    }
+
+    #[test]
+    fn caret_off_rendered_text_resolves_to_nothing() {
+        // Caret inside code (the `outline` function name) isn't on a Text node, so
+        // `jump_from_cursor` yields no candidates and we leave the preview where it
+        // is rather than jumping somewhere arbitrary.
+        let cursor = OUTLINE_FIXTURE.find("outline").unwrap();
+        assert!(
+            resolve_at(OUTLINE_FIXTURE, cursor).is_none(),
+            "a caret on a code token should not move the preview",
+        );
+    }
 }

@@ -11,12 +11,12 @@ use serde::Serialize;
 use typst::{
     diag::{FileResult, Severity, SourceDiagnostic},
     foundations::{Bytes, Datetime},
-    layout::PagedDocument,
-    syntax::{FileId, Source},
+    syntax::{FileId, Source, VirtualRoot},
     text::{Font, FontBook},
     utils::LazyHash,
-    Library, World,
+    Library, World, WorldExt,
 };
+use typst_layout::PagedDocument;
 
 use crate::world::EditorWorld;
 
@@ -173,7 +173,7 @@ impl World for MainOverride<'_> {
     fn font(&self, index: usize) -> Option<Font> {
         self.inner.font(index)
     }
-    fn today(&self, offset: Option<i64>) -> Option<Datetime> {
+    fn today(&self, offset: Option<typst::foundations::Duration>) -> Option<Datetime> {
         self.inner.today(offset)
     }
 }
@@ -192,7 +192,8 @@ fn serialize_one(world: &EditorWorld, d: &SourceDiagnostic) -> SerializedDiagnos
             Severity::Warning => "warning".into(),
         },
         message: d.message.to_string(),
-        hints: d.hints.iter().map(|h| h.to_string()).collect(),
+        // In 0.15 `hints` are `Spanned<EcoString>`; `.v` is the text value.
+        hints: d.hints.iter().map(|h| h.v.to_string()).collect(),
         file_path,
         range,
     }
@@ -217,16 +218,16 @@ fn resolve_span(
         Err(_) => return (None, None),
     };
 
-    let file_path = if id.package().is_some() {
+    let file_path = if matches!(id.root(), VirtualRoot::Package(_)) {
         world
             .id_to_path(id)
             .ok()
             .and_then(|p| p.to_str().map(String::from))
     } else {
-        id.vpath().as_rootless_path().to_str().map(String::from)
+        Some(id.vpath().get_without_slash().to_string())
     };
 
-    let range = source.range(diag.span).and_then(|r| {
+    let range = world.range(diag.span).and_then(|r| {
         let lines = source.lines();
         let (sl, sc) = lines.byte_to_line_column(r.start)?;
         let (el, ec) = lines.byte_to_line_column(r.end)?;

@@ -21,27 +21,19 @@ use tauri::{AppHandle, Emitter};
 use tauri::Manager;
 use typst::{
     diag::{FileError, FileResult},
-    foundations::{Bytes, Datetime},
+    foundations::{Bytes, Datetime, Duration},
     syntax::package::PackageSpec,
-    syntax::{FileId, Source, VirtualPath},
+    syntax::{FileId, RootedPath, Source, VirtualPath, VirtualRoot},
     text::{Font, FontBook},
     utils::LazyHash,
-    Features, Library, LibraryExt, World,
+    Feature, Features, Library, LibraryExt, World,
 };
 use typst_ide::IdeWorld;
 use typst_kit::{
-    download::Downloader,
-    fonts::{FontSearcher, FontSlot},
-    package::PackageStorage,
+    downloader::{Downloader, ProgressDownloader, SystemDownloader},
+    fonts::{self, FontStore},
+    packages::{FsPackages, SystemPackages, UniversePackages},
 };
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use typst_kit::package::{default_package_cache_path, default_package_path};
-
-/// Bundled font data, set once via `OnceLock` when background loading completes.
-struct FontData {
-    slots: Vec<FontSlot>,
-    book: LazyHash<FontBook>,
-}
 
 pub struct EditorWorld {
     /// Workspace root on disk — updatable when the user opens a new folder.
@@ -65,14 +57,18 @@ pub struct EditorWorld {
     library: OnceLock<LazyHash<Library>>,
 
     /// Active font set, behind a lock so settings changes can swap fonts at
-    /// runtime. Pointing at leaked memory keeps the `&LazyHash<FontBook>` /
-    /// `Font` references returned from the `World` trait valid even after a
-    /// reload. Each reload leaks the previous allocation; this is a tiny,
-    /// bounded cost since font reloads happen at human cadence.
-    font_data: RwLock<Option<&'static FontData>>,
+    /// runtime. `FontStore` (typst-kit 0.15) owns its `LazyHash<FontBook>` and
+    /// resolves fonts by index, so `World::book`/`World::font` just delegate to
+    /// it. Pointing at leaked memory keeps the `&LazyHash<FontBook>` / `Font`
+    /// references returned from the `World` trait valid even after a reload —
+    /// the references borrow from the store, which lives behind the lock, so a
+    /// `'static` handle is what lets us return them with the `&self` lifetime.
+    /// Each reload leaks the previous allocation; a tiny, bounded cost since
+    /// font reloads happen at human cadence.
+    font_store: RwLock<Option<&'static FontStore>>,
 
-    /// Empty fallback for `World::book()` before fonts arrive
-    empty_book: LazyHash<FontBook>,
+    /// Empty fallback for `World::book()` / `World::font()` before fonts arrive.
+    empty_store: FontStore,
 
     /// Single-spawn guard for the lazy background font load. Fonts are no
     /// longer searched at startup — the first workspace open / first compile
@@ -100,13 +96,16 @@ pub struct EditorWorld {
     /// Tauri app handle — used to emit download progress events
     app_handle: AppHandle,
 
-    /// Package storage: resolves packages from disk cache and downloads
-    /// missing packages from the Typst registry
-    package_storage: PackageStorage,
+    /// Package storage: resolves packages from the data/cache dirs and
+    /// downloads missing packages from Typst Universe. The wrapped
+    /// `ProgressDownloader` emits Tauri download-progress events keyed by the
+    /// `PackageSpec` being fetched.
+    packages: SystemPackages,
 
-    /// A separate downloader instance used for fetching the package index
-    /// (PackageStorage owns its downloader and does not expose it)
-    downloader: Downloader,
+    /// A separate (progress-free) downloader used only for fetching the package
+    /// index for autocomplete (`SystemPackages` owns its downloader and does
+    /// not expose it).
+    index_downloader: SystemDownloader,
 
     /// Lazily cached list of all available packages from the Typst registry.
     /// Populated on the first call to `IdeWorld::packages()`.
@@ -118,16 +117,15 @@ impl EditorWorld {
     /// set. The typst trait method requires a `FileId`, but compilation is
     /// gated on `has_main()` so this value is never actually compiled.
     fn fallback_main() -> FileId {
-        FileId::new(None, VirtualPath::new("<no-main>"))
+        local_file_id(Path::new("__no-main__")).expect("sentinel path is valid")
     }
 
-    /// Resolve the directory where downloaded packages should be cached and
-    /// stored. On Android/iOS, both the cache and the package directory live
+    /// Resolve the (data, cache) package directories. On Android/iOS, both live
     /// at `<documents>/Typwriter/Packages` (app-private external storage),
     /// since the typst_kit defaults point at OS dirs that aren't writable
-    /// under scoped storage. On desktop, fall back to the typst_kit
-    /// defaults so packages are shared with other Typst tooling.
-    fn packages_dir(app_handle: &AppHandle) -> (Option<PathBuf>, Option<PathBuf>) {
+    /// under scoped storage. On desktop, fall back to the typst_kit standard
+    /// locations so packages are shared with other Typst tooling.
+    fn packages_dirs(app_handle: &AppHandle) -> (Option<FsPackages>, Option<FsPackages>) {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         {
             let dir = app_handle
@@ -138,33 +136,49 @@ impl EditorWorld {
             if let Some(d) = &dir {
                 let _ = std::fs::create_dir_all(d);
             }
-            (dir.clone(), dir)
+            let fs = dir.map(FsPackages::new);
+            (fs.clone(), fs)
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
             let _ = app_handle;
-            (default_package_cache_path(), default_package_path())
+            (FsPackages::system_data(), FsPackages::system_cache())
         }
     }
 
     pub fn new(root: PathBuf, app_handle: AppHandle, vcs: Arc<crate::vcs::VcsState>) -> Self {
         let pkg = app_handle.package_info();
         let user_agent = format!("{}/{}", pkg.name, pkg.version);
-        let downloader = Downloader::new(user_agent.clone());
-        let (cache_dir, package_dir) = Self::packages_dir(&app_handle);
+        let (data_dir, cache_dir) = Self::packages_dirs(&app_handle);
         info!(
-            "EditorWorld: packages cache={:?} packages={:?}",
-            cache_dir, package_dir
+            "EditorWorld: packages data={:?} cache={:?}",
+            data_dir.as_ref().map(FsPackages::path),
+            cache_dir.as_ref().map(FsPackages::path),
         );
-        let package_storage =
-            PackageStorage::new(cache_dir, package_dir, Downloader::new(user_agent));
+        // Wrap the network downloader so each package download reports progress
+        // to the frontend. The factory is handed an `&dyn Any` key per download
+        // (a `PackageSpec` for packages, `&"package index"` for the index); we
+        // turn it into a labelled `TauriProgress`.
+        let progress_handle = app_handle.clone();
+        let downloader = ProgressDownloader::new(
+            SystemDownloader::new(user_agent.clone()),
+            move |key: &dyn std::any::Any| {
+                let label = key
+                    .downcast_ref::<PackageSpec>()
+                    .map(|spec| spec.to_string())
+                    .unwrap_or_else(|| "package index".to_string());
+                TauriProgress::new(progress_handle.clone(), label)
+            },
+        );
+        let packages =
+            SystemPackages::from_parts(data_dir, cache_dir, UniversePackages::new(downloader));
         Self {
             root: RwLock::new(root),
             vcs,
             main: RwLock::new(None),
             library: OnceLock::new(),
-            font_data: RwLock::new(None),
-            empty_book: LazyHash::new(FontBook::from_fonts(&[])),
+            font_store: RwLock::new(None),
+            empty_store: FontStore::new(),
             font_load_started: AtomicBool::new(false),
             fonts_ready: Mutex::new(false),
             fonts_cv: Condvar::new(),
@@ -172,24 +186,35 @@ impl EditorWorld {
             file_cache: Mutex::new(HashMap::new()),
             shadow: RwLock::new(HashMap::new()),
             app_handle,
-            package_storage,
-            downloader,
+            packages,
+            index_downloader: SystemDownloader::new(user_agent),
             package_index: OnceLock::new(),
         }
     }
 
-    /// Load fonts from a background thread after startup. Replaces any
-    /// existing font set. Previous allocations are leaked so any outstanding
-    /// `&LazyHash<FontBook>` borrows returned from `World::book` remain
-    /// valid.
-    pub fn load_fonts(&self, book: FontBook, slots: Vec<FontSlot>) {
-        let data: &'static FontData = Box::leak(Box::new(FontData {
-            slots,
-            book: LazyHash::new(book),
-        }));
-        *self.font_data.write() = Some(data);
+    /// Build a [`FontStore`] from the embedded fonts, optionally the system
+    /// fonts, and the given extra directories. Mirrors the typst-cli 0.15 font
+    /// discovery pattern (`FontStore::new()` + `extend`).
+    fn build_font_store(extra_dirs: &[PathBuf], include_system: bool) -> FontStore {
+        let mut store = FontStore::new();
+        store.extend(fonts::embedded());
+        if include_system {
+            store.extend(fonts::system());
+        }
+        for dir in extra_dirs {
+            store.extend(fonts::scan(dir));
+        }
+        store
+    }
+
+    /// Install a font set, replacing any existing one. Previous allocations are
+    /// leaked so any outstanding `&LazyHash<FontBook>` / `Font` borrows returned
+    /// from `World::book` / `World::font` remain valid.
+    pub fn load_fonts(&self, store: FontStore) {
+        let store: &'static FontStore = Box::leak(Box::new(store));
+        *self.font_store.write() = Some(store);
         // Mark ready and wake any compile worker blocked in
-        // `wait_until_fonts_loaded`. Keeping this in lockstep with `font_data`
+        // `wait_until_fonts_loaded`. Keeping this in lockstep with `font_store`
         // means "ready" always implies a usable font set is installed — true
         // for both the initial lazy load and later settings-driven reloads.
         *self.fonts_ready.lock() = true;
@@ -228,14 +253,13 @@ impl EditorWorld {
             // forever — fall back to embedded fonts only, which don't touch the
             // filesystem.
             let searched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                FontSearcher::new().search_with(&extra_dirs)
+                Self::build_font_store(&extra_dirs, true)
             }));
             match searched {
-                Ok(fonts) => world.load_fonts(fonts.book, fonts.fonts),
+                Ok(store) => world.load_fonts(store),
                 Err(_) => {
                     error!("ensure_fonts_loading: font search panicked; falling back to embedded fonts only");
-                    let fonts = FontSearcher::new().include_system_fonts(false).search();
-                    world.load_fonts(fonts.book, fonts.fonts);
+                    world.load_fonts(Self::build_font_store(&[], false));
                 }
             }
             if let Err(err) = world.app_handle.emit("app:fonts-loaded", ()) {
@@ -248,18 +272,17 @@ impl EditorWorld {
     /// and replace the current font set. Intended to be called from a
     /// background thread since `fontdb`'s system scan can be slow.
     pub fn reload_fonts_with(&self, extra_dirs: Vec<PathBuf>) {
-        let fonts = FontSearcher::new().search_with(&extra_dirs);
-        self.load_fonts(fonts.book, fonts.fonts);
+        self.load_fonts(Self::build_font_store(&extra_dirs, true));
     }
 
     /// Snapshot of the currently loaded font families (deduplicated, sorted).
     /// Used by the settings UI to populate the editor/UI font pickers.
     pub fn font_families(&self) -> Vec<String> {
-        let Some(data) = *self.font_data.read() else {
+        let Some(store) = *self.font_store.read() else {
             return Vec::new();
         };
-        let mut families: Vec<String> = data
-            .book
+        let mut families: Vec<String> = store
+            .book()
             .families()
             .map(|(name, _)| name.to_string())
             .collect();
@@ -299,12 +322,8 @@ impl EditorWorld {
     /// ignored on the next open.
     pub fn main_rel(&self) -> Option<String> {
         let id = (*self.main.read())?;
-        Some(
-            id.vpath()
-                .as_rootless_path()
-                .to_string_lossy()
-                .replace('\\', "/"),
-        )
+        // `get_without_slash` already returns a forward-slash relative path.
+        Some(id.vpath().get_without_slash().to_string())
     }
 
     /// Update the workspace root and flush all file caches.
@@ -321,7 +340,7 @@ impl EditorWorld {
     pub fn path_to_id(&self, path: &Path) -> Option<FileId> {
         let root = self.root.read();
         let rel = path.strip_prefix(&*root).ok()?;
-        Some(FileId::new(None, VirtualPath::new(rel)))
+        local_file_id(rel)
     }
 
     /// Check whether a file has an active shadow (unsaved editor buffer).
@@ -359,7 +378,7 @@ impl EditorWorld {
     fn read_file_bytes(&self, id: FileId) -> FileResult<Vec<u8>> {
         let path = self.id_to_path(id)?;
 
-        if id.package().is_some() {
+        if matches!(id.root(), VirtualRoot::Package(_)) {
             return std::fs::read(&path).map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
                     FileError::NotFound(path)
@@ -390,16 +409,16 @@ impl EditorWorld {
     /// Tauri events.
     pub fn id_to_path(&self, id: FileId) -> Result<PathBuf, FileError> {
         let vpath = id.vpath();
-        if let Some(spec) = id.package() {
-            let label = format!("{spec}");
-            let mut progress = TauriProgress::new(self.app_handle.clone(), label);
-            let pkg_dir = self
-                .package_storage
-                .prepare_package(spec, &mut progress)
-                .map_err(FileError::Package)?;
-            Ok(pkg_dir.join(vpath.as_rootless_path()))
-        } else {
-            Ok(self.root.read().join(vpath.as_rootless_path()))
+        match id.root() {
+            VirtualRoot::Package(spec) => {
+                // `obtain` resolves the package from the data/cache dirs,
+                // downloading it from Typst Universe if missing. Download
+                // progress is reported automatically by the wrapped
+                // `ProgressDownloader` (keyed on `spec`).
+                let root = self.packages.obtain(spec).map_err(FileError::Package)?;
+                Ok(root.path().join(vpath.get_without_slash()))
+            }
+            VirtualRoot::Project => Ok(self.root.read().join(vpath.get_without_slash())),
         }
     }
 }
@@ -407,22 +426,26 @@ impl EditorWorld {
 impl World for EditorWorld {
     fn library(&self) -> &LazyHash<Library> {
         self.library.get_or_init(|| {
+            // Enable the experimental HTML target so `export_html` can compile
+            // an `HtmlDocument`; without this feature the compiler rejects the
+            // `html` export pass. The paged preview/PDF/PNG/SVG paths are
+            // unaffected.
             LazyHash::new(
                 Library::builder()
-                    .with_features(Features::default())
+                    .with_features(Features::from_iter([Feature::Html]))
                     .build(),
             )
         })
     }
 
     fn book(&self) -> &LazyHash<FontBook> {
-        // `*self.font_data.read()` copies the `Option<&'static FontData>` out
+        // `*self.font_store.read()` copies the `Option<&'static FontStore>` out
         // of the guard so we can return a reference whose lifetime is tied to
         // `&self` (the static reference outlives any caller-chosen lifetime).
-        let opt: Option<&'static FontData> = *self.font_data.read();
+        let opt: Option<&'static FontStore> = *self.font_store.read();
         match opt {
-            Some(d) => &d.book,
-            None => &self.empty_book,
+            Some(store) => store.book(),
+            None => self.empty_store.book(),
         }
     }
 
@@ -460,29 +483,56 @@ impl World for EditorWorld {
     }
 
     fn font(&self, index: usize) -> Option<Font> {
-        let opt: Option<&'static FontData> = *self.font_data.read();
-        opt.and_then(|d| d.slots.get(index))
-            .and_then(|slot| slot.get())
+        let opt: Option<&'static FontStore> = *self.font_store.read();
+        opt.and_then(|store| store.font(index))
     }
 
-    fn today(&self, offset: Option<i64>) -> Option<Datetime> {
+    fn today(&self, offset: Option<Duration>) -> Option<Datetime> {
         today_with_offset(chrono::Utc::now(), offset)
     }
 }
 
-/// Resolve "today" for `World::today`. Typst defines `offset` as the UTC
-/// offset in whole hours (it backs `datetime.today(offset: ..)`); `None`
-/// means local time. Pure and runtime-free so it can be unit-tested without
-/// constructing an `EditorWorld`.
-fn today_with_offset(utc_now: chrono::DateTime<chrono::Utc>, offset: Option<i64>) -> Option<Datetime> {
+/// Build a project-local [`FileId`] from a workspace-relative path.
+///
+/// Typst 0.15's `VirtualPath::new` takes a forward-slash string and validates
+/// it, so this normalizes separators (Windows paths use `\`) and returns `None`
+/// if the path can't be represented as a virtual path. Local files live under
+/// [`VirtualRoot::Project`]; package files are constructed by typst itself.
+pub fn local_file_id(relative: &Path) -> Option<FileId> {
+    let normalized = relative.to_string_lossy().replace('\\', "/");
+    let vpath = VirtualPath::new(normalized).ok()?;
+    Some(RootedPath::new(VirtualRoot::Project, vpath).intern())
+}
+
+/// Resolve "today" for `World::today`. As of Typst 0.15 the trait passes the
+/// UTC offset as a [`Duration`] (it backs `datetime.today(offset: ..)`); `None`
+/// means local time. We reduce it to whole seconds and defer to
+/// [`today_from_secs`].
+fn today_with_offset(
+    utc_now: chrono::DateTime<chrono::Utc>,
+    offset: Option<Duration>,
+) -> Option<Datetime> {
+    // `Duration::seconds` returns the *total* duration in seconds as an f64;
+    // saturating `as i32` keeps absurd offsets out of `FixedOffset`'s range
+    // (they resolve to `None` below rather than panicking).
+    let offset_secs = offset.map(|d| d.seconds() as i32);
+    today_from_secs(utc_now, offset_secs)
+}
+
+/// Resolve "today" from a UTC offset in whole seconds. `None` means local time.
+/// Pure and runtime-free so it can be unit-tested without constructing an
+/// `EditorWorld` or a typst `Duration`.
+fn today_from_secs(
+    utc_now: chrono::DateTime<chrono::Utc>,
+    offset_secs: Option<i32>,
+) -> Option<Datetime> {
     use chrono::{FixedOffset, Local};
-    let (year, month, day) = match offset {
+    let (year, month, day) = match offset_secs {
         None => {
             let now = utc_now.with_timezone(&Local);
             (now.year(), now.month(), now.day())
         }
-        Some(hours) => {
-            let secs = i32::try_from(hours).ok()?.checked_mul(3600)?;
+        Some(secs) => {
             let now = utc_now.with_timezone(&FixedOffset::east_opt(secs)?);
             (now.year(), now.month(), now.day())
         }
@@ -501,7 +551,7 @@ impl IdeWorld for EditorWorld {
     /// lifetime. Returns an empty slice if the network is unavailable.
     fn packages(&self) -> &[(PackageSpec, Option<EcoString>)] {
         self.package_index
-            .get_or_init(|| fetch_package_index(&self.downloader))
+            .get_or_init(|| fetch_package_index(&self.index_downloader))
             .as_slice()
     }
 
@@ -519,12 +569,15 @@ impl IdeWorld for EditorWorld {
 ///
 /// Returns a `Vec<(PackageSpec, Option<EcoString>)>` suitable for
 /// [`IdeWorld::packages`]. Returns an empty vec on any network or parse error.
-fn fetch_package_index(downloader: &Downloader) -> Vec<(PackageSpec, Option<EcoString>)> {
+fn fetch_package_index(downloader: &SystemDownloader) -> Vec<(PackageSpec, Option<EcoString>)> {
     const INDEX_URL: &str = "https://packages.typst.org/preview/index.json";
     let t = Instant::now();
 
-    let response = match downloader.download(INDEX_URL) {
-        Ok(r) => r,
+    // The `&dyn Any` download key (`&"package index"`) matches the convention
+    // typst-kit uses for the index; it lets a progress wrapper skip it. This
+    // downloader has no wrapper, so the key is irrelevant here.
+    let data = match downloader.download(&"package index", INDEX_URL) {
+        Ok(d) => d,
         Err(_) => {
             info!(
                 "package_index: network error ({:.1}ms)",
@@ -534,7 +587,7 @@ fn fetch_package_index(downloader: &Downloader) -> Vec<(PackageSpec, Option<EcoS
         }
     };
 
-    let json: serde_json::Value = match response.into_json() {
+    let json: serde_json::Value = match serde_json::from_slice(&data) {
         Ok(v) => v,
         Err(_) => {
             info!(
@@ -585,8 +638,10 @@ fn fetch_package_index(downloader: &Downloader) -> Vec<(PackageSpec, Option<EcoS
 
 #[cfg(test)]
 mod tests {
-    use super::today_with_offset;
+    use super::today_from_secs;
     use chrono::{TimeZone, Utc};
+
+    const HOUR: i32 = 3600;
 
     /// A `Datetime` exposes its components via the typst foundations API; pull
     /// them back out for assertions.
@@ -599,29 +654,29 @@ mod tests {
     }
 
     #[test]
-    fn today_offset_is_hours_not_days() {
+    fn today_offset_shifts_the_calendar_day() {
         // 2026-06-11 23:30 UTC: still June 11 at UTC, but past midnight east.
         let now = Utc.with_ymd_and_hms(2026, 6, 11, 23, 30, 0).unwrap();
 
-        assert_eq!(ymd(today_with_offset(now, Some(0)).unwrap()), (2026, 6, 11));
-        // UTC+1 → 00:30 on June 12 (crosses midnight east, not +1 day).
-        assert_eq!(ymd(today_with_offset(now, Some(1)).unwrap()), (2026, 6, 12));
+        assert_eq!(ymd(today_from_secs(now, Some(0)).unwrap()), (2026, 6, 11));
+        // UTC+1 → 00:30 on June 12 (crosses midnight east).
+        assert_eq!(ymd(today_from_secs(now, Some(HOUR)).unwrap()), (2026, 6, 12));
         // UTC-1 → 22:30 on June 11.
-        assert_eq!(ymd(today_with_offset(now, Some(-1)).unwrap()), (2026, 6, 11));
+        assert_eq!(ymd(today_from_secs(now, Some(-HOUR)).unwrap()), (2026, 6, 11));
     }
 
     #[test]
     fn today_absurd_offset_returns_none_without_panic() {
         let now = Utc.with_ymd_and_hms(2026, 6, 11, 23, 30, 0).unwrap();
-        // ±24h * 365 hours is far outside FixedOffset's ±24h range.
-        assert!(today_with_offset(now, Some(24 * 365)).is_none());
-        assert!(today_with_offset(now, Some(-(24 * 365))).is_none());
+        // Far outside FixedOffset's ±24h (±86400s) range.
+        assert!(today_from_secs(now, Some(HOUR * 24 * 365)).is_none());
+        assert!(today_from_secs(now, Some(-HOUR * 24 * 365)).is_none());
     }
 
     #[test]
     fn today_none_offset_uses_local_time() {
         let now = Utc.with_ymd_and_hms(2026, 6, 11, 23, 30, 0).unwrap();
         // Exact date depends on the host's local zone; just assert it resolves.
-        assert!(today_with_offset(now, None).is_some());
+        assert!(today_from_secs(now, None).is_some());
     }
 }

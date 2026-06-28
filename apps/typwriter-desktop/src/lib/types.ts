@@ -73,10 +73,16 @@ export interface PdfExportConfig {
     path: string;
     title?: string | null;
     author?: string | null;
-    /** PDF standard: "1.4", "1.7", "2.0", "a-2b", etc. Omit for default (1.7). */
+    /**
+     * PDF standard(s): "1.4", "1.7", "2.0", "a-2b", "ua-1", etc. Multiple
+     * compatible standards can be combined with "+" (e.g. "a-2b+ua-1"). Omit
+     * for default (1.7).
+     */
     pdf_standard?: string | null;
     /** Stamp the current local date as the PDF creation timestamp. */
     include_date?: boolean | null;
+    /** Human-readable (uncompressed) PDF. Omit/false for a smaller file. */
+    pretty?: boolean | null;
 }
 
 export interface PngExportConfig {
@@ -93,6 +99,12 @@ export interface SvgExportConfig {
     prefix?: string | null;
     /** Page range string like "1-3, 5, 7-9". Omit for all pages. */
     page_range?: string | null;
+}
+
+export interface HtmlExportConfig {
+    path: string;
+    /** Human-readable (indented) HTML. Omit/false for minified output. */
+    pretty?: boolean | null;
 }
 
 // ─── Diagnostics ──────────────────────────────────────────────────────────────

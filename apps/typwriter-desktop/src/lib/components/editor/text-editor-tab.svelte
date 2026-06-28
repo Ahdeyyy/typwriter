@@ -79,7 +79,7 @@
   import { indentationMarkers } from "@replit/codemirror-indentation-markers";
   import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
   import { platform } from "$lib/stores/platform.svelte";
-  import { logError } from "$lib/logger";
+  import { logError, logPreview } from "$lib/logger";
 
 
   let editorHost = $state<HTMLDivElement | null>(null);
@@ -463,6 +463,15 @@
         const tab = editor.tabs.find((t) => t.id === tabId);
         if (!tab || tab.viewMode !== "text") return;
         const cursor = update.state.selection.main.head;
+        // Stage 1 (jump source): the editor selection moved. This is what
+        // ultimately drives the preview's cursor-follow scroll. `docChanged`
+        // distinguishes a keystroke (typing) from a pure caret move (click /
+        // arrow key) — the former is the case the user is debugging.
+        logPreview("cursor:selection-set", {
+          path: tab.absPath,
+          cursor,
+          docChanged: update.docChanged,
+        });
         preview.setCursorPosition(tab.absPath, cursor);
       }),
       EditorView.updateListener.of((update) => {

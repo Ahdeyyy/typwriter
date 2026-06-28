@@ -16,13 +16,13 @@ use serde::Serialize;
 use tauri::State;
 use typst::{
     foundations::Bytes,
-    layout::PagedDocument,
     syntax::{package::PackageSpec, FileId, Side, Source},
     text::{Font, FontBook},
     utils::LazyHash,
-    Library, World,
+    Library, World, WorldExt,
 };
 use typst_ide::IdeWorld;
+use typst_layout::PagedDocument;
 
 use crate::{
     compiler::{CompileReason, PreviewPipeline},
@@ -70,7 +70,10 @@ impl World for MainOverrideWorld<'_> {
         self.inner.font(index)
     }
 
-    fn today(&self, offset: Option<i64>) -> Option<typst::foundations::Datetime> {
+    fn today(
+        &self,
+        offset: Option<typst::foundations::Duration>,
+    ) -> Option<typst::foundations::Datetime> {
         self.inner.today(offset)
     }
 }
@@ -540,17 +543,19 @@ pub fn get_tooltip(
     let doc_ref: Option<&PagedDocument> = doc.as_deref();
 
     // Try against the latest compiled document first, then document-agnostic.
+    // `None` needs an explicit type since the `output` parameter is now generic
+    // (`Option<impl AsOutput>`); `&PagedDocument` is the natural choice.
     let mut tooltip = typst_ide::tooltip(&**world, doc_ref, &source, byte_cursor, Side::Before)
-        .or_else(|| typst_ide::tooltip(&**world, None, &source, byte_cursor, Side::Before))
+        .or_else(|| typst_ide::tooltip(&**world, None::<&PagedDocument>, &source, byte_cursor, Side::Before))
         .or_else(|| typst_ide::tooltip(&**world, doc_ref, &source, byte_cursor, Side::After))
-        .or_else(|| typst_ide::tooltip(&**world, None, &source, byte_cursor, Side::After));
+        .or_else(|| typst_ide::tooltip(&**world, None::<&PagedDocument>, &source, byte_cursor, Side::After));
 
     // If still unresolved and this is not the configured main file, retry with
     // an override world where `main()` points to the queried file.
     if tooltip.is_none() && id != world.main() {
         let local_world = MainOverrideWorld::new(&world, id);
-        tooltip = typst_ide::tooltip(&local_world, None, &source, byte_cursor, Side::Before)
-            .or_else(|| typst_ide::tooltip(&local_world, None, &source, byte_cursor, Side::After));
+        tooltip = typst_ide::tooltip(&local_world, None::<&PagedDocument>, &source, byte_cursor, Side::Before)
+            .or_else(|| typst_ide::tooltip(&local_world, None::<&PagedDocument>, &source, byte_cursor, Side::After));
     }
     let found = tooltip.is_some();
     debug!(
@@ -681,7 +686,7 @@ pub(crate) fn serialize_definition(
         typst_ide::Definition::Span(span) => {
             let id = span.id()?;
             let source = world.source(id).ok()?;
-            let range = source.range(*span)?;
+            let range = world.range(*span)?;
             let text = source.text();
             let path = world
                 .id_to_path(id)
@@ -692,6 +697,20 @@ pub(crate) fn serialize_definition(
                 path,
                 start_byte: byte_to_utf16(text, range.start),
                 end_byte: byte_to_utf16(text, range.end),
+            })
+        }
+        // New in 0.15: the definition is an entire included/imported file.
+        // Jump to its start.
+        typst_ide::Definition::File(id) => {
+            let path = world
+                .id_to_path(*id)
+                .ok()
+                .and_then(|p| p.to_str().map(String::from))
+                .unwrap_or_default();
+            Some(JumpResponse::File {
+                path,
+                start_byte: 0,
+                end_byte: 0,
             })
         }
         typst_ide::Definition::Std(_) => None,

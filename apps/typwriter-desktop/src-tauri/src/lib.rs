@@ -24,8 +24,8 @@ use commands::{
         update_file_content,
     },
     export::{
-        export_pdf, export_pdf_to_uri, export_png, export_png_to_dir_uri, export_svg,
-        export_svg_to_dir_uri,
+        export_html, export_html_to_uri, export_pdf, export_pdf_to_uri, export_png,
+        export_png_to_dir_uri, export_svg, export_svg_to_dir_uri,
     },
     format::{
         format_typst_cursor_virtual, format_typst_file, format_typst_source,
@@ -254,6 +254,8 @@ pub fn run() {
             export_png_to_dir_uri,
             export_svg,
             export_svg_to_dir_uri,
+            export_html,
+            export_html_to_uri,
             // format
             format_typst_source,
             format_typst_cursor_virtual,

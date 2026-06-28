@@ -8,6 +8,7 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import {
+    exportHtmlWithPicker,
     exportPdfWithPicker,
     exportPngWithPicker,
     exportSvgWithPicker,
@@ -25,7 +26,7 @@
 
   // ── State ────────────────────────────────────────────────────────────────
 
-  type Format = "pdf" | "png" | "svg";
+  type Format = "pdf" | "png" | "svg" | "html";
 
   let format = $state<Format>("pdf");
   let exporting = $state(false);
@@ -39,6 +40,10 @@
   let pdfAuthor = $state("");
   let pdfStandard = $state("1.7");
   let pdfIncludeDate = $state(false);
+  let pdfPretty = $state(false);
+
+  // HTML
+  let htmlPretty = $state(false);
 
   // PNG
   let pngScale = $state(2.0);
@@ -64,6 +69,9 @@
     { value: "a-2b", label: "PDF/A-2b" },
     { value: "a-3b", label: "PDF/A-3b" },
     { value: "a-4", label: "PDF/A-4" },
+    { value: "ua-1", label: "PDF/UA-1 (accessible)" },
+    { value: "a-2b+ua-1", label: "PDF/A-2b + UA-1" },
+    { value: "a-3b+ua-1", label: "PDF/A-3b + UA-1" },
   ];
 
   const DPI_PRESETS = [
@@ -99,11 +107,28 @@
           author: pdfAuthor || null,
           pdf_standard: pdfStandard !== "1.7" ? pdfStandard : null,
           include_date: pdfIncludeDate,
+          pretty: pdfPretty,
         });
         if (!result) return;
         result.match(
           () => {
             toast.success("PDF exported successfully");
+            open = false;
+          },
+          (err) => toast.error(`Export failed: ${err}`),
+        );
+      } else if (format === "html") {
+        const mainName = workspace.mainFile
+          ? workspace.mainFile.replace(/\.typ$/, ".html")
+          : "document.html";
+
+        const result = await exportHtmlWithPicker(mainName, {
+          pretty: htmlPretty,
+        });
+        if (!result) return;
+        result.match(
+          () => {
+            toast.success("HTML exported successfully");
             open = false;
           },
           (err) => toast.error(`Export failed: ${err}`),
@@ -149,14 +174,14 @@
     <Dialog.Header>
       <Dialog.Title>Export Document</Dialog.Title>
       <Dialog.Description>
-        Export your document to PDF, PNG, or SVG.
+        Export your document to PDF, PNG, SVG, or HTML.
       </Dialog.Description>
     </Dialog.Header>
 
     <div class="space-y-4 py-2">
       <!-- ── Format selector ─────────────────────────────────────────── -->
       <div class="flex gap-1 rounded-lg border border-border p-1">
-        {#each [["pdf", "PDF"], ["png", "PNG"], ["svg", "SVG"]] as [value, label]}
+        {#each [["pdf", "PDF"], ["png", "PNG"], ["svg", "SVG"], ["html", "HTML"]] as [value, label]}
           <Button
             variant={format === value ? "default" : "ghost"}
             size="sm"
@@ -169,7 +194,7 @@
       </div>
 
       <!-- ── Page range (PNG/SVG only) ─────────────────────────────── -->
-      {#if format !== "pdf"}
+      {#if format === "png" || format === "svg"}
         <div class="space-y-2">
           <p class="text-sm font-medium text-foreground">Pages</p>
           <div class="flex gap-1.5">
@@ -274,6 +299,33 @@
                 : "No creation date will be set."}
             </p>
           </div>
+
+          <div class="space-y-1.5">
+            <p class="text-sm font-medium text-foreground">Output</p>
+            <div class="flex gap-1.5">
+              <Button
+                variant={!pdfPretty ? "default" : "outline"}
+                size="sm"
+                class="flex-1"
+                onclick={() => (pdfPretty = false)}
+              >
+                Compact
+              </Button>
+              <Button
+                variant={pdfPretty ? "default" : "outline"}
+                size="sm"
+                class="flex-1"
+                onclick={() => (pdfPretty = true)}
+              >
+                Readable
+              </Button>
+            </div>
+            <p class="text-xs text-muted-foreground">
+              {pdfPretty
+                ? "Uncompressed, human-readable PDF (larger file)."
+                : "Space-optimized PDF (smaller file)."}
+            </p>
+          </div>
         </div>
       {/if}
 
@@ -313,6 +365,34 @@
           <Input id={svgPrefixInputId} bind:value={filePrefix} placeholder="page" />
           <p class="text-xs text-muted-foreground">
             {filePrefix || "page"}-1.svg, {filePrefix || "page"}-2.svg, ...
+          </p>
+        </div>
+      {/if}
+
+      <!-- ── HTML options ────────────────────────────────────────────── -->
+      {#if format === "html"}
+        <div class="space-y-1.5">
+          <p class="text-sm font-medium text-foreground">Output</p>
+          <div class="flex gap-1.5">
+            <Button
+              variant={!htmlPretty ? "default" : "outline"}
+              size="sm"
+              class="flex-1"
+              onclick={() => (htmlPretty = false)}
+            >
+              Minified
+            </Button>
+            <Button
+              variant={htmlPretty ? "default" : "outline"}
+              size="sm"
+              class="flex-1"
+              onclick={() => (htmlPretty = true)}
+            >
+              Readable
+            </Button>
+          </div>
+          <p class="text-xs text-muted-foreground">
+            Exports the whole document as a single HTML file (math as MathML).
           </p>
         </div>
       {/if}

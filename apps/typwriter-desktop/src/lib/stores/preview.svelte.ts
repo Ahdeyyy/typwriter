@@ -15,7 +15,7 @@ import {
     type UnlistenFn,
 } from '$lib/ipc/events';
 import type { CompileReason } from '$lib/types';
-import { logError } from '$lib/logger';
+import { logError, logPreview } from '$lib/logger';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
 import { platform } from './platform.svelte';
@@ -89,6 +89,15 @@ class PreviewStore {
         }
 
         const totalPagesResult = await onPreviewTotalPages(({ count }) => {
+            // Stage 3a: the total page count changed. Growing/shrinking `pages`
+            // resizes the scroll container — a prime cause of the scroll
+            // position jumping mid-edit (added skeletons push content down,
+            // removed pages pull it up).
+            logPreview('event:total-pages', {
+                count,
+                prevCount: this.totalPages,
+                prevPagesLen: this.pages.length,
+            });
             this.totalPages = count;
             while (this.pages.length < count) {
                 this.pages.push(null);
@@ -104,6 +113,16 @@ class PreviewStore {
         }
 
         const updatedResult = await onPreviewPageUpdated(({ index, fingerprint }) => {
+            // Stage 3b: one page slot got a new fingerprint (new render). A
+            // changed fingerprint for an *existing* slot swaps the image in
+            // place (no reflow); a brand-new index extends the buffer.
+            const prev = this.pages[index] ?? null;
+            logPreview('event:page-updated', {
+                index,
+                changed: prev !== fingerprint,
+                isNewSlot: index >= this.pages.length,
+                fingerprint: fingerprint.slice(0, 12),
+            });
             while (this.pages.length <= index) {
                 this.pages.push(null);
             }
@@ -116,6 +135,14 @@ class PreviewStore {
         }
 
         const removedResult = await onPreviewPageRemoved(({ index }) => {
+            // Stage 3c: a trailing page was dropped. Removing a slot shrinks the
+            // scroll container; if the user was scrolled below it, the viewport
+            // jumps upward.
+            logPreview('event:page-removed', {
+                index,
+                prevPagesLen: this.pages.length,
+                prevTotal: this.totalPages,
+            });
             this.pages.splice(index, 1);
             this.totalPages = Math.max(0, this.totalPages - 1);
         });
@@ -137,6 +164,10 @@ class PreviewStore {
         }
 
         const compileStateResult = await onPreviewCompileState(({ status, revision, reason }) => {
+            // Stage 3d: compile lifecycle marker. Brackets the page events above
+            // so you can attribute a burst of total-pages/page-updated/-removed
+            // churn to a specific compile (and its `reason`: typing vs save vs …).
+            logPreview('event:compile-state', { status, revision, reason });
             this.isCompiling = status === 'started';
             this.lastCompileRevision = revision;
             this.lastCompileReason = reason;
@@ -216,11 +247,23 @@ class PreviewStore {
     }
 
     setCursorPosition(path: string, offset: number): void {
+        // Stage 2a: a cursor move arrived. Note whether it coalesced with a
+        // still-pending debounce timer — rapid typing keeps resetting this, so
+        // only the final keystroke in a burst actually runs the jump.
+        const coalesced = this._cursorTimer !== null;
+        logPreview('cursor:debounce-scheduled', {
+            path,
+            offset,
+            coalesced,
+            debounceMs: CURSOR_DEBOUNCE,
+        });
         if (this._cursorTimer !== null) {
             clearTimeout(this._cursorTimer);
         }
         this._cursorTimer = setTimeout(() => {
+            this._cursorTimer = null;
             if (this.poppedOut) {
+                logPreview('cursor:forward-to-popout', { path, offset });
                 emitEditorCursorPosition({ path, offset }).mapErr((err) =>
                     logError('preview: emit editor:cursor-position failed:', err)
                 );
@@ -231,11 +274,20 @@ class PreviewStore {
     }
 
     private _runCursorJump(path: string, offset: number): void {
+        logPreview('cursor:jump-from-cursor:start', { path, offset });
         jumpFromCursor(path, offset)
             .map((position) => {
                 if (position) {
                     const { page, x, y } = position;
+                    // Stage 2b: the backend mapped this source offset to a
+                    // page+coordinate. Setting `scrollTarget` is what triggers
+                    // the preview to auto-scroll (Stage 5). A `null` position
+                    // means no mapping — the preview stays put, which is why it
+                    // "doesn't jump sometimes".
+                    logPreview('cursor:scroll-target-set', { page, x, y });
                     this.scrollTarget = { page, x, y };
+                } else {
+                    logPreview('cursor:no-position', { path, offset });
                 }
             })
             .mapErr((err) => logError('preview: jumpFromCursor failed:', err));

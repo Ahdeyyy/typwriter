@@ -9,7 +9,7 @@ import { editor } from "$lib/stores/editor.svelte";
 import { workspace } from "$lib/stores/workspace.svelte";
 import { jumpFromClick, setVisiblePage, syncPreview, triggerPreview } from "$lib/ipc/commands";
 import { emitPreviewSourceJump } from "$lib/ipc/events";
-import { logError } from "$lib/logger";
+import { logError, logPreview } from "$lib/logger";
 import { buildPreviewUrl } from "$lib/preview-url";
 
 export type PreviewControllerOptions = {
@@ -195,6 +195,16 @@ export class PreviewController {
     const incoming = preview.pages;
 
     const curLen = untrack(() => this.committedPages.length);
+    // Stage 4a: reconcile the committed (on-screen) buffer length with the
+    // incoming page set. A length change here is what actually adds/removes
+    // DOM page slots in scroll view, reflowing the container.
+    if (curLen !== incoming.length) {
+      logPreview("buffer:resize", {
+        from: curLen,
+        to: incoming.length,
+        paginated: preview.paginated,
+      });
+    }
     if (curLen < incoming.length) {
       for (let i = curLen; i < incoming.length; i++) this.committedPages.push(null);
     } else if (curLen > incoming.length) {
@@ -227,7 +237,14 @@ export class PreviewController {
         if (this.pending.get(idx) !== fingerprint) return;
         this.pending.delete(idx);
         this.decodeAttempts.delete(idx);
-        if (preview.pages[idx] === fingerprint) this.committedPages[idx] = fingerprint;
+        if (preview.pages[idx] === fingerprint) {
+          // Stage 4b: decode succeeded and we commit the slot. If this slot was
+          // showing the fixed-size skeleton placeholder, swapping in the real
+          // image changes its height — shifting everything below it.
+          const wasSkeleton = this.committedPages[idx] == null;
+          logPreview("decode:commit", { idx, wasSkeleton, attempt });
+          this.committedPages[idx] = fingerprint;
+        }
       })
       .catch((err) => {
         if (this.pending.get(idx) !== fingerprint) return;
@@ -262,19 +279,35 @@ export class PreviewController {
     if (target === null) return;
     preview.scrollTarget = null;
     this.lastScrollTarget = target;
+    // Stage 5: a scroll target was published (by cursor-sync or a preview
+    // click) and the effect re-ran to consume it.
+    logPreview("scroll:effect-fired", { page: target.page, x: target.x, y: target.y });
     this._applyScrollTarget(target);
   }
 
   private _applyScrollTarget(target: { page: number; x: number; y: number }) {
+    const prevVisible = this.visiblePage;
     this.visiblePage = target.page;
     if (preview.paginated) {
+      // Paginated view: no scroll, just flips which single page renders.
+      logPreview("scroll:apply:paginated", {
+        page: target.page,
+        prevVisible,
+        pageChanged: prevVisible !== target.page,
+      });
       setVisiblePage(target.page);
       return;
     }
 
     requestAnimationFrame(() => {
       const pageEl = document.getElementById(`preview-page-${target.page}`);
-      if (!pageEl || !this.scrollEl) return;
+      if (!pageEl || !this.scrollEl) {
+        logPreview("scroll:apply:abort", {
+          reason: !pageEl ? "no-page-el" : "no-scroll-el",
+          page: target.page,
+        });
+        return;
+      }
 
       const yPx = target.y * preview.zoom;
       const yAbs = pageEl.offsetTop + yPx;
@@ -284,9 +317,30 @@ export class PreviewController {
       const viewTop = this.scrollEl.scrollTop;
       const viewBottom = viewTop + this.scrollEl.clientHeight;
       const margin = 24;
-      if (yAbs >= viewTop + margin && yAbs <= viewBottom - margin) return;
+      if (yAbs >= viewTop + margin && yAbs <= viewBottom - margin) {
+        // This is the "doesn't jump" branch: target already visible, so we
+        // leave the scroll position alone.
+        logPreview("scroll:apply:skip-onscreen", {
+          page: target.page,
+          yAbs: Math.round(yAbs),
+          viewTop: Math.round(viewTop),
+          viewBottom: Math.round(viewBottom),
+        });
+        return;
+      }
 
       const scrollTo = yAbs - this.scrollEl.clientHeight / 3;
+      // This is the "jumps" branch: target is off-screen, so we smooth-scroll
+      // the preview. `offsetTop`/`zoom`/`y` here show exactly where it lands.
+      logPreview("scroll:apply:scroll-to", {
+        page: target.page,
+        from: Math.round(viewTop),
+        to: Math.round(scrollTo),
+        delta: Math.round(scrollTo - viewTop),
+        offsetTop: Math.round(pageEl.offsetTop),
+        yPx: Math.round(yPx),
+        zoom: preview.zoom,
+      });
       this.scrollEl.scrollTo({ top: scrollTo, behavior: "smooth" });
     });
   }
@@ -312,6 +366,13 @@ export class PreviewController {
     requestAnimationFrame(() => {
       const pageEl = document.getElementById(`preview-page-${idx}`);
       if (!pageEl || !this.scrollEl) return;
+      // Stage 8: on (re)mount, snap the fresh scroll container to the last
+      // visible page. Fires when the pane remounts (popout in/out, view
+      // toggle) — a jump here is mount-related, not editing-related.
+      logPreview("scroll:restore-to-visible", {
+        idx,
+        offsetTop: Math.round(pageEl.offsetTop),
+      });
       this.scrollEl.scrollTo({ top: pageEl.offsetTop, behavior: "instant" as ScrollBehavior });
     });
   }
@@ -328,6 +389,18 @@ export class PreviewController {
           if (entry.isIntersecting) {
             const idx = parseInt(entry.target.id.replace("preview-page-", ""), 10);
             if (!isNaN(idx)) {
+              // Stage 6: scroll-driven page-number generation. The visible page
+              // (and the "N / total" label) is derived here from whichever page
+              // crosses the 50% threshold. A reflow that nudges pages past the
+              // threshold makes this fire and bumps the number — even without
+              // the user scrolling.
+              if (this.visiblePage !== idx) {
+                logPreview("page-counter:visible-changed", {
+                  from: this.visiblePage,
+                  to: idx,
+                  ratio: Number(entry.intersectionRatio.toFixed(2)),
+                });
+              }
               this.visiblePage = idx;
               setVisiblePage(idx);
             }
@@ -349,7 +422,17 @@ export class PreviewController {
   clampVisiblePageEffect() {
     const total = preview.totalPages;
     if (total === 0) return;
-    if (this.visiblePage >= total) this.visiblePage = total - 1;
+    if (this.visiblePage >= total) {
+      // Stage 7: page count shrank below the current page number. Clamping it
+      // back into range jumps the reported page (and, in paginated view, the
+      // rendered page) downward.
+      logPreview("clamp:visible-page", {
+        from: this.visiblePage,
+        to: total - 1,
+        total,
+      });
+      this.visiblePage = total - 1;
+    }
   }
 
   // ── Toolbar actions ─────────────────────────────────────────────────
@@ -381,6 +464,9 @@ export class PreviewController {
   goToPage(idx: number) {
     if (preview.totalPages === 0) return;
     const clamped = Math.max(0, Math.min(preview.totalPages - 1, idx));
+    // Stage 9: explicit user navigation (toolbar arrows / keyboard). Lets you
+    // rule out user action when reading why the page number moved.
+    logPreview("nav:go-to-page", { requested: idx, clamped, from: this.visiblePage });
     this.visiblePage = clamped;
     setVisiblePage(clamped);
   }
