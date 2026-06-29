@@ -516,4 +516,8 @@
       </Button>
     {/if}
   </div>
+
+  {#if platform.appVersion}
+    <p class="text-xs text-muted-foreground/60">Typwriter v{platform.appVersion}</p>
+  {/if}
 {/snippet}

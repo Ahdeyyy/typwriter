@@ -3,6 +3,7 @@
 
 import { platform as tauriPlatform } from "@tauri-apps/plugin-os";
 import { documentDir } from "@tauri-apps/api/path";
+import { getVersion } from "@tauri-apps/api/app";
 import { normalize } from "$lib/paths";
 
 export type Os = "macos" | "windows" | "linux" | "android" | "ios" | "unknown";
@@ -11,6 +12,7 @@ export type FormFactor = "desktop" | "mobile";
 class PlatformStore {
   os = $state<Os>("unknown");
   documentsDirPrefix = $state("");
+  appVersion = $state("");
 
   isMobile = $derived(this.os === "android" || this.os === "ios");
   isDesktop = $derived(!this.isMobile);
@@ -28,12 +30,21 @@ class PlatformStore {
     }
 
     this.loadDocumentsDirPrefix();
+    this.loadAppVersion();
   }
 
   private loadDocumentsDirPrefix() {
     documentDir()
       .then((dir) => {
         this.documentsDirPrefix = dir;
+      })
+      .catch(() => {});
+  }
+
+  private loadAppVersion() {
+    getVersion()
+      .then((version) => {
+        this.appVersion = version;
       })
       .catch(() => {});
   }
