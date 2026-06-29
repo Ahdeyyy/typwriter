@@ -26,6 +26,9 @@
     "mode-watcher": "^1.1.0"
   },
   "overrides": {
+    "@codemirror/state": "6.7.0",
+    "@codemirror/view": "6.38.8",
+    "@codemirror/lint": "6.9.5",
     "@codemirror/language": "6.12.4",
     "@lezer/common": "1.5.2",
     "@lezer/highlight": "1.2.3"

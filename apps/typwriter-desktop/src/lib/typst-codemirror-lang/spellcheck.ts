@@ -5,9 +5,9 @@ import {
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view"
-import { RangeSetBuilder } from "@codemirror/state"
 import { syntaxTree } from "@codemirror/language"
 import { Type } from "./lezer-typst/types"
+import { buildMergedMarks } from "./decoration-utils"
 
 const noSpellcheck = Decoration.mark({
   attributes: { spellcheck: "false" },
@@ -19,8 +19,6 @@ const noSpellcheckBlocks = new Set([
   Type.Label,
   Type.Ref,
   Type.Link,
-  Type.LineComment,
-  Type.BlockComment,
 ])
 
 const noSpellcheckTokens = new Set([
@@ -66,8 +64,13 @@ const noSpellcheckTokens = new Set([
 ])
 
 function buildDecorations(view: EditorView): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>()
   const tree = syntaxTree(view.state)
+  // Collect ranges first, then coalesce. Every range here carries the same
+  // `noSpellcheck` mark, and adjacent/nested tokens (e.g. a `Str` wrapping a
+  // `StrContent`, or a run of consecutive idents) would otherwise produce
+  // touching/overlapping marks of the same type — which crashes CodeMirror's
+  // tile renderer (see `buildMergedMarks`).
+  const ranges: Array<{ from: number; to: number }> = []
 
   for (const { from, to } of view.visibleRanges) {
     tree.iterate({
@@ -76,19 +79,20 @@ function buildDecorations(view: EditorView): DecorationSet {
       enter(node) {
         if (node.from === node.to) return
 
-        if (noSpellcheckBlocks.has(node.type.id)) {
-          builder.add(node.from, node.to, noSpellcheck)
+        // Both branches cover their whole subtree, so stop descending: a child
+        // token would only add a redundant, overlapping same-type mark.
+        if (
+          noSpellcheckBlocks.has(node.type.id) ||
+          noSpellcheckTokens.has(node.type.id)
+        ) {
+          ranges.push({ from: node.from, to: node.to })
           return false
-        }
-
-        if (noSpellcheckTokens.has(node.type.id)) {
-          builder.add(node.from, node.to, noSpellcheck)
         }
       },
     })
   }
 
-  return builder.finish()
+  return buildMergedMarks(ranges, noSpellcheck)
 }
 
 export const typstSpellcheck = ViewPlugin.fromClass(

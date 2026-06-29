@@ -38,6 +38,25 @@
 
 <svelte:window onkeydown={(e) => ctrl.handleKeydown(e)} />
 
+<!-- Transient cursor-sync highlight over a page. Rectangles are positioned as a
+     fraction of the page so they track the image at any zoom / fit scale. The
+     {#key} restarts the fade when the same page is re-highlighted. -->
+{#snippet highlightOverlay(pageIndex: number)}
+  {#if preview.highlight && preview.highlight.page === pageIndex}
+    {@const hl = preview.highlight}
+    {#key hl.nonce}
+      <div class="pointer-events-none absolute inset-0 z-10">
+        {#each hl.rects as r}
+          <div
+            class="cursor-sync-highlight absolute"
+            style="left:{(r.x / hl.pageWidth) * 100}%; top:{(r.y / hl.pageHeight) * 100}%; width:{(r.width / hl.pageWidth) * 100}%; height:{(r.height / hl.pageHeight) * 100}%;"
+          ></div>
+        {/each}
+      </div>
+    {/key}
+  {/if}
+{/snippet}
+
 <div class="flex h-full flex-col bg-background text-foreground">
   <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
   {#if !preview.presentationMode}
@@ -269,6 +288,7 @@
           {:else}
             <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
           {/if}
+          {@render highlightOverlay(ctrl.visiblePage)}
         </div>
       {/if}
     </div>
@@ -312,6 +332,7 @@
               <!-- Placeholder while page is rendering -->
               <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
             {/if}
+            {@render highlightOverlay(i)}
           </div>
         {/each}
       {/if}
@@ -320,3 +341,37 @@
 </div>
 
 <ExportDialog bind:open={ctrl.exportOpen} totalPages={preview.totalPages} />
+
+<style>
+  /* Highlighter-style tint over the rendered text the caret maps to. `multiply`
+     lets the page's text/background show through, and the animation fades the
+     mark out (duration kept in sync with HIGHLIGHT_DURATION in the store). */
+  .cursor-sync-highlight {
+    background: rgba(255, 213, 0, 0.45);
+    mix-blend-mode: multiply;
+    border-radius: 1px;
+    animation: cursor-sync-fade 1.6s ease-out forwards;
+  }
+
+  @keyframes cursor-sync-fade {
+    0% {
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+    }
+    70% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cursor-sync-highlight {
+      animation-duration: 1.6s;
+      animation-timing-function: step-end;
+    }
+  }
+</style>

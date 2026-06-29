@@ -14,7 +14,7 @@ import {
     onPreviewTotalPages,
     type UnlistenFn,
 } from '$lib/ipc/events';
-import type { CompileReason } from '$lib/types';
+import type { CompileReason, PreviewHighlightRect } from '$lib/types';
 import { logError, logPreview } from '$lib/logger';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
@@ -33,6 +33,9 @@ function isPopoutWindow(): boolean {
 }
 
 const CURSOR_DEBOUNCE = 200;
+// How long the cursor-sync highlight stays on screen before fading out. Must
+// match the `cursor-sync-fade` CSS animation in the preview components.
+const HIGHLIGHT_DURATION = 1600;
 
 class PreviewStore {
     /** Per-page hex fingerprint (null while a page slot exists but no
@@ -44,6 +47,19 @@ class PreviewStore {
     lastCompileReason = $state<CompileReason>('explicit');
     poppedOut = $state(false);
     presentationMode = $state(false);
+
+    /** Transient highlight drawn over the preview after a cursor-sync jump so the
+     *  user can see which rendered text the caret maps to. Cleared automatically
+     *  after `HIGHLIGHT_DURATION`. `nonce` changes on every set so the component
+     *  can restart its fade animation even when the same page is highlighted
+     *  twice in a row. Rects/dimensions are in typst points. */
+    highlight = $state<{
+        page: number;
+        rects: PreviewHighlightRect[];
+        pageWidth: number;
+        pageHeight: number;
+        nonce: number;
+    } | null>(null);
 
     // Synced across every Tauri window so the popout and main pane stay
     // consistent without each consumer wiring its own listener. See
@@ -69,6 +85,8 @@ class PreviewStore {
 
     private _unlisteners: UnlistenFn[] = [];
     private _cursorTimer: ReturnType<typeof setTimeout> | null = null;
+    private _highlightTimer: ReturnType<typeof setTimeout> | null = null;
+    private _highlightNonce = 0;
     private _paginatedBeforePresentation = false;
 
     async init(): Promise<void> {
@@ -199,6 +217,7 @@ class PreviewStore {
             clearTimeout(this._cursorTimer);
             this._cursorTimer = null;
         }
+        this._clearHighlight();
         this.pages = [];
         this.totalPages = 0;
         this.scrollTarget = null;
@@ -217,6 +236,7 @@ class PreviewStore {
             clearTimeout(this._cursorTimer);
             this._cursorTimer = null;
         }
+        this._clearHighlight();
         this.pages = [];
         this.totalPages = 0;
         this.scrollTarget = null;
@@ -286,11 +306,46 @@ class PreviewStore {
                     // "doesn't jump sometimes".
                     logPreview('cursor:scroll-target-set', { page, x, y });
                     this.scrollTarget = { page, x, y };
+                    if (position.highlights.length > 0) {
+                        this._setHighlight(
+                            page,
+                            position.highlights,
+                            position.page_width,
+                            position.page_height,
+                        );
+                    }
                 } else {
                     logPreview('cursor:no-position', { path, offset });
                 }
             })
             .mapErr((err) => logError('preview: jumpFromCursor failed:', err));
+    }
+
+    /** Show the cursor-sync highlight on `page`, then auto-clear it. */
+    private _setHighlight(
+        page: number,
+        rects: PreviewHighlightRect[],
+        pageWidth: number,
+        pageHeight: number,
+    ): void {
+        if (this._highlightTimer !== null) {
+            clearTimeout(this._highlightTimer);
+        }
+        this._highlightNonce += 1;
+        this.highlight = { page, rects, pageWidth, pageHeight, nonce: this._highlightNonce };
+        this._highlightTimer = setTimeout(() => {
+            this._highlightTimer = null;
+            this.highlight = null;
+        }, HIGHLIGHT_DURATION);
+    }
+
+    /** Clear any active highlight and its pending auto-clear timer. */
+    private _clearHighlight(): void {
+        if (this._highlightTimer !== null) {
+            clearTimeout(this._highlightTimer);
+            this._highlightTimer = null;
+        }
+        this.highlight = null;
     }
 
     async zoomIn(): Promise<void> {

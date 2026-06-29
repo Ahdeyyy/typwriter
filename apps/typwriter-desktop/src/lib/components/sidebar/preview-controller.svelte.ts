@@ -309,7 +309,19 @@ export class PreviewController {
         return;
       }
 
-      const yPx = target.y * preview.zoom;
+      // Convert the in-page y (typst points) to on-screen pixels. The backend
+      // renders 1pt → `zoom` natural px, but the <img> is `max-w-full`, so it's
+      // CSS-scaled to the pane width whenever that's narrower than the natural
+      // image — meaning its on-screen scale is *not* `zoom`. Derive the true
+      // scale from the rendered image (`clientHeight / naturalHeight`) so the
+      // landing y is right regardless of zoom or pane width; fall back to the
+      // raw `zoom` only while the page is still a fixed-size skeleton.
+      const img = pageEl.querySelector("img");
+      const naturalPx = target.y * preview.zoom;
+      const yPx =
+        img && img.naturalHeight > 0
+          ? naturalPx * (img.clientHeight / img.naturalHeight)
+          : naturalPx;
       const yAbs = pageEl.offsetTop + yPx;
 
       // Skip the scroll if the target is already comfortably on screen —

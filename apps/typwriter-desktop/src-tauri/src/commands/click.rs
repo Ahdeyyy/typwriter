@@ -143,7 +143,13 @@ pub fn jump_from_cursor(
         t.elapsed().as_secs_f64() * 1000.0
     );
 
-    Ok(resolved.map(preview_position_response))
+    Ok(resolved.map(|position| {
+        let frame = &doc.pages()[position.page.get() - 1].frame;
+        let page_width = frame.width().to_pt();
+        let page_height = frame.height().to_pt();
+        let highlights = compute_highlights(doc, &source, &position);
+        preview_position_response(position, page_width, page_height, highlights)
+    }))
 }
 
 // ─── Response type ────────────────────────────────────────────────────────────
@@ -156,6 +162,27 @@ pub struct PreviewPositionResponse {
     pub x: f64,
     /// Vertical offset in typst points from the top edge of the page.
     pub y: f64,
+    /// Width of the resolved page in typst points. Lets the frontend place the
+    /// highlight rectangles as a fraction of the displayed page image, so they
+    /// stay aligned regardless of zoom or how the image is scaled to fit.
+    pub page_width: f64,
+    /// Height of the resolved page in typst points.
+    pub page_height: f64,
+    /// Rectangles (in typst points, origin at the page's top-left) covering the
+    /// text run the caret sits in on the resolved page — one per rendered line,
+    /// so a run that wraps highlights each line tightly. Empty when there's
+    /// nothing sensible to highlight.
+    pub highlights: Vec<HighlightRect>,
+}
+
+/// An axis-aligned rectangle on a preview page, in typst points with the origin
+/// at the page's top-left corner.
+#[derive(serde::Serialize)]
+pub struct HighlightRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 /// Pick the preview page+point for the caret from the candidates
@@ -261,7 +288,7 @@ fn find_caret_position(
     let mut best: Option<((u8, usize, usize), Point)> = None;
 
     for (index, page) in doc.pages().iter().enumerate() {
-        find_glyphs(&page.frame, &mut |span, span_offset, point| {
+        for_each_glyph(&page.frame, &mut |span, span_offset, point, _width, _size| {
             // Only glyphs rendered from *this* file can carry the caret; spans
             // from imports/packages map into a different source text.
             if span.id() != Some(file) {
@@ -315,24 +342,135 @@ fn caret_rank(offset: usize, page: usize, cursor: usize) -> (u8, usize, usize) {
     }
 }
 
-/// Walk a frame, invoking `f(span, span_offset, point)` for *every* glyph it
-/// renders. Mirrors typst-ide's `find_in_frame`, but reports all glyphs (with
-/// their source span and per-glyph byte offset) rather than only the first
-/// matching one per page — which is what lets the caller match the glyph nearest
-/// the caret across the whole document.
-fn find_glyphs(frame: &Frame, f: &mut dyn FnMut(Span, u16, Point)) {
+/// Build the highlight rectangles for the resolved caret position: the text run
+/// the caret sits in, one rectangle per rendered line on the resolved page.
+///
+/// `find_caret_position`/`resolve_preview_position` hand us a page plus the
+/// origin (left edge of the baseline) of the glyph the caret lands on. We find
+/// the glyph nearest that origin on the page, take its **span** — i.e. the whole
+/// rendered text run, such as a heading or a contiguous stretch of body text —
+/// and union every glyph sharing that span into per-line boxes. Highlighting the
+/// run (rather than a single glyph) is what tells the user *what* the cursor maps
+/// to; splitting by line keeps a wrapped run from drawing one tall box across the
+/// whole column. Glyphs are restricted to the caret's own file so a span reused
+/// elsewhere (an `#outline` echo) on the same page can't bleed in.
+fn compute_highlights(
+    doc: &PagedDocument,
+    source: &typst::syntax::Source,
+    position: &PagedPosition,
+) -> Vec<HighlightRect> {
+    let Some(page) = doc.pages().get(position.page.get() - 1) else {
+        return Vec::new();
+    };
+    let file = source.id();
+    let target = position.point;
+
+    // A single glyph's box, in page-space typst points. `top`/`bottom` bracket
+    // the glyph vertically (typst's own hit-test uses `[baseline - size,
+    // baseline]`); `baseline` groups glyphs into lines.
+    struct GlyphBox {
+        span: Span,
+        left: Abs,
+        right: Abs,
+        top: Abs,
+        bottom: Abs,
+        baseline: Abs,
+    }
+
+    let mut boxes: Vec<GlyphBox> = Vec::new();
+    // Span of the glyph closest to the resolved point — the run to highlight.
+    let mut nearest: Option<(f64, Span)> = None;
+    for_each_glyph(&page.frame, &mut |span, _offset, point, width, size| {
+        if span.id() != Some(file) {
+            return;
+        }
+        let dx = (point.x - target.x).to_pt();
+        let dy = (point.y - target.y).to_pt();
+        let dist = dx * dx + dy * dy;
+        if nearest.as_ref().map_or(true, |(best, _)| dist < *best) {
+            nearest = Some((dist, span));
+        }
+        boxes.push(GlyphBox {
+            span,
+            left: point.x,
+            right: point.x + width,
+            top: point.y - size,
+            bottom: point.y,
+            baseline: point.y,
+        });
+    });
+
+    let Some((_, target_span)) = nearest else {
+        return Vec::new();
+    };
+
+    // Union the run's glyphs into one rectangle per line. Glyphs on the same line
+    // share a baseline; allow a small slop so sub/superscripts or mixed sizes in
+    // the run still merge into their line rather than spawning a sliver box.
+    const LINE_SLOP: f64 = 1.0;
+    let mut lines: Vec<GlyphBox> = Vec::new();
+    for glyph in boxes.iter().filter(|b| b.span == target_span) {
+        let line = lines.iter_mut().find(|l| {
+            (l.baseline - glyph.baseline).to_pt().abs() < LINE_SLOP
+        });
+        match line {
+            Some(line) => {
+                if glyph.left < line.left {
+                    line.left = glyph.left;
+                }
+                if glyph.right > line.right {
+                    line.right = glyph.right;
+                }
+                if glyph.top < line.top {
+                    line.top = glyph.top;
+                }
+                if glyph.bottom > line.bottom {
+                    line.bottom = glyph.bottom;
+                }
+            }
+            None => lines.push(GlyphBox {
+                span: target_span,
+                left: glyph.left,
+                right: glyph.right,
+                top: glyph.top,
+                bottom: glyph.bottom,
+                baseline: glyph.baseline,
+            }),
+        }
+    }
+
+    lines
+        .into_iter()
+        .map(|l| HighlightRect {
+            x: l.left.to_pt(),
+            y: l.top.to_pt(),
+            width: (l.right - l.left).to_pt(),
+            height: (l.bottom - l.top).to_pt(),
+        })
+        .collect()
+}
+
+/// Walk a frame, invoking `f(span, span_offset, origin, x_advance, size)` for
+/// *every* glyph it renders. Mirrors typst-ide's `find_in_frame`, but reports all
+/// glyphs (with their source span, per-glyph byte offset, advance width, and font
+/// size) rather than only the first matching one per page — which is what lets
+/// callers match the glyph nearest the caret across the whole document and bound
+/// the text run for highlighting. `origin` is the glyph's left edge on the
+/// baseline.
+fn for_each_glyph(frame: &Frame, f: &mut dyn FnMut(Span, u16, Point, Abs, Abs)) {
     for &(pos, ref item) in frame.items() {
         match item {
             FrameItem::Group(group) => {
-                find_glyphs(&group.frame, &mut |span, offset, point| {
-                    f(span, offset, pos + point.transform(group.transform))
+                for_each_glyph(&group.frame, &mut |span, offset, point, width, size| {
+                    f(span, offset, pos + point.transform(group.transform), width, size)
                 });
             }
             FrameItem::Text(text) => {
                 let mut x = pos.x;
                 for glyph in &text.glyphs {
-                    f(glyph.span.0, glyph.span.1, Point::new(x, pos.y));
-                    x += glyph.x_advance.at(text.size);
+                    let advance = glyph.x_advance.at(text.size);
+                    f(glyph.span.0, glyph.span.1, Point::new(x, pos.y), advance, text.size);
+                    x += advance;
                 }
             }
             _ => {}
@@ -340,11 +478,19 @@ fn find_glyphs(frame: &Frame, f: &mut dyn FnMut(Span, u16, Point)) {
     }
 }
 
-fn preview_position_response(position: PagedPosition) -> PreviewPositionResponse {
+fn preview_position_response(
+    position: PagedPosition,
+    page_width: f64,
+    page_height: f64,
+    highlights: Vec<HighlightRect>,
+) -> PreviewPositionResponse {
     PreviewPositionResponse {
         page: position.page.get() - 1,
         x: position.point.x.to_pt(),
         y: position.point.y.to_pt(),
+        page_width,
+        page_height,
+        highlights,
     }
 }
 
@@ -491,14 +637,19 @@ mod tests {
 
     #[test]
     fn response_converts_one_based_page_to_zero_based() {
-        let r = preview_position_response(pos(1, 10.0, 20.0));
+        let r = preview_position_response(pos(1, 10.0, 20.0), 595.0, 842.0, Vec::new());
         assert_eq!(r.page, 0, "page 1 in the doc is index 0 in the preview");
         assert!((r.x - 10.0).abs() < 1e-9);
         assert!((r.y - 20.0).abs() < 1e-9);
+        assert!((r.page_width - 595.0).abs() < 1e-9);
+        assert!((r.page_height - 842.0).abs() < 1e-9);
 
         // A later page must not be off-by-one — this is the classic "preview
         // lands one page away" failure.
-        assert_eq!(preview_position_response(pos(5, 0.0, 0.0)).page, 4);
+        assert_eq!(
+            preview_position_response(pos(5, 0.0, 0.0), 0.0, 0.0, Vec::new()).page,
+            4
+        );
     }
 
     // ─── caret_rank ─────────────────────────────────────────────────────────

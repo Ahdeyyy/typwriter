@@ -50,6 +50,15 @@ export type FileContentResponse =
 
 // ─── Click / Jump ─────────────────────────────────────────────────────────────
 
+/** A rectangle on a preview page, in typst points with the origin at the page's
+ *  top-left corner. */
+export interface PreviewHighlightRect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
 export interface PreviewPositionResponse {
     /** 0-based page index. */
     page: number;
@@ -57,6 +66,14 @@ export interface PreviewPositionResponse {
     x: number;
     /** Vertical offset in typst points from the top edge of the page. */
     y: number;
+    /** Width of the resolved page in typst points (for placing highlights as a
+     *  fraction of the displayed image). */
+    page_width: number;
+    /** Height of the resolved page in typst points. */
+    page_height: number;
+    /** Rectangles covering the text run the caret maps to on the resolved page —
+     *  one per rendered line. Empty when there's nothing to highlight. */
+    highlights: PreviewHighlightRect[];
 }
 
 export type CompileReason =
