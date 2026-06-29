@@ -209,6 +209,10 @@
   --sidebar: oklch(0.985 0 0 / 0.55);
   --sidebar-accent: oklch(0.97 0 0 / 0.6);
   --sidebar-border: oklch(0.145 0 0 / 0.08);
+  /* Opaque sidebar tint for the file tree's truncation marker. The marker
+     masks the cut-off character beneath the "…"; a translucent --sidebar would
+     let that character bleed through, so the tree uses this solid fallback. */
+  --trees-marker-bg: oklch(0.985 0 0);
 }
 .dark[data-theme="glass"] {
   --card: oklch(0.205 0 0 / 0.55);
@@ -220,6 +224,7 @@
   --sidebar: oklch(0.205 0 0 / 0.55);
   --sidebar-accent: oklch(0.269 0 0 / 0.5);
   --sidebar-border: oklch(1 0 0 / 0.08);
+  --trees-marker-bg: oklch(0.205 0 0);
 }
 
 /* Shared elevation: a soft drop shadow lifts each raised surface off the

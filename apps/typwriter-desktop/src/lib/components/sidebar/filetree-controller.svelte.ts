@@ -165,6 +165,16 @@ export class FiletreeController {
                 },
             },
             unsafeCSS: `
+                /* The truncation "…" marker masks the cut-off character beneath
+                   it. On translucent surfaces (glass theme) the package default
+                   (--trees-bg) lets that character bleed through, so glass
+                   supplies an opaque --trees-marker-bg; other themes fall back
+                   to --trees-bg. Set on the container so the marker and its
+                   fade edges (which derive from --truncate-marker-background-color)
+                   both pick it up. */
+                [data-truncate-container] {
+                    --truncate-marker-background-color: var(--trees-marker-bg, var(--trees-bg));
+                }
                 [data-item-section="decoration"] span {
                     display: inline-flex;
                     align-items: center;
