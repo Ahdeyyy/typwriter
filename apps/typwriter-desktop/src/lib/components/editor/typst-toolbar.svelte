@@ -170,6 +170,24 @@
     padding: 0 8px;
     background-color: var(--background);
     border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  .typst-toolbar::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .typst-toolbar::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--foreground) 20%, transparent);
+    border-radius: 2px;
+  }
+
+  .typst-toolbar :global(.tb-btn),
+  .typst-toolbar :global(.tb-heading),
+  .typst-toolbar .separator {
+    flex-shrink: 0;
   }
 
   :global(.tb-btn) {
