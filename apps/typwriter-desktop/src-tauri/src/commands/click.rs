@@ -134,7 +134,20 @@ pub fn jump_from_cursor(
     })?;
     let doc: &PagedDocument = &doc_arc;
 
-    let positions = typst_ide::jump_from_cursor(doc, &source, byte_cursor);
+    let mut positions = typst_ide::jump_from_cursor(doc, &source, byte_cursor);
+    if positions.is_empty() {
+        // The caret may sit right after trailing whitespace (e.g. at the end of
+        // a line, before it wraps) — `typst_ide::jump_from_cursor` requires the
+        // leaf *at* the cursor to be a `Text`/`MathText` node, but whitespace is
+        // its own syntax node, so that lookup comes back empty even though real
+        // rendered text is one byte away. Retry against the last non-whitespace
+        // byte before the cursor; `find_caret_position` below still resolves the
+        // exact glyph using the original `byte_cursor`, so this only widens
+        // which candidates we're allowed to consider.
+        if let Some(probe) = trailing_whitespace_probe(text, byte_cursor) {
+            positions = typst_ide::jump_from_cursor(doc, &source, probe);
+        }
+    }
     let count = positions.len();
     let resolved = resolve_preview_position(&**world, doc, &source, byte_cursor, positions);
     info!(
@@ -183,6 +196,21 @@ pub struct HighlightRect {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+}
+
+/// If `cursor` sits right after a run of plain spaces/tabs, back up to the byte
+/// offset just past the last non-whitespace character before it — landing
+/// inside that character's `Text` leaf instead of the whitespace node, so a
+/// retried `typst_ide::jump_from_cursor` can find it. Returns `None` when there
+/// is no trailing whitespace to skip, or nothing but whitespace before it (the
+/// caret genuinely isn't near rendered text — e.g. an indented blank line).
+fn trailing_whitespace_probe(text: &str, cursor: usize) -> Option<usize> {
+    let before = &text[..cursor];
+    let trimmed = before.trim_end_matches([' ', '\t']);
+    if trimmed.len() == before.len() || trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.len())
 }
 
 /// Pick the preview page+point for the caret from the candidates
@@ -342,18 +370,17 @@ fn caret_rank(offset: usize, page: usize, cursor: usize) -> (u8, usize, usize) {
     }
 }
 
-/// Build the highlight rectangles for the resolved caret position: the text run
-/// the caret sits in, one rectangle per rendered line on the resolved page.
+/// Build the highlight rectangle for the resolved caret position: the whole
+/// rendered line the caret sits on, on the resolved page.
 ///
 /// `find_caret_position`/`resolve_preview_position` hand us a page plus the
 /// origin (left edge of the baseline) of the glyph the caret lands on. We find
-/// the glyph nearest that origin on the page, take its **span** — i.e. the whole
-/// rendered text run, such as a heading or a contiguous stretch of body text —
-/// and union every glyph sharing that span into per-line boxes. Highlighting the
-/// run (rather than a single glyph) is what tells the user *what* the cursor maps
-/// to; splitting by line keeps a wrapped run from drawing one tall box across the
-/// whole column. Glyphs are restricted to the caret's own file so a span reused
-/// elsewhere (an `#outline` echo) on the same page can't bleed in.
+/// the glyph nearest that origin on the page to pin its baseline, then union
+/// *every* glyph on that baseline — regardless of which syntax span it came
+/// from — into a single box, so the highlight covers the full visual line
+/// rather than just the run the caret happens to be in. Glyphs are restricted
+/// to the caret's own file so text reused elsewhere (an `#outline` echo) on the
+/// same page can't bleed in.
 fn compute_highlights(
     doc: &PagedDocument,
     source: &typst::syntax::Source,
@@ -369,7 +396,6 @@ fn compute_highlights(
     // the glyph vertically (typst's own hit-test uses `[baseline - size,
     // baseline]`); `baseline` groups glyphs into lines.
     struct GlyphBox {
-        span: Span,
         left: Abs,
         right: Abs,
         top: Abs,
@@ -378,8 +404,8 @@ fn compute_highlights(
     }
 
     let mut boxes: Vec<GlyphBox> = Vec::new();
-    // Span of the glyph closest to the resolved point — the run to highlight.
-    let mut nearest: Option<(f64, Span)> = None;
+    // Baseline of the glyph closest to the resolved point — the line to highlight.
+    let mut nearest: Option<(f64, Abs)> = None;
     for_each_glyph(&page.frame, &mut |span, _offset, point, width, size| {
         if span.id() != Some(file) {
             return;
@@ -388,10 +414,9 @@ fn compute_highlights(
         let dy = (point.y - target.y).to_pt();
         let dist = dx * dx + dy * dy;
         if nearest.as_ref().map_or(true, |(best, _)| dist < *best) {
-            nearest = Some((dist, span));
+            nearest = Some((dist, point.y));
         }
         boxes.push(GlyphBox {
-            span,
             left: point.x,
             right: point.x + width,
             top: point.y - size,
@@ -400,20 +425,20 @@ fn compute_highlights(
         });
     });
 
-    let Some((_, target_span)) = nearest else {
+    let Some((_, target_baseline)) = nearest else {
         return Vec::new();
     };
 
-    // Union the run's glyphs into one rectangle per line. Glyphs on the same line
-    // share a baseline; allow a small slop so sub/superscripts or mixed sizes in
-    // the run still merge into their line rather than spawning a sliver box.
+    // Union every glyph on the caret's baseline. Allow a small slop so
+    // sub/superscripts or mixed sizes on the same visual line still merge in
+    // rather than spawning a separate sliver box.
     const LINE_SLOP: f64 = 1.0;
-    let mut lines: Vec<GlyphBox> = Vec::new();
-    for glyph in boxes.iter().filter(|b| b.span == target_span) {
-        let line = lines.iter_mut().find(|l| {
-            (l.baseline - glyph.baseline).to_pt().abs() < LINE_SLOP
-        });
-        match line {
+    let mut line: Option<GlyphBox> = None;
+    for glyph in boxes
+        .iter()
+        .filter(|b| (b.baseline - target_baseline).to_pt().abs() < LINE_SLOP)
+    {
+        match &mut line {
             Some(line) => {
                 if glyph.left < line.left {
                     line.left = glyph.left;
@@ -428,19 +453,19 @@ fn compute_highlights(
                     line.bottom = glyph.bottom;
                 }
             }
-            None => lines.push(GlyphBox {
-                span: target_span,
-                left: glyph.left,
-                right: glyph.right,
-                top: glyph.top,
-                bottom: glyph.bottom,
-                baseline: glyph.baseline,
-            }),
+            None => {
+                line = Some(GlyphBox {
+                    left: glyph.left,
+                    right: glyph.right,
+                    top: glyph.top,
+                    bottom: glyph.bottom,
+                    baseline: glyph.baseline,
+                })
+            }
         }
     }
 
-    lines
-        .into_iter()
+    line.into_iter()
         .map(|l| HighlightRect {
             x: l.left.to_pt(),
             y: l.top.to_pt(),
@@ -496,7 +521,10 @@ fn preview_position_response(
 
 #[cfg(test)]
 mod tests {
-    use super::{caret_rank, preview_position_response, resolve_preview_position};
+    use super::{
+        caret_rank, preview_position_response, resolve_preview_position,
+        trailing_whitespace_probe,
+    };
     use crate::world::local_file_id;
     use ecow::EcoString;
     use std::num::NonZeroUsize;
@@ -770,5 +798,65 @@ mod tests {
             resolve_at(OUTLINE_FIXTURE, cursor).is_none(),
             "a caret on a code token should not move the preview",
         );
+    }
+
+    // ─── trailing_whitespace_probe ──────────────────────────────────────────
+
+    #[test]
+    fn trailing_whitespace_probe_backs_up_to_last_real_character() {
+        assert_eq!(trailing_whitespace_probe("Hello world ", 12), Some(11));
+        assert_eq!(
+            trailing_whitespace_probe("Hello world  ", 13),
+            Some(11),
+            "multiple trailing spaces all get skipped"
+        );
+        assert_eq!(
+            trailing_whitespace_probe("Hello world", 11),
+            None,
+            "no trailing whitespace to skip"
+        );
+        assert_eq!(
+            trailing_whitespace_probe("   ", 3),
+            None,
+            "nothing but whitespace before the cursor"
+        );
+        assert_eq!(
+            trailing_whitespace_probe("Hello\tworld\t", 12),
+            Some(11),
+            "tabs count as whitespace too"
+        );
+    }
+
+    // ─── caret after trailing whitespace (end-to-end) ────────────────────────
+
+    #[test]
+    fn caret_after_trailing_space_resolves_via_probe() {
+        // A caret right after trailing whitespace at the very end of the
+        // document: `typst_ide::jump_from_cursor`'s own leaf lookup fails here
+        // (the space is its own syntax node on the `Before` side, and there's
+        // nothing — not even whitespace — on the `After` side), which is the
+        // exact "cursor after a line-ending space doesn't highlight" bug. The
+        // command retries via `trailing_whitespace_probe` and should still
+        // resolve to the line the trailing space was typed on.
+        let text = "First page.\n#pagebreak()\nSecond page paragraph ";
+        let cursor = text.len();
+        assert_eq!(&text[cursor - 1..cursor], " ", "fixture must end in a space");
+
+        let world = TestWorld::new(text);
+        let doc = world.compile();
+        let source = world.source(world.main).unwrap();
+
+        let positions = typst_ide::jump_from_cursor(&doc, &source, cursor);
+        assert!(
+            positions.is_empty(),
+            "sanity check: typst_ide's own resolver can't place the caret on trailing whitespace"
+        );
+
+        let probe = trailing_whitespace_probe(text, cursor)
+            .expect("there is real text just before the trailing space");
+        let positions = typst_ide::jump_from_cursor(&doc, &source, probe);
+        let resolved = resolve_preview_position(&world, &doc, &source, cursor, positions)
+            .expect("falls back through the whitespace probe to resolve the caret");
+        assert_eq!(resolved.page.get(), 2, "the paragraph sits on page 2");
     }
 }

@@ -171,8 +171,8 @@ class PreviewStore {
         }
 
         if (isPopoutWindow()) {
-            const cursorResult = await onEditorCursorPosition(({ path, offset }) => {
-                this._runCursorJump(path, offset);
+            const cursorResult = await onEditorCursorPosition(({ path, offset, showHighlight }) => {
+                this._runCursorJump(path, offset, showHighlight);
             });
             if (cursorResult.isOk()) {
                 this._unlisteners.push(cursorResult.value);
@@ -266,7 +266,12 @@ class PreviewStore {
         this.paginated = !this.paginated;
     }
 
-    setCursorPosition(path: string, offset: number): void {
+    /** `showHighlight` distinguishes a pure caret move (click / arrow key) from
+     *  one that coalesced with a keystroke that also changed the document —
+     *  the highlight should only ever appear for the former; typing should
+     *  keep scrolling the preview without flashing a highlight on every
+     *  character. */
+    setCursorPosition(path: string, offset: number, showHighlight: boolean): void {
         // Stage 2a: a cursor move arrived. Note whether it coalesced with a
         // still-pending debounce timer — rapid typing keeps resetting this, so
         // only the final keystroke in a burst actually runs the jump.
@@ -274,6 +279,7 @@ class PreviewStore {
         logPreview('cursor:debounce-scheduled', {
             path,
             offset,
+            showHighlight,
             coalesced,
             debounceMs: CURSOR_DEBOUNCE,
         });
@@ -283,18 +289,18 @@ class PreviewStore {
         this._cursorTimer = setTimeout(() => {
             this._cursorTimer = null;
             if (this.poppedOut) {
-                logPreview('cursor:forward-to-popout', { path, offset });
-                emitEditorCursorPosition({ path, offset }).mapErr((err) =>
+                logPreview('cursor:forward-to-popout', { path, offset, showHighlight });
+                emitEditorCursorPosition({ path, offset, showHighlight }).mapErr((err) =>
                     logError('preview: emit editor:cursor-position failed:', err)
                 );
                 return;
             }
-            this._runCursorJump(path, offset);
+            this._runCursorJump(path, offset, showHighlight);
         }, CURSOR_DEBOUNCE);
     }
 
-    private _runCursorJump(path: string, offset: number): void {
-        logPreview('cursor:jump-from-cursor:start', { path, offset });
+    private _runCursorJump(path: string, offset: number, showHighlight: boolean): void {
+        logPreview('cursor:jump-from-cursor:start', { path, offset, showHighlight });
         jumpFromCursor(path, offset)
             .map((position) => {
                 if (position) {
@@ -306,7 +312,7 @@ class PreviewStore {
                     // "doesn't jump sometimes".
                     logPreview('cursor:scroll-target-set', { page, x, y });
                     this.scrollTarget = { page, x, y };
-                    if (position.highlights.length > 0) {
+                    if (showHighlight && position.highlights.length > 0) {
                         this._setHighlight(
                             page,
                             position.highlights,

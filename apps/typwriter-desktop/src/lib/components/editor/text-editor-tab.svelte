@@ -473,7 +473,10 @@
           cursor,
           docChanged: update.docChanged,
         });
-        preview.setCursorPosition(tab.absPath, cursor);
+        // Only show the cursor-sync highlight for a pure caret move (click /
+        // arrow key) — a selection change caused by typing shouldn't flash a
+        // highlight on every keystroke.
+        preview.setCursorPosition(tab.absPath, cursor, !update.docChanged);
       }),
       EditorView.updateListener.of((update) => {
         if (!editorSearch.open) return;
