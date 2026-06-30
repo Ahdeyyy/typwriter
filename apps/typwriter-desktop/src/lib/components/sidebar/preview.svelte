@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
+  import { onDestroy, untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { ZoomInAreaIcon, ZoomOutAreaIcon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon, ArrowLeft01Icon, ArrowRight01Icon, Menu01Icon, File01Icon } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
@@ -29,9 +29,16 @@
   // After remount (e.g. user popped the preview out and back in), the scroll
   // container is a fresh DOM element with scrollTop=0. Snap it to whichever
   // page was visible last so the pane lands where the user left it.
+  //
+  // `restoreScrollToVisiblePage` reads `visiblePage` internally; that read must
+  // NOT become a dependency of this effect. Otherwise every scroll-driven
+  // `visiblePage` update (from `pageCounterEffect`'s IntersectionObserver) would
+  // re-run this effect and instantly snap the scroll back, fighting the user's
+  // scroll and freezing the page counter — most visibly in the popout window.
+  // We only want to re-anchor on mount and on page-count changes.
   $effect(() => {
     if (ctrl.scrollEl && ctrl.committedPages.length > 0) {
-      ctrl.restoreScrollToVisiblePage();
+      untrack(() => ctrl.restoreScrollToVisiblePage());
     }
   });
 </script>

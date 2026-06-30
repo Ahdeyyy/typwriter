@@ -389,45 +389,60 @@ export class PreviewController {
     });
   }
 
-  /** Track which page is visible via IntersectionObserver (scroll-view only). */
+  /** Track which page is visible by scroll position (scroll-view only).
+   *
+   *  We deliberately do NOT use an IntersectionObserver with a fixed ratio
+   *  threshold here. In the popped-out window the pages are scaled up to the
+   *  (wide) window width via `max-w-full`, which makes a single page taller
+   *  than the viewport. A page taller than ~2× the viewport can never reach a
+   *  0.5 visible ratio, so a threshold observer would simply never fire and the
+   *  page counter would freeze on scroll. Computing the visible page from the
+   *  scroll position instead works for pages of any height. */
   pageCounterEffect(): (() => void) | void {
     const el = this.scrollEl;
     const count = preview.totalPages;
     if (!el || count === 0 || preview.paginated) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const idx = parseInt(entry.target.id.replace("preview-page-", ""), 10);
-            if (!isNaN(idx)) {
-              // Stage 6: scroll-driven page-number generation. The visible page
-              // (and the "N / total" label) is derived here from whichever page
-              // crosses the 50% threshold. A reflow that nudges pages past the
-              // threshold makes this fire and bumps the number — even without
-              // the user scrolling.
-              if (this.visiblePage !== idx) {
-                logPreview("page-counter:visible-changed", {
-                  from: this.visiblePage,
-                  to: idx,
-                  ratio: Number(entry.intersectionRatio.toFixed(2)),
-                });
-              }
-              this.visiblePage = idx;
-              setVisiblePage(idx);
-            }
-          }
-        }
-      },
-      { root: el, threshold: 0.5 }
-    );
+    let rafId = 0;
 
-    for (let i = 0; i < count; i++) {
-      const pageEl = document.getElementById(`preview-page-${i}`);
-      if (pageEl) observer.observe(pageEl);
-    }
+    const recompute = () => {
+      rafId = 0;
+      // Reference line a third of the way down the viewport. The visible page
+      // is the last one whose top edge sits at or above this line — i.e. the
+      // page currently occupying the upper portion of the view.
+      const referenceY = el.getBoundingClientRect().top + el.clientHeight / 3;
+      let idx = 0;
+      for (let i = 0; i < count; i++) {
+        const pageEl = document.getElementById(`preview-page-${i}`);
+        if (!pageEl) continue;
+        if (pageEl.getBoundingClientRect().top <= referenceY) idx = i;
+        else break;
+      }
 
-    return () => observer.disconnect();
+      // Stage 6: scroll-driven page-number generation. The visible page (and the
+      // "N / total" label) is derived from whichever page straddles the
+      // reference line. A reflow that nudges pages can also change this — even
+      // without the user scrolling.
+      if (this.visiblePage !== idx) {
+        logPreview("page-counter:visible-changed", { from: this.visiblePage, to: idx });
+        this.visiblePage = idx;
+        setVisiblePage(idx);
+      }
+    };
+
+    const onScroll = () => {
+      if (rafId !== 0) return;
+      rafId = requestAnimationFrame(recompute);
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    // Seed the counter for the current position (e.g. after a remount snap).
+    recompute();
+
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (rafId !== 0) cancelAnimationFrame(rafId);
+    };
   }
 
   /** Keep visiblePage in bounds when totalPages shrinks. */
