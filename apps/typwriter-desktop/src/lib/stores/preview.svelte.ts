@@ -14,8 +14,8 @@ import {
     onPreviewTotalPages,
     type UnlistenFn,
 } from '$lib/ipc/events';
-import type { CompileReason } from '$lib/types';
-import { logError } from '$lib/logger';
+import type { CompileReason, PreviewHighlightRect } from '$lib/types';
+import { logError, logPreview } from '$lib/logger';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
 import { platform } from './platform.svelte';
@@ -33,6 +33,9 @@ function isPopoutWindow(): boolean {
 }
 
 const CURSOR_DEBOUNCE = 200;
+// How long the cursor-sync highlight stays on screen before fading out. Must
+// match the `cursor-sync-fade` CSS animation in the preview components.
+const HIGHLIGHT_DURATION = 1600;
 
 class PreviewStore {
     /** Per-page hex fingerprint (null while a page slot exists but no
@@ -44,6 +47,19 @@ class PreviewStore {
     lastCompileReason = $state<CompileReason>('explicit');
     poppedOut = $state(false);
     presentationMode = $state(false);
+
+    /** Transient highlight drawn over the preview after a cursor-sync jump so the
+     *  user can see which rendered text the caret maps to. Cleared automatically
+     *  after `HIGHLIGHT_DURATION`. `nonce` changes on every set so the component
+     *  can restart its fade animation even when the same page is highlighted
+     *  twice in a row. Rects/dimensions are in typst points. */
+    highlight = $state<{
+        page: number;
+        rects: PreviewHighlightRect[];
+        pageWidth: number;
+        pageHeight: number;
+        nonce: number;
+    } | null>(null);
 
     // Synced across every Tauri window so the popout and main pane stay
     // consistent without each consumer wiring its own listener. See
@@ -69,6 +85,8 @@ class PreviewStore {
 
     private _unlisteners: UnlistenFn[] = [];
     private _cursorTimer: ReturnType<typeof setTimeout> | null = null;
+    private _highlightTimer: ReturnType<typeof setTimeout> | null = null;
+    private _highlightNonce = 0;
     private _paginatedBeforePresentation = false;
 
     async init(): Promise<void> {
@@ -89,6 +107,15 @@ class PreviewStore {
         }
 
         const totalPagesResult = await onPreviewTotalPages(({ count }) => {
+            // Stage 3a: the total page count changed. Growing/shrinking `pages`
+            // resizes the scroll container — a prime cause of the scroll
+            // position jumping mid-edit (added skeletons push content down,
+            // removed pages pull it up).
+            logPreview('event:total-pages', {
+                count,
+                prevCount: this.totalPages,
+                prevPagesLen: this.pages.length,
+            });
             this.totalPages = count;
             while (this.pages.length < count) {
                 this.pages.push(null);
@@ -104,6 +131,16 @@ class PreviewStore {
         }
 
         const updatedResult = await onPreviewPageUpdated(({ index, fingerprint }) => {
+            // Stage 3b: one page slot got a new fingerprint (new render). A
+            // changed fingerprint for an *existing* slot swaps the image in
+            // place (no reflow); a brand-new index extends the buffer.
+            const prev = this.pages[index] ?? null;
+            logPreview('event:page-updated', {
+                index,
+                changed: prev !== fingerprint,
+                isNewSlot: index >= this.pages.length,
+                fingerprint: fingerprint.slice(0, 12),
+            });
             while (this.pages.length <= index) {
                 this.pages.push(null);
             }
@@ -116,6 +153,14 @@ class PreviewStore {
         }
 
         const removedResult = await onPreviewPageRemoved(({ index }) => {
+            // Stage 3c: a trailing page was dropped. Removing a slot shrinks the
+            // scroll container; if the user was scrolled below it, the viewport
+            // jumps upward.
+            logPreview('event:page-removed', {
+                index,
+                prevPagesLen: this.pages.length,
+                prevTotal: this.totalPages,
+            });
             this.pages.splice(index, 1);
             this.totalPages = Math.max(0, this.totalPages - 1);
         });
@@ -126,8 +171,8 @@ class PreviewStore {
         }
 
         if (isPopoutWindow()) {
-            const cursorResult = await onEditorCursorPosition(({ path, offset }) => {
-                this._runCursorJump(path, offset);
+            const cursorResult = await onEditorCursorPosition(({ path, offset, showHighlight }) => {
+                this._runCursorJump(path, offset, showHighlight);
             });
             if (cursorResult.isOk()) {
                 this._unlisteners.push(cursorResult.value);
@@ -137,6 +182,10 @@ class PreviewStore {
         }
 
         const compileStateResult = await onPreviewCompileState(({ status, revision, reason }) => {
+            // Stage 3d: compile lifecycle marker. Brackets the page events above
+            // so you can attribute a burst of total-pages/page-updated/-removed
+            // churn to a specific compile (and its `reason`: typing vs save vs …).
+            logPreview('event:compile-state', { status, revision, reason });
             this.isCompiling = status === 'started';
             this.lastCompileRevision = revision;
             this.lastCompileReason = reason;
@@ -168,6 +217,7 @@ class PreviewStore {
             clearTimeout(this._cursorTimer);
             this._cursorTimer = null;
         }
+        this._clearHighlight();
         this.pages = [];
         this.totalPages = 0;
         this.scrollTarget = null;
@@ -186,6 +236,7 @@ class PreviewStore {
             clearTimeout(this._cursorTimer);
             this._cursorTimer = null;
         }
+        this._clearHighlight();
         this.pages = [];
         this.totalPages = 0;
         this.scrollTarget = null;
@@ -215,30 +266,92 @@ class PreviewStore {
         this.paginated = !this.paginated;
     }
 
-    setCursorPosition(path: string, offset: number): void {
+    /** `showHighlight` distinguishes a pure caret move (click / arrow key) from
+     *  one that coalesced with a keystroke that also changed the document —
+     *  the highlight should only ever appear for the former; typing should
+     *  keep scrolling the preview without flashing a highlight on every
+     *  character. */
+    setCursorPosition(path: string, offset: number, showHighlight: boolean): void {
+        // Stage 2a: a cursor move arrived. Note whether it coalesced with a
+        // still-pending debounce timer — rapid typing keeps resetting this, so
+        // only the final keystroke in a burst actually runs the jump.
+        const coalesced = this._cursorTimer !== null;
+        logPreview('cursor:debounce-scheduled', {
+            path,
+            offset,
+            showHighlight,
+            coalesced,
+            debounceMs: CURSOR_DEBOUNCE,
+        });
         if (this._cursorTimer !== null) {
             clearTimeout(this._cursorTimer);
         }
         this._cursorTimer = setTimeout(() => {
+            this._cursorTimer = null;
             if (this.poppedOut) {
-                emitEditorCursorPosition({ path, offset }).mapErr((err) =>
+                logPreview('cursor:forward-to-popout', { path, offset, showHighlight });
+                emitEditorCursorPosition({ path, offset, showHighlight }).mapErr((err) =>
                     logError('preview: emit editor:cursor-position failed:', err)
                 );
                 return;
             }
-            this._runCursorJump(path, offset);
+            this._runCursorJump(path, offset, showHighlight);
         }, CURSOR_DEBOUNCE);
     }
 
-    private _runCursorJump(path: string, offset: number): void {
+    private _runCursorJump(path: string, offset: number, showHighlight: boolean): void {
+        logPreview('cursor:jump-from-cursor:start', { path, offset, showHighlight });
         jumpFromCursor(path, offset)
             .map((position) => {
                 if (position) {
                     const { page, x, y } = position;
+                    // Stage 2b: the backend mapped this source offset to a
+                    // page+coordinate. Setting `scrollTarget` is what triggers
+                    // the preview to auto-scroll (Stage 5). A `null` position
+                    // means no mapping — the preview stays put, which is why it
+                    // "doesn't jump sometimes".
+                    logPreview('cursor:scroll-target-set', { page, x, y });
                     this.scrollTarget = { page, x, y };
+                    if (showHighlight && position.highlights.length > 0) {
+                        this._setHighlight(
+                            page,
+                            position.highlights,
+                            position.page_width,
+                            position.page_height,
+                        );
+                    }
+                } else {
+                    logPreview('cursor:no-position', { path, offset });
                 }
             })
             .mapErr((err) => logError('preview: jumpFromCursor failed:', err));
+    }
+
+    /** Show the cursor-sync highlight on `page`, then auto-clear it. */
+    private _setHighlight(
+        page: number,
+        rects: PreviewHighlightRect[],
+        pageWidth: number,
+        pageHeight: number,
+    ): void {
+        if (this._highlightTimer !== null) {
+            clearTimeout(this._highlightTimer);
+        }
+        this._highlightNonce += 1;
+        this.highlight = { page, rects, pageWidth, pageHeight, nonce: this._highlightNonce };
+        this._highlightTimer = setTimeout(() => {
+            this._highlightTimer = null;
+            this.highlight = null;
+        }, HIGHLIGHT_DURATION);
+    }
+
+    /** Clear any active highlight and its pending auto-clear timer. */
+    private _clearHighlight(): void {
+        if (this._highlightTimer !== null) {
+            clearTimeout(this._highlightTimer);
+            this._highlightTimer = null;
+        }
+        this.highlight = null;
     }
 
     async zoomIn(): Promise<void> {

@@ -3,6 +3,8 @@ import { AndroidFs } from 'tauri-plugin-android-fs-api';
 import type { Result } from 'neverthrow';
 
 import {
+    exportHtml,
+    exportHtmlToUri,
     exportPdf,
     exportPdfToUri,
     exportPng,
@@ -12,7 +14,12 @@ import {
     exportWorkspaceToDirUri,
 } from '$lib/ipc/commands';
 import { platform } from '$lib/stores/platform.svelte';
-import type { PdfExportConfig, PngExportConfig, SvgExportConfig } from '$lib/types';
+import type {
+    HtmlExportConfig,
+    PdfExportConfig,
+    PngExportConfig,
+    SvgExportConfig,
+} from '$lib/types';
 
 type MaybeResult<T> = Promise<Result<T, string> | null>;
 
@@ -21,6 +28,7 @@ export interface WorkspaceFileService {
     exportPdf(defaultPath: string, config: Omit<PdfExportConfig, 'path'>): MaybeResult<void>;
     exportPng(config: Omit<PngExportConfig, 'dir'>): MaybeResult<void>;
     exportSvg(config: Omit<SvgExportConfig, 'dir'>): MaybeResult<void>;
+    exportHtml(defaultPath: string, config: Omit<HtmlExportConfig, 'path'>): MaybeResult<void>;
 }
 
 const androidFileService: WorkspaceFileService = {
@@ -43,6 +51,11 @@ const androidFileService: WorkspaceFileService = {
         const dirUri = await AndroidFs.showOpenDirPicker();
         if (!dirUri) return null;
         return exportSvgToDirUri(dirUri, { ...config, dir: '' });
+    },
+    async exportHtml(defaultPath, config) {
+        const fileUri = await AndroidFs.showSaveFilePicker(defaultPath, 'text/html');
+        if (!fileUri) return null;
+        return exportHtmlToUri(fileUri, { ...config, path: '' });
     },
 };
 
@@ -75,6 +88,15 @@ const desktopFileService: WorkspaceFileService = {
         if (!dir) return null;
         return exportSvg({ ...config, dir: Array.isArray(dir) ? dir[0] : dir });
     },
+    async exportHtml(defaultPath, config) {
+        const path = await saveDialog({
+            title: 'Export HTML',
+            defaultPath,
+            filters: [{ name: 'HTML', extensions: ['html'] }],
+        });
+        if (!path) return null;
+        return exportHtml({ ...config, path });
+    },
 };
 
 export function workspaceFileService(): WorkspaceFileService {
@@ -91,6 +113,13 @@ export async function exportPngWithPicker(config: Omit<PngExportConfig, 'dir'>) 
 
 export async function exportSvgWithPicker(config: Omit<SvgExportConfig, 'dir'>) {
     return workspaceFileService().exportSvg(config);
+}
+
+export async function exportHtmlWithPicker(
+    defaultPath: string,
+    config: Omit<HtmlExportConfig, 'path'>
+) {
+    return workspaceFileService().exportHtml(defaultPath, config);
 }
 
 export async function exportWorkspaceWithPicker() {

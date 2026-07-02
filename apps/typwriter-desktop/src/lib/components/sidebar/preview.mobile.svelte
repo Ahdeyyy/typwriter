@@ -36,6 +36,23 @@
   });
 </script>
 
+<!-- Transient cursor-sync highlight over a page — see preview.svelte for notes. -->
+{#snippet highlightOverlay(pageIndex: number)}
+  {#if preview.highlight && preview.highlight.page === pageIndex}
+    {@const hl = preview.highlight}
+    {#key hl.nonce}
+      <div class="pointer-events-none absolute inset-0 z-10">
+        {#each hl.rects as r}
+          <div
+            class="cursor-sync-highlight absolute"
+            style="left:{(r.x / hl.pageWidth) * 100}%; top:{(r.y / hl.pageHeight) * 100}%; width:{(r.width / hl.pageWidth) * 100}%; height:{(r.height / hl.pageHeight) * 100}%;"
+          ></div>
+        {/each}
+      </div>
+    {/key}
+  {/if}
+{/snippet}
+
 <div class="flex h-full flex-col bg-background text-foreground">
   <!-- Compact mobile toolbar — single row, no tooltips, no presentation mode -->
   <div class="flex h-10 shrink-0 items-center gap-1 border-b border-border px-[3.25rem] overflow-x-auto">
@@ -151,6 +168,7 @@
           {:else}
             <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
           {/if}
+          {@render highlightOverlay(ctrl.visiblePage)}
         </div>
       {/if}
     </div>
@@ -191,6 +209,7 @@
             {:else}
               <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
             {/if}
+            {@render highlightOverlay(i)}
           </div>
         {/each}
       {/if}
@@ -199,3 +218,34 @@
 </div>
 
 <ExportDialog bind:open={ctrl.exportOpen} totalPages={preview.totalPages} />
+
+<style>
+  /* See preview.svelte — duration matches HIGHLIGHT_DURATION in the store. */
+  .cursor-sync-highlight {
+    background: rgba(255, 213, 0, 0.45);
+    mix-blend-mode: multiply;
+    border-radius: 1px;
+    animation: cursor-sync-fade 1.6s ease-out forwards;
+  }
+
+  @keyframes cursor-sync-fade {
+    0% {
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+    }
+    70% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cursor-sync-highlight {
+      animation-timing-function: step-end;
+    }
+  }
+</style>

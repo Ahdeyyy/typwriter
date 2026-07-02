@@ -50,6 +50,15 @@ export type FileContentResponse =
 
 // ─── Click / Jump ─────────────────────────────────────────────────────────────
 
+/** A rectangle on a preview page, in typst points with the origin at the page's
+ *  top-left corner. */
+export interface PreviewHighlightRect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
 export interface PreviewPositionResponse {
     /** 0-based page index. */
     page: number;
@@ -57,6 +66,14 @@ export interface PreviewPositionResponse {
     x: number;
     /** Vertical offset in typst points from the top edge of the page. */
     y: number;
+    /** Width of the resolved page in typst points (for placing highlights as a
+     *  fraction of the displayed image). */
+    page_width: number;
+    /** Height of the resolved page in typst points. */
+    page_height: number;
+    /** Rectangles covering the text run the caret maps to on the resolved page —
+     *  one per rendered line. Empty when there's nothing to highlight. */
+    highlights: PreviewHighlightRect[];
 }
 
 export type CompileReason =
@@ -73,10 +90,16 @@ export interface PdfExportConfig {
     path: string;
     title?: string | null;
     author?: string | null;
-    /** PDF standard: "1.4", "1.7", "2.0", "a-2b", etc. Omit for default (1.7). */
+    /**
+     * PDF standard(s): "1.4", "1.7", "2.0", "a-2b", "ua-1", etc. Multiple
+     * compatible standards can be combined with "+" (e.g. "a-2b+ua-1"). Omit
+     * for default (1.7).
+     */
     pdf_standard?: string | null;
     /** Stamp the current local date as the PDF creation timestamp. */
     include_date?: boolean | null;
+    /** Human-readable (uncompressed) PDF. Omit/false for a smaller file. */
+    pretty?: boolean | null;
 }
 
 export interface PngExportConfig {
@@ -93,6 +116,12 @@ export interface SvgExportConfig {
     prefix?: string | null;
     /** Page range string like "1-3, 5, 7-9". Omit for all pages. */
     page_range?: string | null;
+}
+
+export interface HtmlExportConfig {
+    path: string;
+    /** Human-readable (indented) HTML. Omit/false for minified output. */
+    pretty?: boolean | null;
 }
 
 // ─── Diagnostics ──────────────────────────────────────────────────────────────

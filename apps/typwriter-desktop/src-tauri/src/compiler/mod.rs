@@ -43,7 +43,7 @@ use crate::world::EditorWorld;
 use cache::PageCache;
 use disk_cache::DiskCache;
 use std::path::{Path, PathBuf};
-use typst::layout::PagedDocument;
+use typst_layout::PagedDocument;
 
 // IPC payloads
 
@@ -132,6 +132,9 @@ pub struct PdfExportConfig {
     // When true, stamp the PDF with the current local date as the creation
     // timestamp (used only if the document's `set document(date: ..)` is auto).
     pub include_date: Option<bool>,
+    // When true, write a human-readable (uncompressed) PDF. Defaults to false,
+    // which produces a smaller, space-optimized file (Typst 0.15 default).
+    pub pretty: Option<bool>,
 }
 
 #[derive(serde::Deserialize, Serialize, Clone, Debug)]
@@ -150,6 +153,14 @@ pub struct SvgExportConfig {
     pub prefix: Option<String>,
     // Page range string like "1-3, 5, 7-9". None means all pages.
     pub page_range: Option<String>,
+}
+
+#[derive(serde::Deserialize, Serialize, Clone, Debug)]
+pub struct HtmlExportConfig {
+    pub path: String,
+    // When true, write human-readable (indented) HTML. Defaults to false, which
+    // produces minified output (Typst 0.15 default).
+    pub pretty: Option<bool>,
 }
 
 // Export helpers
@@ -205,20 +216,46 @@ fn parse_page_indices(range_str: &str, total_pages: usize) -> Result<Vec<usize>,
     Ok(indices)
 }
 
+/// Parse a PDF standard specifier into a [`typst_pdf::PdfStandards`]. As of
+/// Typst 0.15 multiple *compatible* standards can be combined (e.g. archival +
+/// accessibility, `"a-2b+ua-1"`); the input is split on `+` or `,` and each
+/// part is mapped to a `PdfStandard` variant. The kit rejects incompatible
+/// combinations.
 fn parse_pdf_standard(s: &str) -> Result<typst_pdf::PdfStandards, String> {
-    let standard = match s.trim().to_lowercase().as_str() {
-        "1.4" => typst_pdf::PdfStandard::V_1_4,
-        "1.5" => typst_pdf::PdfStandard::V_1_5,
-        "1.6" => typst_pdf::PdfStandard::V_1_6,
-        "1.7" => typst_pdf::PdfStandard::V_1_7,
-        "2.0" => typst_pdf::PdfStandard::V_2_0,
-        "a-1b" => typst_pdf::PdfStandard::A_1b,
-        "a-2b" => typst_pdf::PdfStandard::A_2b,
-        "a-3b" => typst_pdf::PdfStandard::A_3b,
-        "a-4" => typst_pdf::PdfStandard::A_4,
-        other => return Err(format!("Unknown PDF standard: '{other}'")),
-    };
-    typst_pdf::PdfStandards::new(&[standard]).map_err(|e| format!("Invalid PDF standard: {e}"))
+    use typst_pdf::PdfStandard;
+    let mut standards = Vec::new();
+    for part in s.split(['+', ',']) {
+        let part = part.trim().to_lowercase();
+        if part.is_empty() {
+            continue;
+        }
+        let standard = match part.as_str() {
+            "1.4" => PdfStandard::V_1_4,
+            "1.5" => PdfStandard::V_1_5,
+            "1.6" => PdfStandard::V_1_6,
+            "1.7" => PdfStandard::V_1_7,
+            "2.0" => PdfStandard::V_2_0,
+            "a-1b" => PdfStandard::A_1b,
+            "a-1a" => PdfStandard::A_1a,
+            "a-2b" => PdfStandard::A_2b,
+            "a-2u" => PdfStandard::A_2u,
+            "a-2a" => PdfStandard::A_2a,
+            "a-3b" => PdfStandard::A_3b,
+            "a-3u" => PdfStandard::A_3u,
+            "a-3a" => PdfStandard::A_3a,
+            "a-4" => PdfStandard::A_4,
+            "a-4f" => PdfStandard::A_4f,
+            "a-4e" => PdfStandard::A_4e,
+            "ua-1" => PdfStandard::Ua_1,
+            other => return Err(format!("Unknown PDF standard: '{other}'")),
+        };
+        standards.push(standard);
+    }
+    if standards.is_empty() {
+        return Err("No PDF standard specified".into());
+    }
+    // `PdfStandards::new` returns a `HintedString`, which has no `Display` impl.
+    typst_pdf::PdfStandards::new(&standards).map_err(|e| format!("Invalid PDF standard: {e:?}"))
 }
 
 #[derive(Default)]
@@ -226,14 +263,20 @@ struct CompileQueueState {
     next_revision: u64,
 }
 
-/// Drain every pending request from `rx` and return the most recent reason,
-/// falling back to `initial` if the channel was already empty.
-fn drain_latest_reason(rx: &Receiver<CompileReason>, initial: CompileReason) -> CompileReason {
-    let mut latest = initial;
+/// Drain every pending request from `rx`, returning the most recent reason (or
+/// `None` if the channel was already empty).
+fn drain_latest(rx: &Receiver<CompileReason>) -> Option<CompileReason> {
+    let mut latest = None;
     while let Ok(reason) = rx.try_recv() {
-        latest = reason;
+        latest = Some(reason);
     }
     latest
+}
+
+/// Drain every pending request and return the most recent reason, falling back
+/// to `initial` if the channel was already empty.
+fn drain_latest_reason(rx: &Receiver<CompileReason>, initial: CompileReason) -> CompileReason {
+    drain_latest(rx).unwrap_or(initial)
 }
 
 pub struct PreviewPipeline {
@@ -277,6 +320,13 @@ pub struct PreviewPipeline {
     compile_tx: Sender<CompileReason>,
     compile_rx: Mutex<Option<Receiver<CompileReason>>>,
     request_counter: AtomicU64,
+    /// The most recent compile-state we told the frontend (Started/Idle).
+    /// Re-emitted by [`Self::emit_current_state`] so a preview pane that mounts
+    /// *after* a compile was kicked off (e.g. the workspace page mounting only
+    /// once the user navigates to it, by which point the original `Started`
+    /// event has already fired) still learns a compile is in flight and shows
+    /// the "Compiling" indicator.
+    last_compile_state: Mutex<CompileStatePayload>,
     /// Version-control state. Used to auto-commit a restore point whenever
     /// a compile succeeds (the user's "good known state").
     vcs: Arc<VcsState>,
@@ -300,6 +350,11 @@ impl PreviewPipeline {
             compile_tx,
             compile_rx: Mutex::new(Some(compile_rx)),
             request_counter: AtomicU64::new(0),
+            last_compile_state: Mutex::new(CompileStatePayload {
+                status: CompileStatus::Idle,
+                revision: 0,
+                reason: CompileReason::default(),
+            }),
             vcs,
         }
     }
@@ -414,6 +469,17 @@ impl PreviewPipeline {
                 );
             }
         }
+
+        // Re-publish the current compile status so a freshly-mounted preview
+        // pane (which missed the original Started event fired before it
+        // listened) reflects an in-flight compile and shows "Compiling".
+        let compile_state = *self.last_compile_state.lock();
+        if let Err(err) = self
+            .app_handle
+            .emit("preview:compile-state", compile_state)
+        {
+            error!("emit preview:compile-state (current state) failed err=\"{err}\"");
+        }
     }
 
     /// Look up the PNG bytes for a cache key. Used by the `previewimg`
@@ -449,6 +515,17 @@ impl PreviewPipeline {
 
     pub fn request_compile(self: &Arc<Self>, reason: CompileReason) {
         self.request_counter.fetch_add(1, Ordering::Relaxed);
+        // Mark "compiling" synchronously, before the worker thread has a chance
+        // to run. `open_folder` calls this while still on the home screen; the
+        // preview pane only mounts (and queries `sync_preview`) once the user is
+        // on the workspace page. Recording Started here guarantees that query
+        // sees an in-flight compile even if it lands before the worker emits its
+        // own Started event — so the "Compiling" indicator always shows.
+        {
+            let mut state = self.last_compile_state.lock();
+            state.status = CompileStatus::Started;
+            state.reason = reason;
+        }
         if let Err(err) = self.compile_tx.send(reason) {
             error!("request_compile: worker queue send failed err=\"{err}\"");
         }
@@ -468,9 +545,21 @@ impl PreviewPipeline {
                 },
             };
 
-            // Coalesce: drain any extra requests that piled up while we were
-            // busy, keeping only the most recent reason.
-            let reason = drain_latest_reason(&rx, initial);
+            // Coalesce piled-up requests, keeping only the most recent reason —
+            // *except* never collapse a `MainFile` warm-up into a later edit.
+            // That first compile after a workspace opens primes Typst's
+            // incremental (comemo) cache and reconciles the preview restored
+            // from disk; if it were merged into the user's first `Typing`
+            // request, the very first keystroke would pay the full cold-compile
+            // cost (~1s). Run the warm-up as its own pass and stash the latest
+            // piled-up request so that edit is handled next, against an
+            // already-warm cache.
+            let reason = if initial == CompileReason::MainFile {
+                pending = drain_latest(&rx);
+                CompileReason::MainFile
+            } else {
+                drain_latest_reason(&rx, initial)
+            };
 
             let request_mark = self.request_counter.load(Ordering::Acquire);
             let revision = {
@@ -484,7 +573,13 @@ impl PreviewPipeline {
             match rx.try_recv() {
                 Ok(next) => pending = Some(next),
                 Err(mpsc::TryRecvError::Empty) => {
-                    self.emit_compile_state(CompileStatus::Idle, revision, reason);
+                    // `pending` may already hold an edit we deferred past a
+                    // MainFile warm-up — only announce Idle when there's
+                    // genuinely nothing left to run, else the next iteration
+                    // re-emits Started immediately and the UI flickers.
+                    if pending.is_none() {
+                        self.emit_compile_state(CompileStatus::Idle, revision, reason);
+                    }
                 }
                 Err(mpsc::TryRecvError::Disconnected) => return,
             }
@@ -492,14 +587,15 @@ impl PreviewPipeline {
     }
 
     fn emit_compile_state(&self, status: CompileStatus, revision: u64, reason: CompileReason) {
-        if let Err(err) = self.app_handle.emit(
-            "preview:compile-state",
-            CompileStatePayload {
-                status,
-                revision,
-                reason,
-            },
-        ) {
+        let payload = CompileStatePayload {
+            status,
+            revision,
+            reason,
+        };
+        // Remember it so a preview pane that mounts mid-compile can recover the
+        // current status via `emit_current_state` (sync_preview).
+        *self.last_compile_state.lock() = payload;
+        if let Err(err) = self.app_handle.emit("preview:compile-state", payload) {
             error!("emit preview:compile-state failed err=\"{err}\"");
         }
     }
@@ -627,6 +723,16 @@ impl PreviewPipeline {
         }
         let removed_count = prev_emitted.len().saturating_sub(new_fps.len());
 
+        // Page-count change is the backend half of the "preview jumps" story:
+        // a different page count makes the frontend grow/shrink its scroll
+        // container. Log it explicitly so the trace timeline lines up with the
+        // frontend `event:total-pages` line.
+        info!(
+            "emit: revision={revision} reason={reason:?} total_pages={} prev_total={} removed={removed_count} visible={visible_page} zoom_bucket={zoom_bucket}",
+            new_fps.len(),
+            prev_emitted.len(),
+        );
+
         let _ = self.app_handle.emit(
             "preview:total-pages",
             TotalPagesPayload {
@@ -635,6 +741,7 @@ impl PreviewPipeline {
         );
 
         for i in (new_fps.len()..new_fps.len() + removed_count).rev() {
+            info!("emit: page-removed index={i} (revision={revision})");
             let _ = self
                 .app_handle
                 .emit("preview:page-removed", PageRemovedPayload { index: i });
@@ -681,6 +788,17 @@ impl PreviewPipeline {
             }
         }
 
+        // Per-compile emit breakdown: how many slots are reused-as-is vs.
+        // re-emitted from cache vs. re-rendered. `re_emitted`/`re_rendered`
+        // are the page-updated events the frontend will receive — i.e. the
+        // images that swap, which is what can shift a skeleton→image height.
+        info!(
+            "emit: revision={revision} reason={reason:?} re_emitted_from_cache={} need_render={} (of {} pages, removed={removed_count})",
+            cache_hits.len(),
+            cache_misses.len(),
+            new_fps.len(),
+        );
+
         // Render the visible page first, then everything else.
         cache_hits.sort_by_key(|idx| if *idx == visible_page { 0 } else { 1 });
 
@@ -715,7 +833,7 @@ impl PreviewPipeline {
                 return;
             }
             let key: PageCacheKey = (new_fps[*idx], zoom_bucket);
-            let page = &doc.pages[*idx];
+            let page = &doc.pages()[*idx];
             match render_page(page, zoom) {
                 Ok(png) => {
                     if let Some(disk) = self.disk_cache.lock().as_mut() {
@@ -747,7 +865,7 @@ impl PreviewPipeline {
                 .par_iter()
                 .filter_map(|&idx| {
                     let key: PageCacheKey = (new_fps[idx], zoom_bucket);
-                    let page = &doc.pages[idx];
+                    let page = &doc.pages()[idx];
                     match render_page(page, zoom) {
                         Ok(png) => Some((idx, key, png)),
                         Err(err) => {
@@ -905,10 +1023,14 @@ impl PreviewPipeline {
 
         let options = typst_pdf::PdfOptions {
             ident: typst::foundations::Smart::Auto,
+            // Stamp the producing application into the PDF's `/Creator` metadata.
+            creator: typst::foundations::Smart::Custom(Some("Typwriter".into())),
             timestamp,
-            standards,
             page_ranges: None,
+            standards,
+            // Tagged (accessible) PDF baseline; required for PDF/UA conformance.
             tagged: true,
+            pretty: config.pretty.unwrap_or(false),
         };
 
         typst_pdf::pdf(&doc, &options).map_err(|e| {
@@ -976,13 +1098,13 @@ impl PreviewPipeline {
         let prefix = config.prefix.as_deref().unwrap_or("page").to_string();
 
         let indices: Vec<usize> = match &config.page_range {
-            Some(s) if !s.trim().is_empty() => parse_page_indices(s, doc.pages.len())?,
-            _ => (0..doc.pages.len()).collect(),
+            Some(s) if !s.trim().is_empty() => parse_page_indices(s, doc.pages().len())?,
+            _ => (0..doc.pages().len()).collect(),
         };
 
         let mut out = Vec::with_capacity(indices.len());
         for &i in &indices {
-            let page = &doc.pages[i];
+            let page = &doc.pages()[i];
             let png = render_page(page, scale).map_err(|e| {
                 error!("export_png_pages: render failed page={i} err=\"{e}\"");
                 e
@@ -1046,24 +1168,89 @@ impl PreviewPipeline {
         let prefix = config.prefix.as_deref().unwrap_or("page").to_string();
 
         let indices: Vec<usize> = match &config.page_range {
-            Some(s) if !s.trim().is_empty() => parse_page_indices(s, doc.pages.len())?,
-            _ => (0..doc.pages.len()).collect(),
+            Some(s) if !s.trim().is_empty() => parse_page_indices(s, doc.pages().len())?,
+            _ => (0..doc.pages().len()).collect(),
         };
 
+        let svg_opts = typst_svg::SvgOptions::default();
         let mut out = Vec::with_capacity(indices.len());
         for &i in &indices {
-            let page = &doc.pages[i];
-            let svg = typst_svg::svg(page);
+            let page = &doc.pages()[i];
+            let svg = typst_svg::svg(page, &svg_opts);
             let filename = format!("{}-{}.svg", prefix, i + 1);
             out.push((filename, svg.into_bytes()));
         }
         Ok(out)
     }
+
+    /// Compile the current main file to a single standalone HTML document.
+    ///
+    /// HTML export (stabilizing in Typst 0.15) is a *separate* compile pass
+    /// from the live preview: the preview targets `PagedDocument`, while this
+    /// re-runs the compiler targeting `HtmlDocument`. Math is emitted as MathML
+    /// and the output is minified unless `pretty` is set. Diagnostics are joined
+    /// into one string, matching the other `export_*_bytes` helpers.
+    pub fn export_html_bytes(&self, pretty: bool) -> Result<Vec<u8>, String> {
+        if !self.world.has_main() {
+            let e = "No main file set";
+            error!("export_html_bytes: err=\"{e}\"");
+            return Err(e.to_string());
+        }
+
+        // Inline frames and math still need fonts; block until they're loaded
+        // so we never export against the empty fallback book.
+        self.world.ensure_fonts_loading();
+        self.world.wait_until_fonts_loaded();
+
+        let warned = typst::compile::<typst_html::HtmlDocument>(&*self.world);
+        let doc = warned.output.map_err(|diags| {
+            let msg = diags
+                .iter()
+                .map(|d| d.message.to_string())
+                .collect::<Vec<_>>()
+                .join("; ");
+            error!("export_html_bytes: html compile failed err=\"{msg}\"");
+            msg
+        })?;
+
+        let options = typst_html::HtmlOptions { pretty };
+        let html = typst_html::html(&doc, &options).map_err(|diags| {
+            let msg = diags
+                .iter()
+                .map(|d| d.message.to_string())
+                .collect::<Vec<_>>()
+                .join("; ");
+            error!("export_html_bytes: html encode failed err=\"{msg}\"");
+            msg
+        })?;
+        Ok(html.into_bytes())
+    }
+
+    pub fn export_html(&self, config: HtmlExportConfig) -> Result<(), String> {
+        let t = Instant::now();
+        info!("export_html: path={:?}", config.path);
+
+        let bytes = self.export_html_bytes(config.pretty.unwrap_or(false))?;
+        std::fs::write(&config.path, &bytes).map_err(|e| {
+            error!(
+                "export_html: write failed path={:?} err=\"{e}\"",
+                config.path
+            );
+            e.to_string()
+        })?;
+
+        info!(
+            "export_html: ok - {} bytes ({:.1}ms)",
+            bytes.len(),
+            t.elapsed().as_secs_f64() * 1000.0
+        );
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{refreshes_workspace_diags, CompileReason};
+    use super::{parse_page_indices, refreshes_workspace_diags, CompileReason};
 
     #[test]
     fn workspace_diags_refresh_gate_is_exhaustive_and_correct() {
@@ -1075,5 +1262,77 @@ mod tests {
         // Hot-path reasons reuse the cache.
         assert!(!refreshes_workspace_diags(CompileReason::Typing));
         assert!(!refreshes_workspace_diags(CompileReason::Zoom));
+    }
+
+    // ─── parse_page_indices ─────────────────────────────────────────────────
+    //
+    // Governs "export pages N..M" / "go to page N": 1-based page numbers in the
+    // UI map to 0-based indices into `doc.pages()`. An off-by-one or a missed
+    // bounds check here exports/targets the wrong page.
+
+    #[test]
+    fn single_page_is_one_based_to_zero_based() {
+        assert_eq!(parse_page_indices("3", 5), Ok(vec![2]));
+        assert_eq!(parse_page_indices("1", 5), Ok(vec![0]));
+        assert_eq!(parse_page_indices("5", 5), Ok(vec![4]));
+    }
+
+    #[test]
+    fn inclusive_range_expands_both_ends() {
+        assert_eq!(parse_page_indices("1-3", 5), Ok(vec![0, 1, 2]));
+        // Single-element range.
+        assert_eq!(parse_page_indices("4-4", 5), Ok(vec![3]));
+    }
+
+    #[test]
+    fn mixed_list_of_singles_and_ranges() {
+        assert_eq!(parse_page_indices("1-3, 5", 5), Ok(vec![0, 1, 2, 4]));
+    }
+
+    #[test]
+    fn whitespace_is_tolerated() {
+        assert_eq!(parse_page_indices("  2 , 4 - 5 ", 5), Ok(vec![1, 3, 4]));
+    }
+
+    #[test]
+    fn results_are_sorted_and_deduplicated() {
+        assert_eq!(parse_page_indices("3, 1, 2, 2", 5), Ok(vec![0, 1, 2]));
+        // Overlapping ranges collapse to a contiguous, unique set.
+        assert_eq!(parse_page_indices("1-3, 2-4", 5), Ok(vec![0, 1, 2, 3]));
+    }
+
+    #[test]
+    fn empty_parts_between_commas_are_ignored() {
+        assert_eq!(parse_page_indices("1,,3", 5), Ok(vec![0, 2]));
+    }
+
+    #[test]
+    fn page_zero_is_rejected() {
+        assert!(parse_page_indices("0", 5).is_err());
+        assert!(parse_page_indices("0-2", 5).is_err());
+    }
+
+    #[test]
+    fn out_of_bounds_pages_are_rejected() {
+        assert!(parse_page_indices("6", 5).is_err());
+        assert!(parse_page_indices("4-7", 5).is_err());
+    }
+
+    #[test]
+    fn reversed_range_is_rejected() {
+        assert!(parse_page_indices("3-1", 5).is_err());
+    }
+
+    #[test]
+    fn non_numeric_input_is_rejected() {
+        assert!(parse_page_indices("abc", 5).is_err());
+        assert!(parse_page_indices("1-x", 5).is_err());
+    }
+
+    #[test]
+    fn empty_selection_is_rejected() {
+        assert!(parse_page_indices("", 5).is_err());
+        assert!(parse_page_indices("   ", 5).is_err());
+        assert!(parse_page_indices(",", 5).is_err());
     }
 }

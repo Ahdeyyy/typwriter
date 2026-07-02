@@ -27,12 +27,11 @@ use base64::Engine;
 use notify::RecommendedWatcher;
 use serde::Serialize;
 use tauri::AppHandle;
-use typst::syntax::{FileId, VirtualPath};
 
 use crate::{
     compiler::{render_page, CompileReason, PreviewPipeline},
     vcs::{CommitTrigger, VcsState, WorkingTreeFs},
-    world::EditorWorld,
+    world::{local_file_id, EditorWorld},
 };
 use path::{ExternalPath, WorkspacePath};
 
@@ -219,7 +218,11 @@ impl WorkspaceState {
             error!("WorkspaceState::set_main_file: err=\"{e}\" root={root:?}");
             e
         })?;
-        let id = FileId::new(None, VirtualPath::new(relative));
+        let id = local_file_id(relative).ok_or_else(|| {
+            let e = format!("{} is not a valid virtual path", relative.display());
+            error!("WorkspaceState::set_main_file: err=\"{e}\"");
+            e
+        })?;
 
         self.world.set_main(id);
         self.pipeline.invalidate_cache();
@@ -268,12 +271,12 @@ impl WorkspaceState {
             None => return,
         };
 
-        if doc.pages.is_empty() {
+        if doc.pages().is_empty() {
             return;
         }
 
         // Render page 0 at 1.0 scale (72 dpi) — small and fast.
-        match render_page(&doc.pages[0], 1.0) {
+        match render_page(&doc.pages()[0], 1.0) {
             Ok(png) => {
                 if let Err(e) = store::save_thumbnail(&root, &png) {
                     warn!("WorkspaceState::generate_thumbnail: save failed err=\"{e}\"");
@@ -760,8 +763,9 @@ impl WorkspaceState {
             )
         })?;
 
-        self.world
-            .set_main(FileId::new(None, VirtualPath::new(relative)));
+        let id = local_file_id(relative)
+            .ok_or_else(|| format!("{} is not a valid virtual path", relative.display()))?;
+        self.world.set_main(id);
         *self.main_file.write() = Some(updated_main.clone());
         store::set_workspace_main_file(&self.app_handle, root, &updated_main);
         self.pipeline.invalidate_cache();

@@ -225,14 +225,29 @@
         <ModeSwitcher />
       </div>
     {/if}
-  <!-- ScrollArea (same component as the settings page) gives a design-system
-       scrollbar. min-h-full + justify-center keeps the content centered when it
-       fits and scrolls cleanly when the viewport is too short to show every row. -->
-  <ScrollArea.Root class="h-full">
-  <div class="flex min-h-full w-full flex-col items-center justify-center gap-5 p-4">
+  <!-- Desktop fills the viewport exactly (no page-level scroll) so the whole
+       screen — header, action buttons and footer links — always stays visible on
+       short laptops; only the recents list shrinks-and-scrolls internally. Mobile
+       keeps the page-level ScrollArea (its rows + footer can exceed a phone). -->
+  {#if platform.isMobile}
+    <ScrollArea.Root class="h-full">
+      <div class="flex min-h-full w-full flex-col items-center justify-center gap-5 p-4">
+        {@render homeContent()}
+      </div>
+    </ScrollArea.Root>
+  {:else}
+    <div class="flex h-full min-h-0 w-full flex-col items-center justify-center gap-5 p-4">
+      {@render homeContent()}
+    </div>
+  {/if}
+  </main>
+</div>
+</Tooltip.Provider>
+
+{#snippet homeContent()}
   <!-- Recent workspaces -->
-  <section class="w-full max-w-3xl">
-    <div class="mb-4 flex items-center justify-between gap-3">
+  <section class={platform.isMobile ? "w-full max-w-3xl" : "flex min-h-0 w-full max-w-3xl flex-col"}>
+    <div class="mb-4 flex shrink-0 items-center justify-between gap-3">
       <h2 class="text-sm font-medium text-muted-foreground">
         Recent Workspaces
       </h2>
@@ -251,9 +266,10 @@
       </div>
     </div>
 
-    <!-- Heuristic min-height keeps items below in a stable position regardless
-         of how many recents are listed. Calc: 3 rows × ~10.5rem card + 2 × 0.5rem gap. -->
-    <div class={platform.isMobile ? "" : "min-h-[32.5rem]"}>
+    <!-- Desktop: the recents list is the only flexible region — it takes the
+         leftover height and scrolls internally, so the page itself never grows
+         past the viewport. Mobile keeps its natural height inside the page scroll. -->
+    <div class={platform.isMobile ? "" : "min-h-0 flex-1 overflow-y-auto"}>
     {#if loading}
       <div class="flex items-center justify-center py-8">
         <span class="text-sm text-muted-foreground">Loading…</span>
@@ -500,8 +516,8 @@
       </Button>
     {/if}
   </div>
-  </div>
-  </ScrollArea.Root>
-  </main>
-</div>
-</Tooltip.Provider>
+
+  {#if platform.appVersion}
+    <p class="text-xs text-muted-foreground/60">Typwriter v{platform.appVersion}</p>
+  {/if}
+{/snippet}

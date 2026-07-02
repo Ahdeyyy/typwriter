@@ -12,11 +12,16 @@ export function parseMarkup(ctx: TypstParseContext): Elt[] {
 
 /// Parse markup content until the given closing character or EOF.
 /// `inContentBlock` is true when parsing inside `[...]`.
+/// `atLineStartInit` controls whether the first character is treated as a line
+/// start (enabling headings/lists/enums). It is false for inline contexts such
+/// as the content of strong/emph, whose opening delimiter sits mid-line — so
+/// `*2. text*` is bold text, not an enum item.
 export function parseMarkupContent(
   s: Scanner,
   ctx: TypstParseContext,
   closeChar: number,
   inContentBlock: boolean,
+  atLineStartInit: boolean = true,
 ): Elt[] {
   const elts: Elt[] = []
   let textFrom = -1
@@ -33,7 +38,7 @@ export function parseMarkupContent(
   }
 
   // Track whether we're at the start of a line (for headings, lists, etc.)
-  let atLineStart = true
+  let atLineStart = atLineStartInit
   let lineIndent = 0
 
   while (!s.done) {
@@ -388,7 +393,7 @@ function parseStrong(s: Scanner, ctx: TypstParseContext): Elt | null {
   const children: Elt[] = [new Elt(Type.StrongMarker, start, s.pos)]
 
   // Parse until matching *
-  const inner = parseMarkupContent(s, ctx, Ch.Star, false)
+  const inner = parseMarkupContent(s, ctx, Ch.Star, false, false)
   children.push(...inner)
 
   if (s.eat(Ch.Star)) {
@@ -407,7 +412,7 @@ function parseEmph(s: Scanner, ctx: TypstParseContext): Elt | null {
 
   const children: Elt[] = [new Elt(Type.EmphMarker, start, s.pos)]
 
-  const inner = parseMarkupContent(s, ctx, Ch.Underscore, false)
+  const inner = parseMarkupContent(s, ctx, Ch.Underscore, false, false)
   children.push(...inner)
 
   if (s.eat(Ch.Underscore)) {

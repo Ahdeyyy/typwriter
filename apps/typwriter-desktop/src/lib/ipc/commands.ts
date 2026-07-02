@@ -10,6 +10,7 @@ import type {
     JumpResponse,
     PreviewPositionResponse,
     CompileReason,
+    HtmlExportConfig,
     PdfExportConfig,
     PngExportConfig,
     SvgExportConfig,
@@ -341,6 +342,21 @@ export function exportSvgToDirUri(
 ) {
     return ResultAsync.fromPromise(
         invoke<void>('export_svg_to_dir_uri', { dirUri, config }),
+        toErrString
+    );
+}
+
+export function exportHtml(config: HtmlExportConfig) {
+    return ResultAsync.fromPromise(invoke<void>('export_html', { config }), toErrString);
+}
+
+/** Android-only: export HTML to a FileUri returned by `AndroidFs.showSaveFilePicker`. */
+export function exportHtmlToUri(
+    fileUri: { uri: string; documentTopTreeUri: string | null },
+    config: HtmlExportConfig
+) {
+    return ResultAsync.fromPromise(
+        invoke<void>('export_html_to_uri', { fileUri, config }),
         toErrString
     );
 }

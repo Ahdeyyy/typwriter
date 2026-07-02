@@ -5,9 +5,10 @@ import {
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view"
-import { Prec, RangeSetBuilder } from "@codemirror/state"
+import { Prec } from "@codemirror/state"
 import { syntaxTree } from "@codemirror/language"
 import { Type } from "./lezer-typst/types"
+import { buildMergedMarks } from "./decoration-utils"
 
 const commentDecoration = Decoration.mark({
   class: "cm-typst-comment",
@@ -16,11 +17,12 @@ const commentDecoration = Decoration.mark({
 })
 
 function buildDecorations(view: EditorView): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>()
   const tree = syntaxTree(view.state)
-  // Track the highest `to` position added to avoid duplicate/out-of-order
-  // additions when a block comment overlaps multiple visible ranges.
-  let lastTo = -1
+  // Collect comment ranges, then coalesce. A block comment spanning several
+  // visible ranges is reported once per range, and `buildMergedMarks` dedupes
+  // those and merges any touching same-type marks (the pattern that crashes
+  // CodeMirror's tile renderer).
+  const ranges: Array<{ from: number; to: number }> = []
 
   for (const { from, to } of view.visibleRanges) {
     tree.iterate({
@@ -32,17 +34,14 @@ function buildDecorations(view: EditorView): DecorationSet {
           (node.type.id === Type.LineComment ||
             node.type.id === Type.BlockComment)
         ) {
-          if (node.from >= lastTo) {
-            builder.add(node.from, node.to, commentDecoration)
-            lastTo = node.to
-          }
+          ranges.push({ from: node.from, to: node.to })
           return false
         }
       },
     })
   }
 
-  return builder.finish()
+  return buildMergedMarks(ranges, commentDecoration)
 }
 
 const commentDecorationPlugin = ViewPlugin.fromClass(

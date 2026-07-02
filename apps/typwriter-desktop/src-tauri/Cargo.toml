@@ -1,6 +1,6 @@
 [package]
 name = "typwriter"
-version = "0.8.2"
+version = "0.8.3"
 description = "A typsetting app built on top of typst, with a desktop interface built using Tauri."
 authors = ["ade"]
 edition = "2021"
@@ -22,13 +22,17 @@ tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-typst = "0.14.2"
-typst-ide = "0.14.2"
-typst-render = "0.14.2"
-typst-svg = "0.14.2"
-typst-pdf = "0.14.2"
+typst = "0.15"
+# `Page` / `PagedDocument` moved out of the `typst` facade into `typst-layout`
+# in 0.15; depend on it directly for the document/page types.
+typst-layout = "0.15"
+typst-ide = "0.15"
+typst-render = "0.15"
+typst-svg = "0.15"
+typst-pdf = "0.15"
+typst-html = "0.15"
 chrono = "0.4.44"
-typst-kit = { version = "0.14.2", features = ["embed-fonts", "packages"] }
+typst-kit = { version = "0.15", features = ["embedded-fonts", "scan-fonts", "system-packages", "universe-packages", "system-downloader"] }
 ecow = { version = "0.2", features = ["serde"] }
 tauri-plugin-log = "2"
 tauri-plugin-store = "2"
@@ -41,7 +45,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-os = "2"
 log = "0.4.29"
 png = "0.18"
-typstyle-core = "0.14.4"
+typstyle-core = "0.15"
 tauri-plugin-android-fs = { version = "=28.1.0", features = [
     # For `AndroidFs.createNewPublicFile` and related APIs on Android 9 or lower
     "legacy_storage_permission",

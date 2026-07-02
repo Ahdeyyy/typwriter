@@ -1,6 +1,8 @@
+use std::time::Duration;
+
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use typst_kit::download::{DownloadState, Progress};
+use typst_kit::downloader::{Progress, ProgressReporter};
 
 /// Serializable payload sent with progress and finish events.
 #[derive(Clone, Serialize)]
@@ -10,7 +12,21 @@ pub struct DownloadProgressPayload {
     pub bytes_per_second: usize,
 }
 
-/// A [`Progress`] implementation that forwards package download events
+/// Computes a bytes-per-second estimate from a download [`Progress`] snapshot,
+/// mirroring the moving-average that typst-kit's own `Display` impl uses.
+fn bytes_per_second(progress: &Progress) -> usize {
+    let len = progress.samples.len();
+    let sum: usize = progress.samples.iter().sum();
+    let bytes_per_period = sum.checked_div(len).or(progress.content_len).unwrap_or(0);
+    let frequency: usize = Duration::from_secs(1)
+        .as_nanos()
+        .checked_div(progress.period.as_nanos())
+        .and_then(|s| usize::try_from(s).ok())
+        .unwrap_or(1);
+    bytes_per_period * frequency
+}
+
+/// A [`ProgressReporter`] implementation that forwards package download events
 /// to the Tauri frontend via `AppHandle::emit`.
 ///
 /// Three events are emitted:
@@ -32,32 +48,30 @@ impl TauriProgress {
     }
 }
 
-impl Progress for TauriProgress {
-    fn print_start(&mut self) {
+impl ProgressReporter for TauriProgress {
+    fn start(&mut self, _progress: &Progress) {
         let _ = self
             .app_handle
             .emit("package:download:start", &self.package_label);
     }
 
-    fn print_progress(&mut self, state: &DownloadState) {
-        let bps =
-            state.bytes_per_second.iter().sum::<usize>() / state.bytes_per_second.len().max(1);
+    fn update(&mut self, progress: &Progress) {
         let _ = self.app_handle.emit(
             "package:download:progress",
             DownloadProgressPayload {
-                total_bytes: state.content_len,
-                downloaded_bytes: state.total_downloaded,
-                bytes_per_second: bps,
+                total_bytes: progress.content_len,
+                downloaded_bytes: progress.downloaded,
+                bytes_per_second: bytes_per_second(progress),
             },
         );
     }
 
-    fn print_finish(&mut self, state: &DownloadState) {
+    fn finish(&mut self, progress: &Progress) {
         let _ = self.app_handle.emit(
             "package:download:finish",
             DownloadProgressPayload {
-                total_bytes: state.content_len,
-                downloaded_bytes: state.total_downloaded,
+                total_bytes: progress.content_len,
+                downloaded_bytes: progress.downloaded,
                 bytes_per_second: 0,
             },
         );

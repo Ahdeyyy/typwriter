@@ -50,6 +50,7 @@
   } from "@codemirror/lint";
   import { search } from "@codemirror/search";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
+  import { editorFormat } from "$lib/stores/editor-format.svelte";
   import {
     typst,
     light,
@@ -79,7 +80,7 @@
   import { indentationMarkers } from "@replit/codemirror-indentation-markers";
   import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
   import { platform } from "$lib/stores/platform.svelte";
-  import { logError } from "$lib/logger";
+  import { logError, logPreview } from "$lib/logger";
 
 
   let editorHost = $state<HTMLDivElement | null>(null);
@@ -463,7 +464,19 @@
         const tab = editor.tabs.find((t) => t.id === tabId);
         if (!tab || tab.viewMode !== "text") return;
         const cursor = update.state.selection.main.head;
-        preview.setCursorPosition(tab.absPath, cursor);
+        // Stage 1 (jump source): the editor selection moved. This is what
+        // ultimately drives the preview's cursor-follow scroll. `docChanged`
+        // distinguishes a keystroke (typing) from a pure caret move (click /
+        // arrow key) — the former is the case the user is debugging.
+        logPreview("cursor:selection-set", {
+          path: tab.absPath,
+          cursor,
+          docChanged: update.docChanged,
+        });
+        // Only show the cursor-sync highlight for a pure caret move (click /
+        // arrow key) — a selection change caused by typing shouldn't flash a
+        // highlight on every keystroke.
+        preview.setCursorPosition(tab.absPath, cursor, !update.docChanged);
       }),
       EditorView.updateListener.of((update) => {
         if (!editorSearch.open) return;
@@ -472,6 +485,13 @@
           (update.docChanged || update.selectionSet)
         ) {
           editorSearch.refreshCounts();
+        }
+      }),
+      // Keep the formatting toolbar's active state in sync with the cursor.
+      EditorView.updateListener.of((update) => {
+        if (editorSearch.getActiveView() !== update.view) return;
+        if (update.docChanged || update.selectionSet || update.focusChanged) {
+          editorFormat.refresh(update.view);
         }
       }),
       // Hover tooltip — only for .typ (avoids unnecessary IPC calls for other file types)
@@ -632,6 +652,7 @@
       editorHost.replaceChildren();
       mountedTabId = null;
       editorSearch.setActiveView(null);
+      editorFormat.reset();
       return;
     }
 
@@ -651,6 +672,7 @@
     }
 
     editorSearch.setActiveView(view);
+    editorFormat.refresh(view);
     // Don't steal focus away from the search panel if it's open.
     if (!editorSearch.open) view.focus();
   }
@@ -687,6 +709,7 @@
       tabViews.clear();
       mountedTabId = null;
       editorSearch.setActiveView(null);
+      editorFormat.reset();
     };
   });
 

@@ -16,6 +16,7 @@
     FloppyDiskIcon,
     GitCommitIcon,
     BookOpen01Icon,
+    InformationCircleIcon,
   } from "@hugeicons/core-free-icons";
   import Button from "$lib/components/ui/button/button.svelte";
   import { Switch } from "$lib/components/ui/switch/index.js";
@@ -859,6 +860,25 @@
               </Button>
             </div>
           </section>
+
+        <!-- ── About ───────────────────────────────────────────────────── -->
+        <section>
+          <div class="mb-3 flex items-center gap-2">
+            <HugeiconsIcon icon={InformationCircleIcon} class="size-4 text-muted-foreground" />
+            <h2 class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+              About
+            </h2>
+          </div>
+
+          <div class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3">
+            <div class="min-w-0">
+              <p class="text-sm font-medium">Typwriter</p>
+              <p class="truncate text-xs text-muted-foreground">
+                {platform.appVersion ? `Version ${platform.appVersion}` : "Loading version…"}
+              </p>
+            </div>
+          </div>
+        </section>
 
       </div>
     </ScrollArea.Root>

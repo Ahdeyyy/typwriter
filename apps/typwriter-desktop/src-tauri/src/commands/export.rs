@@ -10,7 +10,9 @@ use log::{error, info};
 use tauri::{AppHandle, State};
 use tauri_plugin_android_fs::{AndroidFsExt, FileUri};
 
-use crate::compiler::{PdfExportConfig, PngExportConfig, PreviewPipeline, SvgExportConfig};
+use crate::compiler::{
+    HtmlExportConfig, PdfExportConfig, PngExportConfig, PreviewPipeline, SvgExportConfig,
+};
 
 #[tauri::command]
 pub fn export_pdf(
@@ -114,6 +116,58 @@ pub fn export_svg(
         ),
     }
     result
+}
+
+#[tauri::command]
+pub fn export_html(
+    config: HtmlExportConfig,
+    pipeline: State<'_, Arc<PreviewPipeline>>,
+) -> Result<(), String> {
+    let t = Instant::now();
+    info!("export_html: path={:?} pretty={:?}", config.path, config.pretty);
+    let result = pipeline.export_html(config);
+    match &result {
+        Ok(_) => info!(
+            "export_html: ok ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        ),
+        Err(e) => error!(
+            "export_html: err=\"{e}\" ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        ),
+    }
+    result
+}
+
+/// Android: export the compiled document to an HTML URI obtained from
+/// `AndroidFs.showSaveFilePicker`. HTML generation is identical to
+/// `export_html`; only the destination differs (content:// URI written via
+/// android-fs instead of std::fs::write).
+#[tauri::command]
+pub fn export_html_to_uri(
+    file_uri: FileUri,
+    config: HtmlExportConfig,
+    pipeline: State<'_, Arc<PreviewPipeline>>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let t = Instant::now();
+    info!("export_html_to_uri: uri={:?} pretty={:?}", file_uri.uri, config.pretty);
+    let bytes = pipeline
+        .export_html_bytes(config.pretty.unwrap_or(false))
+        .map_err(|e| {
+            error!("export_html_to_uri: html generation failed err=\"{e}\"");
+            e
+        })?;
+    app.android_fs().write(&file_uri, &bytes).map_err(|e| {
+        error!("export_html_to_uri: android_fs write failed err=\"{e}\"");
+        e.to_string()
+    })?;
+    info!(
+        "export_html_to_uri: ok - {} bytes ({:.1}ms)",
+        bytes.len(),
+        t.elapsed().as_secs_f64() * 1000.0
+    );
+    Ok(())
 }
 
 /// Android: export PNG pages into a directory URI obtained from

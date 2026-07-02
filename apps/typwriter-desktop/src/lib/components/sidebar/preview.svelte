@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
+  import { onDestroy, untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { ZoomInAreaIcon, ZoomOutAreaIcon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon, ArrowLeft01Icon, ArrowRight01Icon, Menu01Icon, File01Icon } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
@@ -29,14 +29,40 @@
   // After remount (e.g. user popped the preview out and back in), the scroll
   // container is a fresh DOM element with scrollTop=0. Snap it to whichever
   // page was visible last so the pane lands where the user left it.
+  //
+  // `restoreScrollToVisiblePage` reads `visiblePage` internally; that read must
+  // NOT become a dependency of this effect. Otherwise every scroll-driven
+  // `visiblePage` update (from `pageCounterEffect`'s IntersectionObserver) would
+  // re-run this effect and instantly snap the scroll back, fighting the user's
+  // scroll and freezing the page counter — most visibly in the popout window.
+  // We only want to re-anchor on mount and on page-count changes.
   $effect(() => {
     if (ctrl.scrollEl && ctrl.committedPages.length > 0) {
-      ctrl.restoreScrollToVisiblePage();
+      untrack(() => ctrl.restoreScrollToVisiblePage());
     }
   });
 </script>
 
 <svelte:window onkeydown={(e) => ctrl.handleKeydown(e)} />
+
+<!-- Transient cursor-sync highlight over a page. Rectangles are positioned as a
+     fraction of the page so they track the image at any zoom / fit scale. The
+     {#key} restarts the fade when the same page is re-highlighted. -->
+{#snippet highlightOverlay(pageIndex: number)}
+  {#if preview.highlight && preview.highlight.page === pageIndex}
+    {@const hl = preview.highlight}
+    {#key hl.nonce}
+      <div class="pointer-events-none absolute inset-0 z-10">
+        {#each hl.rects as r}
+          <div
+            class="cursor-sync-highlight absolute"
+            style="left:{(r.x / hl.pageWidth) * 100}%; top:{(r.y / hl.pageHeight) * 100}%; width:{(r.width / hl.pageWidth) * 100}%; height:{(r.height / hl.pageHeight) * 100}%;"
+          ></div>
+        {/each}
+      </div>
+    {/key}
+  {/if}
+{/snippet}
 
 <div class="flex h-full flex-col bg-background text-foreground">
   <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
@@ -241,7 +267,7 @@
       {#if preview.totalPages === 0}
         <div class="m-auto select-none text-xs text-muted-foreground">
           {#if workspace.mainFile}
-            Loading preview…
+            {preview.isCompiling ? "Compiling…" : "Loading preview…"}
           {:else}
             Select a main `.typ` file in the explorer to render a preview.
           {/if}
@@ -269,6 +295,7 @@
           {:else}
             <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
           {/if}
+          {@render highlightOverlay(ctrl.visiblePage)}
         </div>
       {/if}
     </div>
@@ -282,7 +309,7 @@
           class="flex h-full select-none items-center justify-center text-xs text-muted-foreground"
         >
           {#if workspace.mainFile}
-            Loading preview…
+            {preview.isCompiling ? "Compiling…" : "Loading preview…"}
           {:else}
             Select a main `.typ` file in the explorer to render a preview.
           {/if}
@@ -312,6 +339,7 @@
               <!-- Placeholder while page is rendering -->
               <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
             {/if}
+            {@render highlightOverlay(i)}
           </div>
         {/each}
       {/if}
@@ -320,3 +348,37 @@
 </div>
 
 <ExportDialog bind:open={ctrl.exportOpen} totalPages={preview.totalPages} />
+
+<style>
+  /* Highlighter-style tint over the rendered text the caret maps to. `multiply`
+     lets the page's text/background show through, and the animation fades the
+     mark out (duration kept in sync with HIGHLIGHT_DURATION in the store). */
+  .cursor-sync-highlight {
+    background: rgba(255, 213, 0, 0.45);
+    mix-blend-mode: multiply;
+    border-radius: 1px;
+    animation: cursor-sync-fade 1.6s ease-out forwards;
+  }
+
+  @keyframes cursor-sync-fade {
+    0% {
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+    }
+    70% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cursor-sync-highlight {
+      animation-duration: 1.6s;
+      animation-timing-function: step-end;
+    }
+  }
+</style>

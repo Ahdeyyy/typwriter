@@ -22,10 +22,6 @@
 
 	import showcaseDark from '$lib/assets/showcase_dark.png';
 	import showcaseLight from '$lib/assets/showcase_light.png';
-	import mobileShowcaseDark from '$lib/assets/mobile_showcase_dark.png';
-	import mobileShowcaseLight from '$lib/assets/mobile_showcase_light.png';
-	import mobileEditorDark from '$lib/assets/mobile_showcase_editor_dark.png';
-	import mobileEditorLight from '$lib/assets/mobile_showcase_editor_light.png';
 
 	let { data }: { data: PageData } = $props();
 
@@ -59,8 +55,6 @@
 	);
 
 	let desktopTheme = $state<'dark' | 'light' | null>(null);
-	let workspaceTheme = $state<'dark' | 'light' | null>(null);
-	let editorTheme = $state<'dark' | 'light' | null>(null);
 
 	function formatSize(bytes: number): string {
 		return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
@@ -135,7 +129,7 @@
 	<h1 class="mb-4 text-4xl font-bold tracking-tighter sm:text-5xl lg:text-6xl">Typwriter</h1>
 
 	<p class="mx-auto mb-10 max-w-xl text-base text-muted-foreground sm:text-lg">
-		A Typst editor for Windows, macOS, Linux, and Android. Write with syntax highlighting and
+		A Typst editor for Windows, macOS, Linux, and Android*. Write with syntax highlighting and
 		autocomplete, watch your document render as you type, and export to PDF, SVG, or PNG.
 	</p>
 
@@ -174,62 +168,6 @@
 						loading="lazy"
 					/>
 				</button>
-			</div>
-		</div>
-
-		<div class="android-showcase">
-			<div class="phone-stack phone-stack--workspace">
-				<div class="phone-stack__frames" data-active-theme={workspaceTheme ?? undefined}>
-					<button
-						type="button"
-						class="phone-frame phone-frame--dark"
-						aria-label="Show the Android workspace dark mode screenshot"
-						onclick={() => (workspaceTheme = 'dark')}
-					>
-						<img
-							src={mobileShowcaseDark}
-							alt="Typwriter mobile workspace in dark mode"
-							loading="lazy"
-						/>
-					</button>
-					<button
-						type="button"
-						class="phone-frame phone-frame--light"
-						aria-label="Show the Android workspace light mode screenshot"
-						onclick={() => (workspaceTheme = 'light')}
-					>
-						<img
-							src={mobileShowcaseLight}
-							alt="Typwriter mobile workspace in light mode"
-							loading="lazy"
-						/>
-					</button>
-				</div>
-			</div>
-
-			<div class="phone-stack phone-stack--editor">
-				<div class="phone-stack__frames" data-active-theme={editorTheme ?? undefined}>
-					<button
-						type="button"
-						class="phone-frame phone-frame--dark"
-						aria-label="Show the Android editor dark mode screenshot"
-						onclick={() => (editorTheme = 'dark')}
-					>
-						<img src={mobileEditorDark} alt="Typwriter mobile editor in dark mode" loading="lazy" />
-					</button>
-					<button
-						type="button"
-						class="phone-frame phone-frame--light"
-						aria-label="Show the Android editor light mode screenshot"
-						onclick={() => (editorTheme = 'light')}
-					>
-						<img
-							src={mobileEditorLight}
-							alt="Typwriter mobile editor in light mode"
-							loading="lazy"
-						/>
-					</button>
-				</div>
 			</div>
 		</div>
 	</div>
@@ -423,11 +361,10 @@
 <style>
 	.showcase-row {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(18rem, 27rem);
-		align-items: center;
-		gap: clamp(2.5rem, 5vw, 5rem);
+		grid-template-columns: minmax(0, 1fr);
+		justify-items: center;
 		margin-top: 5rem;
-		padding-inline: clamp(1.5rem, 4vw, 4rem) clamp(0.5rem, 2vw, 2rem);
+		padding-inline: clamp(1.5rem, 4vw, 4rem);
 	}
 
 	.theme-stack__frames {
@@ -435,6 +372,7 @@
 		aspect-ratio: 16 / 10;
 		isolation: isolate;
 		width: 100%;
+		max-width: 56rem;
 		margin-inline: auto;
 	}
 
@@ -458,8 +396,7 @@
 			border-color 200ms ease;
 	}
 
-	.theme-frame:focus-visible,
-	.phone-frame:focus-visible {
+	.theme-frame:focus-visible {
 		outline: 2px solid var(--ring);
 		outline-offset: 0.35rem;
 	}
@@ -500,85 +437,6 @@
 		opacity: 0.86;
 	}
 
-	.android-showcase {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(8rem, 11.25rem));
-		justify-content: center;
-		column-gap: clamp(0.75rem, 2.25vw, 1.75rem);
-		row-gap: 4rem;
-		padding-inline: 0;
-	}
-
-	.phone-stack {
-		width: 100%;
-		max-width: 11.25rem;
-	}
-
-	.phone-stack__frames {
-		position: relative;
-		aspect-ratio: 9 / 19.5;
-		isolation: isolate;
-	}
-
-	.phone-frame {
-		position: absolute;
-		inset: 0;
-		margin: 0;
-		overflow: hidden;
-		border: 1px solid var(--border);
-		border-radius: 0.75rem;
-		background: var(--card);
-		padding: 0;
-		color: inherit;
-		box-shadow: 0 14px 30px -18px oklch(0 0 0 / 0.3);
-		cursor: pointer;
-		transition:
-			transform 600ms cubic-bezier(0.16, 1, 0.3, 1),
-			box-shadow 600ms cubic-bezier(0.16, 1, 0.3, 1),
-			opacity 400ms ease;
-	}
-
-	.phone-frame img {
-		display: block;
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		object-position: top center;
-	}
-
-	.phone-frame--light {
-		z-index: 1;
-		transform: translate(-18%, 8%) scale(0.82) rotate(-3deg);
-		opacity: 0.94;
-	}
-	.phone-frame--dark {
-		z-index: 2;
-		transform: translate(0, 0) scale(1) rotate(0deg);
-	}
-
-	.phone-stack--editor .phone-frame--light {
-		transform: translate(18%, -7%) scale(0.82) rotate(3deg);
-	}
-
-	.phone-stack__frames[data-active-theme='light'] .phone-frame--light,
-	.phone-stack__frames[data-active-theme='dark'] .phone-frame--dark {
-		z-index: 4;
-		transform: translate(0, 0) scale(1.03) rotate(0deg);
-		box-shadow: 0 36px 54px -22px oklch(0 0 0 / 0.4);
-		opacity: 1;
-	}
-
-	.phone-stack__frames[data-active-theme='light'] .phone-frame--dark {
-		z-index: 1;
-		transform: translate(16%, -6%) scale(0.82) rotate(3deg);
-		opacity: 0.82;
-	}
-
-	.phone-stack__frames[data-active-theme='dark'] .phone-frame--light {
-		z-index: 1;
-		opacity: 0.88;
-	}
-
 	@media (prefers-color-scheme: light) {
 		.theme-stack__frames:not([data-active-theme]) .theme-frame--light {
 			z-index: 2;
@@ -594,25 +452,12 @@
 
 	@media (max-width: 640px) {
 		.showcase-row {
-			grid-template-columns: 1fr;
 			margin-top: 4rem;
-		}
-
-		.android-showcase {
-			grid-template-columns: minmax(10rem, 13rem);
-			row-gap: 3.25rem;
-		}
-	}
-
-	@media (min-width: 641px) and (max-width: 1024px) {
-		.showcase-row {
-			grid-template-columns: 1fr;
 		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.theme-frame,
-		.phone-frame {
+		.theme-frame {
 			transition: none;
 		}
 	}

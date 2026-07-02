@@ -4,6 +4,10 @@ import { ResultAsync } from 'neverthrow';
 export interface EditorCursorPositionPayload {
     path: string;
     offset: number;
+    /** Whether this cursor move should draw the preview highlight — true for a
+     *  pure caret move (click / arrow key), false when it coalesced with a
+     *  keystroke that also changed the document. */
+    showHighlight: boolean;
 }
 
 export interface PreviewSourceJumpPayload {
