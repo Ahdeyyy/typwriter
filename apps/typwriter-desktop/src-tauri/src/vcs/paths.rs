@@ -3,7 +3,7 @@
 // All snapshot data lives under `<workspace>/.typwriter/history/`. Keeping
 // everything inside the workspace folder means snapshots travel with the
 // folder when the user syncs / backs up / moves it — no "orphan on rename"
-// problem like the previous gix-in-app-storage layout had on Android.
+// problem like the previous gix-in-app-storage layout had.
 
 use std::path::{Path, PathBuf};
 
@@ -35,9 +35,8 @@ pub fn objects_dir(workspace_root: &Path) -> PathBuf {
 }
 
 /// Object on disk: `objects/<aa>/<bb...rest>`. The 2-char fanout keeps any
-/// single directory from blowing up — SAF (Android Storage Access Framework)
-/// in particular gets slow when a directory holds tens of thousands of
-/// entries.
+/// single directory from blowing up — filesystems get slow when a directory
+/// holds tens of thousands of entries.
 pub fn object_path(workspace_root: &Path, hash: &str) -> PathBuf {
     let (prefix, rest) = hash.split_at(2);
     objects_dir(workspace_root).join(prefix).join(rest)

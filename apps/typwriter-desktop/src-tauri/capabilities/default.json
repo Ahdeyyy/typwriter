@@ -31,7 +31,6 @@
     "core:window:allow-set-fullscreen",
     "core:window:allow-set-decorations",
     "dialog:default",
-    "android-fs:default",
     "os:default",
     "os:allow-platform"
   ]

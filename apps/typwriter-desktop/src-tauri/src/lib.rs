@@ -23,10 +23,7 @@ use commands::{
         discard_shadow, get_completions, get_definitions, get_tooltip, read_file, save_file,
         update_file_content,
     },
-    export::{
-        export_html, export_html_to_uri, export_pdf, export_pdf_to_uri, export_png,
-        export_png_to_dir_uri, export_svg, export_svg_to_dir_uri,
-    },
+    export::{export_html, export_pdf, export_png, export_svg},
     format::{
         format_typst_cursor_virtual, format_typst_file, format_typst_source,
         format_workspace_typ_files,
@@ -34,8 +31,8 @@ use commands::{
     logs::get_log_file_path,
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     settings::{
-        get_app_settings, get_onboarding_completed, import_font_directory_uri, list_font_families,
-        set_app_settings, set_onboarding_completed, set_typst_font_directories,
+        get_app_settings, get_onboarding_completed, list_font_families, set_app_settings,
+        set_onboarding_completed, set_typst_font_directories,
     },
     vcs::{
         vcs_create_restore_point, vcs_current_id, vcs_diff_between, vcs_diff_vs_current,
@@ -43,26 +40,18 @@ use commands::{
     },
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
-        delete_folder, export_workspace_to_dir_uri, get_file_tree, get_mobile_workspaces_dir,
-        get_recent_workspaces, get_workspace_tabs, import_files, import_files_from_uris,
-        list_mobile_workspaces, move_file, move_folder, open_folder, register_saf_workspace_root,
-        remove_recent_workspace, rename_file, saf_tree_uri_to_path, save_workspace_tabs,
-        set_main_file,
+        delete_folder, get_file_tree, get_recent_workspaces, get_workspace_tabs, import_files,
+        move_file, move_folder, open_folder, remove_recent_workspace, rename_file,
+        save_workspace_tabs, set_main_file,
     },
 };
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    #[allow(unused_mut)]
-    let mut builder = tauri::Builder::default();
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
-    }
-    builder
+    tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .register_uri_scheme_protocol("previewimg", |ctx, request| {
-            // URL form on Windows/Android: http://previewimg.localhost/{key}.png
-            // URL form on macOS/iOS/Linux: previewimg://localhost/{key}.png
+            // URL form on Windows: http://previewimg.localhost/{key}.png
+            // URL form on macOS/Linux: previewimg://localhost/{key}.png
             //
             // The path is `/{fingerprint}-{zoom}[.png]`. We strip the leading
             // `/` and parse the composite key. Including the zoom in the URL
@@ -103,7 +92,6 @@ pub fn run() {
                 .body(bytes)
                 .expect("png response should build")
         })
-        .plugin(tauri_plugin_android_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -128,10 +116,6 @@ pub fn run() {
             // screen. Tear it down whenever the main window goes away — handled
             // here in Rust so it fires on every close path, not just the ones
             // where the frontend gets to run its cleanup.
-            // The preview popout is desktop-only (mobile has no multi-window),
-            // and `WebviewWindow::destroy` is itself a desktop-only API, so the
-            // whole teardown is gated behind `#[cfg(desktop)]`.
-            #[cfg(desktop)]
             if window.label() == "main"
                 && matches!(
                     event,
@@ -153,10 +137,8 @@ pub fn run() {
             let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
             // ── Shared state (managed immediately — fonts arrive later) ──────
-            // `vcs` is constructed first: it owns the SAF-root registry and the
-            // `WorkingTreeFs` provider the world reads source files through, so
-            // a folder picked via Android's Storage Access Framework is fully
-            // usable (open / edit / compile), not just listable.
+            // `vcs` is constructed first: it owns the `WorkingTreeFs` provider
+            // the world reads source files through.
             let vcs = Arc::new(VcsState::new(handle.clone()));
             let world = Arc::new(EditorWorld::new(root, handle.clone(), vcs.clone()));
             let pipeline = Arc::new(PreviewPipeline::new(
@@ -199,10 +181,6 @@ pub fn run() {
             // workspace / file-system
             open_folder,
             create_workspace,
-            get_mobile_workspaces_dir,
-            list_mobile_workspaces,
-            saf_tree_uri_to_path,
-            register_saf_workspace_root,
             set_main_file,
             get_file_tree,
             get_recent_workspaces,
@@ -218,8 +196,6 @@ pub fn run() {
             move_file,
             move_folder,
             import_files,
-            import_files_from_uris,
-            export_workspace_to_dir_uri,
             // editor buffer + IDE features
             read_file,
             update_file_content,
@@ -246,16 +222,11 @@ pub fn run() {
             set_onboarding_completed,
             list_font_families,
             set_typst_font_directories,
-            import_font_directory_uri,
             // export
             export_pdf,
-            export_pdf_to_uri,
             export_png,
-            export_png_to_dir_uri,
             export_svg,
-            export_svg_to_dir_uri,
             export_html,
-            export_html_to_uri,
             // format
             format_typst_source,
             format_typst_cursor_virtual,

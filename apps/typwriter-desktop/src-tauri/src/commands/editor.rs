@@ -8,7 +8,6 @@
 
 use std::{path::Path, sync::Arc, time::Instant};
 
-use base64::Engine;
 use ecow::EcoString;
 use log::{debug, error, info, warn};
 use parking_lot::RwLock;
@@ -144,11 +143,6 @@ pub enum FileContentResponse {
     Image {
         path: String,
         mime: String,
-        /// Inline `data:` URL with the image bytes, populated only when the
-        /// workspace root is behind Android's Storage Access Framework — there
-        /// `convertFileSrc`/the asset protocol can't reach the file, so the
-        /// frontend renders these bytes directly instead of fetching `path`.
-        data: Option<String>,
     },
     Unsupported,
 }
@@ -157,12 +151,9 @@ pub enum FileContentResponse {
 
 /// Read a file from disk and return its content.
 /// Text files are returned as UTF-8 strings; image files are returned as paths
-/// that the frontend can convert into Tauri asset URLs (or, for SAF roots, as
-/// inline `data:` URLs since the asset protocol can't reach them).
+/// that the frontend can convert into Tauri asset URLs.
 ///
-/// Reads route through the workspace's [`WorkingTreeFs`], so a folder picked
-/// via Android's Storage Access Framework — invisible to `std::fs` — is
-/// readable just like an app-managed or desktop folder.
+/// Reads route through the workspace's [`WorkingTreeFs`].
 #[tauri::command]
 pub fn read_file(
     path: String,
@@ -179,12 +170,11 @@ pub fn read_file(
         .unwrap_or("")
         .to_ascii_lowercase();
 
-    // Resolve the SAF-aware accessor for the current workspace root. An empty
-    // root (no workspace open) maps to a plain std::fs accessor, since `abs` is
-    // always an absolute path the local filesystem can serve directly.
+    // Resolve the working-tree accessor for the current workspace root. An
+    // empty root (no workspace open) maps to a plain std::fs accessor, since
+    // `abs` is always an absolute path the local filesystem can serve directly.
     let root = workspace.root.read().clone().unwrap_or_default();
     let fs = vcs.working_tree_fs_for(&root);
-    let is_saf = vcs.is_saf_root(&root);
 
     // Determine MIME type for image extensions
     let mime = match ext.as_str() {
@@ -201,31 +191,8 @@ pub fn read_file(
     };
 
     if let Some(mime) = mime {
-        // On a SAF root the asset protocol (std::fs-backed) can't reach the
-        // file, so read the bytes through android-fs and ship them inline as a
-        // data URL. Elsewhere keep returning a path the frontend turns into an
-        // asset URL — cheap, and avoids base64-bloating every image over IPC.
-        if is_saf {
-            let bytes = fs.read_file(abs).map_err(|e| {
-                error!(
-                    "read_file: saf read image failed path={path:?} err=\"{e}\" ({:.1}ms)",
-                    t.elapsed().as_secs_f64() * 1000.0
-                );
-                e
-            })?;
-            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            info!(
-                "read_file: ok saf image mime={mime} bytes={} ({:.1}ms)",
-                bytes.len(),
-                t.elapsed().as_secs_f64() * 1000.0
-            );
-            return Ok(FileContentResponse::Image {
-                path: abs.to_string_lossy().into_owned(),
-                mime: mime.to_string(),
-                data: Some(format!("data:{mime};base64,{encoded}")),
-            });
-        }
-
+        // Return a path the frontend turns into an asset URL — cheap, and
+        // avoids base64-bloating every image over IPC.
         let metadata = std::fs::metadata(abs).map_err(|e| {
             error!(
                 "read_file: io error reading image metadata path={path:?} err=\"{e}\" ({:.1}ms)",
@@ -241,7 +208,6 @@ pub fn read_file(
         return Ok(FileContentResponse::Image {
             path: abs.to_string_lossy().into_owned(),
             mime: mime.to_string(),
-            data: None,
         });
     }
 
@@ -359,8 +325,7 @@ pub fn save_file(
         e.to_string()
     })?;
 
-    // Write through the SAF-aware accessor so saving works on a folder picked
-    // via Android's Storage Access Framework, not just on std::fs paths.
+    // Write through the working-tree accessor for the current workspace root.
     let root = workspace.root.read().clone().unwrap_or_default();
     vcs.working_tree_fs_for(&root)
         .write_file(abs, content.as_bytes())

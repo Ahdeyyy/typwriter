@@ -2,8 +2,7 @@
 //
 // Build a snapshot from the working tree, dedupe against HEAD, persist
 // manifest + new blobs, advance HEAD, then prune. Every read/write goes
-// through `WorkingTreeFs` so the same code path serves desktop fs and
-// Android SAF.
+// through `WorkingTreeFs`.
 
 use std::collections::BTreeMap;
 use std::path::Path;
