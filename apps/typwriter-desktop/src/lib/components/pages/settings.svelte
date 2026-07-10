@@ -34,8 +34,7 @@
     type ThemeId,
   } from "$lib/stores/settings.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { AndroidFs } from "tauri-plugin-android-fs-api";
-  import { importFontDirectoryUri, safTreeUriToPath, setOnboardingCompleted } from "$lib/ipc/commands";
+  import { setOnboardingCompleted } from "$lib/ipc/commands";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
 
@@ -57,54 +56,11 @@
   });
 
   async function pickFolder(): Promise<string | null> {
-    if (platform.isMobile) {
-      try {
-        const uri = await AndroidFs.showOpenDirPicker({ localOnly: true });
-        if (!uri) return null;
-        const result = await safTreeUriToPath(uri.uri);
-        if (result.isErr()) {
-          toast.error(`Couldn't use that folder: ${result.error}`);
-          return null;
-        }
-        return result.value;
-      } catch (err) {
-        logError("mobile folder picker failed:", err);
-        toast.error(`Folder picker failed: ${err}`);
-        return null;
-      }
-    }
     const selected = await openDialog({ directory: true, multiple: false });
     return (selected as string | null) ?? null;
   }
 
   async function handleAddFontDir() {
-    // Mobile takes a separate path: typst-kit's FontSearcher can't scan SAF
-    // tree paths, so we copy the picked folder's font files into app-private
-    // storage and register THAT path with the font search instead.
-    if (platform.isMobile) {
-      try {
-        const uri = await AndroidFs.showOpenDirPicker({ localOnly: true });
-        if (!uri) return;
-        const imported = await importFontDirectoryUri({
-          uri: uri.uri,
-          documentTopTreeUri: uri.documentTopTreeUri ?? null,
-        });
-        if (imported.isErr()) {
-          toast.error(`Failed to import fonts: ${imported.error}`);
-          return;
-        }
-        const result = await settings.addFontDirectory(imported.value);
-        result.match(
-          () => toast.success("Fonts imported — reloading…"),
-          (err) => toast.error(`Failed to add font directory: ${err}`),
-        );
-      } catch (err) {
-        logError("mobile font import failed:", err);
-        toast.error(`Folder picker failed: ${err}`);
-      }
-      return;
-    }
-
     const folder = await pickFolder();
     if (!folder) return;
     const result = await settings.addFontDirectory(folder);
@@ -729,8 +685,7 @@
         </section>
 
         <!-- ── Updates ─────────────────────────────────────────────────── -->
-        {#if platform.isDesktop}
-          <section>
+        <section>
             <div class="mb-3 flex items-center gap-2">
               <HugeiconsIcon icon={Refresh01Icon} class="size-4 text-muted-foreground" />
               <h2 class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
@@ -788,7 +743,6 @@
               </Button>
             </div>
           </section>
-        {/if}
 
         <!-- ── Typst font directories ──────────────────────────────────── -->
         <section>
@@ -807,16 +761,9 @@
               {/if}
             </div>
             <p class="mb-4 text-sm text-muted-foreground">
-              {#if platform.isMobile}
-                Pick a folder and Typwriter will copy its font files (<code>.ttf</code>, <code>.otf</code>,
-                <code>.ttc</code>) into the app's storage so they're available in the editor, the UI
-                font pickers above, and in Typst documents. Android scoped storage blocks the font
-                scanner from reading shared folders directly.
-              {:else}
-                Folders scanned for additional font files (<code>.ttf</code>, <code>.otf</code>).
-                Fonts found here are available in the editor, the UI font pickers above, and in
-                Typst documents.
-              {/if}
+              Folders scanned for additional font files (<code>.ttf</code>, <code>.otf</code>).
+              Fonts found here are available in the editor, the UI font pickers above, and in
+              Typst documents.
             </p>
 
             <div class="rounded-md border border-border">
@@ -831,7 +778,7 @@
                       class="flex items-center gap-3 px-4 py-2.5 {i > 0 ? 'border-t border-border' : ''}"
                     >
                       <HugeiconsIcon icon={Folder01Icon} class="size-4 shrink-0 text-muted-foreground" />
-                      <span class="min-w-0 flex-1 truncate text-sm">{platform.displayPath(dir)}</span>
+                      <span class="min-w-0 flex-1 truncate text-sm">{dir}</span>
                       <Button
                         variant="ghost"
                         size="icon-sm"

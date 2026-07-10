@@ -81,7 +81,6 @@
     "codemirror": "^6.0.2",
     "neverthrow": "^8.2.0",
     "runed": "^0.37.1",
-    "tauri-plugin-android-fs-api": "28.1.0",
     "thememirror": "^2.0.1"
   },
   "devDependencies": {

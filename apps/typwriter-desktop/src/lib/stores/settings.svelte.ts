@@ -16,10 +16,9 @@ import { logError } from '$lib/logger';
 
 const LS_KEY = 'typwriter:settings:v1';
 
-// Fonts bundled via @fontsource(-variable) in `layout.css`. These are the only
-// families the WebView can resolve reliably on every platform — Android in
-// particular can't load fonts that Typst discovered on disk because they aren't
-// registered with the browser engine.
+// Fonts bundled via @fontsource(-variable) in `layout.css`. These are the
+// families the WebView can resolve reliably, since they're registered with the
+// browser engine rather than only discovered on disk by Typst.
 export const BUNDLED_UI_FONTS: readonly string[] = [
     // Sans
     'IBM Plex Sans Variable',

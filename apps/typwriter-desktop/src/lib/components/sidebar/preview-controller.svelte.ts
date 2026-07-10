@@ -4,7 +4,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "svelte-sonner";
 
 import { preview } from "$lib/stores/preview.svelte";
-import { platform } from "$lib/stores/platform.svelte";
 import { editor } from "$lib/stores/editor.svelte";
 import { workspace } from "$lib/stores/workspace.svelte";
 import { jumpFromClick, setVisiblePage, syncPreview, triggerPreview } from "$lib/ipc/commands";
@@ -71,7 +70,6 @@ export class PreviewController {
   constructor(opts: PreviewControllerOptions = {}) {
     this.onPresentationMode = opts.onPresentationMode;
     this.isPopout = (() => {
-      if (!platform.isDesktop) return false;
       try {
         return getCurrentWindow().label === "preview";
       } catch {
@@ -81,8 +79,8 @@ export class PreviewController {
 
     // On (re)mount, ask the backend to resend its current page set. This is
     // cheap when the pipeline has nothing cached, and recovers stale frames
-    // when the mobile preview pane was unmounted and the in-store `pages`
-    // buffer is partial or out-of-sync with the decoded `committedPages`.
+    // when the preview pane was unmounted and the in-store `pages` buffer is
+    // partial or out-of-sync with the decoded `committedPages`.
     syncPreview().mapErr((err) =>
       logError("preview controller: syncPreview on mount failed:", err)
     );

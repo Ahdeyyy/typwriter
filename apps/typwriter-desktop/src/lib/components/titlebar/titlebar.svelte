@@ -41,7 +41,6 @@
   const isMac = $derived(platform.isMac);
 </script>
 
-{#if platform.hasDesktopWindowControls}
 <div
   data-tauri-drag-region
   class="relative flex h-9 w-full shrink-0 select-none items-center
@@ -160,4 +159,3 @@
     {/if}
   </div>
 </div>
-{/if}

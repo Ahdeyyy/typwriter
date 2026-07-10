@@ -40,7 +40,6 @@
   import { toast } from "svelte-sonner";
 
   import { vcs } from "$lib/stores/vcs.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
   import type { CommitTrigger, RestorePoint } from "$lib/types";
 
   interface Props {
@@ -470,9 +469,7 @@
                                   size="icon-xs"
                                   class={[
                                     "mt-0.5 shrink-0 transition-opacity focus-visible:opacity-100 data-[state=open]:opacity-100",
-                                    platform.isMobile
-                                      ? "opacity-100"
-                                      : "opacity-0 group-hover:opacity-100",
+                                    "opacity-0 group-hover:opacity-100",
                                   ]}
                                   aria-label="Restore point actions"
                                   onclick={(ev: MouseEvent) => ev.stopPropagation()}

@@ -79,7 +79,6 @@
   import { ayuLight } from "thememirror";
   import { indentationMarkers } from "@replit/codemirror-indentation-markers";
   import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
-  import { platform } from "$lib/stores/platform.svelte";
   import { logError, logPreview } from "$lib/logger";
 
 
@@ -118,9 +117,7 @@
   }
 
   function indentMarkersExt() {
-    return !platform.isMobile && settings.showIndentationMarkers
-      ? indentationMarkers()
-      : [];
+    return settings.showIndentationMarkers ? indentationMarkers() : [];
   }
 
   function lineWrapExt() {
@@ -444,21 +441,6 @@
         if (!update.docChanged) return;
         editor.handleTabContentChange(tabId, update.state.doc.toString());
       }),
-      // Mobile: save on blur. The soft keyboard dismissing or the app being
-      // backgrounded blurs the editor; persisting here shrinks the window
-      // where edits live only in memory before the OS can kill the WebView.
-      ...(platform.isMobile
-        ? [
-            EditorView.domEventHandlers({
-              blur: () => {
-                editor
-                  .saveTabById(tabId)
-                  .mapErr((err) => logError("save-on-blur error:", err));
-                return false;
-              },
-            }),
-          ]
-        : []),
       EditorView.updateListener.of((update) => {
         if (!update.selectionSet) return;
         const tab = editor.tabs.find((t) => t.id === tabId);
@@ -527,7 +509,7 @@
           height: "100%",
           width: "100%",
         },
-        ".cm-scroller": { overflow: "auto", ...(platform.isMobile ? { paddingTop: "3.25rem" } : {}) },
+        ".cm-scroller": { overflow: "auto" },
         // Line-number gutter — give the digits breathing room from the
         // content and a muted tone so they don't compete with the code.
         ".cm-lineNumbers .cm-gutterElement": {

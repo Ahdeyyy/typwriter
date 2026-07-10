@@ -83,7 +83,7 @@ export function logPreview(stage: string, data?: Record<string, LogValue>): void
 
     console.debug(message);
     // Mirror to the Tauri log file at info level so traces are captured even
-    // when devtools isn't open (e.g. reproducing on Android / a popout window).
+    // when devtools isn't open (e.g. reproducing in a popout window).
     void tauriInfo(message).catch(() => {
         // Outside a Tauri context the console line above is enough.
     });

@@ -1,21 +1,11 @@
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
-import { AndroidFs } from 'tauri-plugin-android-fs-api';
 import type { Result } from 'neverthrow';
 
-import { importFiles, importFilesFromUris } from '$lib/ipc/commands';
-import { platform } from '$lib/stores/platform.svelte';
+import { importFiles } from '$lib/ipc/commands';
 
 export interface WorkspaceImportService {
     importFiles(destDir: string): Promise<Result<void, string> | null>;
 }
-
-const androidImportService: WorkspaceImportService = {
-    async importFiles(destDir) {
-        const uris = await AndroidFs.showOpenFilePicker({ multiple: true });
-        if (!uris || uris.length === 0) return null;
-        return importFilesFromUris(uris, destDir);
-    },
-};
 
 const desktopImportService: WorkspaceImportService = {
     async importFiles(destDir) {
@@ -29,7 +19,7 @@ const desktopImportService: WorkspaceImportService = {
 };
 
 export function workspaceImportService(): WorkspaceImportService {
-    return platform.isMobile ? androidImportService : desktopImportService;
+    return desktopImportService;
 }
 
 export async function importFilesToWorkspace(destDir: string): Promise<void> {
