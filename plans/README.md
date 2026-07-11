@@ -7,6 +7,21 @@ Status column as work proceeds (`TODO` → `IN PROGRESS` → `DONE`, or `BLOCKED
 Written against commit `9baf8a5` (2026-06). Plans stamp the same commit; if the
 cited code has moved, re-verify before executing.
 
+**Status as of 2026-07-11: every plan below is DONE** — the four desktop-audit
+plans (001–004), all eight typwriter-mobile phases (00–08), and 005 (remove
+legacy mobile code from the desktop app).
+
+## Desktop app — remove legacy mobile code (2026-07)
+
+Now that `apps/typwriter-mobile/` is the mobile app, the Android/SAF code paths
+still living inside `apps/typwriter-desktop/` are dead weight. Plan 005 removes
+them; it is written for an executor with no other context and stamped against
+`e4bf10d`.
+
+| # | Plan | What | Effort | Status |
+|---|------|------|--------|--------|
+| 005 | [005-remove-mobile-from-desktop.md](005-remove-mobile-from-desktop.md) | Strip all mobile/Android/SAF code from typwriter-desktop (CI, frontend, Rust, manifests) | M | DONE |
+
 ## Desktop app (`apps/typwriter-desktop`) — from the June 2026 audit
 
 Source findings: `docs/code-review/README.md` (full audit, vetted 2026-06-12).
@@ -37,7 +52,8 @@ findings by leverage were planned. Remaining vetted findings worth planning next
 
 ## Mobile app (new, standalone) — `typwriter-mobile/`
 
-A phased build plan for the new `apps/typwriter-mobile/` app. Start at
+A phased build plan for the new `apps/typwriter-mobile/` app. **All phases
+completed** (the app now lives at `apps/typwriter-mobile/`). Start at
 [typwriter-mobile/00-overview.md](typwriter-mobile/00-overview.md); phases are
 strictly ordered and the overview holds the status table.
 
