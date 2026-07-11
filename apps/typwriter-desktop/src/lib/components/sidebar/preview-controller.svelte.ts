@@ -1,4 +1,5 @@
 import { untrack } from "svelte";
+import { SvelteMap } from "svelte/reactivity";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "svelte-sonner";
@@ -36,6 +37,15 @@ export class PreviewController {
   // page fingerprint; templates resolve it to a `previewimg://` URL via
   // `buildPreviewUrl` so the webview fetches the PNG directly.
   committedPages = $state<(string | null)[]>([]);
+
+  // Natural pixel dimensions per fingerprint, captured from the off-DOM
+  // decode. Templates stamp these as width/height attributes on the page
+  // <img>s so the browser reserves the correct box before the image loads —
+  // without them a freshly remounted pane's images are all ~0px tall, so any
+  // scroll restore measures garbage offsets and lands at the top while the
+  // loading images push the real target further down.
+  pageDims = new SvelteMap<string, { w: number; h: number }>();
+
   private pending = new Map<number, string>();
   private decodeAttempts = new Map<number, number>();
   private startupRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -51,6 +61,15 @@ export class PreviewController {
   private stuckTicks = new Map<number, number>();
 
   private lastScrollTarget: { page: number; x: number; y: number } | null = null;
+
+  // A restore of `visiblePage` is owed to a freshly (re)mounted scroll
+  // container. While set, the scroll-driven page counter must not write
+  // `visiblePage`: a fresh container sits at scrollTop=0, so its seed
+  // recompute would stamp page 0 over the shared cross-window value before
+  // `restoreScrollToVisiblePage` ever runs — losing the page whenever the
+  // preview is popped out or back in. Cleared once the restore is applied
+  // or explicit navigation supersedes it.
+  restorePending = $state(true);
 
   toolbarWidth = $state(0);
 
@@ -169,6 +188,12 @@ export class PreviewController {
     }
   }
 
+  /** Natural dimensions for a committed fingerprint, if its decode
+   *  recorded them. Reactive via SvelteMap. */
+  dimsFor(fingerprint: string | null | undefined): { w: number; h: number } | undefined {
+    return fingerprint ? this.pageDims.get(fingerprint) : undefined;
+  }
+
   /** Called from the template when the DOM `<img>` finishes loading. */
   notifyImageLoaded(i: number, fingerprint: string) {
     this.renderedFingerprints.set(i, fingerprint);
@@ -232,6 +257,9 @@ export class PreviewController {
     img
       .decode()
       .then(() => {
+        // Dimensions are keyed by fingerprint, so they're valid to record
+        // even if this decode lost the race for the slot.
+        this.pageDims.set(fingerprint, { w: img.naturalWidth, h: img.naturalHeight });
         if (this.pending.get(idx) !== fingerprint) return;
         this.pending.delete(idx);
         this.decodeAttempts.delete(idx);
@@ -284,6 +312,8 @@ export class PreviewController {
   }
 
   private _applyScrollTarget(target: { page: number; x: number; y: number }) {
+    // A cursor-sync jump is fresher than any owed mount restore.
+    this.restorePending = false;
     const prevVisible = this.visiblePage;
     this.visiblePage = target.page;
     if (preview.paginated) {
@@ -364,13 +394,21 @@ export class PreviewController {
 
   /** Scroll the (possibly freshly remounted) scroll container to the page
    *  recorded in the shared `visiblePage`. Called by the Preview component
-   *  on mount so popping the preview out and back in lands on the same page
-   *  instead of jumping to page 0. */
+   *  while `restorePending` so popping the preview out and back in lands on
+   *  the same page instead of jumping to page 0. Leaves `restorePending`
+   *  set when the target page hasn't rendered yet, so the mount effect
+   *  retries as pages stream in. */
   restoreScrollToVisiblePage() {
     const idx = this.visiblePage;
-    if (idx <= 0) return;
+    if (idx <= 0) {
+      // Already at the first page — nothing to scroll, restore is done.
+      this.restorePending = false;
+      return;
+    }
     if (preview.paginated) {
+      // Paginated view renders `visiblePage` directly; just tell the backend.
       setVisiblePage(idx);
+      this.restorePending = false;
       return;
     }
     requestAnimationFrame(() => {
@@ -384,6 +422,7 @@ export class PreviewController {
         offsetTop: Math.round(pageEl.offsetTop),
       });
       this.scrollEl.scrollTo({ top: pageEl.offsetTop, behavior: "instant" as ScrollBehavior });
+      this.restorePending = false;
     });
   }
 
@@ -405,6 +444,12 @@ export class PreviewController {
 
     const recompute = () => {
       rafId = 0;
+      // A restore is still owed to this freshly mounted container, which is
+      // sitting at scrollTop=0. Writing here would broadcast page 0 over the
+      // shared cross-window `visiblePage` before the restore reads it. The
+      // mount effect seeds `recompute()` synchronously, so this read also
+      // makes the effect re-seed the counter once the restore completes.
+      if (this.restorePending) return;
       // Reference line a third of the way down the viewport. The visible page
       // is the last one whose top edge sits at or above this line — i.e. the
       // page currently occupying the upper portion of the view.
@@ -492,6 +537,7 @@ export class PreviewController {
     // Stage 9: explicit user navigation (toolbar arrows / keyboard). Lets you
     // rule out user action when reading why the page number moved.
     logPreview("nav:go-to-page", { requested: idx, clamped, from: this.visiblePage });
+    this.restorePending = false;
     this.visiblePage = clamped;
     setVisiblePage(clamped);
   }
@@ -555,6 +601,9 @@ export class PreviewController {
     this.scrollEl = null;
     this.toolbarWidth = 0;
     this.onPresentationMode = undefined;
+    // The next mount gets a fresh scroll container at scrollTop=0 — owe it
+    // a snap back to `visiblePage` before the counter may write again.
+    this.restorePending = true;
   }
 
   async handlePageClick(e: MouseEvent, pageIndex: number) {

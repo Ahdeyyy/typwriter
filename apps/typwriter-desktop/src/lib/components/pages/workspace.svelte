@@ -48,8 +48,17 @@
       return;
     }
 
+    // Seed the popout's page via the URL: its cross-window state only learns
+    // the current page asynchronously (ask/reply over the event bus), and the
+    // popout must know where to restore to before its first render.
+    const popoutParams = new URLSearchParams({
+      window: "preview",
+      page: String(preview.visiblePage),
+    });
+    if (presentAfterOpen) popoutParams.set("present", "1");
+
     const popout = new WebviewWindow(PREVIEW_WINDOW_LABEL, {
-      url: presentAfterOpen ? "/?window=preview&present=1" : "/?window=preview",
+      url: `/?${popoutParams}`,
       title: "Typwriter Preview",
       width: 720,
       height: 900,

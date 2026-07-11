@@ -15,6 +15,7 @@
 
   const isPreviewWindow = searchParams.get("window") === "preview";
   const autoPresent = isPreviewWindow && searchParams.get("present") === "1";
+  const previewInitialPage = isPreviewWindow ? searchParams.get("page") : null;
 
   const title = $derived.by(() => {
     if (isPreviewWindow) {
@@ -37,7 +38,7 @@
 <section class="h-full w-full">
   <svelte:boundary>
     {#if isPreviewWindow}
-      <PreviewWindow {autoPresent} />
+      <PreviewWindow {autoPresent} initialPage={previewInitialPage} />
     {:else}
       <page.current.component />
     {/if}
