@@ -1,6 +1,5 @@
 <script lang="ts">
-  // Desktop file tree. Mobile variant lives in filetree.mobile.svelte;
-  // shared logic lives in filetree-controller.svelte.ts.
+  // File tree. Shared logic lives in filetree-controller.svelte.ts.
   import { onMount, onDestroy, tick } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {

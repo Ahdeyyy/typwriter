@@ -6,10 +6,8 @@
   import { updater } from "$lib/stores/updater.svelte";
   import { mode, ModeWatcher, setTheme, systemPrefersMode } from "mode-watcher";
   import { app } from "@tauri-apps/api"
-  import { platform } from "$lib/stores/platform.svelte";
   import { settings } from "$lib/stores/settings.svelte";
   import { onAppFontsLoaded } from "$lib/ipc/events";
-  import { installKeyboardAvoider } from "$lib/hooks/mobile-keyboard";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
@@ -22,16 +20,10 @@
     return installGlobalErrorLogging();
   });
 
-  $effect(() => {
-    // No-op on desktop. Keeps focused inputs above the soft keyboard on
-    // Android by listening to visualViewport changes.
-    return installKeyboardAvoider();
-  });
-
   // ── Persist + flush before the app is suspended/killed ────────────────────
   //
-  // On mobile the OS can tear down the WebView (and the Rust process with it)
-  // the moment the app is backgrounded — none of the in-app flush paths
+  // If the OS or window manager tears down the WebView (and the Rust process
+  // with it) — a forced quit or crash — none of the in-app flush paths
   // (closeTab / leave / init) run, so unsaved content that lives only in
   // memory would be lost. `visibilitychange → hidden` and `pagehide` are the
   // reliable web-lifecycle signals that fire *before* that teardown.
@@ -39,7 +31,7 @@
     if (typeof document === "undefined") return;
 
     const flush = () => {
-      // Force CodeMirror to commit any in-progress IME composition (Gboard
+      // Force CodeMirror to commit any in-progress IME composition (an IME
       // composes a word before it lands in the document) so the latest
       // keystrokes are mirrored into the store before we persist.
       editorSearch.getActiveView()?.contentDOM.blur();
@@ -64,18 +56,13 @@
   });
 
   onMount(async () => {
-    if (platform.isDesktop) {
-      app.setTheme(mode.current === "dark" ? "dark" : "light");
-    }
+    app.setTheme(mode.current === "dark" ? "dark" : "light");
     settings.init();
 
     // `settings.init()` is async, but the persisted value lands on the store
     // synchronously from localStorage before the IPC call, so we can read it
-    // here. Skips the network round-trip entirely when the user has opted
-    // out. tauri-plugin-updater is desktop-only — the lib.rs setup gates it
-    // by `cfg(not(any(target_os = "android", target_os = "ios")))`, so calling
-    // `updater.checkPassive` on mobile would only produce a failed IPC.
-    if (platform.isDesktop && settings.autoCheckUpdates) {
+    // here. Skips the network round-trip entirely when the user has opted out.
+    if (settings.autoCheckUpdates) {
       updater.checkPassive();
     }
 

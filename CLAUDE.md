@@ -1,12 +1,13 @@
 # Typwriter
 
-A Typst editor + landing page, organized as a Turborepo monorepo managed with `bun`.
+A Typst editor (desktop + mobile) + landing page, organized as a Turborepo monorepo managed with `bun`.
 
 ## Layout
 
 ```
 apps/
-  typwriter-desktop/   Tauri 2 app (Windows, macOS, Linux, Android) — the editor
+  typwriter-desktop/   Tauri 2 desktop app (Windows, macOS, Linux) — the editor
+  typwriter-mobile/    Tauri 2 Android app — standalone mobile editor
   typwriter-web/       SvelteKit landing page (download + marketing)
 packages/
   eslint-config/       shared ESLint config
@@ -23,5 +24,6 @@ Each app has its own `CLAUDE.md` / `AGENTS.md` with details specific to that app
 
 ## Targets
 
-- `typwriter-desktop` builds for Windows / macOS / Linux **and Android** via Tauri 2 (mobile entry point + `tauri-plugin-android-fs`). Despite the name, it is the cross-platform app, not desktop-only.
+- `typwriter-desktop` builds for Windows / macOS / Linux via Tauri 2. It is desktop-only: Android support moved to `typwriter-mobile`. Don't add mobile/SAF code paths to it.
+- `typwriter-mobile` is the independent Android app (Tauri 2 + `tauri-plugin-android-fs` for SAF storage).
 - `typwriter-web` is a static SvelteKit site whose only job is to advertise the app and link to GitHub releases.

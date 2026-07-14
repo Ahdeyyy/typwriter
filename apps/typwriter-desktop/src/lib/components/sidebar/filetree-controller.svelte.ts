@@ -1,12 +1,11 @@
 // filetree-controller.svelte.ts
 //
-// Shared logic for the file tree component. The desktop and mobile variants
-// (`filetree.svelte`, `filetree.mobile.svelte`) wire this controller up and
-// supply their own rendering — context menu, create-flow, toolbar.
+// Shared logic for the file tree component. `filetree.svelte` wires this
+// controller up and supplies its own rendering — context menu, create-flow,
+// toolbar.
 //
 // The controller owns the Pierre tree instance, the menu state, and all
-// workspace action handlers. Both variants subscribe to `expandedDirs` and
-// `menuState` from the same instance so behaviour stays in lockstep.
+// workspace action handlers.
 
 import { tick } from 'svelte';
 import { FileTree } from '@pierre/trees';
@@ -37,8 +36,8 @@ export type ContextMenuButtonVisibility = 'always' | 'when-needed';
 export interface FiletreeControllerOptions {
     contextMenuTriggerMode: ContextMenuTriggerMode;
     contextMenuButtonVisibility: ContextMenuButtonVisibility;
-    /** Called when a new item is being created and the variant should
-     *  collect a name from the user (e.g. mobile dialog flow). When
+    /** Called when a new item is being created and the caller should
+     *  collect a name from the user (e.g. a dialog flow). When
      *  `null`, the controller falls back to Pierre's inline rename. */
     onRequestCreate?: ((parent: string, kind: 'file' | 'folder') => void) | null;
 }
@@ -443,9 +442,8 @@ export class FiletreeController {
 
     // ─── Create-in-dir ───────────────────────────────────────────────────
     //
-    // Variants drive create differently:
-    //   - desktop uses Pierre's inline rename via a placeholder path
-    //   - mobile collects the name in a Dialog (`onRequestCreate` hook)
+    // By default this uses Pierre's inline rename via a placeholder path. A
+    // caller can instead collect the name in a Dialog (`onRequestCreate` hook).
 
     startCreateInDir(dir: string, kind: 'file' | 'folder'): void {
         if (!this.tree) return;
@@ -518,7 +516,7 @@ export class FiletreeController {
         result.mapErr((err) => toast.error(`Create failed: ${err}`));
     }
 
-    // ─── Mobile create dialog submit ────────────────────────────────────
+    // ─── Dialog create submit ───────────────────────────────────────────
 
     async submitDialogCreate(parent: string, name: string, kind: 'file' | 'folder') {
         const trimmed = name.trim();

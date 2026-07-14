@@ -986,8 +986,7 @@ impl PreviewPipeline {
     }
 
     /// Generate the PDF bytes for the last compiled document. The destination
-    /// path inside `config` is ignored — callers handle the write themselves
-    /// (e.g. android-fs on Android, std::fs::write on desktop).
+    /// path inside `config` is ignored — callers handle the write themselves.
     pub fn export_pdf_bytes(&self, config: PdfExportConfig) -> Result<Vec<u8>, String> {
         let doc = self
             .last_document
@@ -1077,8 +1076,8 @@ impl PreviewPipeline {
     }
 
     /// Render the selected pages of the last compiled document as PNG bytes.
-    /// Returns `(filename, bytes)` pairs. Destination handling (filesystem vs.
-    /// android-fs) is the caller's responsibility.
+    /// Returns `(filename, bytes)` pairs. Destination handling is the caller's
+    /// responsibility.
     pub fn export_png_pages(
         &self,
         config: PngExportConfig,
@@ -1148,8 +1147,8 @@ impl PreviewPipeline {
     }
 
     /// Render the selected pages of the last compiled document as SVG bytes.
-    /// Returns `(filename, bytes)` pairs. Destination handling (filesystem vs.
-    /// android-fs) is the caller's responsibility.
+    /// Returns `(filename, bytes)` pairs. Destination handling is the caller's
+    /// responsibility.
     pub fn export_svg_pages(
         &self,
         config: SvgExportConfig,

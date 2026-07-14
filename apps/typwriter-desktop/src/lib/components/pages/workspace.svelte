@@ -2,21 +2,16 @@
   import { onMount, onDestroy } from "svelte";
   import * as Resizable from "$lib/components/ui/resizable/index.js";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-  import { Button } from "$lib/components/ui/button";
-  import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { FileCodeIcon, EyeIcon } from "@hugeicons/core-free-icons";
   import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
   import AppSidebar from "$lib/components/sidebar/app-sidebar.svelte";
   import Preview from "$lib/components/sidebar/preview.svelte";
-  import PreviewMobile from "$lib/components/sidebar/preview.mobile.svelte";
   import EditorPane from "$lib/components/editor/editor-pane.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import DiffOverlay from "$lib/components/vcs/diff-overlay.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
   import { settings } from "$lib/stores/settings.svelte";
   import { vcs } from "$lib/stores/vcs.svelte";
   import { workspace, basename } from "$lib/stores/workspace.svelte";
@@ -26,7 +21,6 @@
   const PREVIEW_WINDOW_LABEL = "preview";
 
   let previewVisible = $state(settings.defaultPreviewVisible);
-  let mobileView = $state<"editor" | "preview">("editor");
 
   const paneVisible = $derived(previewVisible && !preview.poppedOut);
 
@@ -41,7 +35,6 @@
   let sourceJumpUnlisten: (() => void) | null = null;
 
   async function openPreviewPopout(presentAfterOpen = false) {
-    if (!platform.isDesktop) return;
     if (preview.poppedOut) return;
 
     const existing = await WebviewWindow.getByLabel(PREVIEW_WINDOW_LABEL);
@@ -55,8 +48,17 @@
       return;
     }
 
+    // Seed the popout's page via the URL: its cross-window state only learns
+    // the current page asynchronously (ask/reply over the event bus), and the
+    // popout must know where to restore to before its first render.
+    const popoutParams = new URLSearchParams({
+      window: "preview",
+      page: String(preview.visiblePage),
+    });
+    if (presentAfterOpen) popoutParams.set("present", "1");
+
     const popout = new WebviewWindow(PREVIEW_WINDOW_LABEL, {
-      url: presentAfterOpen ? "/?window=preview&present=1" : "/?window=preview",
+      url: `/?${popoutParams}`,
       title: "Typwriter Preview",
       width: 720,
       height: 900,
@@ -109,24 +111,22 @@
       })
       .mapErr((err) => logError("preview source-jump listener failed:", err));
 
-    if (platform.isDesktop) {
-      WebviewWindow.getByLabel(PREVIEW_WINDOW_LABEL)
-        .then((existing) => {
-          if (!existing) return;
-          preview.poppedOut = true;
-          existing
-            .onCloseRequested(() => {
-              preview.poppedOut = false;
-              popoutCloseUnlisten?.();
-              popoutCloseUnlisten = null;
-            })
-            .then((unlisten) => {
-              popoutCloseUnlisten = unlisten;
-            })
-            .catch((err) => logError("preview popout close listener failed:", err));
-        })
-        .catch((err) => logError("preview popout lookup failed:", err));
-    }
+    WebviewWindow.getByLabel(PREVIEW_WINDOW_LABEL)
+      .then((existing) => {
+        if (!existing) return;
+        preview.poppedOut = true;
+        existing
+          .onCloseRequested(() => {
+            preview.poppedOut = false;
+            popoutCloseUnlisten?.();
+            popoutCloseUnlisten = null;
+          })
+          .then((unlisten) => {
+            popoutCloseUnlisten = unlisten;
+          })
+          .catch((err) => logError("preview popout close listener failed:", err));
+      })
+      .catch((err) => logError("preview popout lookup failed:", err));
   });
   onDestroy(() => {
     diagnostics.destroy();
@@ -157,59 +157,21 @@
         <DiffOverlay />
       {/if}
 
-      {#if platform.isMobile}
-        <!-- Mobile title bar -->
-        <div class="absolute inset-x-0 top-0 z-20 flex h-12 items-center justify-between px-2 pointer-events-none">
-          <Sidebar.Trigger
-            size="icon-lg"
-            class="bg-background/30 backdrop-blur-sm shadow-sm rounded-full pointer-events-auto"
-          />
-          <Button
-            variant="ghost"
-            size="icon-lg"
-            class="bg-background/30 backdrop-blur-sm shadow-sm rounded-full pointer-events-auto"
-            onclick={() => {
-              // Leaving the editor for the preview: flush so the rendered
-              // preview reflects the latest edits and the buffer is on disk.
-              if (mobileView === "editor") {
-                void editor.flushActiveTab();
-              }
-              mobileView = mobileView === "editor" ? "preview" : "editor";
-            }}
-            aria-label={mobileView === "editor" ? "Show preview" : "Show editor"}
-          >
-            <HugeiconsIcon
-              icon={mobileView === "editor" ? EyeIcon : FileCodeIcon}
-              class="size-4"
-            />
-          </Button>
-        </div>
+      <Resizable.PaneGroup direction="horizontal" class="h-full w-full">
+        <Resizable.Pane defaultSize={paneVisible ? 60 : 100} minSize={30}>
+          <EditorPane />
+        </Resizable.Pane>
 
-        <div class="relative h-full w-full">
-          <div class="absolute inset-0" class:hidden={mobileView !== "editor"}>
-            <EditorPane />
-          </div>
-          <div class="absolute inset-0" class:hidden={mobileView !== "preview"}>
-            <PreviewMobile visible={mobileView === "preview"} />
-          </div>
-        </div>
-      {:else}
-        <Resizable.PaneGroup direction="horizontal" class="h-full w-full">
-          <Resizable.Pane defaultSize={paneVisible ? 60 : 100} minSize={30}>
-            <EditorPane />
+        {#if paneVisible}
+          <Resizable.Handle />
+
+          <Resizable.Pane defaultSize={40} minSize={30} maxSize={60}>
+            <div class="h-full border-l border-border bg-background">
+              <Preview onPresentationMode={openPresentationMode} />
+            </div>
           </Resizable.Pane>
-
-          {#if paneVisible}
-            <Resizable.Handle />
-
-            <Resizable.Pane defaultSize={40} minSize={30} maxSize={60}>
-              <div class="h-full border-l border-border bg-background">
-                <Preview onPresentationMode={openPresentationMode} />
-              </div>
-            </Resizable.Pane>
-          {/if}
-        </Resizable.PaneGroup>
-      {/if}
+        {/if}
+      </Resizable.PaneGroup>
     </main>
   </div>
 </Sidebar.Provider>

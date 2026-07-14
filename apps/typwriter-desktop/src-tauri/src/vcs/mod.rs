@@ -3,9 +3,8 @@
 // Local-only versioning for a workspace. Snapshots ("restore points") live
 // under `<workspace>/.typwriter/history/` as a content-addressed blob store
 // plus JSON manifests — no git, no gix. The store is accessed through
-// `WorkingTreeFs`, which means the same code path works on desktop's
-// std::fs and Android's SAF; snapshots travel with the workspace folder
-// when it's synced, backed up, or moved.
+// `WorkingTreeFs`; snapshots travel with the workspace folder when it's
+// synced, backed up, or moved.
 //
 // Design choices worth keeping in mind:
 //
@@ -45,8 +44,6 @@ pub use diff::{FileDiff, FileDiffStatus, WorkspaceDiff};
 pub use history::RestorePoint;
 pub use retention::RetentionPolicy;
 
-#[cfg(target_os = "android")]
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -108,14 +105,10 @@ impl SnapshotPolicy {
 }
 
 /// Process-wide VCS coordinator. Stores the currently-attached workspace
-/// root; on each operation we re-derive the `WorkingTreeFs` (desktop or
-/// SAF-backed Android variant) and re-enter the store.
+/// root; on each operation we re-derive the `WorkingTreeFs` and re-enter the
+/// store.
 pub struct VcsState {
     root: RwLock<Option<PathBuf>>,
-    #[cfg(target_os = "android")]
-    app_handle: tauri::AppHandle,
-    #[cfg(target_os = "android")]
-    saf_roots: RwLock<HashMap<PathBuf, tauri_plugin_android_fs::FileUri>>,
     /// Time of the last auto-snapshot. Used to throttle Save / Compile
     /// triggers when the user has configured a `min_interval_seconds`.
     /// `None` until the first successful auto-commit.
@@ -126,21 +119,8 @@ impl VcsState {
     pub fn new(_app_handle: tauri::AppHandle) -> Self {
         Self {
             root: RwLock::new(None),
-            #[cfg(target_os = "android")]
-            app_handle: _app_handle,
-            #[cfg(target_os = "android")]
-            saf_roots: RwLock::new(HashMap::new()),
             last_auto_snapshot: Mutex::new(None),
         }
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn remember_saf_root(
-        &self,
-        workspace_root: PathBuf,
-        uri: tauri_plugin_android_fs::FileUri,
-    ) {
-        self.saf_roots.write().insert(workspace_root, uri);
     }
 
     /// Bind the VCS to a workspace root and seed the timeline with an
@@ -150,25 +130,7 @@ impl VcsState {
         *self.root.write() = Some(workspace_root.to_path_buf());
         *self.last_auto_snapshot.lock() = None;
 
-        #[cfg(target_os = "android")]
-        {
-            let this = Arc::clone(self);
-            let workspace_root = workspace_root.to_path_buf();
-            let for_thread = workspace_root.clone();
-            if let Err(err) = std::thread::Builder::new()
-                .name("typwriter-vcs-attach".into())
-                .spawn(move || this.attach_initial(&for_thread))
-            {
-                warn!(
-                    "vcs::attach: failed to spawn background attach root={workspace_root:?} err=\"{err}\""
-                );
-            }
-        }
-
-        #[cfg(not(target_os = "android"))]
-        {
-            self.attach_initial(workspace_root);
-        }
+        self.attach_initial(workspace_root);
     }
 
     fn attach_initial(&self, workspace_root: &Path) {
@@ -191,52 +153,11 @@ impl VcsState {
     }
 
     /// Build a filesystem accessor for *reading* the working tree at `root`
-    /// (e.g. the sidebar file tree). On Android a SAF-picked folder lives behind
-    /// the Storage Access Framework and is invisible to `std::fs` — the app holds
-    /// no broad storage permission — so it must be read through android-fs. The
-    /// auto-managed, app-scoped workspaces dir is reachable with `std::fs`
-    /// directly, and so is every desktop path. Mirrors how snapshots read the
-    /// working tree, keeping the file tree and version history in lockstep.
+    /// (e.g. the sidebar file tree). Mirrors how snapshots read the working
+    /// tree, keeping the file tree and version history in lockstep.
     pub fn working_tree_fs_for(&self, root: &Path) -> Box<dyn WorkingTreeFs> {
-        #[cfg(target_os = "android")]
-        {
-            if let Some(uri) = self.saf_roots.read().get(root).cloned() {
-                return Box::new(fs::AndroidWorkingTreeFs::new_with_root(
-                    self.app_handle.clone(),
-                    root.to_path_buf(),
-                    uri,
-                ));
-            }
-        }
         let _ = root;
         Box::new(LocalWorkingTreeFs)
-    }
-
-    /// Whether `root` is a folder picked through Android's Storage Access
-    /// Framework — i.e. one that `std::fs` (and the `convertFileSrc` asset
-    /// protocol) cannot reach. Always `false` off Android. Callers use this to
-    /// decide when to ship file bytes inline instead of handing the frontend a
-    /// std::fs path.
-    pub fn is_saf_root(&self, root: &Path) -> bool {
-        #[cfg(target_os = "android")]
-        {
-            return self.saf_roots.read().contains_key(root);
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            let _ = root;
-            false
-        }
-    }
-
-    #[cfg(target_os = "android")]
-    fn working_tree_fs(&self, root: &Path) -> fs::AndroidWorkingTreeFs<tauri::Wry> {
-        let app_handle = self.app_handle.clone();
-        if let Some(uri) = self.saf_roots.read().get(root).cloned() {
-            fs::AndroidWorkingTreeFs::new_with_root(app_handle, root.to_path_buf(), uri)
-        } else {
-            fs::AndroidWorkingTreeFs::new(app_handle)
-        }
     }
 
     /// Create a snapshot iff the working tree differs from HEAD. Returns the
@@ -259,16 +180,8 @@ impl VcsState {
         message: &str,
         retention: &RetentionPolicy,
     ) -> Result<Option<String>, String> {
-        #[cfg(target_os = "android")]
-        {
-            let fs = self.working_tree_fs(root);
-            return commit::commit_if_changed(root, &fs, trigger, message, retention);
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            let fs = LocalWorkingTreeFs;
-            commit::commit_if_changed(root, &fs, trigger, message, retention)
-        }
+        let fs = LocalWorkingTreeFs;
+        commit::commit_if_changed(root, &fs, trigger, message, retention)
     }
 
     /// Auto-snapshot gated by the user's [`SnapshotPolicy`]. Skips the
@@ -320,91 +233,43 @@ impl VcsState {
         let Some(root) = self.workspace_root() else {
             return Ok(None);
         };
-        #[cfg(target_os = "android")]
-        {
-            let fs = self.working_tree_fs(&root);
-            return store::read_head(&fs, &root);
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            let fs = LocalWorkingTreeFs;
-            store::read_head(&fs, &root)
-        }
+        let fs = LocalWorkingTreeFs;
+        store::read_head(&fs, &root)
     }
 
     /// Return the snapshot history of the workspace, newest first.
     pub fn list_history(&self, limit: Option<usize>) -> Result<Vec<RestorePoint>, String> {
         let root = self.workspace_root().ok_or("No workspace open")?;
-        #[cfg(target_os = "android")]
-        {
-            let fs = self.working_tree_fs(&root);
-            return history::list_history(&root, &fs, limit);
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            let fs = LocalWorkingTreeFs;
-            history::list_history(&root, &fs, limit)
-        }
+        let fs = LocalWorkingTreeFs;
+        history::list_history(&root, &fs, limit)
     }
 
     /// Diff a snapshot against the current working tree.
     pub fn diff_vs_current(&self, commit_id: &str) -> Result<WorkspaceDiff, String> {
         let root = self.workspace_root().ok_or("No workspace open")?;
-        #[cfg(target_os = "android")]
-        {
-            let fs = self.working_tree_fs(&root);
-            return diff::diff_vs_current(&root, &fs, commit_id);
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            let fs = LocalWorkingTreeFs;
-            diff::diff_vs_current(&root, &fs, commit_id)
-        }
+        let fs = LocalWorkingTreeFs;
+        diff::diff_vs_current(&root, &fs, commit_id)
     }
 
     /// Diff two snapshots against each other.
     pub fn diff_between(&self, from_id: &str, to_id: &str) -> Result<WorkspaceDiff, String> {
         let root = self.workspace_root().ok_or("No workspace open")?;
-        #[cfg(target_os = "android")]
-        {
-            let fs = self.working_tree_fs(&root);
-            return diff::diff_between(&root, &fs, from_id, to_id);
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            let fs = LocalWorkingTreeFs;
-            diff::diff_between(&root, &fs, from_id, to_id)
-        }
+        let fs = LocalWorkingTreeFs;
+        diff::diff_between(&root, &fs, from_id, to_id)
     }
 
     /// Restore the entire workspace to a given snapshot.
     pub fn restore_workspace(&self, commit_id: &str) -> Result<(), String> {
         let root = self.workspace_root().ok_or("No workspace open")?;
-        #[cfg(target_os = "android")]
-        {
-            let fs = self.working_tree_fs(&root);
-            return restore::restore_workspace(&root, &fs, commit_id);
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            let fs = LocalWorkingTreeFs;
-            restore::restore_workspace(&root, &fs, commit_id)
-        }
+        let fs = LocalWorkingTreeFs;
+        restore::restore_workspace(&root, &fs, commit_id)
     }
 
     /// Restore a single file from a snapshot, leaving the rest of the
     /// workspace alone.
     pub fn restore_file(&self, commit_id: &str, path: &str) -> Result<(), String> {
         let root = self.workspace_root().ok_or("No workspace open")?;
-        #[cfg(target_os = "android")]
-        {
-            let fs = self.working_tree_fs(&root);
-            return restore::restore_file(&root, &fs, commit_id, path);
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            let fs = LocalWorkingTreeFs;
-            restore::restore_file(&root, &fs, commit_id, path)
-        }
+        let fs = LocalWorkingTreeFs;
+        restore::restore_file(&root, &fs, commit_id, path)
     }
 }

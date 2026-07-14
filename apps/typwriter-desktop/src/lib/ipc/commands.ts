@@ -30,40 +30,6 @@ export function createWorkspace(parentPath: string, name: string) {
     return ResultAsync.fromPromise(invoke<string>('create_workspace', { parentPath, name }), toErrString);
 }
 
-export interface MobileWorkspaceEntry {
-    name: string;
-    path: string;
-}
-
-export function getMobileWorkspacesDir() {
-    return ResultAsync.fromPromise(invoke<string>('get_mobile_workspaces_dir'), toErrString);
-}
-
-export function listMobileWorkspaces() {
-    return ResultAsync.fromPromise(
-        invoke<MobileWorkspaceEntry[]>('list_mobile_workspaces'),
-        toErrString
-    );
-}
-
-/** Android-only: convert a SAF tree URI from `AndroidFs.showOpenDirPicker`
- *  to a filesystem path that the standard workspace commands can use. */
-export function safTreeUriToPath(uri: string) {
-    return ResultAsync.fromPromise(
-        invoke<string>('saf_tree_uri_to_path', { uri }),
-        toErrString
-    );
-}
-
-/** Android-only: register a SAF workspace tree URI so backend VCS operations
- *  can use android-fs instead of direct filesystem access. */
-export function registerSafWorkspaceRoot(dirUri: { uri: string; documentTopTreeUri: string | null }) {
-    return ResultAsync.fromPromise(
-        invoke<string>('register_saf_workspace_root', { dirUri }),
-        toErrString
-    );
-}
-
 export function setMainFile(path: string) {
     return ResultAsync.fromPromise(invoke<void>('set_main_file', { path }), toErrString);
 }
@@ -102,28 +68,6 @@ export function moveFolder(src: string, dst: string) {
 
 export function importFiles(sources: string[], destDir: string) {
     return ResultAsync.fromPromise(invoke<void>('import_files', { sources, destDir }), toErrString);
-}
-
-/** Android-only: import files via FileUris returned by `AndroidFs.showOpenFilePicker`. */
-export function importFilesFromUris(
-    sources: { uri: string; documentTopTreeUri: string | null }[],
-    destDir: string
-) {
-    return ResultAsync.fromPromise(
-        invoke<void>('import_files_from_uris', { sources, destDir }),
-        toErrString
-    );
-}
-
-/** Android-only: copy the whole workspace into a directory URI obtained from
- *  `AndroidFs.showOpenDirPicker`. Resolves to the number of files copied. */
-export function exportWorkspaceToDirUri(
-    dirUri: { uri: string; documentTopTreeUri: string | null }
-) {
-    return ResultAsync.fromPromise(
-        invoke<number>('export_workspace_to_dir_uri', { dirUri }),
-        toErrString
-    );
 }
 
 export function getRecentWorkspaces(options: { includeThumbnails?: boolean } = {}) {
@@ -303,62 +247,16 @@ export function exportPdf(config: PdfExportConfig) {
     return ResultAsync.fromPromise(invoke<void>('export_pdf', { config }), toErrString);
 }
 
-/** Android-only: export PDF to a FileUri returned by `AndroidFs.showSaveFilePicker`. */
-export function exportPdfToUri(
-    fileUri: { uri: string; documentTopTreeUri: string | null },
-    config: PdfExportConfig
-) {
-    return ResultAsync.fromPromise(
-        invoke<void>('export_pdf_to_uri', { fileUri, config }),
-        toErrString
-    );
-}
-
 export function exportPng(config: PngExportConfig) {
     return ResultAsync.fromPromise(invoke<void>('export_png', { config }), toErrString);
-}
-
-/** Android-only: export PNG pages into a directory URI obtained from
- *  `AndroidFs.showOpenDirPicker`. */
-export function exportPngToDirUri(
-    dirUri: { uri: string; documentTopTreeUri: string | null },
-    config: PngExportConfig
-) {
-    return ResultAsync.fromPromise(
-        invoke<void>('export_png_to_dir_uri', { dirUri, config }),
-        toErrString
-    );
 }
 
 export function exportSvg(config: SvgExportConfig) {
     return ResultAsync.fromPromise(invoke<void>('export_svg', { config }), toErrString);
 }
 
-/** Android-only: export SVG pages into a directory URI obtained from
- *  `AndroidFs.showOpenDirPicker`. */
-export function exportSvgToDirUri(
-    dirUri: { uri: string; documentTopTreeUri: string | null },
-    config: SvgExportConfig
-) {
-    return ResultAsync.fromPromise(
-        invoke<void>('export_svg_to_dir_uri', { dirUri, config }),
-        toErrString
-    );
-}
-
 export function exportHtml(config: HtmlExportConfig) {
     return ResultAsync.fromPromise(invoke<void>('export_html', { config }), toErrString);
-}
-
-/** Android-only: export HTML to a FileUri returned by `AndroidFs.showSaveFilePicker`. */
-export function exportHtmlToUri(
-    fileUri: { uri: string; documentTopTreeUri: string | null },
-    config: HtmlExportConfig
-) {
-    return ResultAsync.fromPromise(
-        invoke<void>('export_html_to_uri', { fileUri, config }),
-        toErrString
-    );
 }
 
 // ─── Versioning / Restore points ──────────────────────────────────────────────
@@ -494,19 +392,6 @@ export function setAppSettings(settings: AppSettings) {
 export function setTypstFontDirectories(dirs: string[]) {
     return ResultAsync.fromPromise(
         invoke<void>('set_typst_font_directories', { dirs }),
-        toErrString
-    );
-}
-
-/** Android-only: copy a user-picked SAF font folder into app-private storage
- *  and return the destination path. The returned path is then handed to
- *  `setTypstFontDirectories` so typst-kit's FontSearcher (which can't see
- *  past SAF) scans a directory `std::fs` can actually read. */
-export function importFontDirectoryUri(
-    dirUri: { uri: string; documentTopTreeUri: string | null }
-) {
-    return ResultAsync.fromPromise(
-        invoke<string>('import_font_directory_uri', { dirUri }),
         toErrString
     );
 }

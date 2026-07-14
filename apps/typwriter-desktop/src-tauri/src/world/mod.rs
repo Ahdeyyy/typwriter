@@ -17,8 +17,6 @@ use std::{
     time::Instant,
 };
 use tauri::{AppHandle, Emitter};
-#[cfg(any(target_os = "android", target_os = "ios"))]
-use tauri::Manager;
 use typst::{
     diag::{FileError, FileResult},
     foundations::{Bytes, Datetime, Duration},
@@ -39,12 +37,8 @@ pub struct EditorWorld {
     /// Workspace root on disk — updatable when the user opens a new folder.
     root: RwLock<PathBuf>,
 
-    /// SAF-aware filesystem provider. A workspace folder picked through
-    /// Android's Storage Access Framework is invisible to `std::fs` (the app
-    /// holds no broad storage permission), so source files, images and other
-    /// assets must be read through android-fs. `VcsState` owns the registry of
-    /// SAF roots and hands back the right [`WorkingTreeFs`] accessor; off
-    /// Android (and for the app-managed dir) this is always a std::fs accessor.
+    /// Filesystem provider. `VcsState` hands back the [`WorkingTreeFs`]
+    /// accessor used to read source files, images and other assets.
     vcs: Arc<crate::vcs::VcsState>,
 
     /// The file currently set as "main" by the user. `None` when no main
@@ -120,30 +114,11 @@ impl EditorWorld {
         local_file_id(Path::new("__no-main__")).expect("sentinel path is valid")
     }
 
-    /// Resolve the (data, cache) package directories. On Android/iOS, both live
-    /// at `<documents>/Typwriter/Packages` (app-private external storage),
-    /// since the typst_kit defaults point at OS dirs that aren't writable
-    /// under scoped storage. On desktop, fall back to the typst_kit standard
-    /// locations so packages are shared with other Typst tooling.
+    /// Resolve the (data, cache) package directories. Uses the typst_kit
+    /// standard locations so packages are shared with other Typst tooling.
     fn packages_dirs(app_handle: &AppHandle) -> (Option<FsPackages>, Option<FsPackages>) {
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        {
-            let dir = app_handle
-                .path()
-                .document_dir()
-                .ok()
-                .map(|d| d.join("Typwriter").join("Packages"));
-            if let Some(d) = &dir {
-                let _ = std::fs::create_dir_all(d);
-            }
-            let fs = dir.map(FsPackages::new);
-            (fs.clone(), fs)
-        }
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        {
-            let _ = app_handle;
-            (FsPackages::system_data(), FsPackages::system_cache())
-        }
+        let _ = app_handle;
+        (FsPackages::system_data(), FsPackages::system_cache())
     }
 
     pub fn new(root: PathBuf, app_handle: AppHandle, vcs: Arc<crate::vcs::VcsState>) -> Self {
@@ -369,12 +344,9 @@ impl EditorWorld {
     }
 
     /// Read a file's raw bytes for the compiler, routing workspace-local files
-    /// through the SAF-aware accessor. A folder picked via Android's Storage
-    /// Access Framework is unreachable with `std::fs`, so source files and
-    /// embedded assets (`image(...)`, `include`/`read` targets) must be read
-    /// through android-fs. Package files live in the app-private cache, which is
-    /// always reachable with `std::fs` on every platform — and lie outside the
-    /// workspace root — so they keep the direct path.
+    /// through the [`WorkingTreeFs`] accessor. Package files live in the
+    /// app-private cache — reachable with `std::fs` and outside the workspace
+    /// root — so they keep the direct path.
     fn read_file_bytes(&self, id: FileId) -> FileResult<Vec<u8>> {
         let path = self.id_to_path(id)?;
 
@@ -463,7 +435,7 @@ impl World for EditorWorld {
         let text = if let Some(content) = self.shadow.read().get(&id) {
             content.clone()
         } else {
-            // 3. Fall back to disk/SAF (may trigger a package download)
+            // 3. Fall back to disk (may trigger a package download)
             let bytes = self.read_file_bytes(id)?;
             String::from_utf8(bytes).map_err(|_| FileError::AccessDenied)?
         };

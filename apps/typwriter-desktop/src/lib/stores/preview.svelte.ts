@@ -18,13 +18,11 @@ import type { CompileReason, PreviewHighlightRect } from '$lib/types';
 import { logError, logPreview } from '$lib/logger';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
-import { platform } from './platform.svelte';
 import { settings } from './settings.svelte';
 
 const PREVIEW_WINDOW_LABEL = 'preview';
 
 function isPopoutWindow(): boolean {
-    if (!platform.isDesktop) return false;
     try {
         return getCurrentWindow().label === PREVIEW_WINDOW_LABEL;
     } catch {
@@ -244,8 +242,6 @@ class PreviewStore {
     }
 
     async togglePresentationMode(): Promise<void> {
-        // Presentation mode toggles native window chrome — desktop only.
-        if (!platform.isDesktop) return;
         const win = getCurrentWindow();
         if (this.presentationMode) {
             await win.setDecorations(true);

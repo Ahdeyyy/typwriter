@@ -6,8 +6,20 @@
   import { logError } from "$lib/logger";
   import { toast } from "svelte-sonner";
 
-  type Props = { autoPresent?: boolean };
-  let { autoPresent = false }: Props = $props();
+  type Props = { autoPresent?: boolean; initialPage?: string | null };
+  let { autoPresent = false, initialPage = null }: Props = $props();
+
+  // Seed the shared visiblePage from the URL before <Preview> mounts. The
+  // cross-window ask/reply that would otherwise deliver it is asynchronous,
+  // and the mount restore must not run against the default page 0. Reading
+  // the prop once, non-reactively, is deliberate — it's a boot-time seed.
+  {
+    // svelte-ignore state_referenced_locally
+    const parsed = initialPage === null ? NaN : Number.parseInt(initialPage, 10);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      preview.visiblePage = parsed;
+    }
+  }
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape" && preview.presentationMode) {

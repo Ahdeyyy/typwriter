@@ -19,11 +19,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: legacy
-            app_path: apps/typwriter-desktop
-            rust_targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
-            tauri_args: --apk --split-per-abi
-            artifact_prefix: typwriter_legacy
           - name: mobile
             app_path: apps/typwriter-mobile
             rust_targets: aarch64-linux-android
@@ -270,7 +265,7 @@ jobs:
       - name: Get release version
         id: version
         run: |
-          VERSION=$(jq -r .version apps/typwriter-desktop/src-tauri/tauri.conf.json)
+          VERSION=$(jq -r .version apps/typwriter-mobile/src-tauri/tauri.conf.json)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Download APK artifacts

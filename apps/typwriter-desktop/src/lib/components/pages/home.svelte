@@ -2,12 +2,11 @@
   import { onMount } from "svelte";
   import { page } from "@/stores/page.svelte";
   import Button from "../ui/button/button.svelte";
-  import { getRecentWorkspaces, createWorkspace, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath, registerSafWorkspaceRoot } from "$lib/ipc/commands";
+  import { getRecentWorkspaces, createWorkspace, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath } from "$lib/ipc/commands";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { onboarding } from "$lib/stores/onboarding.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { AndroidFs } from "tauri-plugin-android-fs-api";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, File01Icon, KeyboardIcon, Settings01Icon, Mortarboard01Icon } from "@hugeicons/core-free-icons";
   import { openUrl, openPath } from "@tauri-apps/plugin-opener";
@@ -16,7 +15,6 @@
   import { logError } from "$lib/logger";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import ModeSwitcher from "$lib/components/sidebar/mode-switcher.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
@@ -31,40 +29,16 @@
   let newWorkspaceParent = $state("");
   let newWorkspaceCreating = $state(false);
 
-  const displayPath = (path: string) => platform.displayPath(path);
-
-  /** Mobile folder picker: opens the SAF directory picker, converts the
-   *  returned tree URI into a filesystem path the workspace commands can
-   *  use. Returns null when the user cancels. */
-  async function pickMobileFolder(): Promise<string | null> {
-    try {
-      const uri = await AndroidFs.showOpenDirPicker({ localOnly: true });
-      if (!uri) return null;
-      await AndroidFs.persistPickerUriPermission(uri);
-      const result = await registerSafWorkspaceRoot(uri);
-      if (result.isErr()) {
-        logError("registerSafWorkspaceRoot failed:", result.error);
-        toast.error(`Couldn't use that folder: ${result.error}`);
-        return null;
-      }
-      return result.value;
-    } catch (err) {
-      logError("mobile folder picker failed:", err);
-      toast.error(`Folder picker failed: ${err}`);
-      return null;
-    }
-  }
-
   // ── Onboarding ────────────────────────────────────────────────────────────
 
   let onboardingChecked = false;
 
   /** Auto-show the tutorial once, on first launch. It compiles examples, but
    *  fonts now load lazily on the first compile, so there's nothing to wait for
-   *  here. Desktop only for this pass. The Rust-side flag is the source of
-   *  truth, so this is a no-op on every subsequent launch. */
+   *  here. The Rust-side flag is the source of truth, so this is a no-op on
+   *  every subsequent launch. */
   async function maybeAutoShowOnboarding() {
-    if (onboardingChecked || platform.isMobile) return;
+    if (onboardingChecked) return;
     onboardingChecked = true;
     const result = await onboarding.shouldAutoShow();
     if (result.isOk() && result.value) {
@@ -83,7 +57,7 @@
 
   async function loadRecent() {
     loading = true;
-    const result = await getRecentWorkspaces({ includeThumbnails: !platform.isMobile });
+    const result = await getRecentWorkspaces({ includeThumbnails: true });
     result.match(
       (entries) => {
         recentWorkspaces = entries;
@@ -131,9 +105,7 @@
   }
 
   async function handleOpenNew() {
-    const selected = platform.isMobile
-      ? await pickMobileFolder()
-      : await openDialog({ directory: true, multiple: false });
+    const selected = await openDialog({ directory: true, multiple: false });
     if (!selected) return;
 
     const result = await workspace.init(selected as string);
@@ -147,9 +119,7 @@
   }
 
   async function handleSelectParentFolder() {
-    const selected = platform.isMobile
-      ? await pickMobileFolder()
-      : await openDialog({ directory: true, multiple: false });
+    const selected = await openDialog({ directory: true, multiple: false });
     if (selected) {
       newWorkspaceParent = selected as string;
     }
@@ -220,39 +190,28 @@
 <div class="flex h-full w-full flex-col">
   <Titlebar variant="minimal" title="Typwriter" />
   <main class="relative flex min-h-0 flex-1 flex-col">
-    {#if !platform.isMobile}
-      <div class="absolute right-3 top-3 z-10">
-        <ModeSwitcher />
-      </div>
-    {/if}
-  <!-- Desktop fills the viewport exactly (no page-level scroll) so the whole
-       screen — header, action buttons and footer links — always stays visible on
-       short laptops; only the recents list shrinks-and-scrolls internally. Mobile
-       keeps the page-level ScrollArea (its rows + footer can exceed a phone). -->
-  {#if platform.isMobile}
-    <ScrollArea.Root class="h-full">
-      <div class="flex min-h-full w-full flex-col items-center justify-center gap-5 p-4">
-        {@render homeContent()}
-      </div>
-    </ScrollArea.Root>
-  {:else}
+    <div class="absolute right-3 top-3 z-10">
+      <ModeSwitcher />
+    </div>
+  <!-- Fill the viewport exactly (no page-level scroll) so the whole screen —
+       header, action buttons and footer links — always stays visible on short
+       laptops; only the recents list shrinks-and-scrolls internally. -->
     <div class="flex h-full min-h-0 w-full flex-col items-center justify-center gap-5 p-4">
       {@render homeContent()}
     </div>
-  {/if}
   </main>
 </div>
 </Tooltip.Provider>
 
 {#snippet homeContent()}
   <!-- Recent workspaces -->
-  <section class={platform.isMobile ? "w-full max-w-3xl" : "flex min-h-0 w-full max-w-3xl flex-col"}>
+  <section class="flex min-h-0 w-full max-w-3xl flex-col">
     <div class="mb-4 flex shrink-0 items-center justify-between gap-3">
       <h2 class="text-sm font-medium text-muted-foreground">
         Recent Workspaces
       </h2>
       <div class="flex items-center gap-2">
-        {#if recentWorkspaces.length > 0 && !platform.isMobile}
+        {#if recentWorkspaces.length > 0}
           <Button
             variant="ghost"
             size="sm"
@@ -266,10 +225,10 @@
       </div>
     </div>
 
-    <!-- Desktop: the recents list is the only flexible region — it takes the
-         leftover height and scrolls internally, so the page itself never grows
-         past the viewport. Mobile keeps its natural height inside the page scroll. -->
-    <div class={platform.isMobile ? "" : "min-h-0 flex-1 overflow-y-auto"}>
+    <!-- The recents list is the only flexible region — it takes the leftover
+         height and scrolls internally, so the page itself never grows past the
+         viewport. -->
+    <div class="min-h-0 flex-1 overflow-y-auto">
     {#if loading}
       <div class="flex items-center justify-center py-8">
         <span class="text-sm text-muted-foreground">Loading…</span>
@@ -282,33 +241,6 @@
           No recent workspaces. Open a folder to get started.
         </p>
       </div>
-    {:else if platform.isMobile}
-      <ul class="flex flex-col gap-1.5">
-        {#each recentWorkspaces.slice(0, 6) as entry (entry.path)}
-          <li class="group relative">
-            <Button
-              variant="outline"
-              class="h-auto md:h-auto w-full justify-start gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-left font-normal hover:bg-accent hover:text-accent-foreground"
-              onclick={() => handleOpenRecent(entry.path)}
-            >
-              <HugeiconsIcon icon={Folder01Icon} class="size-5 shrink-0 text-muted-foreground" />
-              <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium text-foreground">{entry.name}</p>
-                <p class="truncate text-xs text-muted-foreground">{displayPath(entry.path)}</p>
-              </div>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              class="absolute right-1.5 inset-y-0 my-auto rounded-lg bg-background text-muted-foreground hover:bg-destructive hover:text-destructive-foreground"
-              onclick={(e) => handleRemoveRecent(e, entry.path)}
-              aria-label="Remove {entry.name} from recents"
-            >
-              <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
-            </Button>
-          </li>
-        {/each}
-      </ul>
     {:else}
       <ul class="grid grid-cols-2 gap-2">
         {#each recentWorkspaces.slice(0, 6) as entry (entry.path)}
@@ -413,7 +345,7 @@
             </div>
             {#if newWorkspaceParent && newWorkspaceName.trim()}
               <p class="text-xs text-muted-foreground break-all">
-                Will create: {displayPath(newWorkspaceParent)}/{newWorkspaceName.trim()}
+                Will create: {newWorkspaceParent}/{newWorkspaceName.trim()}
               </p>
             {/if}
           </div>
@@ -452,69 +384,56 @@
       Typst Docs
     </Button>
 
-    {#if platform.isMobile}
-      <Button
-        variant="link"
-        size="sm"
-        class="gap-1.5 text-muted-foreground"
-        onclick={() => page.navigate("settings")}
-      >
-        <HugeiconsIcon icon={Settings01Icon} class="size-3.5" />
-        Settings
-      </Button>
-      <ModeSwitcher />
-    {:else}
-      <Button
-        variant="link"
-        size="sm"
-        class="gap-1.5 text-muted-foreground"
-        onclick={() => page.navigate("onboarding")}
-      >
-        <HugeiconsIcon icon={Mortarboard01Icon} class="size-3.5" />
-        Tutorial
-      </Button>
+    <Button
+      variant="link"
+      size="sm"
+      class="gap-1.5 text-muted-foreground"
+      onclick={() => page.navigate("onboarding")}
+    >
+      <HugeiconsIcon icon={Mortarboard01Icon} class="size-3.5" />
+      Tutorial
+    </Button>
 
-      <Button
-        variant="link"
-        size="sm"
-        class="gap-1.5 text-muted-foreground"
-        onclick={() => updater.checkManual()}
-        disabled={updater.checking || updater.downloading}
-      >
-        <HugeiconsIcon icon={Refresh01Icon} class="size-3.5 {updater.checking ? 'animate-spin' : ''}" />
-        Check for Updates
-      </Button>
+    <Button
+      variant="link"
+      size="sm"
+      class="gap-1.5 text-muted-foreground"
+      onclick={() => updater.checkManual()}
+      disabled={updater.checking || updater.downloading}
+    >
+      <HugeiconsIcon icon={Refresh01Icon} class="size-3.5 {updater.checking ? 'animate-spin' : ''}" />
+      Check for Updates
+    </Button>
 
-      <Button
-        variant="link"
-        size="sm"
-        class="gap-1.5 text-muted-foreground"
-        onclick={handleOpenLogsFile}
-      >
-        <HugeiconsIcon icon={File01Icon} class="size-3.5" />
-        Open Logs File
-      </Button>
+    <Button
+      variant="link"
+      size="sm"
+      class="gap-1.5 text-muted-foreground"
+      onclick={handleOpenLogsFile}
+    >
+      <HugeiconsIcon icon={File01Icon} class="size-3.5" />
+      Open Logs File
+    </Button>
 
-      <Button
-        variant="link"
-        size="sm"
-        class="gap-1.5 text-muted-foreground"
-        onclick={() => page.navigate("keymaps")}
-      >
-        <HugeiconsIcon icon={KeyboardIcon} class="size-3.5" />
-        Keymaps
-      </Button>
+    <Button
+      variant="link"
+      size="sm"
+      class="gap-1.5 text-muted-foreground"
+      onclick={() => page.navigate("keymaps")}
+    >
+      <HugeiconsIcon icon={KeyboardIcon} class="size-3.5" />
+      Keymaps
+    </Button>
 
-      <Button
-        variant="link"
-        size="sm"
-        class="gap-1.5 text-muted-foreground"
-        onclick={() => page.navigate("settings")}
-      >
-        <HugeiconsIcon icon={Settings01Icon} class="size-3.5" />
-        Settings
-      </Button>
-    {/if}
+    <Button
+      variant="link"
+      size="sm"
+      class="gap-1.5 text-muted-foreground"
+      onclick={() => page.navigate("settings")}
+    >
+      <HugeiconsIcon icon={Settings01Icon} class="size-3.5" />
+      Settings
+    </Button>
   </div>
 
   {#if platform.appVersion}

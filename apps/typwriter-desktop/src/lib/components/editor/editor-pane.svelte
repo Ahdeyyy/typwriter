@@ -3,12 +3,10 @@
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { FileCodeIcon, BlockedIcon } from "@hugeicons/core-free-icons";
   import TabBar from "$lib/components/editor/tab-bar.svelte";
-  import TabBarMobile from "$lib/components/editor/tab-bar.mobile.svelte";
   import TextEditorTab from "$lib/components/editor/text-editor-tab.svelte";
   import SearchPanel from "$lib/components/editor/search-panel.svelte";
   import TypstToolbar from "$lib/components/editor/typst-toolbar.svelte";
   import { editor } from "$lib/stores/editor.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
   import { logError } from "$lib/logger";
 
   const isTypstActive = $derived(
@@ -18,9 +16,8 @@
   );
 
   // Navigating to another page (Settings, Home, …) unmounts the workspace and
-  // with it this editor — destroying the CodeMirror views. On mobile the
-  // save-on-blur handler already commits edits to disk before that happens;
-  // desktop has no such path, so flush here too. flushAllTabs reads each tab's
+  // with it this editor — destroying the CodeMirror views. Flush here so any
+  // unsaved edits hit disk before that happens. flushAllTabs reads each tab's
   // buffer from the store (kept current by the update listener), not from the
   // now-torn-down CM views, so it's unaffected by the unmount order. Dirty
   // tabs are saved; clean ones are a no-op.
@@ -31,16 +28,16 @@
   });
 </script>
 
-<div class="flex h-full flex-col bg-background {platform.isMobile ? 'pb-2' : ''}">
-  {#if editor.tabs.length > 0 && !platform.isMobile}
+<div class="flex h-full flex-col bg-background">
+  {#if editor.tabs.length > 0}
     <TabBar />
   {/if}
 
-  {#if isTypstActive && !platform.isMobile}
+  {#if isTypstActive}
     <TypstToolbar />
   {/if}
 
-  <div class="relative flex-1 min-h-0 overflow-hidden" class:mobile-editor={platform.isMobile}>
+  <div class="relative flex-1 min-h-0 overflow-hidden">
     {#if !editor.activeTab}
       <div class="flex h-full flex-col items-center justify-center gap-2 select-none text-muted-foreground">
         <HugeiconsIcon icon={FileCodeIcon} class="size-10 opacity-30" />
@@ -75,14 +72,4 @@
       </div>
     {/if}
   </div>
-
-  {#if editor.tabs.length > 0 && platform.isMobile}
-    <TabBarMobile />
-  {/if}
 </div>
-
-<style>
-  .mobile-editor :global(.cm-scroller) {
-    padding-top: 1.25rem;
-  }
-</style>

@@ -12,7 +12,6 @@ import {
 import type { CompileReason } from '$lib/types';
 import { workspace } from './workspace.svelte';
 import { settings } from './settings.svelte';
-import { platform } from './platform.svelte';
 import { normalize, basename } from '$lib/paths';
 import { logError } from '$lib/logger';
 import { toast } from 'svelte-sonner';
@@ -21,13 +20,6 @@ export type ViewMode = 'text' | 'image' | 'unsupported';
 
 function imageAssetSrc(path: string): string {
     return convertFileSrc(normalize(path));
-}
-
-/** Resolve the <img> src for an image read response. SAF workspace roots can't
- *  be reached by the asset protocol, so the backend ships the bytes inline as a
- *  `data:` URL — prefer it when present, otherwise convert the path. */
-function imageSrcFromResponse(res: { path: string; data?: string | null }): string {
-    return res.data ?? imageAssetSrc(res.path);
 }
 
 export interface TabInfo {
@@ -239,7 +231,7 @@ class EditorStore {
             case 'image':
                 liveTab.viewMode = 'image';
                 liveTab.isEditable = false;
-                liveTab.imageSrc = imageSrcFromResponse(res);
+                liveTab.imageSrc = imageAssetSrc(res.path);
                 liveTab.content = '';
                 break;
             case 'unsupported':
@@ -325,17 +317,8 @@ class EditorStore {
         tab.content = content;
         tab.hasUnsavedChanges = true;
 
-        // Live, per-keystroke preview is a desktop-only luxury. On mobile it is
-        // (a) invisible — the preview is a separate, toggled view that is not
-        // shown while editing — and (b) ruinously expensive: each tick ships the
-        // *entire* document across the WebView IPC bridge on the main thread and
-        // queues a recompile, which is exactly what makes typing freeze. On
-        // mobile the shadow buffer and the preview are instead refreshed by
-        // idle-save, save-on-blur, and the editor→preview view toggle — all of
-        // which save the file and trigger a recompile (see save_file in Rust).
-        if (!platform.isMobile) {
-            this._scheduleTypingPreview(tab);
-        }
+        // Refresh the live preview as the user types.
+        this._scheduleTypingPreview(tab);
         this._scheduleIdleSave(tab);
         // Persist the unsaved buffer to durable storage (debounced) so it
         // survives a non-graceful teardown — see getTabState / hot-exit restore.
@@ -476,7 +459,7 @@ class EditorStore {
 
             if (tab.viewMode === 'image') {
                 if (response.value.type === 'image') {
-                    tab.imageSrc = imageSrcFromResponse(response.value);
+                    tab.imageSrc = imageAssetSrc(response.value.path);
                 }
                 tab.hasUnsavedChanges = false;
                 continue;
@@ -596,15 +579,9 @@ class EditorStore {
     private _scheduleIdleSave(tab: TabInfo): void {
         this._clearIdleSave(tab.id);
         if (!settings.autoSaveEnabled) return;
-        // On mobile, the OS can suspend/kill the app at any moment, so cap the
-        // idle-save delay aggressively to shrink the window where edits live
-        // only in memory.
-        const delay = platform.isMobile
-            ? Math.min(settings.autoSaveDelayMs, 600)
-            : settings.autoSaveDelayMs;
         this._idleSaveTimers.set(tab.id, setTimeout(() => {
             void this.flushTab(tab.id).catch(() => {});
-        }, delay));
+        }, settings.autoSaveDelayMs));
     }
 
     private _requestPreview(reason: CompileReason): void {
