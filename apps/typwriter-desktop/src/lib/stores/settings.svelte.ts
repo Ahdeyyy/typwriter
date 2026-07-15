@@ -109,6 +109,10 @@ interface PersistedSettings {
     tabWidth: number;
     wordWrap: boolean;
 
+    /** Use the tinymist language server (when installed) for completion, hover,
+     *  and diagnostics. UI-only — not round-tripped through the Rust settings. */
+    useLsp: boolean;
+
     // Auto-save
     autoSaveEnabled: boolean;
     autoSaveDelayMs: number;
@@ -142,6 +146,7 @@ const DEFAULTS: PersistedSettings = {
     spellcheck: true,
     tabWidth: 2,
     wordWrap: true,
+    useLsp: true,
 
     autoSaveEnabled: true,
     autoSaveDelayMs: 1500,
@@ -206,6 +211,7 @@ class SettingsStore {
     spellcheck = $state(INITIAL.spellcheck);
     tabWidth = $state(INITIAL.tabWidth);
     wordWrap = $state(INITIAL.wordWrap);
+    useLsp = $state(INITIAL.useLsp);
 
     autoSaveEnabled = $state(INITIAL.autoSaveEnabled);
     autoSaveDelayMs = $state(INITIAL.autoSaveDelayMs);
@@ -240,6 +246,8 @@ class SettingsStore {
                     spellcheck: s.spellcheck,
                     tabWidth: s.tab_width,
                     wordWrap: s.word_wrap,
+                    // UI-only: Rust has no say — always reseed from the local value.
+                    useLsp: INITIAL.useLsp,
                     autoSaveEnabled: s.auto_save_enabled,
                     autoSaveDelayMs: s.auto_save_delay_ms,
                     formatBeforeSave: s.format_before_save,
@@ -276,6 +284,7 @@ class SettingsStore {
             spellcheck: this.spellcheck,
             tabWidth: this.tabWidth,
             wordWrap: this.wordWrap,
+            useLsp: this.useLsp,
             autoSaveEnabled: this.autoSaveEnabled,
             autoSaveDelayMs: this.autoSaveDelayMs,
             formatBeforeSave: this.formatBeforeSave,
@@ -302,6 +311,7 @@ class SettingsStore {
         this.spellcheck = settings.spellcheck;
         this.tabWidth = Math.max(1, Math.min(8, Math.round(settings.tabWidth)));
         this.wordWrap = settings.wordWrap;
+        this.useLsp = settings.useLsp;
         this.autoSaveEnabled = settings.autoSaveEnabled;
         this.autoSaveDelayMs = Math.max(250, Math.min(60_000, Math.round(settings.autoSaveDelayMs)));
         this.formatBeforeSave = settings.formatBeforeSave;
@@ -427,6 +437,11 @@ class SettingsStore {
         this.persist();
     }
 
+    setUseLsp(value: boolean) {
+        this.useLsp = value;
+        this.persist();
+    }
+
     setAutoSaveEnabled(value: boolean) {
         this.autoSaveEnabled = value;
         this.persist();
@@ -481,6 +496,7 @@ class SettingsStore {
         this.spellcheck = DEFAULTS.spellcheck;
         this.tabWidth = DEFAULTS.tabWidth;
         this.wordWrap = DEFAULTS.wordWrap;
+        this.useLsp = DEFAULTS.useLsp;
         this.autoSaveEnabled = DEFAULTS.autoSaveEnabled;
         this.autoSaveDelayMs = DEFAULTS.autoSaveDelayMs;
         this.formatBeforeSave = DEFAULTS.formatBeforeSave;

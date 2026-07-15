@@ -15,6 +15,7 @@
   import { settings } from "$lib/stores/settings.svelte";
   import { vcs } from "$lib/stores/vcs.svelte";
   import { workspace, basename } from "$lib/stores/workspace.svelte";
+  import { lspClient } from "$lib/lsp/client.svelte";
   import { onPreviewSourceJump } from "$lib/ipc/events";
   import { logError } from "$lib/logger";
 
@@ -33,6 +34,13 @@
 
   let popoutCloseUnlisten: (() => void) | null = null;
   let sourceJumpUnlisten: (() => void) | null = null;
+
+  // Start/stop tinymist as the setting or workspace root changes. `reconcile`
+  // is idempotent and handles both toggling and root changes (tear down before
+  // reconnecting).
+  $effect(() => {
+    lspClient.reconcile(settings.useLsp, workspace.rootPath);
+  });
 
   async function openPreviewPopout(presentAfterOpen = false) {
     if (preview.poppedOut) return;
@@ -129,6 +137,7 @@
       .catch((err) => logError("preview popout lookup failed:", err));
   });
   onDestroy(() => {
+    lspClient.destroy();
     diagnostics.destroy();
     preview.destroy();
     popoutCloseUnlisten?.();

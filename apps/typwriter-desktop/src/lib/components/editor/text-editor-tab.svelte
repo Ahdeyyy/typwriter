@@ -53,12 +53,16 @@
   import { editorFormat } from "$lib/stores/editor-format.svelte";
   import {
     typst,
-    light,
-    dark,
+    lightTheme,
+    darkTheme,
+    lightHighlightStyle,
+    darkHighlightStyle,
     typstSpellcheck,
     typstCommentDecorations,
     typstKeymap,
   } from "$lib/typst-codemirror-lang";
+  import { lspClient } from "$lib/lsp/client.svelte";
+  import { semanticTokenHighlighter } from "$lib/lsp/semantic-tokens";
   import { Compartment } from "@codemirror/state";
   import { mode, systemPrefersMode } from "mode-watcher";
   import { languages } from "@codemirror/language-data";
@@ -93,6 +97,10 @@
   const lineWrapCompartment = new Compartment();
   const spellcheckCompartment = new Compartment();
   const tabSizeCompartment = new Compartment();
+  // Lezer syntax highlighting (swapped off per-file once tinymist paints tokens).
+  const highlightCompartment = new Compartment();
+  // Typst language service: either the tinymist plugin or the typst-ide fallback.
+  const lspCompartment = new Compartment();
 
   function quoteFamily(family: string): string {
     return family.includes(" ") && !family.includes('"') ? `"${family}"` : family;
@@ -138,10 +146,68 @@
     return EditorState.tabSize.of(settings.tabWidth);
   }
 
+  function isDarkMode() {
+    return mode.current === "dark" || systemPrefersMode.current === "dark";
+  }
+
+  // Chrome theme only (colors/gutters/etc.) — the Lezer highlight style is a
+  // separate compartment so it can be removed per-file once tinymist takes over.
   function resolvedTheme() {
-    const m = mode.current;
-    const sys = systemPrefersMode.current;
-    return m === "dark" ||  sys === "dark" ? dark : light;
+    return isDarkMode() ? darkTheme : lightTheme;
+  }
+
+  function resolvedHighlightStyle() {
+    return isDarkMode() ? darkHighlightStyle : lightHighlightStyle;
+  }
+
+  // Lezer highlighting is always on: it's the base layer. tinymist's semantic
+  // tokens are *supplementary* — they render at higher precedence (inner DOM
+  // nodes) and override the base only where they have an opinion, so a slow or
+  // partial token response never leaves text unstyled.
+  function highlightExt() {
+    return [
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      syntaxHighlighting(resolvedHighlightStyle()),
+    ];
+  }
+
+  // Typst language service for a tab: the tinymist plugin (+ semantic tokens)
+  // when active for this file, otherwise the typst-ide IPC completions + hover.
+  function typstLanguageServiceExt(tabId: string) {
+    const tab = editor.tabs.find((t) => t.id === tabId);
+    const relPath = tab?.relPath ?? tabId;
+    const isTypst = relPath.endsWith(".typ");
+    if (!isTypst || !tab || tab.viewMode !== "text") return [];
+
+    const lspExt = lspClient.pluginFor(tab.absPath);
+    if (lspExt) {
+      return [lspExt, semanticTokenHighlighter];
+    }
+
+    return [
+      autocompletion({ override: [mergedTypstCompletionsForTab(tabId)] }),
+      hoverTooltip(
+        async (_view, pos) => {
+          const t = editor.tabs.find((tab) => tab.id === tabId);
+          if (!t || t.viewMode !== "text") return null;
+
+          const tooltipResult = await getTooltipIpc(t.absPath, pos);
+          if (tooltipResult.isErr() || tooltipResult.value === null) return null;
+
+          const data = tooltipResult.value;
+          return {
+            pos,
+            end: pos,
+            above: true,
+            create() {
+              const dom = createHoverTooltipDom(data);
+              return { dom };
+            },
+          } satisfies Tooltip;
+        },
+        { hoverTime: 250 },
+      ),
+    ];
   }
 
   /**
@@ -357,15 +423,16 @@
       foldGutter(),
       bracketMatching(),
       closeBrackets(),
-      // .typ: merged Typst language + backend IPC completions
-      // others: let the language package supply its own completions
-      isTypst
-        ? autocompletion({ override: [mergedTypstCompletionsForTab(tabId)] })
-        : autocompletion(),
+      // .typ: Typst language service (tinymist plugin, or typst-ide fallback)
+      // — swappable via lspCompartment. Others: the language package's own
+      // completions.
+      ...(isTypst
+        ? [lspCompartment.of(typstLanguageServiceExt(tabId))]
+        : [autocompletion()]),
       indentOnInput(),
-      // githubLightTheme,
-      // syntaxHighlighting(githubLightHighlightStyle),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      // Lezer highlighting — the always-on base layer; semantic tokens layer
+      // over it (see typstLanguageServiceExt / semanticTokenHighlighter).
+      highlightCompartment.of(highlightExt()),
       themeCompartment.of(resolvedTheme()),
       fontCompartment.of(fontExtension()),
       // Language extension chosen by file extension; null = plain text
@@ -476,33 +543,6 @@
           editorFormat.refresh(update.view);
         }
       }),
-      // Hover tooltip — only for .typ (avoids unnecessary IPC calls for other file types)
-      ...(isTypst
-        ? [
-            hoverTooltip(
-              async (_view, pos) => {
-                const tab = editor.tabs.find((t) => t.id === tabId);
-                if (!tab || tab.viewMode !== "text") return null;
-
-                const tooltipResult = await getTooltipIpc(tab.absPath, pos);
-                if (tooltipResult.isErr() || tooltipResult.value === null)
-                  return null;
-
-                const data = tooltipResult.value;
-                return {
-                  pos,
-                  end: pos,
-                  above: true,
-                  create() {
-                    const dom = createHoverTooltipDom(data);
-                    return { dom };
-                  },
-                } satisfies Tooltip;
-              },
-              { hoverTime: 250 },
-            ),
-          ]
-        : []),
       // ayuLight,
       EditorView.theme({
         "&": {
@@ -791,9 +831,34 @@
     const _ = mode.current;
     const __ = systemPrefersMode.current;
     const themeExt = resolvedTheme();
-    for (const view of tabViews.values()) {
-      view.dispatch({ effects: themeCompartment.reconfigure(themeExt) });
-    }
+    // The highlight style is theme-dependent too, so refresh it alongside the
+    // chrome theme. untrack the loop so the dispatches don't re-trigger us.
+    const highlightExtValue = highlightExt();
+    untrack(() => {
+      for (const view of tabViews.values()) {
+        view.dispatch({
+          effects: [
+            themeCompartment.reconfigure(themeExt),
+            highlightCompartment.reconfigure(highlightExtValue),
+          ],
+        });
+      }
+    });
+  });
+
+  // ── LSP active/inactive → swap the language service (tinymist plugin +
+  // semantic tokens ⇄ typst-ide fallback). Lezer highlighting is the always-on
+  // base layer, so it doesn't change here. Mounting the LSP plugin sends
+  // didOpen; unmounting sends didClose (handled by @codemirror/lsp-client).
+  $effect(() => {
+    lspClient.isActive;
+    untrack(() => {
+      for (const [tabId, view] of tabViews) {
+        view.dispatch({
+          effects: lspCompartment.reconfigure(typstLanguageServiceExt(tabId)),
+        });
+      }
+    });
   });
 
   // ── Font / size → reconfigure all views when settings change
@@ -856,6 +921,10 @@
   // previous single-effect version walked every tabView on every tab switch,
   // re-dispatching unchanged diagnostics to background tabs.
   function applyDiagnosticsToView(tabId: string, view: EditorView) {
+    // When tinymist owns diagnostics, its own serverDiagnostics extension (part
+    // of languageServerExtensions()) already renders the lint gutter with
+    // correct position mapping; re-pushing the store here would double-write it.
+    if (diagnostics.lspActive) return;
     const tab = editor.tabs.find((t) => t.id === tabId);
     if (!tab) return;
     const allDiags = [...diagnostics.errors, ...diagnostics.warnings];

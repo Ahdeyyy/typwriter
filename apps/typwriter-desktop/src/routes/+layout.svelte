@@ -11,6 +11,8 @@
   import { workspace } from "$lib/stores/workspace.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
+  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { logError } from "$lib/logger";
 
   const { children } = $props();
   let appliedTheme: string | undefined;
@@ -18,6 +20,30 @@
   $effect(() => {
 
     return installGlobalErrorLogging();
+  });
+
+  // ── Route external links to the OS browser ────────────────────────────────
+  //
+  // Anchors with an http(s) href — e.g. the "Open documentation" links inside
+  // tinymist LSP hover tooltips (and the typst-ide fallback hovers) — would
+  // otherwise navigate the whole WebView away from the app. Intercept them in
+  // the capture phase and hand them to the opener plugin instead.
+  $effect(() => {
+    if (typeof document === "undefined") return;
+
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0) return;
+      const target = e.target as Element | null;
+      const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!anchor) return;
+      const href = anchor.getAttribute("href") ?? "";
+      if (!/^https?:\/\//i.test(href)) return;
+      e.preventDefault();
+      openUrl(href).catch((err) => logError("open external link failed:", err));
+    };
+
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
   });
 
   // ── Persist + flush before the app is suspended/killed ────────────────────

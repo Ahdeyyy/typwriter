@@ -11,6 +11,11 @@ class PlatformStore {
 
   isMac = $derived(this.os === "macos");
 
+  // This is the desktop app (mobile ships separately), so it never runs on a
+  // mobile OS. Exposed so shared desktop-only guards (e.g. the LSP client) read
+  // naturally without special-casing the platform elsewhere.
+  readonly isMobile = false;
+
   constructor() {
     if (typeof window === "undefined") return;
 

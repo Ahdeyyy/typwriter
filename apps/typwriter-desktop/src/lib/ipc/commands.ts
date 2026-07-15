@@ -175,6 +175,25 @@ export function setVisiblePage(page: number) {
     invoke<void>('set_visible_page', { page }).catch(() => {});
 }
 
+// ─── Language server (tinymist) bridge ───
+
+/** Spawn (or reuse) the tinymist child process. Resolves `false` when tinymist
+ *  isn't installed / fails to start — the caller then stays on the built-in
+ *  typst-ide path. */
+export function lspStart() {
+    return ResultAsync.fromPromise(invoke<boolean>('lsp_start'), toErrString);
+}
+
+/** Forward one raw JSON-RPC message to the server's stdin. */
+export function lspSend(message: string) {
+    return ResultAsync.fromPromise(invoke<void>('lsp_send', { message }), toErrString);
+}
+
+/** Kill the tinymist child (if any). */
+export function lspStop() {
+    return ResultAsync.fromPromise(invoke<void>('lsp_stop'), toErrString);
+}
+
 // ─── Click / Jump ─────────────────────────────────────────────────────────────
 
 export function jumpFromClick(page: number, x: number, y: number) {

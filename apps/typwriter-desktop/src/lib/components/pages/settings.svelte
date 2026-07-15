@@ -414,6 +414,21 @@
               />
             </label>
 
+            {#if !platform.isMobile}
+              <label class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3 cursor-pointer">
+                <div class="min-w-0">
+                  <p class="text-sm font-medium">Typst language server</p>
+                  <p class="truncate text-xs text-muted-foreground">
+                    Use tinymist for completion, hover, and diagnostics when it's installed.
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.useLsp}
+                  onCheckedChange={(v) => settings.setUseLsp(v)}
+                />
+              </label>
+            {/if}
+
             <div class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3">
               <div class="min-w-0">
                 <p class="text-sm font-medium">Tab width</p>

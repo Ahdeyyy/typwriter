@@ -9,6 +9,7 @@ pub mod editor;
 pub mod export;
 pub mod format;
 pub mod logs;
+pub mod lsp;
 pub mod preview;
 pub mod settings;
 pub mod vcs;

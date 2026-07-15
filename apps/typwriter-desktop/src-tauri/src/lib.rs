@@ -2,6 +2,7 @@
 
 mod commands;
 mod compiler;
+mod lsp;
 mod vcs;
 mod workspace;
 mod world;
@@ -29,6 +30,7 @@ use commands::{
         format_workspace_typ_files,
     },
     logs::get_log_file_path,
+    lsp::{lsp_send, lsp_start, lsp_stop},
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     settings::{
         get_app_settings, get_onboarding_completed, list_font_families, set_app_settings,
@@ -128,6 +130,11 @@ pub fn run() {
                     // guaranteed to go away.
                     let _ = preview.destroy();
                 }
+
+                // Kill the tinymist child so it never outlives the app.
+                if let Some(lsp) = window.app_handle().try_state::<lsp::LspState>() {
+                    lsp.stop();
+                }
             }
         })
         .setup(|app| {
@@ -166,6 +173,7 @@ pub fn run() {
             app.manage(workspace);
             app.manage(vcs);
             app.manage(snapshot_policy);
+            app.manage(lsp::LspState::default());
 
             // Fonts are loaded lazily: the first workspace open (and, as a
             // safety net, the first compile) calls `EditorWorld::ensure_fonts_loading`,
@@ -215,6 +223,10 @@ pub fn run() {
             jump_from_cursor,
             // logs
             get_log_file_path,
+            // language server (tinymist) bridge
+            lsp_start,
+            lsp_send,
+            lsp_stop,
             // settings
             get_app_settings,
             set_app_settings,
