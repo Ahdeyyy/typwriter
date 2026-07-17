@@ -35,13 +35,12 @@
     syntaxHighlighting,
     defaultHighlightStyle,
     bracketMatching,
-    StreamLanguage,
   } from "@codemirror/language";
-  import { json } from "@codemirror/lang-json";
-  import { xml } from "@codemirror/lang-xml";
-  import { yaml } from "@codemirror/lang-yaml";
   import { markdown } from "@codemirror/lang-markdown";
-  import { toml as tomlMode } from "@codemirror/legacy-modes/mode/toml";
+  import {
+    langExtensionForPath,
+    resolveCodeLanguage,
+  } from "$lib/codemirror/langs";
 
   import {
     lintGutter,
@@ -65,7 +64,6 @@
   import { semanticTokenHighlighter } from "$lib/lsp/semantic-tokens";
   import { Compartment } from "@codemirror/state";
   import { mode, systemPrefersMode } from "mode-watcher";
-  import { languages } from "@codemirror/language-data";
   // import {
   //   githubLightTheme,
   //   githubLightHighlightStyle,
@@ -387,21 +385,14 @@
     const ext = dot >= 0 ? relPath.slice(dot).toLowerCase() : "";
     switch (ext) {
       case ".typ":
-        return typst({ codeLanguages: languages });
-      case ".json":
-        return json();
-      case ".xml":
-        return xml();
-      case ".yaml":
-      case ".yml":
-        return yaml();
+        return typst({ codeLanguages: resolveCodeLanguage });
       case ".md":
       case ".markdown":
-        return markdown({ codeLanguages: languages });
-      case ".toml":
-        return StreamLanguage.define(tomlMode);
+        return markdown({ codeLanguages: resolveCodeLanguage });
       default:
-        return null;
+        // Every other file type resolves through the shared langs table
+        // (keyed on file extension); null = plain text.
+        return langExtensionForPath(relPath);
     }
   }
 

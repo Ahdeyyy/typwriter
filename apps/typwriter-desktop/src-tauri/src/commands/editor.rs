@@ -214,28 +214,31 @@ pub fn read_file(
     // Check if it's a known text extension
     let is_text = matches!(
         ext.as_str(),
-        "typ"
-            | "txt"
-            | "md"
-            | "markdown"
-            | "json"
-            | "toml"
-            | "yaml"
-            | "yml"
-            | "html"
-            | "htm"
-            | "css"
-            | "js"
-            | "ts"
-            | "xml"
-            | "csv"
-            | "ini"
-            | "env"
-            | "sh"
-            | "rs"
-            | "log"
-            | "cfg"
-            | "bib"
+        // documents / data / config
+        "typ" | "txt" | "md" | "markdown" | "rst" | "adoc" | "org" | "bib"
+            | "tex" | "sty" | "cls" | "json" | "jsonc" | "json5" | "toml"
+            | "yaml" | "yml" | "xml" | "csv" | "tsv" | "ini" | "cfg" | "conf"
+            | "env" | "properties" | "log" | "lock" | "diff" | "patch"
+            | "gitignore" | "gitattributes" | "editorconfig"
+        // web
+            | "html" | "htm" | "css" | "scss" | "sass" | "less" | "styl"
+            | "js" | "mjs" | "cjs" | "ts" | "mts" | "cts" | "jsx" | "tsx"
+            | "vue" | "svelte" | "astro" | "graphql" | "gql"
+        // systems / general-purpose
+            | "rs" | "c" | "h" | "cpp" | "hpp" | "cc" | "hh" | "cxx" | "hxx"
+            | "cs" | "java" | "kt" | "kts" | "go" | "swift" | "m" | "mm"
+            | "zig" | "d" | "nim" | "pas" | "asm" | "s"
+        // scripting
+            | "py" | "pyw" | "rb" | "php" | "pl" | "pm" | "lua" | "sh"
+            | "bash" | "zsh" | "fish" | "ps1" | "psm1" | "psd1" | "bat"
+            | "cmd" | "r" | "jl" | "tcl" | "groovy" | "gradle"
+        // functional
+            | "hs" | "ml" | "mli" | "fs" | "fsx" | "fsi" | "clj" | "cljs"
+            | "cljc" | "edn" | "elm" | "erl" | "ex" | "exs" | "scala" | "sc"
+            | "lisp" | "el" | "scm" | "rkt"
+        // query / build / misc
+            | "sql" | "proto" | "cmake" | "mk" | "dockerfile" | "nix" | "sol"
+            | "vb" | "dart" | "v" | "sv" | "svh" | "vhd" | "vhdl"
     );
 
     if is_text {
@@ -259,6 +262,38 @@ pub fn read_file(
             t.elapsed().as_secs_f64() * 1000.0
         );
         return Ok(FileContentResponse::Text { content });
+    }
+
+    // Known binary formats: don't bother sniffing the bytes.
+    let is_binary = matches!(
+        ext.as_str(),
+        "pdf" | "zip" | "gz" | "tgz" | "bz2" | "xz" | "zst" | "7z" | "rar"
+            | "tar" | "exe" | "dll" | "so" | "dylib" | "bin" | "wasm"
+            | "class" | "jar" | "o" | "a" | "lib" | "obj" | "pdb" | "pyc"
+            | "ttf" | "otf" | "woff" | "woff2" | "eot" | "mp3" | "wav"
+            | "flac" | "ogg" | "m4a" | "mp4" | "mkv" | "mov" | "avi"
+            | "webm" | "db" | "sqlite" | "sqlite3" | "heic" | "psd"
+    );
+
+    // Unknown extension: sniff the bytes. Plenty of text files carry no
+    // recognizable extension (Makefile, LICENSE, dotfiles, niche languages) —
+    // anything reasonably sized that decodes as UTF-8 without NUL bytes opens
+    // as plain text; real binaries fail fast on the NUL check.
+    const SNIFF_MAX_BYTES: usize = 8 * 1024 * 1024;
+    if !is_binary {
+        if let Ok(bytes) = fs.read_file(abs) {
+            let has_nul = bytes.iter().take(8192).any(|&b| b == 0);
+            if bytes.len() <= SNIFF_MAX_BYTES && !has_nul {
+                if let Ok(content) = String::from_utf8(bytes) {
+                    info!(
+                        "read_file: ok sniffed text ext={ext:?} bytes={} ({:.1}ms)",
+                        content.len(),
+                        t.elapsed().as_secs_f64() * 1000.0
+                    );
+                    return Ok(FileContentResponse::Text { content });
+                }
+            }
+        }
     }
 
     info!(
