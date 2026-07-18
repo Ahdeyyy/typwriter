@@ -21,7 +21,7 @@
   import { logError } from "$lib/logger";
   import FileTree from "$lib/components/sidebar/filetree.svelte";
   import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
-  import HistoryPane from "$lib/components/vcs/timeline.svelte";
+  import HistoryPane from "$lib/components/vcs/ledger.svelte";
   import { vcs } from "$lib/stores/vcs.svelte";
   import ModeSwitcher from "./mode-switcher.svelte";
   import type { RecentWorkspaceEntry } from "$lib/types";
