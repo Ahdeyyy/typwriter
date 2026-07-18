@@ -43,10 +43,11 @@
   } from "$lib/codemirror/langs";
 
   import {
-    lintGutter,
+    forEachDiagnostic,
     setDiagnostics,
     type Diagnostic as CMDiagnostic,
   } from "@codemirror/lint";
+  import { inlineDiagnostics } from "$lib/codemirror/inline-diagnostics";
   import { search } from "@codemirror/search";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
   import { editorFormat } from "$lib/stores/editor-format.svelte";
@@ -403,7 +404,9 @@
     const langExt = getLanguageExtension(relPath);
 
     return [
-      lintGutter(),
+      // Error-lens-style inline messages instead of a lint gutter — the
+      // diagnostic text renders faded at the end of the offending line.
+      inlineDiagnostics(),
       lineNumbersCompartment.of(lineNumbersExt()),
       lineWrapCompartment.of(lineWrapExt()),
       spellcheckCompartment.of(spellcheckExt(isTypst)),
@@ -842,12 +845,23 @@
   // base layer, so it doesn't change here. Mounting the LSP plugin sends
   // didOpen; unmounting sends didClose (handled by @codemirror/lsp-client).
   $effect(() => {
-    lspClient.isActive;
+    const lspActive = lspClient.isActive;
     untrack(() => {
       for (const [tabId, view] of tabViews) {
         view.dispatch({
           effects: lspCompartment.reconfigure(typstLanguageServiceExt(tabId)),
         });
+        // Diagnostic-source hand-off: tinymist and the compile pipeline must
+        // never both feed the lint state. On activation, drop the compile
+        // pipeline's marks (tinymist repopulates via serverDiagnostics); on
+        // deactivation, repopulate from the store (which drops LSP leftovers).
+        if (lspActive) {
+          if (!diagnosticsUnchanged(view.state, [])) {
+            view.dispatch(setDiagnostics(view.state, []));
+          }
+        } else {
+          applyDiagnosticsToView(tabId, view);
+        }
       }
     });
   });
@@ -923,7 +937,29 @@
       .filter((d) => d.file_path === tab.relPath)
       .map((d) => toCMDiagnostic(d, view))
       .filter((d): d is CMDiagnostic => d !== null);
+    // Skip no-op re-dispatches: every `setDiagnosticsEffect` closes an open
+    // lint hover tooltip (the lint extension's `hideOn`), so pushing identical
+    // diagnostics on each compile cycle made the tooltip vanish mid-read.
+    if (diagnosticsUnchanged(view.state, marks)) return;
     view.dispatch(setDiagnostics(view.state, marks));
+  }
+
+  function diagnosticsUnchanged(
+    state: EditorState,
+    marks: CMDiagnostic[],
+  ): boolean {
+    const existing: CMDiagnostic[] = [];
+    forEachDiagnostic(state, (d, from, to) =>
+      existing.push({ from, to, severity: d.severity, message: d.message }),
+    );
+    if (existing.length !== marks.length) return false;
+    const key = (d: CMDiagnostic) =>
+      `${d.from}:${d.to}:${d.severity}:${d.message}`;
+    const sortedMarks = marks.map(key).sort();
+    return existing
+      .map(key)
+      .sort()
+      .every((k, i) => k === sortedMarks[i]);
   }
 
   $effect(() => {

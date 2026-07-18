@@ -92,7 +92,7 @@ interface LspDiagnostic {
 /** Map LSP diagnostics into the app's `SerializedDiagnostic` shape. `file_path`
  *  is filled in by the caller. Information/Hint diagnostics are dropped — the
  *  pane only has error/warning buckets and lints would inflate the warning
- *  count; the in-editor gutter (`serverDiagnostics`) still shows them. */
+ *  count; the in-editor diagnostics (`serverDiagnostics`) still show them. */
 export function toSerializedDiagnostics(lspDiags: LspDiagnostic[]): SerializedDiagnostic[] {
     return lspDiags
         .filter((d) => d.severity === undefined || d.severity <= 2)
@@ -191,6 +191,10 @@ class LspClientStore {
             return;
         }
 
+        // Last published diagnostics per URI, for dropping no-op republishes:
+        // every `setDiagnostics` dispatch closes an open lint hover tooltip, and
+        // tinymist republishes identical diagnostics on each of its compiles.
+        const lastPublished = new Map<string, string>();
         const client = new LSPClient({
             rootUri,
             // The deprecated `languageServerExtensions()` bundle also binds
@@ -208,12 +212,19 @@ class LspClientStore {
                 'textDocument/publishDiagnostics': (_client, params) => {
                     // Mirror into the store so the diagnostics *pane* (which reads
                     // the store, not any one editor view) stays in sync. Return
-                    // `false` so `serverDiagnostics` still renders the lint gutter.
+                    // `false` so `serverDiagnostics` still renders the in-editor
+                    // diagnostics (underlines + inline messages).
                     const relPath = workspace.toRel(uriToPath(params.uri));
                     diagnostics.setLspDiagnostics(
                         relPath,
                         toSerializedDiagnostics(params.diagnostics ?? []),
                     );
+                    // Identical republish: return `true` (handled) so
+                    // `serverDiagnostics` doesn't re-dispatch and yank away an
+                    // open hover tooltip.
+                    const fingerprint = JSON.stringify(params.diagnostics ?? []);
+                    if (lastPublished.get(params.uri) === fingerprint) return true;
+                    lastPublished.set(params.uri, fingerprint);
                     return false;
                 },
             },
