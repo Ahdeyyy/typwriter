@@ -25,6 +25,11 @@
 
   const paneVisible = $derived(previewVisible && !preview.poppedOut);
 
+  // Let the preview store skip cursor-sync work while nothing displays it.
+  $effect(() => {
+    preview.paneVisible = paneVisible;
+  });
+
   const workspaceName = $derived(
     workspace.rootPath ? basename(workspace.rootPath) : "Typwriter"
   );

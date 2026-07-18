@@ -26,6 +26,23 @@
   $effect(() => ctrl.pageCounterEffect());
   $effect(() => ctrl.clampVisiblePageEffect());
 
+  // Switching between paginated and scroll view swaps the {#if} branch below,
+  // which replaces the scroll container with a fresh one at scrollTop=0. Owe
+  // it a restore to `visiblePage` — exactly like a remount — or the page
+  // counter would seed from the new container and stamp page 0 over the
+  // shared value. Watches the store (not the toolbar button) so a toggle made
+  // in the other window arms the restore here too. Must be `$effect.pre`: it
+  // has to set `restorePending` before the DOM swap re-runs pageCounterEffect,
+  // whose seed recompute would otherwise still see it unset.
+  let prevPaginated = preview.paginated;
+  $effect.pre(() => {
+    const paginated = preview.paginated;
+    if (paginated !== prevPaginated) {
+      prevPaginated = paginated;
+      ctrl.restorePending = true;
+    }
+  });
+
   // After remount (e.g. user popped the preview out and back in), the scroll
   // container is a fresh DOM element with scrollTop=0. Snap it to whichever
   // page was visible last so the pane lands where the user left it.
@@ -272,7 +289,7 @@
             src={buildPreviewUrl(ctrl.committedPages[ctrl.visiblePage]!)}
             alt="Page {ctrl.visiblePage + 1}"
             draggable="false"
-            class="block h-full w-full object-cover"
+            class="block h-full w-full object-contain"
             onload={() => ctrl.notifyImageLoaded(ctrl.visiblePage, ctrl.committedPages[ctrl.visiblePage]!)}
             onerror={() => ctrl.notifyImageError(ctrl.visiblePage, ctrl.committedPages[ctrl.visiblePage]!)}
           />

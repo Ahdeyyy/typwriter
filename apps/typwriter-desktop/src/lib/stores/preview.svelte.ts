@@ -45,6 +45,10 @@ class PreviewStore {
     lastCompileReason = $state<CompileReason>('explicit');
     poppedOut = $state(false);
     presentationMode = $state(false);
+    /** Whether the in-workspace preview pane is currently shown. Window-local;
+     *  kept up to date by the workspace page. Used to skip cursor-sync work
+     *  when nothing would display the result. */
+    paneVisible = $state(true);
 
     /** Transient highlight drawn over the preview after a cursor-sync jump so the
      *  user can see which rendered text the caret maps to. Cleared automatically
@@ -82,12 +86,17 @@ class PreviewStore {
     set scrollTarget(v: { page: number; x: number; y: number } | null) { this._scrollTarget.set(v); }
 
     private _unlisteners: UnlistenFn[] = [];
+    // Bumped by every `init`/`destroy` so listener registrations that resolve
+    // after a destroy (or a newer init) are disposed instead of leaking — a
+    // fast unmount/remount would otherwise double-register every handler.
+    private _initGen = 0;
     private _cursorTimer: ReturnType<typeof setTimeout> | null = null;
     private _highlightTimer: ReturnType<typeof setTimeout> | null = null;
     private _highlightNonce = 0;
     private _paginatedBeforePresentation = false;
 
     async init(): Promise<void> {
+        const gen = ++this._initGen;
         // Only the main window seeds the zoom from settings. The popout is a
         // *mirror* — it should adopt whatever the main window broadcasts via
         // `crossWindowState`, not stamp its own defaultPreviewZoom back onto
@@ -123,6 +132,10 @@ class PreviewStore {
             }
         });
         if (totalPagesResult.isOk()) {
+            if (gen !== this._initGen) {
+                totalPagesResult.value();
+                return;
+            }
             this._unlisteners.push(totalPagesResult.value);
         } else {
             logError('preview: onPreviewTotalPages listener failed:', totalPagesResult.error);
@@ -145,6 +158,10 @@ class PreviewStore {
             this.pages[index] = fingerprint;
         });
         if (updatedResult.isOk()) {
+            if (gen !== this._initGen) {
+                updatedResult.value();
+                return;
+            }
             this._unlisteners.push(updatedResult.value);
         } else {
             logError('preview: onPreviewPageUpdated listener failed:', updatedResult.error);
@@ -159,10 +176,19 @@ class PreviewStore {
                 prevPagesLen: this.pages.length,
                 prevTotal: this.totalPages,
             });
-            this.pages.splice(index, 1);
-            this.totalPages = Math.max(0, this.totalPages - 1);
+            // Derive the count from the array rather than decrementing: on a
+            // shrink the backend emits `total-pages` (which already truncated
+            // `pages`) *and* one `page-removed` per dropped index — a blind
+            // decrement per event would double-count the shrink and clamp
+            // `visiblePage` to a bogus smaller total.
+            if (index < this.pages.length) this.pages.splice(index, 1);
+            this.totalPages = this.pages.length;
         });
         if (removedResult.isOk()) {
+            if (gen !== this._initGen) {
+                removedResult.value();
+                return;
+            }
             this._unlisteners.push(removedResult.value);
         } else {
             logError('preview: onPreviewPageRemoved listener failed:', removedResult.error);
@@ -173,6 +199,10 @@ class PreviewStore {
                 this._runCursorJump(path, offset, showHighlight);
             });
             if (cursorResult.isOk()) {
+                if (gen !== this._initGen) {
+                    cursorResult.value();
+                    return;
+                }
                 this._unlisteners.push(cursorResult.value);
             } else {
                 logError('preview: onEditorCursorPosition listener failed:', cursorResult.error);
@@ -189,6 +219,10 @@ class PreviewStore {
             this.lastCompileReason = reason;
         });
         if (compileStateResult.isOk()) {
+            if (gen !== this._initGen) {
+                compileStateResult.value();
+                return;
+            }
             this._unlisteners.push(compileStateResult.value);
         } else {
             logError('preview: onPreviewCompileState listener failed:', compileStateResult.error);
@@ -207,6 +241,7 @@ class PreviewStore {
     }
 
     destroy(): void {
+        this._initGen++;
         for (const unlisten of this._unlisteners) {
             unlisten();
         }
@@ -216,9 +251,11 @@ class PreviewStore {
             this._cursorTimer = null;
         }
         this._clearHighlight();
+        // Reset only window-local state. `totalPages`/`scrollTarget` are
+        // crossWindowState channels — writing them here would broadcast the
+        // reset and blank a still-open popout; `sync_preview` re-seeds a
+        // remounting main window anyway.
         this.pages = [];
-        this.totalPages = 0;
-        this.scrollTarget = null;
         this.isCompiling = false;
         this.lastCompileRevision = 0;
         this.lastCompileReason = 'explicit';
@@ -268,6 +305,11 @@ class PreviewStore {
      *  keep scrolling the preview without flashing a highlight on every
      *  character. */
     setCursorPosition(path: string, offset: number, showHighlight: boolean): void {
+        // Nothing displays the preview: the pane is toggled off and no popout
+        // exists. Skip the jump entirely — beyond the wasted IPC round-trip, a
+        // stale `scrollTarget` left in the shared channel would override the
+        // "restore last visible page" behavior on the next mount.
+        if (!this.paneVisible && !this.poppedOut) return;
         // Stage 2a: a cursor move arrived. Note whether it coalesced with a
         // still-pending debounce timer — rapid typing keeps resetting this, so
         // only the final keystroke in a burst actually runs the jump.

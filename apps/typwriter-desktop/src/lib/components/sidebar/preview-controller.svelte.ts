@@ -59,6 +59,11 @@ export class PreviewController {
   private renderedFingerprints = new Map<number, string>();
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private stuckTicks = new Map<number, number>();
+  // Watchdog `syncPreview` attempts per fingerprint. A fingerprint that is
+  // permanently gone (evicted from the LRU *and* the disk cache) would
+  // otherwise loop decode-fail → resync forever.
+  private resyncCounts = new Map<string, number>();
+  private static readonly MAX_RESYNCS_PER_FINGERPRINT = 3;
 
   private lastScrollTarget: { page: number; x: number; y: number } | null = null;
 
@@ -120,6 +125,7 @@ export class PreviewController {
     this.pending.clear();
     this.renderedFingerprints.clear();
     this.stuckTicks.clear();
+    this.resyncCounts.clear();
   }
 
   /** If the backend never reports any pages but the workspace has a main
@@ -159,6 +165,15 @@ export class PreviewController {
         continue;
       }
 
+      // Paginated / presentation view mounts an <img> only for the visible
+      // page; every other slot decodes fine but never fires `onload`, so its
+      // `renderedFingerprints` entry stays unset. Treating those as stuck
+      // would resync forever.
+      if ((preview.paginated || preview.presentationMode) && i !== preview.visiblePage) {
+        this.stuckTicks.delete(i);
+        continue;
+      }
+
       const committed = this.committedPages[i];
       const rendered = this.renderedFingerprints.get(i);
       if (committed === fingerprint && rendered === fingerprint) {
@@ -177,6 +192,9 @@ export class PreviewController {
         // Decode keeps failing — backend may have evicted the cached PNG.
         // Ask it to resend the current set so the fingerprint round-trips.
         this.stuckTicks.set(i, 0);
+        const n = (this.resyncCounts.get(fingerprint) ?? 0) + 1;
+        this.resyncCounts.set(fingerprint, n);
+        if (n > PreviewController.MAX_RESYNCS_PER_FINGERPRINT) continue;
         syncPreview().mapErr((err) =>
           logError("preview watchdog: syncPreview failed:", err)
         );
@@ -198,6 +216,7 @@ export class PreviewController {
   notifyImageLoaded(i: number, fingerprint: string) {
     this.renderedFingerprints.set(i, fingerprint);
     this.stuckTicks.delete(i);
+    this.resyncCounts.delete(fingerprint);
   }
 
   /** Called from the template when the DOM `<img>` fails to load. Clears
@@ -520,6 +539,7 @@ export class PreviewController {
     this.pending.clear();
     this.stuckTicks.clear();
     this.renderedFingerprints.clear();
+    this.resyncCounts.clear();
     this.startupRecoveryAttempts = 0;
     syncPreview().mapErr((err) =>
       logError("preview controller: syncPreview before refresh failed:", err)
@@ -607,9 +627,16 @@ export class PreviewController {
   }
 
   async handlePageClick(e: MouseEvent, pageIndex: number) {
-    const img = e.target as HTMLImageElement;
-    const px = (e.offsetX / img.clientWidth) * img.naturalWidth;
-    const py = (e.offsetY / img.clientHeight) * img.naturalHeight;
+    // The handler sits on the wrapping <Button>, so `e.target` can be the
+    // button itself (keyboard activation, border clicks) — reading natural
+    // dimensions off it would send NaN to the backend. Locate the <img> and
+    // measure against its rect instead.
+    const el = e.currentTarget as HTMLElement;
+    const img = el.querySelector("img");
+    if (!img || img.naturalWidth === 0) return;
+    const rect = img.getBoundingClientRect();
+    const px = ((e.clientX - rect.left) / rect.width) * img.naturalWidth;
+    const py = ((e.clientY - rect.top) / rect.height) * img.naturalHeight;
 
     const result = await jumpFromClick(pageIndex, px, py);
     if (result.isErr() || !result.value) return;
