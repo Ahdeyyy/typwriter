@@ -142,7 +142,7 @@ export async function useAsCompare(entry: RestorePoint): Promise<void> {
     );
 }
 
-/** Select (if needed) and open the diff overlay. */
+/** Select (if needed) and open the diff window. */
 export function viewDiffFor(entry: RestorePoint, onopenDiff?: () => void): void {
     if (vcs.primaryId !== entry.id) {
         vcs.selectPoint(entry.id, false).mapErr((err) =>

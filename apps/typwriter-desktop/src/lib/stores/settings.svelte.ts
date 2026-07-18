@@ -12,6 +12,7 @@ import {
     setAppSettings,
     setTypstFontDirectories,
 } from '$lib/ipc/commands';
+import { emitSettingsChanged } from '$lib/ipc/events';
 import { logError } from '$lib/logger';
 
 const LS_KEY = 'typwriter:settings:v1';
@@ -88,7 +89,7 @@ export const THEMES: { id: ThemeId; label: string; description: string }[] = [
     { id: 'gruvbox', label: 'Gruvbox', description: 'Retro warm earth tones.' },
 ];
 
-interface PersistedSettings {
+export interface PersistedSettings {
     uiFontFamily: string;
     editorFontFamily: string;
     editorFontSize: number;
@@ -128,6 +129,11 @@ interface PersistedSettings {
     /** Maximum age, in days, for *auto* snapshots. `0` = unlimited. */
     snapshotRetentionMaxDays: number;
 }
+
+/** Payload broadcast to every window when settings change anywhere. The
+ *  settings page runs in its own webview window, so each window's store
+ *  instance stays in sync by replaying this. */
+export type SettingsSyncPayload = PersistedSettings & { fontDirectories: string[] };
 
 const DEFAULTS: PersistedSettings = {
     uiFontFamily: 'IBM Plex Sans Variable',
@@ -343,6 +349,16 @@ class SettingsStore {
     private persist(): void {
         this.persistLocal();
         const current = this.currentSettings();
+        // Replay into the other windows (settings window ↔ main ↔ popouts).
+        // The emitter also receives this, but re-assigning identical values to
+        // $state is a no-op, so there's no feedback churn.
+        emitSettingsChanged<SettingsSyncPayload>({
+            ...current,
+            fontDirectories: [...this.fontDirectories],
+        }).mapErr((err) => {
+            logError('settings.persist emitSettingsChanged failed:', err);
+            return err;
+        });
         setAppSettings({
             font_directories: this.fontDirectories,
             ui_font_family: current.uiFontFamily,
@@ -541,6 +557,14 @@ class SettingsStore {
      *  list, so we don't need to refresh anything else. */
     onFontsReloaded(): void {
         this.fontsReloading = false;
+    }
+
+    /** Apply a settings:changed broadcast from another window. Deliberately
+     *  does not call `persist()` — the originating window already persisted
+     *  (and re-emitting would ping-pong between windows forever). */
+    applyExternal(payload: SettingsSyncPayload): void {
+        this.applyPersistedSettings(payload);
+        this.fontDirectories = payload.fontDirectories ?? [];
     }
 }
 

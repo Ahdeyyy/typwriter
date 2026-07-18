@@ -1,32 +1,51 @@
 <!--
-  vcs/diff-overlay.svelte
+  pages/diff-window.svelte
 
-  Full-bleed overlay anchored over the editor pane. Renders the currently
-  selected diff (either "point vs current" or "point A vs point B") as a list
-  of per-file @pierre/diffs FileDiff instances.
+  Standalone version-diff window (label "diff", routed via `?window=diff`).
+  Renders the selected diff (either "point vs current" or "point A vs point B")
+  as a list of per-file @pierre/diffs FileDiff instances.
 
-  Mounted on demand from `workspace.svelte` when `vcs.diffPaneOpen` flips true,
-  which keeps the Shiki/WASM payload out of the cold path.
+  This window owns its own store instances, so it computes the diff itself over
+  IPC: the selection is seeded from URL params on boot and retargeted through
+  `vcs:diff-selection` events while open. Single-file restores are delegated to
+  the main window (`vcs:restore-file-request` → `vcs:restore-file-result`)
+  because the editor tabs that must be flushed before — and reloaded after —
+  the restore live in the main window's stores.
 -->
 <script lang="ts">
+  import { onMount, onDestroy } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
-    Cancel01Icon,
     ArrowReloadHorizontalIcon,
     GitCompareIcon,
     Layout01Icon,
     LayoutTwoColumnIcon,
   } from "@hugeicons/core-free-icons";
 
+  import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { toast } from "svelte-sonner";
 
   import { vcs } from "$lib/stores/vcs.svelte";
-  import DiffViewer from "./diff-viewer.svelte";
+  import {
+    onVcsDiffSelection,
+    onVcsRestoreFileResult,
+    emitVcsRestoreFileRequest,
+    type UnlistenFn,
+  } from "$lib/ipc/events";
+  import { logError } from "$lib/logger";
+  import DiffViewer from "$lib/components/vcs/diff-viewer.svelte";
+
+  type Props = { initialPrimary?: string | null; initialSecondary?: string | null };
+  let { initialPrimary = null, initialSecondary = null }: Props = $props();
 
   let layout = $state<"split" | "unified">("split");
+
+  /** Path of the file whose delegated restore is in flight — disables its
+   *  button until the main window reports back. */
+  let restoringPath = $state<string | null>(null);
 
   const heading = $derived.by(() => {
     if (!vcs.primaryId) return "No restore point selected";
@@ -39,22 +58,66 @@
   });
 
   async function onrestoreFile(path: string) {
-    if (!vcs.primaryId) return;
+    if (!vcs.primaryId || restoringPath) return;
     const { confirm } = await import("@tauri-apps/plugin-dialog");
     const ok = await confirm(`Restore "${path}" from the selected restore point?`, {
       title: "Typwriter",
       kind: "warning",
     });
     if (!ok) return;
-    const result = await vcs.restoreSingleFile(vcs.primaryId, path);
-    result.match(
-      () => toast.success(`Restored ${path}`),
-      (err) => toast.error(`Restore failed: ${err}`),
-    );
+    restoringPath = path;
+    const result = await emitVcsRestoreFileRequest({ pointId: vcs.primaryId, path });
+    result.mapErr((err) => {
+      restoringPath = null;
+      toast.error(`Restore failed: ${err}`);
+    });
   }
+
+  let unlistens: UnlistenFn[] = [];
+
+  onMount(() => {
+    vcs
+      .refresh()
+      .andThen(() => vcs.setSelection(initialPrimary, initialSecondary))
+      .mapErr((err) => toast.error(`Diff: ${err}`));
+
+    onVcsDiffSelection(({ primaryId, secondaryId }) => {
+      vcs.setSelection(primaryId, secondaryId).mapErr((err) => toast.error(`Diff: ${err}`));
+      // The selection may reference a point created since boot.
+      vcs.refresh().mapErr((err) => logError("diff window history refresh failed:", err));
+    })
+      .map((unlisten) => unlistens.push(unlisten))
+      .mapErr((err) => logError("diff selection listener failed:", err));
+
+    onVcsRestoreFileResult(({ path, error }) => {
+      restoringPath = null;
+      if (error) {
+        toast.error(`Restore failed: ${error}`);
+        return;
+      }
+      toast.success(`Restored ${path}`);
+      // The working tree (and history — a pre-restore point may exist now)
+      // changed under us; recompute what this window shows.
+      vcs
+        .refresh()
+        .andThen(() => vcs.setSelection(vcs.primaryId, vcs.secondaryId))
+        .mapErr((err) => logError("diff window reload after restore failed:", err));
+    })
+      .map((unlisten) => unlistens.push(unlisten))
+      .mapErr((err) => logError("restore result listener failed:", err));
+  });
+
+  onDestroy(() => {
+    for (const unlisten of unlistens) unlisten();
+    unlistens = [];
+    vcs.destroy();
+  });
 </script>
 
-<div class="absolute inset-0 z-30 flex flex-col bg-background">
+<Tooltip.Provider>
+<div class="flex h-screen w-screen flex-col overflow-hidden bg-background">
+  <Titlebar variant="minimal" title="Version Diff" />
+
   <!-- Header ─────────────────────────────────────────────────────── -->
   <div class="flex h-10 shrink-0 items-center gap-3 border-b border-border bg-muted/30 px-3">
     <HugeiconsIcon icon={GitCompareIcon} class="size-4 text-muted-foreground" />
@@ -102,10 +165,6 @@
         <Tooltip.Content>Unified view</Tooltip.Content>
       </Tooltip.Root>
     </div>
-
-    <Button variant="ghost" size="icon-sm" onclick={() => (vcs.diffPaneOpen = false)} aria-label="Close diff">
-      <HugeiconsIcon icon={Cancel01Icon} class="size-4" />
-    </Button>
   </div>
 
   <!-- Body ───────────────────────────────────────────────────────── -->
@@ -143,9 +202,13 @@
                   size="xs"
                   class="ml-auto"
                   onclick={() => onrestoreFile(entry.path)}
+                  disabled={restoringPath !== null}
                   title="Restore just this file"
                 >
-                  <HugeiconsIcon icon={ArrowReloadHorizontalIcon} class="mr-1 size-3" />
+                  <HugeiconsIcon
+                    icon={ArrowReloadHorizontalIcon}
+                    class="mr-1 size-3 {restoringPath === entry.path ? 'animate-spin' : ''}"
+                  />
                   Restore file
                 </Button>
               {/if}
@@ -157,6 +220,7 @@
     {/if}
   </ScrollArea.Root>
 </div>
+</Tooltip.Provider>
 
 <style>
   /* Tailwind doesn't have arbitrary alpha-color classes baked in for our

@@ -23,6 +23,7 @@
   import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
   import HistoryPane from "$lib/components/vcs/ledger.svelte";
   import { vcs } from "$lib/stores/vcs.svelte";
+  import { openDiffWindow, openSettingsWindow } from "$lib/windows";
   import ModeSwitcher from "./mode-switcher.svelte";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { defaultWindowIcon } from '@tauri-apps/api/app';
@@ -186,7 +187,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
     {:else if activeSection === "history"}
       <HistoryPane
         onclose={() => sidebarCtx.setOpen(false)}
-        onopenDiff={() => (vcs.diffPaneOpen = true)}
+        onopenDiff={() => openDiffWindow(vcs.primaryId, vcs.secondaryId)}
       />
     {/if}
   </Sidebar.Content>
@@ -287,7 +288,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
               {...props}
               variant="ghost"
               class="size-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              onclick={() => page.navigate("settings")}
+              onclick={() => openSettingsWindow()}
             >
               <HugeiconsIcon icon={Settings01Icon} class="size-4" />
             </Button>

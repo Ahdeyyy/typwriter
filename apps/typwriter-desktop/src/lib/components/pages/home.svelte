@@ -18,6 +18,7 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import ModeSwitcher from "$lib/components/sidebar/mode-switcher.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
+  import { openSettingsWindow } from "$lib/windows";
   import { platform } from "$lib/stores/platform.svelte";
 
   let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
@@ -429,7 +430,7 @@
       variant="link"
       size="sm"
       class="gap-1.5 text-muted-foreground"
-      onclick={() => page.navigate("settings")}
+      onclick={() => openSettingsWindow()}
     >
       <HugeiconsIcon icon={Settings01Icon} class="size-3.5" />
       Settings

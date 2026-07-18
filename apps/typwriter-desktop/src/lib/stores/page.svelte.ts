@@ -2,11 +2,12 @@
 import Home from "$lib/components/pages/home.svelte"
 import Workspace from "$lib/components/pages/workspace.svelte"
 import Keymaps from "$lib/components/pages/keymaps.svelte"
-import Settings from "$lib/components/pages/settings.svelte"
 import Onboarding from "$lib/components/pages/onboarding.svelte"
 import type { Component } from "svelte"
 
-type PageName = "home" | "workspace" | "keymaps" | "settings" | "onboarding"
+// Settings is not listed here — it opens in its own webview window
+// (see $lib/windows.ts) rather than swapping the main window's page.
+type PageName = "home" | "workspace" | "keymaps" | "onboarding"
 
 type PageDefinition = {
     name: PageName
@@ -25,10 +26,6 @@ export const pages = {
     "keymaps": {
         name: "keymaps",
         component: Keymaps,
-    },
-    "settings": {
-        name: "settings",
-        component: Settings,
     },
     "onboarding": {
         name: "onboarding",

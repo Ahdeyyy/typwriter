@@ -6,8 +6,8 @@
   import { updater } from "$lib/stores/updater.svelte";
   import { mode, ModeWatcher, setTheme, systemPrefersMode } from "mode-watcher";
   import { app } from "@tauri-apps/api"
-  import { settings } from "$lib/stores/settings.svelte";
-  import { onAppFontsLoaded } from "$lib/ipc/events";
+  import { settings, type SettingsSyncPayload } from "$lib/stores/settings.svelte";
+  import { onAppFontsLoaded, onSettingsChanged } from "$lib/ipc/events";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
@@ -100,6 +100,13 @@
     if (result.isErr()) {
       // Logged inside onAppFontsLoaded helper if needed; no-op here.
     }
+
+    // Settings live in their own window; replay changes made in any window
+    // into this window's store instance so theme/fonts/editor prefs apply
+    // everywhere immediately.
+    onSettingsChanged<SettingsSyncPayload>((payload) => {
+      settings.applyExternal(payload);
+    }).mapErr((err) => logError("settings sync listener failed:", err));
   });
 
   // ── Apply settings to <html> reactively ──────────────────────────────────

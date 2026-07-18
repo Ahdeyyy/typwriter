@@ -278,15 +278,15 @@ class PreviewStore {
         this.isCompiling = false;
     }
 
+    // Every window is undecorated with a custom titlebar, so presentation mode
+    // only maximizes — the popout page hides its <Titlebar> off this flag.
     async togglePresentationMode(): Promise<void> {
         const win = getCurrentWindow();
         if (this.presentationMode) {
-            await win.setDecorations(true);
             await win.unmaximize();
             this.presentationMode = false;
             this.paginated = this._paginatedBeforePresentation;
         } else {
-            await win.setDecorations(false);
             await win.maximize();
             this.presentationMode = true;
             this._paginatedBeforePresentation = this.paginated;

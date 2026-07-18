@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import Preview from "$lib/components/sidebar/preview.svelte";
+  import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { preview } from "$lib/stores/preview.svelte";
   import { logError } from "$lib/logger";
@@ -48,6 +49,9 @@
 
 <Tooltip.Provider>
   <div class="flex h-screen w-screen flex-col overflow-hidden bg-background">
+    {#if !preview.presentationMode}
+      <Titlebar variant="minimal" title="Preview" />
+    {/if}
     <Preview />
   </div>
 </Tooltip.Provider>

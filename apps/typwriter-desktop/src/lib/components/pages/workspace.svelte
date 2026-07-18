@@ -8,7 +8,6 @@
   import Preview from "$lib/components/sidebar/preview.svelte";
   import EditorPane from "$lib/components/editor/editor-pane.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
-  import DiffOverlay from "$lib/components/vcs/diff-overlay.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";
@@ -16,7 +15,12 @@
   import { vcs } from "$lib/stores/vcs.svelte";
   import { workspace, basename } from "$lib/stores/workspace.svelte";
   import { lspClient } from "$lib/lsp/client.svelte";
-  import { onPreviewSourceJump } from "$lib/ipc/events";
+  import {
+    onPreviewSourceJump,
+    onVcsRestoreFileRequest,
+    emitVcsRestoreFileResult,
+  } from "$lib/ipc/events";
+  import { closeDiffWindow } from "$lib/windows";
   import { logError } from "$lib/logger";
 
   const PREVIEW_WINDOW_LABEL = "preview";
@@ -39,6 +43,7 @@
 
   let popoutCloseUnlisten: (() => void) | null = null;
   let sourceJumpUnlisten: (() => void) | null = null;
+  let restoreRequestUnlisten: (() => void) | null = null;
 
   // Start/stop tinymist as the setting or workspace root changes. `reconcile`
   // is idempotent and handles both toggling and root changes (tear down before
@@ -77,7 +82,7 @@
       height: 900,
       minWidth: 360,
       minHeight: 480,
-      decorations: true,
+      decorations: false,
       resizable: true,
     });
 
@@ -124,6 +129,22 @@
       })
       .mapErr((err) => logError("preview source-jump listener failed:", err));
 
+    // Single-file restores initiated from the standalone diff window are
+    // executed here: the editor tabs that must be flushed before — and
+    // reloaded after — the restore live in this window's stores. The outcome
+    // goes back over the event bus so the diff window can toast + reload.
+    onVcsRestoreFileRequest(async ({ pointId, path }) => {
+      const result = await vcs.restoreSingleFile(pointId, path);
+      emitVcsRestoreFileResult({
+        path,
+        error: result.isErr() ? result.error : null,
+      }).mapErr((err) => logError("vcs restore-file result emit failed:", err));
+    })
+      .map((unlisten) => {
+        restoreRequestUnlisten = unlisten;
+      })
+      .mapErr((err) => logError("vcs restore-file listener failed:", err));
+
     WebviewWindow.getByLabel(PREVIEW_WINDOW_LABEL)
       .then((existing) => {
         if (!existing) return;
@@ -149,6 +170,11 @@
     popoutCloseUnlisten = null;
     sourceJumpUnlisten?.();
     sourceJumpUnlisten = null;
+    restoreRequestUnlisten?.();
+    restoreRequestUnlisten = null;
+    // The diff window shows this workspace's history — it has no subject once
+    // the workspace closes.
+    void closeDiffWindow();
   });
 </script>
 
@@ -166,11 +192,6 @@
   <div class="flex min-h-0 w-full flex-1">
     <AppSidebar />
     <main class="relative flex h-full min-w-0 flex-1 overflow-hidden">
-      <!-- Diff overlay (mounted on demand by the history pane) -->
-      {#if vcs.diffPaneOpen}
-        <DiffOverlay />
-      {/if}
-
       <Resizable.PaneGroup direction="horizontal" class="h-full w-full">
         <Resizable.Pane defaultSize={paneVisible ? 60 : 100} minSize={30}>
           <EditorPane />

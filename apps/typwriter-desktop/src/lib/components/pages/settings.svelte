@@ -1,7 +1,6 @@
 <script lang="ts">
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
-    ArrowLeft01Icon,
     Folder01Icon,
     FolderAddIcon,
     Delete01Icon,
@@ -19,12 +18,11 @@
     InformationCircleIcon,
   } from "@hugeicons/core-free-icons";
   import Button from "$lib/components/ui/button/button.svelte";
+  import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import { Switch } from "$lib/components/ui/switch/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
   import * as Popover from "$lib/components/ui/popover/index.js";
-  import Titlebar from "$lib/components/titlebar/titlebar.svelte";
-  import { page } from "$lib/stores/page.svelte";
   import { platform } from "$lib/stores/platform.svelte";
   import {
     settings,
@@ -111,14 +109,12 @@
   }
 </script>
 
+<!-- Rendered in its own undecorated webview window (label "settings"), so it
+     carries the shared custom titlebar; there's no in-app back navigation. -->
 <div class="relative flex h-screen w-screen flex-col overflow-hidden">
   <Titlebar variant="minimal" title="Settings" />
 
   <div class="flex shrink-0 items-center gap-2 border-b border-border px-6 py-3">
-    <Button variant="ghost" size="sm" class="gap-2" onclick={() => page.back("home")}>
-      <HugeiconsIcon icon={ArrowLeft01Icon} class="size-4" />
-      Back
-    </Button>
     <h1 class="text-base font-semibold">Settings</h1>
     <Button variant="outline" size="sm" class="ml-auto gap-2" onclick={resetSettings}>
       <HugeiconsIcon icon={RefreshIcon} class="size-4" />
