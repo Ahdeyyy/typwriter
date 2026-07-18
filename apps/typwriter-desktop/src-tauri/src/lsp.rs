@@ -36,18 +36,24 @@ pub struct LspState {
 }
 
 impl LspState {
-    /// Spawn `tinymist lsp` (reusing an already-running child), returning
-    /// whether a server is available afterwards. Never panics: a failed spawn
-    /// simply returns `false` — the "tinymist not installed" fallback signal.
+    /// Spawn a fresh `tinymist lsp`, returning whether a server is available
+    /// afterwards. Never panics: a failed spawn simply returns `false` — the
+    /// "tinymist not installed" fallback signal.
     pub fn start<R: Runtime>(&self, app: &AppHandle<R>) -> bool {
         let mut guard = self.inner.lock().unwrap();
 
-        // Reuse a still-running process; drop a dead one and respawn.
-        if let Some(proc) = guard.as_mut() {
-            if matches!(proc.child.try_wait(), Ok(None)) {
-                return true;
+        // Always start fresh: each frontend session sends a new `initialize`,
+        // which an already-initialized server must reject — reuse would
+        // guarantee a failed first handshake after e.g. a webview reload.
+        if let Some(mut proc) = guard.take() {
+            let _ = proc.child.kill();
+            let _ = proc.child.wait();
+            if let Some(handle) = proc.reader.take() {
+                let _ = handle.join();
             }
-            *guard = None;
+            if let Some(handle) = proc.stderr.take() {
+                let _ = handle.join();
+            }
         }
 
         let mut cmd = Command::new("tinymist");
@@ -142,6 +148,11 @@ impl LspState {
     }
 }
 
+/// Window hosting the LSP client. Events are targeted there rather than
+/// broadcast — the preview popout has no client and shouldn't pay the
+/// serialization cost of (large) semantic-token payloads.
+const MAIN_WINDOW: &str = "main";
+
 /// De-frame `Content-Length`-prefixed messages from the server's stdout and
 /// emit each JSON body as an `lsp://message` event. Emits `lsp://closed` when
 /// stdout reaches EOF or errors.
@@ -154,13 +165,13 @@ fn read_loop<R: Runtime>(stdout: ChildStdout, app: AppHandle<R>) {
             let mut line = String::new();
             match reader.read_line(&mut line) {
                 Ok(0) => {
-                    let _ = app.emit(LSP_CLOSED_EVENT, ());
+                    let _ = app.emit_to(MAIN_WINDOW, LSP_CLOSED_EVENT, ());
                     return;
                 }
                 Ok(_) => {}
                 Err(err) => {
                     warn!("lsp: read from tinymist failed: {err}");
-                    let _ = app.emit(LSP_CLOSED_EVENT, ());
+                    let _ = app.emit_to(MAIN_WINDOW, LSP_CLOSED_EVENT, ());
                     return;
                 }
             }
@@ -181,12 +192,12 @@ fn read_loop<R: Runtime>(stdout: ChildStdout, app: AppHandle<R>) {
         let mut body = vec![0u8; len];
         if let Err(err) = reader.read_exact(&mut body) {
             warn!("lsp: incomplete message from tinymist: {err}");
-            let _ = app.emit(LSP_CLOSED_EVENT, ());
+            let _ = app.emit_to(MAIN_WINDOW, LSP_CLOSED_EVENT, ());
             return;
         }
         match String::from_utf8(body) {
             Ok(message) => {
-                let _ = app.emit(LSP_MESSAGE_EVENT, message);
+                let _ = app.emit_to(MAIN_WINDOW, LSP_MESSAGE_EVENT, message);
             }
             Err(err) => warn!("lsp: non-utf8 message body: {err}"),
         }

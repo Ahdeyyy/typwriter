@@ -5,8 +5,18 @@
 // per-file CodeMirror extension (`pluginFor`); when tinymist isn't active it
 // returns `null` and the editor falls back to the typst-ide IPC path.
 
-import { LSPClient, languageServerExtensions } from '@codemirror/lsp-client';
+import {
+    LSPClient,
+    serverCompletion,
+    hoverTooltips,
+    signatureHelp,
+    serverDiagnostics,
+    jumpToDefinitionKeymap,
+    renameKeymap,
+    findReferencesKeymap,
+} from '@codemirror/lsp-client';
 import type { Extension } from '@codemirror/state';
+import { keymap } from '@codemirror/view';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 import { lspStart, lspStop } from '$lib/ipc/commands';
@@ -39,18 +49,30 @@ const RECONNECT_DELAY_MS = 1_000;
 // ─── URI ⇄ path ───────────────────────────────────────────────────────────────
 //
 // The app's paths are normalized forward-slash absolute paths. `file://` URIs
-// need a leading slash before a Windows drive letter (`file:///C:/a`). Use
-// `encodeURI`/`decodeURI` (not the `*Component` variants) so `/` and `:` survive.
+// need a leading slash before a Windows drive letter (`file:///C:/a`). Drive
+// letters are normalized to upper case on both sides so URIs and paths compare
+// consistently with the app's own paths (workspace.toRel is case-sensitive).
 
 export function pathToUri(path: string): string {
-    const withSlash = path.startsWith('/') ? path : `/${path}`;
+    let p = path;
+    if (/^[a-z]:\//.test(p)) p = p[0].toUpperCase() + p.slice(1);
+    const withSlash = p.startsWith('/') ? p : `/${p}`;
     return `file://${encodeURI(withSlash)}`;
 }
 
 export function uriToPath(uri: string): string {
-    let path = decodeURI(uri.replace(/^file:\/\//, ''));
-    // `/C:/a` → `C:/a`
-    if (/^\/[A-Za-z]:\//.test(path)) path = path.slice(1);
+    let path = uri.replace(/^file:\/\//, '');
+    // Servers may percent-encode reserved characters (VS Code emits
+    // `file:///c%3A/...`); `decodeURIComponent` decodes `%3A` where `decodeURI`
+    // would not. Safe here: a file URI path has no query/fragment semantics.
+    try {
+        path = decodeURIComponent(path);
+    } catch {
+        /* malformed escape — keep the raw path */
+    }
+    // `/C:/a` or `/c:/a` → `C:/a`
+    const m = /^\/([A-Za-z]):\//.exec(path);
+    if (m) path = `${m[1].toUpperCase()}:${path.slice(3)}`;
     return path;
 }
 
@@ -68,20 +90,24 @@ interface LspDiagnostic {
 }
 
 /** Map LSP diagnostics into the app's `SerializedDiagnostic` shape. `file_path`
- *  is filled in by the caller. */
+ *  is filled in by the caller. Information/Hint diagnostics are dropped — the
+ *  pane only has error/warning buckets and lints would inflate the warning
+ *  count; the in-editor gutter (`serverDiagnostics`) still shows them. */
 export function toSerializedDiagnostics(lspDiags: LspDiagnostic[]): SerializedDiagnostic[] {
-    return lspDiags.map((d) => ({
-        severity: d.severity === 1 ? 'error' : 'warning',
-        message: d.message,
-        hints: [],
-        file_path: null,
-        range: {
-            start_line: d.range.start.line,
-            start_col: d.range.start.character,
-            end_line: d.range.end.line,
-            end_col: d.range.end.character,
-        },
-    }));
+    return lspDiags
+        .filter((d) => d.severity === undefined || d.severity <= 2)
+        .map((d) => ({
+            severity: d.severity === 1 ? ('error' as const) : ('warning' as const),
+            message: d.message,
+            hints: [],
+            file_path: null,
+            range: {
+                start_line: d.range.start.line,
+                start_col: d.range.start.character,
+                end_line: d.range.end.line,
+                end_col: d.range.end.character,
+            },
+        }));
 }
 
 // ─── Client store ───────────────────────────────────────────────────────────────
@@ -104,6 +130,15 @@ class LspClientStore {
     private token = 0;
     // Pending backoff timer for a scheduled (re)connect, if any.
     private retryTimer: ReturnType<typeof setTimeout> | null = null;
+    // All lifecycle transitions (teardown → connect) run serialized through this
+    // chain so a superseded flow can never stop the process a newer flow owns:
+    // the Rust side holds exactly one tinymist child, and only the transition
+    // currently at the head of the chain may start or stop it.
+    private chain: Promise<void> = Promise.resolve();
+
+    private enqueue(f: () => Promise<void>): void {
+        this.chain = this.chain.then(f).catch(() => {});
+    }
 
     /** Re-run on every change of the `useLsp` setting or the workspace root.
      *  Idempotent: tears down and reconnects only when the desired state or root
@@ -115,10 +150,11 @@ class LspClientStore {
 
         this.wantKey = wantKey;
         const myToken = ++this.token;
-        this.teardown();
-
-        if (!wantKey || !root) return;
-        void this.connect(root, myToken, 0);
+        this.enqueue(async () => {
+            await this.teardown();
+            if (myToken !== this.token) return;
+            if (wantKey && root) await this.connect(root, myToken, 0);
+        });
     }
 
     private async connect(root: string, myToken: number, attempt: number): Promise<void> {
@@ -133,10 +169,9 @@ class LspClientStore {
             this.retryOrFallback(root, myToken, attempt);
             return;
         }
-        if (myToken !== this.token) {
-            void lspStop();
-            return;
-        }
+        // Superseded flows never stop the process — the transition that
+        // superseded them runs `teardown` (in the chain) and owns the shutdown.
+        if (myToken !== this.token) return;
 
         const rootUri = pathToUri(root);
 
@@ -145,19 +180,30 @@ class LspClientStore {
             transport = await createTauriLspTransport();
         } catch (err) {
             logError('lsp transport setup failed:', err);
-            void lspStop();
-            this.retryOrFallback(root, myToken, attempt);
+            if (myToken === this.token) {
+                await lspStop();
+                this.retryOrFallback(root, myToken, attempt);
+            }
             return;
         }
         if (myToken !== this.token) {
             transport.dispose();
-            void lspStop();
             return;
         }
 
         const client = new LSPClient({
             rootUri,
-            extensions: languageServerExtensions(),
+            // The deprecated `languageServerExtensions()` bundle also binds
+            // `formatKeymap` (Shift-Alt-f), which would shadow the app's own
+            // typstyle formatter binding — list the extensions explicitly and
+            // leave formatting to the app.
+            extensions: [
+                serverCompletion(),
+                hoverTooltips(),
+                signatureHelp(),
+                serverDiagnostics(),
+                keymap.of([...jumpToDefinitionKeymap, ...renameKeymap, ...findReferencesKeymap]),
+            ],
             notificationHandlers: {
                 'textDocument/publishDiagnostics': (_client, params) => {
                     // Mirror into the store so the diagnostics *pane* (which reads
@@ -185,8 +231,10 @@ class LspClientStore {
                 /* already gone */
             }
             transport.dispose();
-            void lspStop();
             if (!initialized && myToken === this.token) {
+                // Still the current flow, so it owns the process: stop it before
+                // scheduling the retry.
+                await lspStop();
                 logError('tinymist failed to initialize');
                 this.retryOrFallback(root, myToken, attempt);
             }
@@ -199,9 +247,11 @@ class LspClientStore {
             if (myToken !== this.token) return;
             logInfo('tinymist language server exited; attempting to reconnect');
             const reconnectToken = ++this.token;
-            this.teardown();
             if (this.wantKey === rootUri) {
+                // scheduleConnect's fire enqueues teardown → connect.
                 this.scheduleConnect(root, reconnectToken, 0, RECONNECT_DELAY_MS);
+            } else {
+                this.enqueue(() => this.teardown());
             }
         });
         if (myToken !== this.token) {
@@ -212,7 +262,6 @@ class LspClientStore {
                 /* already gone */
             }
             transport.dispose();
-            void lspStop();
             return;
         }
 
@@ -251,7 +300,11 @@ class LspClientStore {
         this.retryTimer = setTimeout(() => {
             this.retryTimer = null;
             if (myToken !== this.token) return;
-            void this.connect(root, myToken, attempt);
+            this.enqueue(async () => {
+                await this.teardown();
+                if (myToken !== this.token) return;
+                await this.connect(root, myToken, attempt);
+            });
         }, delayMs);
     }
 
@@ -262,7 +315,10 @@ class LspClientStore {
         }
     }
 
-    private teardown(): void {
+    /** The single place the tinymist process is stopped. Always awaits the stop
+     *  so the next transition in the chain observes a fully-dead process — a
+     *  `start` invoke can otherwise race a fire-and-forget `stop` server-side. */
+    private async teardown(): Promise<void> {
         // Cancel any pending backoff so a superseded flow can't reconnect.
         this.clearRetryTimer();
         // Drop the closed-listener first so killing the child doesn't re-trigger it.
@@ -270,7 +326,6 @@ class LspClientStore {
             this.closedUnlisten();
             this.closedUnlisten = null;
         }
-        const hadClient = this.client !== null;
         this.isActive = false;
         diagnostics.setLspActive(false);
         if (this.client) {
@@ -286,7 +341,7 @@ class LspClientStore {
             this.transport = null;
         }
         this.rootUri = null;
-        if (hadClient) void lspStop();
+        await lspStop();
     }
 
     /** The per-file CodeMirror extension for `absPath`, or `null` when tinymist
@@ -300,7 +355,7 @@ class LspClientStore {
     destroy(): void {
         this.wantKey = null;
         this.token++;
-        this.teardown();
+        this.enqueue(() => this.teardown());
     }
 }
 
