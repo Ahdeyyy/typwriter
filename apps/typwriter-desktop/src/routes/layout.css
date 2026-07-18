@@ -266,8 +266,8 @@
 [data-theme="glass"] [data-slot="sheet-content"],
 [data-theme="glass"] [data-slot="command"],
 [data-theme="glass"] [data-slot="sidebar-inner"] {
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
 }
 
 /* Context and dropdown menus self-blur via ::before — crank it up in glass. */
@@ -282,15 +282,15 @@
 /* Search panel and CodeMirror popups get stronger blur + more transparency. */
 [data-theme="glass"] .search-panel {
   background-color: color-mix(in srgb, var(--popover) 55%, transparent);
-  backdrop-filter: blur(28px) saturate(200%);
-  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
 }
 
 [data-theme="glass"] .cm-tooltip-autocomplete,
 [data-theme="glass"] .cm-tooltip.cm-completionInfo {
   background-color: color-mix(in srgb, var(--popover) 65%, transparent);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
 }
 
 /* ── Nord ──────────────────────────────────────────────────────────────── */
