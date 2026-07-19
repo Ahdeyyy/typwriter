@@ -1,5 +1,3 @@
-// compiler/render.rs
-//
 // Renders a single typst `Page` to raw PNG bytes at the given scale factor.
 // The resulting bytes are then base64-encoded by the caller before being sent
 // over Tauri IPC.

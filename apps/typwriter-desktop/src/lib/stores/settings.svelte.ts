@@ -1,4 +1,4 @@
-// settings.svelte.ts — User preferences.
+// User preferences.
 //
 // Two storage layers:
 //   • Font directories are persisted on the Rust side (they feed the Typst

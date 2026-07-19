@@ -1,5 +1,3 @@
-// vcs/history.rs
-//
 // Walk the snapshot directory in reverse chronological order. "Changed files"
 // for each entry is the per-path set-difference of its file map against its
 // parent — the timeline UI uses this to color points by which files were

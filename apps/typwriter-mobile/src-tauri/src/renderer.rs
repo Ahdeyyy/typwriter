@@ -1,5 +1,3 @@
-// renderer.rs
-//
 // On-demand page renderer. PNG bytes are produced lazily in the `previewimg://`
 // URI handler on first request per `(fingerprint, scale_bucket)` and served
 // from an in-memory LRU afterwards. The webview's HTTP cache (responses are

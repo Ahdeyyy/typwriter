@@ -1,5 +1,3 @@
-// lib.rs
-//
 // Tauri app assembly: the `previewimg://` URI scheme (async, renders page PNGs
 // on demand), plugins, shared state, and the full invoke_handler. The IPC
 // contract is documented in plans/typwriter-mobile/02-rust-core.md.

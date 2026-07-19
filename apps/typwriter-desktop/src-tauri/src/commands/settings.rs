@@ -1,5 +1,3 @@
-// commands/settings.rs
-//
 // App settings persisted via tauri-plugin-store.
 
 use std::{path::PathBuf, sync::Arc, time::Instant};

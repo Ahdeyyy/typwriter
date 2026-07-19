@@ -65,10 +65,6 @@
   import { semanticTokenHighlighter } from "$lib/lsp/semantic-tokens";
   import { Compartment } from "@codemirror/state";
   import { mode, systemPrefersMode } from "mode-watcher";
-  // import {
-  //   githubLightTheme,
-  //   githubLightHighlightStyle,
-  // } from "$lib/typst-codemirror-lang/lightTheme.js";
   import { untrack } from "svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";

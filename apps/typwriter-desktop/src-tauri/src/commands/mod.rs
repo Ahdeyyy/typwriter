@@ -1,5 +1,3 @@
-// commands/mod.rs
-//
 // Re-exports all Tauri command handlers so `lib.rs` can import them all from
 // one place.
 

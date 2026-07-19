@@ -1,5 +1,3 @@
-// commands/lsp.rs
-//
 // Thin Tauri-command wrappers over `LspState` — the frontend drives the
 // tinymist bridge through these (`lsp_start` / `lsp_send` / `lsp_stop`).
 

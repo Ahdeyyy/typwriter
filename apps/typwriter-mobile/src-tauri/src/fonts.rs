@@ -1,5 +1,3 @@
-// fonts.rs
-//
 // App-wide font source: a user-chosen folder whose fonts are loaded into the
 // compiler. On Android a plain filesystem path is not reachable (scoped
 // storage), so a folder picked via the SAF directory picker is stored as a

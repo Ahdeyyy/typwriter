@@ -1,5 +1,3 @@
-// vcs/restore.rs
-//
 // Two operations: restore the whole workspace to a snapshot, or restore a
 // single file. Both record a safety `PreRestore` snapshot of the current
 // state first so the user can step back if they restored the wrong point.

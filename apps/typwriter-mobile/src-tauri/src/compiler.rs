@@ -1,5 +1,3 @@
-// compiler.rs
-//
 // Compile state + diagnostics serialization. The actual `compile` Tauri
 // command lives in `commands/compile.rs`; this module owns the shared state it
 // mutates and the helpers that turn typst diagnostics into IPC payloads.

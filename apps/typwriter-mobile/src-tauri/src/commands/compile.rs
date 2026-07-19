@@ -1,5 +1,3 @@
-// commands/compile.rs
-//
 // The `compile` command: async request/response with a generation counter for
 // staleness. The body does blocking work (typst::compile), so it runs on a
 // blocking thread. Page images are NOT returned here — only metadata; PNG bytes

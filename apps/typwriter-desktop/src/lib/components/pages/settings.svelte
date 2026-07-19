@@ -139,7 +139,6 @@
           </p>
 
           <div class="grid gap-4 md:grid-cols-2">
-            <!-- Light theme picker -->
             <div class="rounded-md border border-border p-4">
               <div class="mb-3 flex items-center gap-2">
                 <HugeiconsIcon icon={SunIcon} class="size-4" />
@@ -170,7 +169,6 @@
               </div>
             </div>
 
-            <!-- Dark theme picker -->
             <div class="rounded-md border border-border p-4">
               <div class="mb-3 flex items-center gap-2">
                 <HugeiconsIcon icon={Moon02Icon} class="size-4" />
@@ -218,7 +216,6 @@
 
           <div class="flex flex-col gap-4">
 
-            <!-- UI font -->
             <div class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3">
               <div class="min-w-0">
                 <p class="text-sm font-medium">UI font</p>
@@ -269,7 +266,6 @@
               </Popover.Root>
             </div>
 
-            <!-- Editor font -->
             <div class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3">
               <div class="min-w-0">
                 <p class="text-sm font-medium">Editor font</p>
@@ -320,7 +316,6 @@
               </Popover.Root>
             </div>
 
-            <!-- Editor font size -->
             <div class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3">
               <div class="min-w-0">
                 <p class="text-sm font-medium">Editor font size</p>

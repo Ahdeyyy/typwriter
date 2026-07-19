@@ -1,5 +1,3 @@
-// workspace.rs
-//
 // Managed-storage workspaces (v1): each workspace is a direct subdirectory of
 // `<documents>/Typwriter/`, reachable with plain `std::fs`. SAF-picked external
 // folders are a later phase (08-saf-and-polish.md). All file IO is funnelled

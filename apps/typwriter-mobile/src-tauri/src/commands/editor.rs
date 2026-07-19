@@ -1,5 +1,3 @@
-// commands/editor.rs
-//
 // Editor-facing commands: read_file, save_file, get_completions. Plus the
 // UTF-16 ↔ UTF-8 offset helpers that bridge CodeMirror (UTF-16 code units) and
 // Typst (UTF-8 byte offsets). Every offset crossing IPC is in UTF-16 units.

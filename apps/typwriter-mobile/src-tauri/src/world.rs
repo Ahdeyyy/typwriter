@@ -1,5 +1,3 @@
-// world.rs
-//
 // `MobileWorld` — implements `typst::World` + `typst_ide::IdeWorld`. A lean
 // reimagining of the desktop `EditorWorld` on typst 0.15: fonts live in a
 // runtime-swappable `FontStore` (embedded fonts are installed at construction;

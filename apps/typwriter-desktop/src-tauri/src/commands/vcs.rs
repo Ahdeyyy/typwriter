@@ -1,12 +1,5 @@
-// commands/vcs.rs
-//
-// Tauri commands for the version-history pane:
-//   - vcs_create_restore_point  (manual "save a named restore point" button)
-//   - vcs_list_history          (timeline data)
-//   - vcs_diff_vs_current       (selected commit vs working tree)
-//   - vcs_diff_between          (two commits)
-//   - vcs_restore_workspace     (full restore)
-//   - vcs_restore_file          (single-file restore)
+// Tauri commands for the version-history pane: create restore points, list
+// history, diff commits, and restore the workspace or a single file.
 
 use std::{sync::Arc, time::Instant};
 

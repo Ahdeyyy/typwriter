@@ -1,5 +1,3 @@
-// stores/vcs.svelte.ts
-//
 // Reactive store for the version-history sidebar. Holds:
 //   - the loaded list of restore points
 //   - the currently selected point (for diff-vs-current view)

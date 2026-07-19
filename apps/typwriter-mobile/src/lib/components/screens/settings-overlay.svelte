@@ -87,7 +87,6 @@
       </div>
       <ScrollArea class="flex-1">
         <div class="flex flex-col gap-6 p-4">
-          <!-- Theme -->
           <section class="flex flex-col gap-2">
             <span class="text-sm font-medium">Theme</span>
             <div class="grid grid-cols-3 gap-1">
@@ -103,7 +102,6 @@
             </div>
           </section>
 
-          <!-- Editor font size -->
           <section class="flex items-center justify-between">
             <span class="text-sm font-medium">Editor font size</span>
             <div class="flex items-center gap-2">
@@ -127,7 +125,6 @@
             </div>
           </section>
 
-          <!-- Line numbers -->
           <section class="flex items-center justify-between">
             <span class="text-sm font-medium">Line numbers</span>
             <Switch
@@ -136,7 +133,6 @@
             />
           </section>
 
-          <!-- Autosave -->
           <section class="flex flex-col gap-2">
             <span class="text-sm font-medium">Autosave delay</span>
             <div class="grid grid-cols-3 gap-1">
@@ -152,7 +148,6 @@
             </div>
           </section>
 
-          <!-- Preview sharpness -->
           <section class="flex flex-col gap-2">
             <span class="text-sm font-medium">Preview sharpness</span>
             <div class="grid grid-cols-3 gap-1">
@@ -168,7 +163,6 @@
             </div>
           </section>
 
-          <!-- Fonts folder (app-wide font source) -->
           <section class="flex flex-col gap-2">
             <div class="flex items-center gap-2">
               <Icon icon={TextFontIcon} class="text-muted-foreground size-4" />
@@ -200,7 +194,6 @@
             </div>
           </section>
 
-          <!-- About -->
           <section class="flex flex-col gap-2 border-t pt-4">
             <div class="flex items-center justify-between">
               <span class="text-muted-foreground text-sm">Version</span>

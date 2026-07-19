@@ -1,5 +1,3 @@
-// commands/export.rs
-//
 // Exports. `pdf_bytes` renders the last successfully compiled document;
 // `export_pdf_to_uri` saves it through the Android SAF save dialog (or the
 // desktop dialog in the dev loop); `export_pdf_to_cache_file` writes a temp PDF

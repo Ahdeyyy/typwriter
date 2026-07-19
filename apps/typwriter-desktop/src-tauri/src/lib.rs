@@ -1,4 +1,4 @@
-// lib.rs — application entry point and Tauri state setup.
+// Application entry point and Tauri state setup.
 
 mod commands;
 mod compiler;

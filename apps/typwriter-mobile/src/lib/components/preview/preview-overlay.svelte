@@ -48,7 +48,6 @@
 
 {#if visible}
   <div class="bg-muted/95 fixed inset-0 z-50 flex flex-col backdrop-blur" style="padding-top: env(safe-area-inset-top);">
-    <!-- Top strip -->
     <div class="flex h-12 shrink-0 items-center gap-1 border-b px-1">
       <Button variant="ghost" size="icon" aria-label="Close preview" onclick={() => app.closeOverlay()}>
         <Icon icon={Cancel01Icon} />

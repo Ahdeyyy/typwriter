@@ -1,4 +1,4 @@
-// lsp.rs — owns the external `tinymist` language-server child process.
+// Owns the external `tinymist` language-server child process.
 //
 // The Rust side understands only LSP *framing* (`Content-Length` headers); it
 // has no notion of JSON-RPC semantics. All protocol logic lives in the frontend

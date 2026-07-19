@@ -1,5 +1,3 @@
-// commands/export.rs
-//
 // Tauri commands for exporting the compiled document to different formats.
 // All export commands operate on the most recently compiled `Document` stored
 // inside `PreviewPipeline`.

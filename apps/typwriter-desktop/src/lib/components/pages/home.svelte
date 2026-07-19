@@ -205,7 +205,6 @@
 </Tooltip.Provider>
 
 {#snippet homeContent()}
-  <!-- Recent workspaces -->
   <section class="flex min-h-0 w-full max-w-3xl flex-col">
     <div class="mb-4 flex shrink-0 items-center justify-between gap-3">
       <h2 class="text-sm font-medium text-muted-foreground">
@@ -250,7 +249,6 @@
                          class="group/card flex w-full flex-col overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:bg-accent disabled:pointer-events-none cursor-pointer disabled:opacity-50"
                          onclick={() => handleOpenRecent(entry.path)}
                        >
-                         <!-- Thumbnail -->
                          <div class="flex h-28 w-full items-center justify-center overflow-hidden bg-muted">
                            {#if entry.thumbnail}
                              <img
@@ -263,7 +261,6 @@
                            {/if}
                          </div>
 
-                         <!-- Details -->
                          <div class="min-w-0 px-3 py-2">
                            <p class="truncate text-sm font-medium text-foreground group-hover/card:text-accent-foreground">
                              {entry.name}
@@ -274,7 +271,6 @@
                          </div>
                        </button>
 
-                       <!-- Per-entry delete button -->
                        <button
                          class="absolute right-1.5 top-1.5 flex h-6 w-6 rounded-lg items-center justify-center bg-background text-muted-foreground opacity-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 group-hover:opacity-100 "
                          onclick={(e) => handleRemoveRecent(e, entry.path)}
@@ -291,7 +287,6 @@
   </section>
 
   <div class="flex gap-2">
-    <!-- New Workspace dialog -->
     <Dialog.Root bind:open={newWorkspaceOpen}>
       <Dialog.Trigger>
         {#snippet child({ props })}
@@ -311,7 +306,6 @@
         </Dialog.Header>
 
         <div class="flex flex-col gap-4 py-2">
-          <!-- Name input -->
           <div class="flex flex-col gap-1.5">
             <label for="ws-name" class="text-sm font-medium">Name</label>
             <Input
@@ -323,7 +317,6 @@
             />
           </div>
 
-          <!-- Location picker -->
           <div class="flex flex-col gap-1.5">
             <label for="ws-location" class="text-sm font-medium">Location</label>
             <div class="flex gap-2">

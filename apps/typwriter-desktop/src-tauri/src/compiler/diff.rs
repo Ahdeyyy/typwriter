@@ -1,5 +1,3 @@
-// compiler/diff.rs
-//
 // Per-page fingerprinting. The diff between two compiles is computed inline
 // in `PreviewPipeline::compile_and_emit`, where it needs to consider both the
 // content fingerprint and the current zoom bucket together.

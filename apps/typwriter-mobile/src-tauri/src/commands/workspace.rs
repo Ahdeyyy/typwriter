@@ -1,5 +1,3 @@
-// commands/workspace.rs
-//
 // Workspace lifecycle + file operations. Every mutation returns the refreshed
 // file tree (root node) so the frontend never patches the tree client-side.
 //

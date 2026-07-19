@@ -1,4 +1,4 @@
-// client.svelte.ts — tinymist language-server lifecycle.
+// tinymist language-server lifecycle.
 //
 // Owns the `@codemirror/lsp-client` `LSPClient`, its transport, and the
 // spawn/handshake/teardown state machine. The editor asks this store for a

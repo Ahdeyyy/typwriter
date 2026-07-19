@@ -1,4 +1,4 @@
-// semantic-tokens.ts — semantic-token highlighting for tinymist.
+// Semantic-token highlighting for tinymist.
 //
 // `@codemirror/lsp-client` does not implement semantic tokens, so this file
 // does, as a `ViewPlugin`. It requests `textDocument/semanticTokens/full` and

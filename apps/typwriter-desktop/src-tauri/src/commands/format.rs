@@ -1,10 +1,4 @@
-// commands/format.rs
-//
-// Tauri commands for Typst source formatting via `typstyle-core`:
-//   - format_typst_source         (pure text → text)
-//   - format_typst_cursor_virtual (insert marker at cursor → format → find marker)
-//   - format_typst_file           (read → format → write back, returns text)
-//   - format_workspace_typ_files  (recursively format every .typ in the workspace)
+// Typst source formatting commands via `typstyle-core`.
 //
 // Cursor maintenance lives entirely on the Rust side so positions stay in
 // UTF-8 byte space until the very last step. The frontend (CodeMirror) speaks
@@ -35,7 +29,6 @@ use typstyle_core::Typstyle;
 
 use crate::workspace::WorkspaceState;
 
-/// Format a Typst source string and return the formatted output.
 #[tauri::command]
 pub fn format_typst_source(source: String) -> Result<String, String> {
     let t = Instant::now();

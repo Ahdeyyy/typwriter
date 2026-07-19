@@ -91,7 +91,6 @@
   class="fixed flex flex-col"
   style="top: var(--vv-top, 0px); left: var(--vv-left, 0px); width: var(--vv-width, 100vw); height: var(--app-height, 100svh);"
 >
-  <!-- Top bar -->
   <header
     class="flex h-12 shrink-0 items-center gap-1 border-b px-1"
     style="padding-top: env(safe-area-inset-top);"
@@ -126,7 +125,6 @@
   <!-- Obsidian-style tabs -->
   <TabBar />
 
-  <!-- Editor host -->
   <main class="min-h-0 flex-1">
     {#if editor.loading}
       <div class="flex flex-col gap-2 p-4">

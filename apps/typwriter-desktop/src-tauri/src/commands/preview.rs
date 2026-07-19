@@ -1,8 +1,4 @@
-// commands/preview.rs
-//
-// Tauri commands for controlling the live preview:
-//   - trigger_preview  (force a full recompile + page stream)
-//   - set_zoom / get_zoom
+// Tauri commands for controlling the live preview (recompile trigger, zoom).
 
 use std::sync::Arc;
 

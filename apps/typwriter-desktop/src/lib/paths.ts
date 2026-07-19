@@ -1,12 +1,6 @@
-// paths.ts
-//
-// Cross-cutting filesystem path utilities. The desktop runs on Windows where
-// `Path::display()` uses backslashes; the editor (CodeMirror, IPC payloads,
-// tab ids) consistently works with forward-slash strings, so every path that
-// crosses the FFI boundary or gets compared/stored needs to be normalized.
-//
-// Keep these tiny and pure — they are imported by stores, components, and
-// controllers alike; growing them invites circular imports.
+// Path utilities. On Windows Rust's `Path::display()` uses backslashes, but the
+// editor (CodeMirror, IPC payloads, tab ids) works with forward-slash strings,
+// so paths crossing the FFI boundary or getting compared/stored are normalized.
 
 export function normalize(path: string): string {
     return path.replace(/\\/g, '/');

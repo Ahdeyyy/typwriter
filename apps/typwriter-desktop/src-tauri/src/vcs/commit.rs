@@ -1,5 +1,3 @@
-// vcs/commit.rs
-//
 // Build a snapshot from the working tree, dedupe against HEAD, persist
 // manifest + new blobs, advance HEAD, then prune. Every read/write goes
 // through `WorkingTreeFs`.

@@ -1,5 +1,3 @@
-// vcs/retention.rs
-//
 // Pruning policy applied after every successful commit. Manual / Initial /
 // PreRestore snapshots are always preserved; auto-snapshots (Save / Compile)
 // are subject to the user's configured caps.

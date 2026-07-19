@@ -115,7 +115,6 @@
 </script>
 
 <div class="bg-background flex flex-col" style="height: 100svh; padding-top: env(safe-area-inset-top);">
-  <!-- Header -->
   <header class="flex shrink-0 items-center justify-between px-5 pt-4 pb-2">
     <div class="flex items-center gap-2.5">
       <div class="bg-primary text-primary-foreground flex size-9 items-center justify-center rounded-xl shadow-sm">
@@ -134,7 +133,6 @@
     </Button>
   </header>
 
-  <!-- Content -->
   <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 6rem);">
     {#if loading}
       <div class="flex flex-col gap-3">

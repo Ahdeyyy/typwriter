@@ -1,5 +1,3 @@
-// vcs/mod.rs
-//
 // Local-only versioning for a workspace. Snapshots ("restore points") live
 // under `<workspace>/.typwriter/history/` as a content-addressed blob store
 // plus JSON manifests — no git, no gix. The store is accessed through
