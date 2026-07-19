@@ -19,7 +19,7 @@
     bracketMatching,
   } from "@codemirror/language";
   import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-  import { languages } from "@codemirror/language-data";
+  import { resolveCodeLanguage } from "$lib/codemirror/langs";
   import { untrack } from "svelte";
   import { mode, systemPrefersMode } from "mode-watcher";
 
@@ -97,7 +97,7 @@
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           themeCompartment.of(resolvedTheme()),
           fontCompartment.of(fontExtension()),
-          typst({ codeLanguages: languages }),
+          typst({ codeLanguages: resolveCodeLanguage }),
           // No line-number gutter — the tutorial editor is deliberately bare.
           keymap.of(typstKeymap),
           keymap.of([

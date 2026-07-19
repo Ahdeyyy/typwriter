@@ -10,6 +10,23 @@ export function parseMarkup(ctx: TypstParseContext): Elt[] {
   return parseMarkupContent(ctx.scanner, ctx, Ch.EOF, false)
 }
 
+/// Whether the newline at the scanner's current position begins a paragraph
+/// break (i.e. a blank line follows). Pure lookahead — does not consume input.
+function parbreakAhead(s: Scanner): boolean {
+  const text = s.text
+  let i = s.pos
+  // Skip the first line break (LF or CRLF).
+  if (text.charCodeAt(i) === Ch.CarriageReturn && text.charCodeAt(i + 1) === Ch.Newline) i += 2
+  else i += 1
+  // A run of line whitespace followed by another line break ⇒ blank line.
+  while (i < text.length) {
+    const ch = text.charCodeAt(i)
+    if (ch === Ch.Space || ch === Ch.Tab) { i++; continue }
+    return ch === Ch.Newline || ch === Ch.CarriageReturn
+  }
+  return false
+}
+
 /// Parse markup content until the given closing character or EOF.
 /// `inContentBlock` is true when parsing inside `[...]`.
 /// `atLineStartInit` controls whether the first character is treated as a line
@@ -22,9 +39,26 @@ export function parseMarkupContent(
   closeChar: number,
   inContentBlock: boolean,
   atLineStartInit: boolean = true,
+  // Close char of the enclosing *container* (a content block `]` or EOF at the
+  // document root). Threaded so an inner strong/emph parse fails — rather than
+  // consuming past — the container boundary. Emphasis nesting keeps the same
+  // container boundary; it does not become the enclosing `*`/`_`.
+  parentClose: number = Ch.EOF,
+  // True only for line-scoped contexts (heading / list / term item content):
+  // strong/emph there must not swallow the following lines.
+  stopAtNewline: boolean = false,
 ): Elt[] {
   const elts: Elt[] = []
   let textFrom = -1
+
+  // `*…*` / `_…_` inner content: the delimiter has to be found within the same
+  // container and the same paragraph (Typst does not let emphasis leak across a
+  // content-block boundary or a paragraph break — an unmatched marker is just
+  // literal text). The container boundary passed to any nested strong/emph is
+  // this level's own close char when we're a container, otherwise the inherited
+  // `parentClose`.
+  const emphInner = closeChar === Ch.Star || closeChar === Ch.Underscore
+  const containerClose = emphInner ? parentClose : closeChar
 
   function flushText() {
     if (textFrom >= 0 && textFrom < s.pos) {
@@ -48,11 +82,26 @@ export function parseMarkupContent(
       break
     }
 
+    // Enclosing-container boundary: an inner strong/emph parse stops (and, by
+    // not consuming the boundary, fails) here rather than leaking past the
+    // container's close char.
+    if (emphInner && parentClose !== Ch.EOF && s.peek() === parentClose) {
+      flushText()
+      break
+    }
+
     const ch = s.peek()
     const pos = s.pos
 
     // Paragraph break: two+ newlines in a row
     if (isNewline(ch)) {
+      // Strong/emph cannot span a paragraph break — and, in line-scoped
+      // contexts, cannot span any newline. Stop without consuming so the caller
+      // treats the still-open marker as literal text.
+      if (emphInner && (stopAtNewline || parbreakAhead(s))) {
+        flushText()
+        break
+      }
       flushText()
       const start = s.pos
       s.next()
@@ -146,7 +195,7 @@ export function parseMarkupContent(
     // Strong: *...*
     if (ch === Ch.Star) {
       flushText()
-      const elt = parseStrong(s, ctx)
+      const elt = parseStrong(s, ctx, containerClose, stopAtNewline)
       if (elt) { elts.push(elt); continue }
       // Fallthrough: treat as text
       startText()
@@ -157,7 +206,7 @@ export function parseMarkupContent(
     // Emphasis: _..._
     if (ch === Ch.Underscore) {
       flushText()
-      const elt = parseEmph(s, ctx)
+      const elt = parseEmph(s, ctx, containerClose, stopAtNewline)
       if (elt) { elts.push(elt); continue }
       startText()
       s.next()
@@ -386,14 +435,19 @@ function parseTermItem(s: Scanner, ctx: TypstParseContext): Elt | null {
 
 // === Strong and Emphasis ===
 
-function parseStrong(s: Scanner, ctx: TypstParseContext): Elt | null {
+function parseStrong(
+  s: Scanner,
+  ctx: TypstParseContext,
+  parentClose: number = Ch.EOF,
+  stopAtNewline: boolean = false,
+): Elt | null {
   const start = s.pos
   s.next() // consume *
 
   const children: Elt[] = [new Elt(Type.StrongMarker, start, s.pos)]
 
-  // Parse until matching *
-  const inner = parseMarkupContent(s, ctx, Ch.Star, false, false)
+  // Parse until matching * (bounded by the enclosing container / paragraph).
+  const inner = parseMarkupContent(s, ctx, Ch.Star, false, false, parentClose, stopAtNewline)
   children.push(...inner)
 
   if (s.eat(Ch.Star)) {
@@ -406,13 +460,18 @@ function parseStrong(s: Scanner, ctx: TypstParseContext): Elt | null {
   return null
 }
 
-function parseEmph(s: Scanner, ctx: TypstParseContext): Elt | null {
+function parseEmph(
+  s: Scanner,
+  ctx: TypstParseContext,
+  parentClose: number = Ch.EOF,
+  stopAtNewline: boolean = false,
+): Elt | null {
   const start = s.pos
   s.next() // consume _
 
   const children: Elt[] = [new Elt(Type.EmphMarker, start, s.pos)]
 
-  const inner = parseMarkupContent(s, ctx, Ch.Underscore, false, false)
+  const inner = parseMarkupContent(s, ctx, Ch.Underscore, false, false, parentClose, stopAtNewline)
   children.push(...inner)
 
   if (s.eat(Ch.Underscore)) {
@@ -757,10 +816,11 @@ function parseMarkupUntilNewline(s: Scanner, ctx: TypstParseContext): Elt[] {
       continue
     }
 
-    // Support inline constructs within line content
+    // Support inline constructs within line content. `stopAtNewline` keeps a
+    // strong/emph from swallowing subsequent lines when its marker is unclosed.
     if (ch === Ch.Star) {
       flushText()
-      const elt = parseStrong(s, ctx)
+      const elt = parseStrong(s, ctx, Ch.EOF, true)
       if (elt) { elts.push(elt); continue }
       if (textFrom < 0) textFrom = s.pos
       s.next()
@@ -769,7 +829,7 @@ function parseMarkupUntilNewline(s: Scanner, ctx: TypstParseContext): Elt[] {
 
     if (ch === Ch.Underscore) {
       flushText()
-      const elt = parseEmph(s, ctx)
+      const elt = parseEmph(s, ctx, Ch.EOF, true)
       if (elt) { elts.push(elt); continue }
       if (textFrom < 0) textFrom = s.pos
       s.next()

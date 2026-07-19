@@ -16,15 +16,14 @@
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { page } from "$lib/stores/page.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
   import { getRecentWorkspaces } from "$lib/ipc/commands";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
   import FileTree from "$lib/components/sidebar/filetree.svelte";
-  import FileTreeMobile from "$lib/components/sidebar/filetree.mobile.svelte";
   import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
-  import HistoryPane from "$lib/components/vcs/timeline.svelte";
+  import HistoryPane from "$lib/components/vcs/ledger.svelte";
   import { vcs } from "$lib/stores/vcs.svelte";
+  import { openDiffWindow, openSettingsWindow } from "$lib/windows";
   import ModeSwitcher from "./mode-switcher.svelte";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { defaultWindowIcon } from '@tauri-apps/api/app';
@@ -69,20 +68,18 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
   );
 
   onMount(async () => {
-    if (platform.isDesktop) {
-      try {
-        const icon = await defaultWindowIcon();
-        if (icon) {
-          const size = await icon.size();
-          const htmlImage = new Image(size.width, size.height);
-          const bytes = await icon.rgba();
-          htmlImage.src = createImageUrlFromRgba(bytes, size.width, size.height);
-          iconImage = htmlImage;
-          await icon.close();
-        }
-      } catch (err) {
-        logError("defaultWindowIcon failed:", err);
+    try {
+      const icon = await defaultWindowIcon();
+      if (icon) {
+        const size = await icon.size();
+        const htmlImage = new Image(size.width, size.height);
+        const bytes = await icon.rgba();
+        htmlImage.src = createImageUrlFromRgba(bytes, size.width, size.height);
+        iconImage = htmlImage;
+        await icon.close();
       }
+    } catch (err) {
+      logError("defaultWindowIcon failed:", err);
     }
     const result = await getRecentWorkspaces({ includeThumbnails: false });
     result.match(
@@ -151,7 +148,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
                 </div>
                 <div class="flex min-w-0 flex-col gap-0.5 leading-none">
                   <span class="truncate font-semibold">{workspaceName}</span>
-                  <span class="truncate text-[10px] opacity-50">{platform.displayPath(workspace.rootPath ?? "")}</span>
+                  <span class="truncate text-[10px] opacity-50">{workspace.rootPath ?? ""}</span>
                 </div>
                 <HugeiconsIcon icon={ArrowDown01Icon} class="ml-auto size-4 shrink-0 opacity-50" />
               </Sidebar.MenuButton>
@@ -170,7 +167,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
                 >
                   <span class="font-medium">{recent.name}</span>
                   <span class="text-muted-foreground max-w-full truncate text-[10px]">
-                    {platform.displayPath(recent.path)}
+                    {recent.path}
                   </span>
                 </DropdownMenu.Item>
               {/each}
@@ -184,17 +181,13 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
   <!-- ─── Content: file tree or diagnostics ─────────────────────────────────── -->
   <Sidebar.Content class="group-data-[collapsible=icon]:hidden">
     {#if activeSection === "files"}
-      {#if platform.isMobile}
-        <FileTreeMobile />
-      {:else}
-        <FileTree />
-      {/if}
+      <FileTree />
     {:else if activeSection === "diagnostics"}
       <DiagnosticsPane onclose={() => sidebarCtx.setOpen(false)} />
     {:else if activeSection === "history"}
       <HistoryPane
         onclose={() => sidebarCtx.setOpen(false)}
-        onopenDiff={() => (vcs.diffPaneOpen = true)}
+        onopenDiff={() => openDiffWindow(vcs.primaryId, vcs.secondaryId)}
       />
     {/if}
   </Sidebar.Content>
@@ -295,7 +288,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
               {...props}
               variant="ghost"
               class="size-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              onclick={() => page.navigate("settings")}
+              onclick={() => openSettingsWindow()}
             >
               <HugeiconsIcon icon={Settings01Icon} class="size-4" />
             </Button>

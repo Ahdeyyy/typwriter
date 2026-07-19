@@ -48,6 +48,22 @@ export function logError(...values: LogValue[]): void {
     });
 }
 
+/** Non-error status logging (mirrors {@link logError}): `console.info` plus the
+ *  Tauri `info` log level. Used for things like "tinymist not found; using
+ *  built-in language features". */
+export function logInfo(...values: LogValue[]): void {
+    console.info(...values);
+
+    const message = formatLogMessage(values);
+    if (!message) {
+        return;
+    }
+
+    void tauriInfo(message).catch(() => {
+        // Keep app behavior stable when running outside a Tauri context.
+    });
+}
+
 // ─── Preview-jump debug tracing ──────────────────────────────────────────────
 //
 // Instruments every stage that can move the preview's scroll position or change
@@ -83,7 +99,7 @@ export function logPreview(stage: string, data?: Record<string, LogValue>): void
 
     console.debug(message);
     // Mirror to the Tauri log file at info level so traces are captured even
-    // when devtools isn't open (e.g. reproducing on Android / a popout window).
+    // when devtools isn't open (e.g. reproducing in a popout window).
     void tauriInfo(message).catch(() => {
         // Outside a Tauri context the console line above is enough.
     });

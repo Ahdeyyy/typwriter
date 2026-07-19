@@ -1,9 +1,8 @@
 // vcs/store.rs
 //
 // Low-level read/write for the snapshot store. Everything goes through
-// `WorkingTreeFs` so the same code path serves desktop (std::fs) and Android
-// (SAF). Snapshots and objects share a single trait surface and never touch
-// the filesystem directly.
+// `WorkingTreeFs`. Snapshots and objects share a single trait surface and
+// never touch the filesystem directly.
 
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -20,8 +19,8 @@ use super::paths::{
 /// On-disk manifest. Lives at `snapshots/<ts>_<id8>.json`. The `files` map is
 /// the entire workspace tree at the moment of the snapshot, flattened to
 /// path → blob-hash. Flat-map (vs. nested trees) makes diff a single pass and
-/// keeps a snapshot to one small JSON write — much friendlier to SAF than
-/// gix's many-tiny-object pattern.
+/// keeps a snapshot to one small JSON write — friendlier than gix's
+/// many-tiny-object pattern.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct SnapshotManifest {
     /// Schema marker. Bump if the layout ever changes.
@@ -188,9 +187,9 @@ const ZSTD_LEVEL: i32 = 3;
 /// Hash the raw bytes and write the zstd-compressed blob if it isn't already
 /// in the object store. Returns the hex sha-256 of the *uncompressed* bytes.
 ///
-/// Skipping on `exists()` is the per-snapshot dedupe. It saves the most
-/// important cost on SAF: one filesystem write per never-before-seen file
-/// content, regardless of how many snapshots reference it.
+/// Skipping on `exists()` is the per-snapshot dedupe: one filesystem write
+/// per never-before-seen file content, regardless of how many snapshots
+/// reference it.
 pub fn write_blob_if_missing(
     fs: &impl WorkingTreeFs,
     root: &Path,

@@ -26,18 +26,52 @@
   $effect(() => ctrl.pageCounterEffect());
   $effect(() => ctrl.clampVisiblePageEffect());
 
+  // Switching between paginated and scroll view swaps the {#if} branch below,
+  // which replaces the scroll container with a fresh one at scrollTop=0. Owe
+  // it a restore to `visiblePage` — exactly like a remount — or the page
+  // counter would seed from the new container and stamp page 0 over the
+  // shared value. Watches the store (not the toolbar button) so a toggle made
+  // in the other window arms the restore here too. Must be `$effect.pre`: it
+  // has to set `restorePending` before the DOM swap re-runs pageCounterEffect,
+  // whose seed recompute would otherwise still see it unset.
+  let prevPaginated = preview.paginated;
+  $effect.pre(() => {
+    const paginated = preview.paginated;
+    if (paginated !== prevPaginated) {
+      prevPaginated = paginated;
+      ctrl.restorePending = true;
+    }
+  });
+
   // After remount (e.g. user popped the preview out and back in), the scroll
   // container is a fresh DOM element with scrollTop=0. Snap it to whichever
   // page was visible last so the pane lands where the user left it.
   //
-  // `restoreScrollToVisiblePage` reads `visiblePage` internally; that read must
-  // NOT become a dependency of this effect. Otherwise every scroll-driven
-  // `visiblePage` update (from `pageCounterEffect`'s IntersectionObserver) would
-  // re-run this effect and instantly snap the scroll back, fighting the user's
-  // scroll and freezing the page counter — most visibly in the popout window.
-  // We only want to re-anchor on mount and on page-count changes.
+  // Runs only while `ctrl.restorePending` (which also suppresses the scroll-
+  // driven page counter, so `visiblePage` can't be clobbered back to 0 by the
+  // fresh container before the restore reads it). While pending we DO track
+  // `visiblePage` and the page buffers: in a freshly opened popout the true
+  // page can arrive asynchronously over the cross-window channel, and the
+  // target page's DOM node only exists once `preview.pages` has grown past it
+  // — each of those changes retries the restore. Once the restore lands,
+  // `restorePending` flips false and the early return keeps scroll-driven
+  // `visiblePage` updates from re-snapping the container under the user.
   $effect(() => {
-    if (ctrl.scrollEl && ctrl.committedPages.length > 0) {
+    if (!ctrl.restorePending) return;
+    const idx = preview.visiblePage;
+    // Committed pages render their <img> with explicit width/height, so the
+    // layout above the target is only final once every page up to it has
+    // committed — before that, `offsetTop` would measure skeletons and
+    // still-loading images and the snap would land short of the target.
+    // Reading those slots (and `visiblePage`) retries the restore as decodes
+    // land and as a late cross-window snapshot arrives.
+    const settled =
+      preview.paginated ||
+      (ctrl.scrollEl !== null &&
+        preview.pages.length > idx &&
+        ctrl.committedPages.length > idx &&
+        ctrl.committedPages.slice(0, idx + 1).every((fp) => fp !== null));
+    if (settled) {
       untrack(() => ctrl.restoreScrollToVisiblePage());
     }
   });
@@ -255,7 +289,7 @@
             src={buildPreviewUrl(ctrl.committedPages[ctrl.visiblePage]!)}
             alt="Page {ctrl.visiblePage + 1}"
             draggable="false"
-            class="block h-full w-full object-cover"
+            class="block h-full w-full object-contain"
             onload={() => ctrl.notifyImageLoaded(ctrl.visiblePage, ctrl.committedPages[ctrl.visiblePage]!)}
             onerror={() => ctrl.notifyImageError(ctrl.visiblePage, ctrl.committedPages[ctrl.visiblePage]!)}
           />
@@ -278,18 +312,22 @@
           class="relative shrink-0 overflow-hidden rounded shadow-md"
         >
           {#if ctrl.committedPages[ctrl.visiblePage]}
+            {@const fp = ctrl.committedPages[ctrl.visiblePage]!}
+            {@const dims = ctrl.dimsFor(fp)}
             <Button
               variant="ghost"
               class="block h-auto md:h-auto rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
               onclick={(e) => ctrl.handlePageClick(e, ctrl.visiblePage)}
             >
               <img
-                src={buildPreviewUrl(ctrl.committedPages[ctrl.visiblePage]!)}
+                src={buildPreviewUrl(fp)}
                 alt="Page {ctrl.visiblePage + 1}"
+                width={dims?.w}
+                height={dims?.h}
                 draggable="false"
-                class="block max-w-full"
-                onload={() => ctrl.notifyImageLoaded(ctrl.visiblePage, ctrl.committedPages[ctrl.visiblePage]!)}
-                onerror={() => ctrl.notifyImageError(ctrl.visiblePage, ctrl.committedPages[ctrl.visiblePage]!)}
+                class="block h-auto max-w-full"
+                onload={() => ctrl.notifyImageLoaded(ctrl.visiblePage, fp)}
+                onerror={() => ctrl.notifyImageError(ctrl.visiblePage, fp)}
               />
             </Button>
           {:else}
@@ -300,8 +338,12 @@
       {/if}
     </div>
   {:else}
+    <!-- A wheel event can only come from the user (programmatic scrollTo
+         doesn't fire it) — treat it as taking control, so a still-pending
+         mount restore can't later yank the view away. -->
     <div
       bind:this={ctrl.scrollEl}
+      onwheel={() => (ctrl.restorePending = false)}
       class="flex flex-1 flex-col items-center gap-4 overflow-y-auto py-4 preview-scroll"
     >
       {#if preview.totalPages === 0}
@@ -321,18 +363,22 @@
             class="relative shrink-0 overflow-hidden rounded shadow-md"
           >
             {#if ctrl.committedPages[i]}
+              {@const fp = ctrl.committedPages[i]!}
+              {@const dims = ctrl.dimsFor(fp)}
               <Button
                 variant="ghost"
                 class="block h-auto md:h-auto rounded-none border-0 bg-transparent p-0 hover:bg-transparent"
                 onclick={(e) => ctrl.handlePageClick(e, i)}
               >
                 <img
-                  src={buildPreviewUrl(ctrl.committedPages[i]!)}
+                  src={buildPreviewUrl(fp)}
                   alt="Page {i + 1}"
+                  width={dims?.w}
+                  height={dims?.h}
                   draggable="false"
-                  class="block max-w-full"
-                  onload={() => ctrl.notifyImageLoaded(i, ctrl.committedPages[i]!)}
-                  onerror={() => ctrl.notifyImageError(i, ctrl.committedPages[i]!)}
+                  class="block h-auto max-w-full"
+                  onload={() => ctrl.notifyImageLoaded(i, fp)}
+                  onerror={() => ctrl.notifyImageError(i, fp)}
                 />
               </Button>
             {:else}

@@ -1,6 +1,6 @@
 export { typst, typstLanguage, getCodeParser } from "./typst"
-export { light } from "./themes/light"
-export { dark } from "./themes/dark"
+export { light, lightTheme, lightHighlightStyle } from "./themes/light"
+export { dark, darkTheme, darkHighlightStyle } from "./themes/dark"
 export { typstSpellcheck } from "./spellcheck"
 export { typstCommentDecorations } from "./comment-decorations"
 export {

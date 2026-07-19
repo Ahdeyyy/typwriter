@@ -35,33 +35,36 @@
     syntaxHighlighting,
     defaultHighlightStyle,
     bracketMatching,
-    StreamLanguage,
   } from "@codemirror/language";
-  import { json } from "@codemirror/lang-json";
-  import { xml } from "@codemirror/lang-xml";
-  import { yaml } from "@codemirror/lang-yaml";
   import { markdown } from "@codemirror/lang-markdown";
-  import { toml as tomlMode } from "@codemirror/legacy-modes/mode/toml";
+  import {
+    langExtensionForPath,
+    resolveCodeLanguage,
+  } from "$lib/codemirror/langs";
 
   import {
-    lintGutter,
+    forEachDiagnostic,
     setDiagnostics,
     type Diagnostic as CMDiagnostic,
   } from "@codemirror/lint";
+  import { inlineDiagnostics } from "$lib/codemirror/inline-diagnostics";
   import { search } from "@codemirror/search";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
   import { editorFormat } from "$lib/stores/editor-format.svelte";
   import {
     typst,
-    light,
-    dark,
+    lightTheme,
+    darkTheme,
+    lightHighlightStyle,
+    darkHighlightStyle,
     typstSpellcheck,
     typstCommentDecorations,
     typstKeymap,
   } from "$lib/typst-codemirror-lang";
+  import { lspClient } from "$lib/lsp/client.svelte";
+  import { semanticTokenHighlighter } from "$lib/lsp/semantic-tokens";
   import { Compartment } from "@codemirror/state";
   import { mode, systemPrefersMode } from "mode-watcher";
-  import { languages } from "@codemirror/language-data";
   // import {
   //   githubLightTheme,
   //   githubLightHighlightStyle,
@@ -79,7 +82,6 @@
   import { ayuLight } from "thememirror";
   import { indentationMarkers } from "@replit/codemirror-indentation-markers";
   import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
-  import { platform } from "$lib/stores/platform.svelte";
   import { logError, logPreview } from "$lib/logger";
 
 
@@ -94,6 +96,10 @@
   const lineWrapCompartment = new Compartment();
   const spellcheckCompartment = new Compartment();
   const tabSizeCompartment = new Compartment();
+  // Lezer syntax highlighting (swapped off per-file once tinymist paints tokens).
+  const highlightCompartment = new Compartment();
+  // Typst language service: either the tinymist plugin or the typst-ide fallback.
+  const lspCompartment = new Compartment();
 
   function quoteFamily(family: string): string {
     return family.includes(" ") && !family.includes('"') ? `"${family}"` : family;
@@ -118,9 +124,7 @@
   }
 
   function indentMarkersExt() {
-    return !platform.isMobile && settings.showIndentationMarkers
-      ? indentationMarkers()
-      : [];
+    return settings.showIndentationMarkers ? indentationMarkers() : [];
   }
 
   function lineWrapExt() {
@@ -141,10 +145,68 @@
     return EditorState.tabSize.of(settings.tabWidth);
   }
 
+  function isDarkMode() {
+    return mode.current === "dark" || systemPrefersMode.current === "dark";
+  }
+
+  // Chrome theme only (colors/gutters/etc.) — the Lezer highlight style is a
+  // separate compartment so it can be removed per-file once tinymist takes over.
   function resolvedTheme() {
-    const m = mode.current;
-    const sys = systemPrefersMode.current;
-    return m === "dark" ||  sys === "dark" ? dark : light;
+    return isDarkMode() ? darkTheme : lightTheme;
+  }
+
+  function resolvedHighlightStyle() {
+    return isDarkMode() ? darkHighlightStyle : lightHighlightStyle;
+  }
+
+  // Lezer highlighting is always on: it's the base layer. tinymist's semantic
+  // tokens are *supplementary* — they render at higher precedence (inner DOM
+  // nodes) and override the base only where they have an opinion, so a slow or
+  // partial token response never leaves text unstyled.
+  function highlightExt() {
+    return [
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      syntaxHighlighting(resolvedHighlightStyle()),
+    ];
+  }
+
+  // Typst language service for a tab: the tinymist plugin (+ semantic tokens)
+  // when active for this file, otherwise the typst-ide IPC completions + hover.
+  function typstLanguageServiceExt(tabId: string) {
+    const tab = editor.tabs.find((t) => t.id === tabId);
+    const relPath = tab?.relPath ?? tabId;
+    const isTypst = relPath.endsWith(".typ");
+    if (!isTypst || !tab || tab.viewMode !== "text") return [];
+
+    const lspExt = lspClient.pluginFor(tab.absPath);
+    if (lspExt) {
+      return [lspExt, semanticTokenHighlighter];
+    }
+
+    return [
+      autocompletion({ override: [mergedTypstCompletionsForTab(tabId)] }),
+      hoverTooltip(
+        async (_view, pos) => {
+          const t = editor.tabs.find((tab) => tab.id === tabId);
+          if (!t || t.viewMode !== "text") return null;
+
+          const tooltipResult = await getTooltipIpc(t.absPath, pos);
+          if (tooltipResult.isErr() || tooltipResult.value === null) return null;
+
+          const data = tooltipResult.value;
+          return {
+            pos,
+            end: pos,
+            above: true,
+            create() {
+              const dom = createHoverTooltipDom(data);
+              return { dom };
+            },
+          } satisfies Tooltip;
+        },
+        { hoverTime: 250 },
+      ),
+    ];
   }
 
   /**
@@ -324,21 +386,14 @@
     const ext = dot >= 0 ? relPath.slice(dot).toLowerCase() : "";
     switch (ext) {
       case ".typ":
-        return typst({ codeLanguages: languages });
-      case ".json":
-        return json();
-      case ".xml":
-        return xml();
-      case ".yaml":
-      case ".yml":
-        return yaml();
+        return typst({ codeLanguages: resolveCodeLanguage });
       case ".md":
       case ".markdown":
-        return markdown({ codeLanguages: languages });
-      case ".toml":
-        return StreamLanguage.define(tomlMode);
+        return markdown({ codeLanguages: resolveCodeLanguage });
       default:
-        return null;
+        // Every other file type resolves through the shared langs table
+        // (keyed on file extension); null = plain text.
+        return langExtensionForPath(relPath);
     }
   }
 
@@ -349,7 +404,9 @@
     const langExt = getLanguageExtension(relPath);
 
     return [
-      lintGutter(),
+      // Error-lens-style inline messages instead of a lint gutter — the
+      // diagnostic text renders faded at the end of the offending line.
+      inlineDiagnostics(),
       lineNumbersCompartment.of(lineNumbersExt()),
       lineWrapCompartment.of(lineWrapExt()),
       spellcheckCompartment.of(spellcheckExt(isTypst)),
@@ -360,15 +417,16 @@
       foldGutter(),
       bracketMatching(),
       closeBrackets(),
-      // .typ: merged Typst language + backend IPC completions
-      // others: let the language package supply its own completions
-      isTypst
-        ? autocompletion({ override: [mergedTypstCompletionsForTab(tabId)] })
-        : autocompletion(),
+      // .typ: Typst language service (tinymist plugin, or typst-ide fallback)
+      // — swappable via lspCompartment. Others: the language package's own
+      // completions.
+      ...(isTypst
+        ? [lspCompartment.of(typstLanguageServiceExt(tabId))]
+        : [autocompletion()]),
       indentOnInput(),
-      // githubLightTheme,
-      // syntaxHighlighting(githubLightHighlightStyle),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      // Lezer highlighting — the always-on base layer; semantic tokens layer
+      // over it (see typstLanguageServiceExt / semanticTokenHighlighter).
+      highlightCompartment.of(highlightExt()),
       themeCompartment.of(resolvedTheme()),
       fontCompartment.of(fontExtension()),
       // Language extension chosen by file extension; null = plain text
@@ -444,21 +502,6 @@
         if (!update.docChanged) return;
         editor.handleTabContentChange(tabId, update.state.doc.toString());
       }),
-      // Mobile: save on blur. The soft keyboard dismissing or the app being
-      // backgrounded blurs the editor; persisting here shrinks the window
-      // where edits live only in memory before the OS can kill the WebView.
-      ...(platform.isMobile
-        ? [
-            EditorView.domEventHandlers({
-              blur: () => {
-                editor
-                  .saveTabById(tabId)
-                  .mapErr((err) => logError("save-on-blur error:", err));
-                return false;
-              },
-            }),
-          ]
-        : []),
       EditorView.updateListener.of((update) => {
         if (!update.selectionSet) return;
         const tab = editor.tabs.find((t) => t.id === tabId);
@@ -494,40 +537,13 @@
           editorFormat.refresh(update.view);
         }
       }),
-      // Hover tooltip — only for .typ (avoids unnecessary IPC calls for other file types)
-      ...(isTypst
-        ? [
-            hoverTooltip(
-              async (_view, pos) => {
-                const tab = editor.tabs.find((t) => t.id === tabId);
-                if (!tab || tab.viewMode !== "text") return null;
-
-                const tooltipResult = await getTooltipIpc(tab.absPath, pos);
-                if (tooltipResult.isErr() || tooltipResult.value === null)
-                  return null;
-
-                const data = tooltipResult.value;
-                return {
-                  pos,
-                  end: pos,
-                  above: true,
-                  create() {
-                    const dom = createHoverTooltipDom(data);
-                    return { dom };
-                  },
-                } satisfies Tooltip;
-              },
-              { hoverTime: 250 },
-            ),
-          ]
-        : []),
       // ayuLight,
       EditorView.theme({
         "&": {
           height: "100%",
           width: "100%",
         },
-        ".cm-scroller": { overflow: "auto", ...(platform.isMobile ? { paddingTop: "3.25rem" } : {}) },
+        ".cm-scroller": { overflow: "auto" },
         // Line-number gutter — give the digits breathing room from the
         // content and a muted tone so they don't compete with the code.
         ".cm-lineNumbers .cm-gutterElement": {
@@ -703,6 +719,17 @@
     mountActiveView(activeTabId);
   });
 
+  // Let the store read the live selection of any tab's view — this is how
+  // format paths without an explicit cursor (format-on-save, idle-save) get
+  // cursor maintenance. See EditorStore.cursorProvider.
+  $effect(() => {
+    editor.cursorProvider = (tabId) =>
+      tabViews.get(tabId)?.state.selection.main.head;
+    return () => {
+      editor.cursorProvider = null;
+    };
+  });
+
   $effect(() => {
     return () => {
       for (const view of tabViews.values()) view.destroy();
@@ -760,27 +787,26 @@
       scrollIntoView: false,
     });
 
-    // Now set the cursor in the new document. If Rust returned one, trust it
-    // directly — the algorithm already works in the correct coordinate space.
-    // Otherwise fall back to a simple delta map for cursors outside the
-    // changed region (callers without a cursor don't need precision here).
+    // Now set the cursor in the new document. If Rust returned one, use it —
+    // the algorithm already works in the correct coordinate space. Otherwise
+    // fall back to a simple delta map for cursors outside the changed region
+    // (callers without a cursor don't need precision here).
     const oldCursor = view.state.selection.main.head;
     let newCursor: number;
     if (typeof req.cursor === "number") {
       newCursor = req.cursor;
-      console.log('[sync:cm] rust cursor=%d (newText.length=%d)', newCursor, newText.length);
     } else if (oldCursor <= lcp) {
       newCursor = oldCursor;
-      console.log('[sync:cm] no rust cursor; kept oldCursor=%d (before change)', oldCursor);
     } else if (oldCursor >= oldEnd) {
       newCursor = oldCursor + (newText.length - oldText.length);
-      console.log('[sync:cm] no rust cursor; shifted %d → %d (after change)', oldCursor, newCursor);
     } else {
       newCursor = Math.min(oldCursor, newEnd);
-      console.log('[sync:cm] no rust cursor; clamped %d → %d (inside change)', oldCursor, newCursor);
     }
 
-    console.log('[sync:cm] setting cursor: lcp=%d oldEnd=%d newEnd=%d newCursor=%d', lcp, oldEnd, newEnd, newCursor);
+    // Clamp defensively: an out-of-bounds anchor makes dispatch throw a
+    // RangeError, killing this effect mid-sync. The doc is `newText` at this
+    // point, but read the live length in case anything intervened.
+    newCursor = Math.max(0, Math.min(newCursor, view.state.doc.length));
     view.dispatch({
       selection: { anchor: newCursor },
       scrollIntoView: false,
@@ -788,19 +814,32 @@
     view.scrollDOM.scrollTop = scrollTop;
   });
 
-  // ── Preview → Editor: apply cursor jump requested by preview click
+  // ── Preview → Editor: apply cursor jump requested by preview click.
+  // Depends on `mountedTabId` as well as the request: when the jump targets a
+  // tab whose view isn't built yet (file still loading, mount slower than one
+  // frame), the request stays pending and this re-runs once the view mounts —
+  // a single rAF retry used to drop those jumps silently.
   $effect(() => {
     const req = editor.cursorJumpRequest;
+    mountedTabId;
     if (!req) return;
     // rAF lets any pending tab mount complete before we look up the view
     requestAnimationFrame(() => {
+      if (editor.cursorJumpRequest?.tabId !== req.tabId) return;
       const view = tabViews.get(req.tabId);
-      if (view && editor.cursorJumpRequest?.tabId === req.tabId) {
-        editor.cursorJumpRequest = null;
-        const offset = Math.min(req.offset, view.state.doc.length);
-        view.dispatch({ selection: { anchor: offset }, scrollIntoView: true });
-        if (!editorSearch.open) view.focus();
+      if (!view) {
+        // Keep the request pending while its tab still exists (the mount
+        // dependency will retry); drop it once the tab is gone so a stale
+        // jump can't fire on a much later remount.
+        if (!editor.tabs.some((t) => t.id === req.tabId)) {
+          editor.cursorJumpRequest = null;
+        }
+        return;
       }
+      editor.cursorJumpRequest = null;
+      const offset = Math.max(0, Math.min(req.offset, view.state.doc.length));
+      view.dispatch({ selection: { anchor: offset }, scrollIntoView: true });
+      if (!editorSearch.open) view.focus();
     });
   });
 
@@ -809,9 +848,45 @@
     const _ = mode.current;
     const __ = systemPrefersMode.current;
     const themeExt = resolvedTheme();
-    for (const view of tabViews.values()) {
-      view.dispatch({ effects: themeCompartment.reconfigure(themeExt) });
-    }
+    // The highlight style is theme-dependent too, so refresh it alongside the
+    // chrome theme. untrack the loop so the dispatches don't re-trigger us.
+    const highlightExtValue = highlightExt();
+    untrack(() => {
+      for (const view of tabViews.values()) {
+        view.dispatch({
+          effects: [
+            themeCompartment.reconfigure(themeExt),
+            highlightCompartment.reconfigure(highlightExtValue),
+          ],
+        });
+      }
+    });
+  });
+
+  // ── LSP active/inactive → swap the language service (tinymist plugin +
+  // semantic tokens ⇄ typst-ide fallback). Lezer highlighting is the always-on
+  // base layer, so it doesn't change here. Mounting the LSP plugin sends
+  // didOpen; unmounting sends didClose (handled by @codemirror/lsp-client).
+  $effect(() => {
+    const lspActive = lspClient.isActive;
+    untrack(() => {
+      for (const [tabId, view] of tabViews) {
+        view.dispatch({
+          effects: lspCompartment.reconfigure(typstLanguageServiceExt(tabId)),
+        });
+        // Diagnostic-source hand-off: tinymist and the compile pipeline must
+        // never both feed the lint state. On activation, drop the compile
+        // pipeline's marks (tinymist repopulates via serverDiagnostics); on
+        // deactivation, repopulate from the store (which drops LSP leftovers).
+        if (lspActive) {
+          if (!diagnosticsUnchanged(view.state, [])) {
+            view.dispatch(setDiagnostics(view.state, []));
+          }
+        } else {
+          applyDiagnosticsToView(tabId, view);
+        }
+      }
+    });
   });
 
   // ── Font / size → reconfigure all views when settings change
@@ -874,6 +949,10 @@
   // previous single-effect version walked every tabView on every tab switch,
   // re-dispatching unchanged diagnostics to background tabs.
   function applyDiagnosticsToView(tabId: string, view: EditorView) {
+    // When tinymist owns diagnostics, its own serverDiagnostics extension (part
+    // of languageServerExtensions()) already renders the lint gutter with
+    // correct position mapping; re-pushing the store here would double-write it.
+    if (diagnostics.lspActive) return;
     const tab = editor.tabs.find((t) => t.id === tabId);
     if (!tab) return;
     const allDiags = [...diagnostics.errors, ...diagnostics.warnings];
@@ -881,7 +960,29 @@
       .filter((d) => d.file_path === tab.relPath)
       .map((d) => toCMDiagnostic(d, view))
       .filter((d): d is CMDiagnostic => d !== null);
+    // Skip no-op re-dispatches: every `setDiagnosticsEffect` closes an open
+    // lint hover tooltip (the lint extension's `hideOn`), so pushing identical
+    // diagnostics on each compile cycle made the tooltip vanish mid-read.
+    if (diagnosticsUnchanged(view.state, marks)) return;
     view.dispatch(setDiagnostics(view.state, marks));
+  }
+
+  function diagnosticsUnchanged(
+    state: EditorState,
+    marks: CMDiagnostic[],
+  ): boolean {
+    const existing: CMDiagnostic[] = [];
+    forEachDiagnostic(state, (d, from, to) =>
+      existing.push({ from, to, severity: d.severity, message: d.message }),
+    );
+    if (existing.length !== marks.length) return false;
+    const key = (d: CMDiagnostic) =>
+      `${d.from}:${d.to}:${d.severity}:${d.message}`;
+    const sortedMarks = marks.map(key).sort();
+    return existing
+      .map(key)
+      .sort()
+      .every((k, i) => k === sortedMarks[i]);
   }
 
   $effect(() => {

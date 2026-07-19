@@ -374,12 +374,6 @@ impl WorkspaceState {
 
     // ─── File-system helpers ───────────────────────────────────────────────
 
-    /// Resolve a workspace-relative string path to an absolute PathBuf.
-    /// Absolute inputs are rejected for workspace mutations.
-    pub fn resolve_path(&self, path: &str) -> Result<PathBuf, String> {
-        self.resolve(path)
-    }
-
     fn resolve(&self, path: &str) -> Result<PathBuf, String> {
         let root = {
             let root = self.root.read();
@@ -391,11 +385,8 @@ impl WorkspaceState {
             .map_err(|e| e.to_string())
     }
 
-    /// SAF-aware filesystem accessor for the current workspace root. Every
-    /// structural file op routes its disk work through this so a folder picked
-    /// via Android's Storage Access Framework (unreachable with `std::fs`) is
-    /// mutable, not just listable. Off Android / for the managed dir this is a
-    /// plain std::fs accessor.
+    /// Filesystem accessor for the current workspace root. Every structural
+    /// file op routes its disk work through this [`WorkingTreeFs`].
     fn working_fs(&self) -> Result<Box<dyn WorkingTreeFs>, String> {
         let root = self.root.read().clone().ok_or("No workspace open")?;
         Ok(self.vcs.working_tree_fs_for(&root))
@@ -548,9 +539,8 @@ impl WorkspaceState {
         info!("WorkspaceState::delete_folder: abs={abs:?}");
 
         // Invalidate caches for every file inside the directory before removing.
-        // `collect_files_recursive` returns empty for a non-directory (or a SAF
-        // path std::fs can't see), so the cache walk goes through the accessor
-        // too — `is_dir()` would always be false for a SAF folder.
+        // `collect_files_recursive` returns empty for a non-directory, so the
+        // cache walk goes through the accessor too.
         let files = collect_files_recursive(fs.as_ref(), &abs);
         info!(
             "WorkspaceState::delete_folder: invalidating {} cached file(s)",
@@ -601,7 +591,6 @@ impl WorkspaceState {
         );
 
         // A readable directory listing confirms `dest` exists and is a folder.
-        // `dest.is_dir()` (std::fs) would wrongly report `false` for a SAF root.
         if fs.read_dir(&dest).is_err() {
             let e = format!("{} is not a directory", dest.display());
             error!("WorkspaceState::import_files: err=\"{e}\"");
@@ -611,8 +600,7 @@ impl WorkspaceState {
         for src_str in sources {
             let src_path = ExternalPath::new(src_str).map_err(|e| e.to_string())?;
             // Source files come from a system picker / external location and are
-            // read with std::fs; only the destination (inside the workspace) may
-            // sit behind SAF, so the write goes through the accessor.
+            // read with std::fs; the destination write goes through the accessor.
             if !src_path.as_path().is_file() {
                 let e = format!("Source is not a file: {}", src_path.as_path().display());
                 error!("WorkspaceState::import_files: err=\"{e}\"");
@@ -708,10 +696,7 @@ impl WorkspaceState {
                 .clone()
         };
 
-        // Read through the SAF-aware accessor: a folder picked via Android's
-        // Storage Access Framework is unreachable with std::fs (no broad storage
-        // permission), so we must list it through android-fs. The managed
-        // app-scoped dir and all desktop paths fall back to std::fs.
+        // Read through the working-tree accessor for the current root.
         let fs = self.vcs.working_tree_fs_for(&root);
 
         // Surface an unreadable root as an explicit error instead of silently
@@ -831,8 +816,8 @@ fn read_dir_recursive(fs: &dyn WorkingTreeFs, root: &Path, dir: &Path) -> Vec<Fi
     result
 }
 
-/// Recursively collect all file paths under `dir`, through the SAF-aware
-/// accessor so a folder picked via the Storage Access Framework is walked too.
+/// Recursively collect all file paths under `dir`, through the
+/// [`WorkingTreeFs`] accessor.
 fn collect_files_recursive(fs: &dyn WorkingTreeFs, dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
     let entries = match fs.read_dir(dir) {

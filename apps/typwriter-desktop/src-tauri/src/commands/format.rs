@@ -10,13 +10,17 @@
 // UTF-8 byte space until the very last step. The frontend (CodeMirror) speaks
 // UTF-16 code units, so the boundary functions convert at the IPC edge.
 //
-// Cursor strategy — virtual marker:
-// Splice a unique `/*tw_cursor_<hex>*/` block-comment marker into the source
-// at the cursor, format, and read the marker's new byte offset. Most accurate
-// when typstyle preserves the marker in place. Degrades by clamping to the
-// original byte offset if the marker is missing or duplicated post-format
-// (e.g. cursor sat inside a string literal where `/* */` is literal text, or
-// typstyle hoists the comment).
+// Cursor strategy — virtual marker against a plain-format baseline:
+// The *unmarked* source is formatted first and is the single source of truth
+// for the returned text, so cursor-formatting is always byte-identical to
+// plain formatting (idempotent with format-on-save). A second format of a
+// marked copy — a unique `/*tw_cursor_<hex>*/` block comment spliced at the
+// cursor — only ever decides where the cursor lands. The splice point is
+// snapped to the start of the word run under the cursor (a comment inserted
+// mid-identifier is a syntax error in code mode) and the intra-run offset is
+// added back afterwards. If the marked format fails, the marker is lost, or
+// the marker perturbed typstyle's layout (line-width overflow), the cursor
+// degrades to a common-prefix/suffix mapping instead — the text never does.
 
 use std::{
     path::{Path, PathBuf},
@@ -63,13 +67,9 @@ pub struct FormatWithCursorResponse {
 
 // ── Virtual Cursor ───────────────────────────────────────────────────────
 //
-// Splice a unique block-comment marker into the source at the cursor, format
-// the marked source, and read the marker's offset in the output.
-//
-// Trade-off: very accurate when typstyle preserves the marker in place. If
-// the marker is missing or duplicated post-format — e.g. cursor sat inside a
-// string literal, or typstyle moved the comment to its own line — the cursor
-// is clamped to the original byte offset.
+// Format the unmarked source for the output text, then format a marked copy
+// (block-comment marker spliced at the cursor's word-run start) purely to
+// locate where the cursor lands. See the module docs for the full strategy.
 #[tauri::command]
 pub fn format_typst_cursor_virtual(
     source: String,
@@ -78,43 +78,24 @@ pub fn format_typst_cursor_virtual(
     let t = Instant::now();
     let byte_cursor = parse_utf16_cursor(&source, cursor)?;
 
-    let marker = make_cursor_marker(&source);
-    let marked = {
-        let mut buf = String::with_capacity(source.len() + marker.len());
-        buf.push_str(&source[..byte_cursor]);
-        buf.push_str(&marker);
-        buf.push_str(&source[byte_cursor..]);
-        buf
-    };
-
-    let raw = Typstyle::default()
-        .format_text(marked)
+    // Single source of truth for the text. If the source itself doesn't
+    // format, the command fails here — exactly like the plain-format path.
+    let formatted = Typstyle::default()
+        .format_text(source.clone())
         .render()
         .map_err(|e| {
             error!("format_typst_cursor_virtual: format err=\"{e}\"");
             e.to_string()
         })?;
 
-    let (formatted, new_byte_cursor) = match locate_unique(&raw, &marker) {
-        Some(idx) => {
-            let mut out = String::with_capacity(raw.len() - marker.len());
-            out.push_str(&raw[..idx]);
-            out.push_str(&raw[idx + marker.len()..]);
-            (out, idx)
-        }
-        None => {
-            // Marker missing or duplicated — strip every occurrence and
-            // clamp the cursor to its original byte offset. No delegation
-            // to another strategy.
-            let stripped = raw.replace(&marker, "");
-            let clamp = floor_char_boundary(&stripped, byte_cursor.min(stripped.len()));
-            warn!(
-                "format_typst_cursor_virtual: marker not unique in output (count={}); clamping cursor",
-                raw.matches(&marker).count()
-            );
-            (stripped, clamp)
-        }
-    };
+    let new_byte_cursor = locate_cursor_with_marker(&source, byte_cursor, &formatted)
+        .unwrap_or_else(|| {
+            // Marked copy failed to format (marker landed in a syntax-
+            // sensitive spot) or the marker was lost — degrade to mapping
+            // the cursor through the common affixes of source → formatted.
+            warn!("format_typst_cursor_virtual: marker unusable; mapping cursor by affix");
+            map_cursor_by_affix(&source, &formatted, byte_cursor)
+        });
 
     let new_cursor = byte_to_utf16_offset(&formatted, new_byte_cursor) as u32;
     debug!(
@@ -307,6 +288,137 @@ fn floor_char_boundary(s: &str, mut idx: usize) -> usize {
 }
 
 // ── Virtual-cursor helpers ────────────────────────────────────────────────
+
+/// Locate the cursor's byte offset in `formatted` by formatting a marked copy
+/// of `source`. Returns `None` when the marked copy fails to format (the
+/// marker landed somewhere syntax-sensitive despite the word-run snap) or the
+/// marker isn't exactly once in the output — callers then fall back to
+/// [`map_cursor_by_affix`]. The returned offset is in bounds of `formatted`
+/// and on a char boundary.
+fn locate_cursor_with_marker(
+    source: &str,
+    byte_cursor: usize,
+    formatted: &str,
+) -> Option<usize> {
+    // Snap the splice point to the start of the word run the cursor touches:
+    // a block comment spliced mid-identifier (`foo/*m*/bar`) or between a
+    // sigil and its word (`#/*m*/foo`, `@/*m*/ref`) is a syntax error in code
+    // mode. The cursor's offset within the run is added back after the marker
+    // is located; the run's bytes are verified to have survived the reflow.
+    let anchor = word_run_start(source, byte_cursor);
+    let delta = byte_cursor - anchor;
+
+    let marker = make_cursor_marker(source);
+    let marked = {
+        let mut buf = String::with_capacity(source.len() + marker.len());
+        buf.push_str(&source[..anchor]);
+        buf.push_str(&marker);
+        buf.push_str(&source[anchor..]);
+        buf
+    };
+
+    let raw = Typstyle::default().format_text(marked).render().ok()?;
+    let idx = locate_unique(&raw, &marker)?;
+    let mut stripped = String::with_capacity(raw.len() - marker.len());
+    stripped.push_str(&raw[..idx]);
+    stripped.push_str(&raw[idx + marker.len()..]);
+
+    // Re-derive the cursor's position inside `stripped`. The word run the
+    // cursor belongs to survives the reflow verbatim (formatters don't
+    // rewrite word interiors), but typstyle may insert whitespace — a space,
+    // or a newline plus indent when it hoists the comment — between the
+    // marker and the run, so look for the run at the marker spot first and
+    // just past any inserted whitespace second.
+    let run = &source[anchor..byte_cursor];
+    let pos_in_stripped = if run.is_empty() {
+        // Cursor wasn't attached to a word; the marker spot itself is it.
+        idx
+    } else if stripped[idx..].starts_with(run) {
+        idx + delta
+    } else {
+        let after_ws = idx + (stripped[idx..].len() - stripped[idx..].trim_start().len());
+        if stripped[after_ws..].starts_with(run) {
+            after_ws + delta
+        } else {
+            // Run not found (typstyle broke a line inside it, or rewrote it);
+            // the marker spot is the best remaining anchor.
+            floor_char_boundary(&stripped, idx.min(stripped.len()))
+        }
+    };
+
+    if stripped == formatted {
+        Some(pos_in_stripped)
+    } else {
+        // The marker changed typstyle's decisions (inserted whitespace, or a
+        // line pushed over the width limit). `stripped` and `formatted` are
+        // near-identical texts, so map the position between them.
+        Some(map_cursor_by_affix(&stripped, formatted, pos_in_stripped))
+    }
+}
+
+/// Byte offset where the contiguous "word run" containing `byte_cursor` ends
+/// on its left — i.e. scan backwards over word-like characters. Word-like
+/// covers identifier/number/label characters (alphanumeric, `_`, `-`, `.`,
+/// `:`), the expression sigils that must stay glued to their word (`#`, `@`),
+/// and the markup escape `\`. Returns `byte_cursor` itself when the preceding
+/// char isn't word-like (splicing there is already safe).
+fn word_run_start(source: &str, byte_cursor: usize) -> usize {
+    fn is_word_char(c: char) -> bool {
+        c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | ':' | '#' | '@' | '\\')
+    }
+    source[..byte_cursor]
+        .char_indices()
+        .rev()
+        .take_while(|&(_, c)| is_word_char(c))
+        .last()
+        .map(|(i, _)| i)
+        .unwrap_or(byte_cursor)
+}
+
+/// Map a cursor byte offset from `old` into `new` via the longest common
+/// prefix and suffix: positions inside the shared prefix keep their offset,
+/// positions inside the shared suffix shift by the length delta, and positions
+/// in the differing middle clamp to the end of the middle region in `new`.
+/// The result is always in bounds of `new` and on a char boundary.
+fn map_cursor_by_affix(old: &str, new: &str, cursor: usize) -> usize {
+    let cursor = floor_char_boundary(old, cursor.min(old.len()));
+    let max_affix = old.len().min(new.len());
+
+    let mut lcp = old
+        .as_bytes()
+        .iter()
+        .zip(new.as_bytes())
+        .take(max_affix)
+        .take_while(|(a, b)| a == b)
+        .count();
+    // Prefix bytes are identical, so a char boundary in `old` is one in `new`
+    // too — one floor aligns both.
+    while lcp > 0 && !old.is_char_boundary(lcp) {
+        lcp -= 1;
+    }
+
+    let mut lcs = old
+        .as_bytes()
+        .iter()
+        .rev()
+        .zip(new.as_bytes().iter().rev())
+        .take(max_affix - lcp)
+        .take_while(|(a, b)| a == b)
+        .count();
+    // Same argument as above, applied at the suffix start.
+    while lcs > 0 && !old.is_char_boundary(old.len() - lcs) {
+        lcs -= 1;
+    }
+
+    let mapped = if cursor <= lcp {
+        cursor
+    } else if cursor >= old.len() - lcs {
+        new.len() - (old.len() - cursor)
+    } else {
+        cursor.min(new.len() - lcs)
+    };
+    floor_char_boundary(new, mapped.min(new.len()))
+}
 
 /// Pick a block-comment marker that isn't already present in `source`.
 /// Block comments are valid in both code and markup mode and survive
@@ -540,6 +652,101 @@ mod tests {
         assert!(!source.contains(&marker));
     }
 
+    // ── word_run_start ──────────────────────────────────────────────
+
+    #[test]
+    fn word_run_start_scans_back_over_word_chars() {
+        let s = "#let foobar = 1";
+        // Cursor mid-identifier: run starts at the identifier's first byte…
+        let mid = s.find("bar").unwrap();
+        // …and the run includes the `#let` sigil-word? No — a space separates
+        // them, so the run is just `foobar`.
+        assert_eq!(word_run_start(s, mid), s.find("foobar").unwrap());
+        // Cursor right after a space: nothing word-like before it.
+        let after_space = s.find("foobar").unwrap();
+        assert_eq!(word_run_start(s, after_space), after_space);
+        // Cursor at 0.
+        assert_eq!(word_run_start(s, 0), 0);
+    }
+
+    #[test]
+    fn word_run_start_includes_sigils_and_dots() {
+        // `#` glues to its word so the marker can't split `#strong`.
+        let s = "text #strong[x]";
+        let mid = s.find("rong").unwrap();
+        assert_eq!(word_run_start(s, mid), s.find('#').unwrap());
+        // Dotted access forms one run.
+        let s2 = "#foo.bar";
+        assert_eq!(word_run_start(s2, s2.len()), 0);
+        // `@` references too.
+        let s3 = "see @fig:x";
+        let mid3 = s3.find("ig:x").unwrap();
+        assert_eq!(word_run_start(s3, mid3), s3.find('@').unwrap());
+    }
+
+    #[test]
+    fn word_run_start_multibyte_word() {
+        let s = "voir café ici";
+        let end = s.find(" ici").unwrap(); // right after "café"
+        assert_eq!(word_run_start(s, end), s.find("café").unwrap());
+    }
+
+    // ── map_cursor_by_affix ─────────────────────────────────────────
+
+    #[test]
+    fn affix_map_identity_on_equal_strings() {
+        let s = "hello world";
+        for i in 0..=s.len() {
+            assert_eq!(map_cursor_by_affix(s, s, i), i);
+        }
+    }
+
+    #[test]
+    fn affix_map_prefix_and_suffix() {
+        // "aaXbb" → "aaYYbb": prefix "aa", suffix "bb".
+        let old = "aaXbb";
+        let new = "aaYYbb";
+        assert_eq!(map_cursor_by_affix(old, new, 0), 0);
+        assert_eq!(map_cursor_by_affix(old, new, 2), 2); // end of prefix
+        assert_eq!(map_cursor_by_affix(old, new, 5), 6); // end of string
+        assert_eq!(map_cursor_by_affix(old, new, 4), 5); // inside suffix ("b")
+        // Inside the changed middle: clamps within the middle of `new`.
+        let m = map_cursor_by_affix(old, new, 3);
+        assert!((2..=4).contains(&m), "middle position clamped, got {m}");
+    }
+
+    #[test]
+    fn affix_map_shrinking_text_stays_in_bounds() {
+        let old = "prefix MIDDLE suffix";
+        let new = "prefix suffix";
+        for i in 0..=old.len() {
+            let m = map_cursor_by_affix(old, new, i);
+            assert!(m <= new.len());
+            assert!(new.is_char_boundary(m));
+        }
+    }
+
+    #[test]
+    fn affix_map_multibyte_boundaries() {
+        // Differ inside a multibyte char: "é" (C3 A9) vs "è" (C3 A8) share the
+        // first byte — lcp must floor to the char boundary, and every mapped
+        // offset must land on a boundary of `new`.
+        let old = "aé z";
+        let new = "aè z";
+        for (i, _) in old.char_indices() {
+            let m = map_cursor_by_affix(old, new, i);
+            assert!(new.is_char_boundary(m), "offset {i} mapped to non-boundary {m}");
+        }
+        assert_eq!(map_cursor_by_affix(old, new, old.len()), new.len());
+    }
+
+    #[test]
+    fn affix_map_empty_strings() {
+        assert_eq!(map_cursor_by_affix("", "", 0), 0);
+        assert_eq!(map_cursor_by_affix("abc", "", 2), 0);
+        assert_eq!(map_cursor_by_affix("", "abc", 0), 0);
+    }
+
     // ── format_typst_cursor_virtual: end-to-end cursor maintenance ───
     //
     // These run real typstyle. To stay robust against typstyle's exact
@@ -665,6 +872,88 @@ mod tests {
         assert!(
             res.formatted[byte..].starts_with("SENTINEL"),
             "cursor should sit right before SENTINEL; got tail {:?}",
+            &res.formatted[byte..]
+        );
+    }
+
+    /// The core new guarantee: formatting with a cursor returns byte-identical
+    /// text to plain formatting, for *every* cursor position — the marker may
+    /// only ever influence where the cursor lands, never what the text is.
+    #[test]
+    fn cursor_format_output_always_matches_plain_format() {
+        let docs = [
+            "#let    x    =    1\nSome   markup   text.\n",
+            "#let s = \"hello world\"\n",
+            "= Café ☕ 🦀\n\n#let fib(n) = if n <= 1 { n } else { fib(n - 1) }\n",
+            "@fig:demo and `raw   text` here.\n",
+        ];
+        for source in docs {
+            let plain =
+                format_typst_source(source.to_string()).expect("plain format should succeed");
+            let units = count_utf16(source) as u32;
+            for cur in 0..=units {
+                let res = fmt(source, cur);
+                assert_eq!(
+                    res.formatted, plain,
+                    "cursor {cur} changed the formatted output for source {source:?}"
+                );
+                assert_invariants(source, &res);
+            }
+        }
+    }
+
+    /// Regression: a marker spliced mid-identifier used to make the marked
+    /// source unparsable (`#let foo/*m*/bar` is a syntax error), which failed
+    /// the whole format. The word-run snap must keep this working — and exact.
+    #[test]
+    fn cursor_mid_identifier_in_code_formats_and_tracks() {
+        let source = "#let    foobar   =   1\n";
+        let cursor = cursor_before(source, "bar"); // between foo|bar
+        let res = fmt(source, cursor);
+        assert_eq!(
+            res.formatted,
+            format_typst_source(source.to_string()).unwrap(),
+            "mid-identifier cursor must not change (or fail) the formatting"
+        );
+        let byte = utf16_to_byte_offset(&res.formatted, res.cursor as usize).unwrap();
+        assert!(
+            res.formatted[..byte].ends_with("foo") && res.formatted[byte..].starts_with("bar"),
+            "cursor should stay between foo|bar; got prefix {:?} / tail {:?}",
+            &res.formatted[..byte],
+            &res.formatted[byte..]
+        );
+    }
+
+    #[test]
+    fn cursor_mid_number_in_code_formats_and_tracks() {
+        let source = "#let x   =   1234\nTail text.\n";
+        let byte_cur = source.find("34\n").expect("number present");
+        let res = fmt(source, byte_to_utf16_offset(source, byte_cur) as u32);
+        assert_eq!(
+            res.formatted,
+            format_typst_source(source.to_string()).unwrap()
+        );
+        let byte = utf16_to_byte_offset(&res.formatted, res.cursor as usize).unwrap();
+        assert!(
+            res.formatted[..byte].ends_with("12") && res.formatted[byte..].starts_with("34"),
+            "cursor should stay between 12|34; got tail {:?}",
+            &res.formatted[byte..]
+        );
+    }
+
+    #[test]
+    fn cursor_mid_function_name_in_markup_formats_and_tracks() {
+        let source = "Some text with #strong[bold]   and   more.\n";
+        let cursor = cursor_before(source, "rong[");
+        let res = fmt(source, cursor);
+        assert_eq!(
+            res.formatted,
+            format_typst_source(source.to_string()).unwrap()
+        );
+        let byte = utf16_to_byte_offset(&res.formatted, res.cursor as usize).unwrap();
+        assert!(
+            res.formatted[byte..].starts_with("rong["),
+            "cursor should stay inside #st|rong; got tail {:?}",
             &res.formatted[byte..]
         );
     }

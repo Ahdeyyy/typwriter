@@ -121,3 +121,81 @@ export function onPreviewSourceJump(handler: (payload: PreviewSourceJumpPayload)
 export function emitPreviewSourceJump(payload: PreviewSourceJumpPayload) {
     return ResultAsync.fromPromise(emit('preview:source-jump', payload), toErrString);
 }
+
+// ─── Cross-window settings sync ──────────────────────────────────────────────
+//
+// The settings page lives in its own webview window; every window keeps a
+// separate SettingsStore instance, so a change made in one must be replayed
+// into the others. The payload is the full persisted settings object — the
+// receiver applies it without re-persisting (the emitter already did).
+
+export function onSettingsChanged<T>(handler: (payload: T) => void) {
+    return ResultAsync.fromPromise(
+        listen<T>('settings:changed', (event) => handler(event.payload)),
+        toErrString
+    );
+}
+
+export function emitSettingsChanged<T>(payload: T) {
+    return ResultAsync.fromPromise(emit('settings:changed', payload), toErrString);
+}
+
+// ─── Cross-window vcs diff window sync ───────────────────────────────────────
+
+export interface VcsDiffSelectionPayload {
+    primaryId: string | null;
+    secondaryId: string | null;
+}
+
+/** Main window → diff window: retarget an already-open diff window. */
+export function onVcsDiffSelection(handler: (payload: VcsDiffSelectionPayload) => void) {
+    return ResultAsync.fromPromise(
+        listen<VcsDiffSelectionPayload>('vcs:diff-selection', (event) => handler(event.payload)),
+        toErrString
+    );
+}
+
+export function emitVcsDiffSelection(payload: VcsDiffSelectionPayload) {
+    return ResultAsync.fromPromise(emit('vcs:diff-selection', payload), toErrString);
+}
+
+export interface VcsRestoreFileRequestPayload {
+    pointId: string;
+    path: string;
+}
+
+export interface VcsRestoreFileResultPayload {
+    path: string;
+    /** `null` on success, error message on failure. */
+    error: string | null;
+}
+
+/** Diff window → main window: restore a single file. Delegated because the
+ *  editor tabs that must be flushed before — and reloaded after — the restore
+ *  live in the main window's stores. */
+export function onVcsRestoreFileRequest(handler: (payload: VcsRestoreFileRequestPayload) => void) {
+    return ResultAsync.fromPromise(
+        listen<VcsRestoreFileRequestPayload>('vcs:restore-file-request', (event) =>
+            handler(event.payload)
+        ),
+        toErrString
+    );
+}
+
+export function emitVcsRestoreFileRequest(payload: VcsRestoreFileRequestPayload) {
+    return ResultAsync.fromPromise(emit('vcs:restore-file-request', payload), toErrString);
+}
+
+/** Main window → diff window: outcome of a delegated file restore. */
+export function onVcsRestoreFileResult(handler: (payload: VcsRestoreFileResultPayload) => void) {
+    return ResultAsync.fromPromise(
+        listen<VcsRestoreFileResultPayload>('vcs:restore-file-result', (event) =>
+            handler(event.payload)
+        ),
+        toErrString
+    );
+}
+
+export function emitVcsRestoreFileResult(payload: VcsRestoreFileResultPayload) {
+    return ResultAsync.fromPromise(emit('vcs:restore-file-result', payload), toErrString);
+}

@@ -25,6 +25,7 @@ import {
 } from '$lib/ipc/commands';
 import { editor } from './editor.svelte';
 import { workspace } from './workspace.svelte';
+import { closeDiffWindow } from '$lib/windows';
 import { logError } from '$lib/logger';
 
 class VcsStore {
@@ -51,11 +52,6 @@ class VcsStore {
 
     /** Loading flag for the diff payload. */
     diffLoading = $state(false);
-
-    /** When true, the workspace page mounts a diff overlay above the editor.
-     *  Toggled by the timeline's "View diff" button and closed via the
-     *  overlay's own close button. */
-    diffPaneOpen = $state(false);
 
     /** Per-commit branch index derived from the parent_id graph. A commit
      *  inherits its parent's branch if it is the *oldest* child of that
@@ -164,6 +160,16 @@ class VcsStore {
         return this.reloadDiff();
     }
 
+    /** Set both anchors at once and recompute the diff in a single pass.
+     *  Used by the standalone diff window, whose selection arrives whole
+     *  (URL params on boot, `vcs:diff-selection` events afterwards) rather
+     *  than through incremental clicks. */
+    setSelection(primaryId: string | null, secondaryId: string | null): ResultAsync<void, string> {
+        this.primaryId = primaryId;
+        this.secondaryId = primaryId ? secondaryId : null;
+        return this.reloadDiff();
+    }
+
     /** Drop the second-anchor selection but keep the primary. */
     clearSecondary(): void {
         if (this.secondaryId == null) return;
@@ -211,11 +217,12 @@ class VcsStore {
             )
             .map(() => {
                 // After restore, the working tree matches `id`. The diff
-                // against current would now be empty — clear the selection.
+                // against current would now be empty — clear the selection
+                // and tear down the diff window showing it.
                 this.primaryId = null;
                 this.secondaryId = null;
                 this.diff = null;
-                this.diffPaneOpen = false;
+                void closeDiffWindow();
             })
             .mapErr((err) => {
                 logError('vcs: restoreWorkspaceTo failed:', err);

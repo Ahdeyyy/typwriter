@@ -8,8 +8,8 @@ import { convertFileSrc } from '@tauri-apps/api/core';
  *  by URL — re-displaying a page that was already rendered costs nothing.
  *
  *  Tauri's `convertFileSrc` handles per-platform URL shape:
- *    - Windows / Android → `http://previewimg.localhost/{fp}.png`
- *    - macOS / iOS / Linux → `previewimg://localhost/{fp}.png`
+ *    - Windows → `http://previewimg.localhost/{fp}.png`
+ *    - macOS / Linux → `previewimg://localhost/{fp}.png`
  */
 export function buildPreviewUrl(fingerprint: string): string {
     return convertFileSrc(`${fingerprint}.png`, 'previewimg');

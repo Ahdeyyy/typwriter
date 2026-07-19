@@ -1,6 +1,6 @@
 # typwriter-desktop
 
-The Typst editor. Tauri 2 + SvelteKit (static adapter) + a Rust core that wraps the Typst compiler. Builds for Windows, macOS, Linux, and Android (the "desktop" name is historical — `tauri-plugin-android-fs` and a mobile entry point in `lib.rs` keep the mobile path live).
+The Typst editor for desktop. Tauri 2 + SvelteKit (static adapter) + a Rust core that wraps the Typst compiler. Builds for Windows, macOS, and Linux. Mobile is a separate app (`apps/typwriter-mobile/`); do not add mobile/SAF code paths here.
 
 ## Conventions
 
@@ -18,14 +18,15 @@ The Typst editor. Tauri 2 + SvelteKit (static adapter) + a Rust core that wraps 
 - `world/` — `EditorWorld<R: Runtime>` implements `typst::World` + `typst_ide::IdeWorld`. Owns fonts, source files, and the lazily-fetched package index. `progress.rs` emits package-download progress events to the frontend.
 - `compiler/` — `PreviewPipeline` (background worker), `compile.rs`, `render.rs`, `diff.rs`, `cache.rs`. Renders pages and serves them through the `previewimg://` protocol keyed by content fingerprint.
 - `workspace/` — `WorkspaceState`, filesystem `watcher`, path helpers, recent-workspaces store.
-- `commands/` — Tauri commands, grouped by domain: `app`, `editor`, `workspace`, `preview`, `click` (bidirectional source↔preview jump), `export` (PDF/PNG/SVG, with `_to_uri` variants for Android SAF), `format` (typstyle), `settings`, `logs`.
+- `commands/` — Tauri commands, grouped by domain: `app`, `editor`, `workspace`, `preview`, `click` (bidirectional source↔preview jump), `export` (PDF/PNG/SVG/HTML), `format` (typstyle), `settings`, `logs`, `vcs` (restore points).
+- `vcs/` — versioning / restore-point system: pure-Rust content-addressed store under `.typwriter/history/` in each workspace (sha2 ids, zstd blobs). `fs.rs` defines the `WorkingTreeFs` trait all workspace reads route through.
 
 ### Frontend (`src/`)
 
 - `routes/+page.svelte` — single-page entry; the actual screens live in `lib/components/pages/`.
 - `lib/components/pages/` — `home`, `workspace`, `settings`, `keymaps`, `preview-window`.
 - `lib/components/editor/` — CodeMirror tab bar, editor pane, diagnostics, search, Typst toolbar.
-- `lib/components/sidebar/` — Obsidian-style sidebar (file tree, preview pane, export dialog, mode switcher). Mobile variants live alongside (`.mobile.svelte`).
+- `lib/components/sidebar/` — Obsidian-style sidebar (file tree, preview pane, export dialog, mode switcher).
 - `lib/components/titlebar/` — custom window chrome.
 - `lib/stores/` — Svelte 5 class-singleton stores (`workspace`, `editor`, `preview`, `diagnostics`, `editor-search`, `page`, `platform`, `settings`, `updater`). All `$state`/`$derived` lives inside a class; module-level `$state` exports lose reactivity.
 - `lib/ipc/` — `commands.ts` (thin wrappers around `invoke`) and `events.ts` (typed Tauri event listeners).
@@ -36,8 +37,7 @@ The Typst editor. Tauri 2 + SvelteKit (static adapter) + a Rust core that wraps 
 ### Tauri config
 
 - `src-tauri/tauri.conf.json` — windows, CSP, asset protocol scope.
-- `src-tauri/capabilities/` — `default.json` (all platforms) and `desktop.json` (desktop-only, e.g. updater).
-- `src-tauri/gen/android/` — generated Android project (do not hand-edit).
+- `src-tauri/capabilities/` — `default.json` (main + preview windows) and `desktop.json` (e.g. updater).
 
 ## bun cheatsheet
 

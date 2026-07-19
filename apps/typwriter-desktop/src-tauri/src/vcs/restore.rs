@@ -152,10 +152,19 @@ fn normalize_restore_path(rel_path: &str) -> Result<PathBuf, String> {
         return Err("invalid restore path: empty path".into());
     }
 
+    // `Path::components()` silently skips interior `.` segments, so it can't
+    // be the only check: a `.` or `..` (or empty) segment must be rejected
+    // outright — otherwise the un-normalized string leaks into snapshot keys
+    // and never matches the stored `docs/main.typ` form.
+    let segments_ok = normalized
+        .split('/')
+        .all(|segment| !segment.is_empty() && segment != "." && segment != "..");
+
     let path = PathBuf::from(&normalized);
-    if path
-        .components()
-        .all(|component| matches!(component, Component::Normal(_)))
+    if segments_ok
+        && path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
     {
         Ok(path)
     } else {

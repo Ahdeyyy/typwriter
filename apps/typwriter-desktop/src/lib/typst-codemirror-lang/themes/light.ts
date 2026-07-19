@@ -12,6 +12,7 @@
 import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
+import { semanticTokenRules } from "./semantic-tokens-theme";
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 
@@ -126,6 +127,8 @@ export const lightTheme = EditorView.theme(
             color: `${ML.fgComment} !important`,
             textDecoration: "none !important",
         },
+        // tinymist semantic-token colours (see semantic-tokens-theme.ts).
+        ...semanticTokenRules(ML),
     },
     { dark: false }
 );
