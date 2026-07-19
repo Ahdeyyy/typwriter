@@ -33,6 +33,8 @@ export const setOpenTabs = (openTabs: string[], activeTab: string | null) =>
  *  Resolves to the folder's display name, or `null` if the user cancelled. */
 export const pickFontsDir = () => call<string | null>("pick_fonts_dir");
 export const clearFontsDir = () => call<null>("clear_fonts_dir");
+/** Display name of the persisted fonts folder (backend truth), or null. */
+export const getFontsDir = () => call<string | null>("get_fonts_dir");
 
 // ─── File operations ──────────────────────────────────────────────────────────
 
@@ -78,6 +80,9 @@ export const formatTypstSourceWithCursor = (source: string, cursor: number) =>
 
 export const exportPdfToUri = () => call<string>("export_pdf_to_uri");
 export const exportPdfToCacheFile = () => call<string>("export_pdf_to_cache_file");
+/** Copy the named workspace into a user-chosen folder; resolves to the number
+ *  of files copied. */
+export const exportWorkspace = (name: string) => call<number>("export_workspace", { name });
 
 // AppSettings is re-exported for store typing convenience.
 export type { AppSettings };

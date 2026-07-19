@@ -10,7 +10,9 @@ use std::num::NonZeroUsize;
 use lru::LruCache;
 use parking_lot::Mutex;
 use png::{BitDepth, ColorType, Compression, Encoder, Filter};
-use typst::layout::Page;
+use typst::utils::Scalar;
+use typst_layout::Page;
+use typst_render::RenderOptions;
 
 use crate::compiler::CompileState;
 
@@ -44,7 +46,7 @@ impl Renderer {
         // rendering (rendering can take tens to hundreds of ms).
         let index = *state.page_lookup.lock().get(fp)?;
         let doc = state.document.lock().clone()?;
-        let page = doc.pages.get(index)?;
+        let page = doc.pages().get(index)?;
         let bytes = render_page(page, scale).ok()?;
         self.cache.lock().put(key, bytes.clone());
         Some(bytes)
@@ -71,7 +73,11 @@ pub fn bucket_to_scale(bucket: u8) -> Option<f32> {
 
 /// Render a single page to PNG bytes with fast compression (preview speed).
 fn render_page(page: &Page, scale: f32) -> Result<Vec<u8>, String> {
-    let pixmap = typst_render::render(page, scale);
+    let opts = RenderOptions {
+        pixel_per_pt: Scalar::new(scale as f64),
+        ..Default::default()
+    };
+    let pixmap = typst_render::render(page, &opts);
     let width = pixmap.width();
     let height = pixmap.height();
     let data = pixmap.data();

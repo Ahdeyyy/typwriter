@@ -11,8 +11,13 @@
     themeExtensionFor,
     fontThemeFor,
   } from "$lib/editor/create-editor";
+  import {
+    setInlineDiagnostics,
+    type InlineDiagnostic,
+  } from "$lib/editor/inline-diagnostics";
   import { editor } from "$lib/stores/editor.svelte";
   import { settings } from "$lib/stores/settings.svelte";
+  import { compileStore } from "$lib/stores/compile.svelte";
 
   let host = $state<HTMLElement | null>(null);
 
@@ -53,6 +58,25 @@
   $effect(() => {
     const size = settings.editorFontSize;
     editor.view?.dispatch({ effects: fontSizeC.reconfigure(fontThemeFor(size)) });
+  });
+
+  // Inline diagnostics: project the compile store's errors/warnings for the
+  // active file into the editor as end-of-line chips. Re-runs after every
+  // compile and on file switch (relPath). Declared after the doc-reload effect
+  // so a file switch re-seeds the buffer first, then paints its diagnostics.
+  $effect(() => {
+    const relPath = editor.relPath;
+    const view = editor.view;
+    const all = [...compileStore.errors, ...compileStore.warnings];
+    if (!view || editor.fileKind !== "text" || !relPath) return;
+    const diags: InlineDiagnostic[] = all
+      .filter((d) => d.filePath === relPath && d.range !== null)
+      .map((d) => ({
+        line: d.range!.startLine,
+        severity: d.severity,
+        message: d.message,
+      }));
+    view.dispatch({ effects: setInlineDiagnostics.of(diags) });
   });
 </script>
 

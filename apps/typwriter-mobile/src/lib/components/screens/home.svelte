@@ -5,6 +5,8 @@
     Add01Icon,
     Settings01Icon,
     Folder01Icon,
+    FolderExportIcon,
+    Package01Icon,
     PencilEdit01Icon,
     Delete02Icon,
     ArrowRight01Icon,
@@ -21,6 +23,7 @@
   import { app } from "$lib/stores/app.svelte";
   import { longpress } from "$lib/actions/longpress";
   import { timeAgo } from "$lib/time";
+  import { exportWorkspace } from "$lib/ipc/commands";
   import type { WorkspaceMeta } from "$lib/ipc/types";
 
   let loading = $state(true);
@@ -28,22 +31,22 @@
   let newName = $state("");
   let menuTarget = $state<WorkspaceMeta | null>(null);
   let confirmDelete = $state<WorkspaceMeta | null>(null);
+  let exporting = $state(false);
 
   const INVALID = /[/\\:*?"<>|]/;
 
-  // Most-recent first, so "Jump back in" surfaces the freshest workspace.
+  // User workspaces only, most-recent first ("Jump back in" surfaces the
+  // freshest one). App-managed entries (the Typst package store) are rendered
+  // in their own section below.
   const sorted = $derived(
-    [...workspace.workspaces].sort((a, b) => (b.lastOpenedMs ?? 0) - (a.lastOpenedMs ?? 0)),
+    workspace.workspaces
+      .filter((w) => !w.system)
+      .sort((a, b) => (b.lastOpenedMs ?? 0) - (a.lastOpenedMs ?? 0)),
   );
   const recent = $derived<WorkspaceMeta | null>(sorted[0] ?? null);
   const rest = $derived(sorted.slice(1));
-
-  const greeting = (() => {
-    const h = new Date().getHours();
-    if (h < 12) return "Good morning";
-    if (h < 18) return "Good afternoon";
-    return "Good evening";
-  })();
+  const systemEntries = $derived(workspace.workspaces.filter((w) => w.system));
+  const userCount = $derived(sorted.length);
 
   onMount(() => {
     workspace.refreshList().match(
@@ -93,6 +96,22 @@
       (e) => toast.error(`Failed to delete: ${e}`),
     );
   }
+
+  function doExport(meta: WorkspaceMeta) {
+    if (exporting) return;
+    exporting = true;
+    menuTarget = null;
+    exportWorkspace(meta.name).match(
+      (count) => {
+        exporting = false;
+        toast.success(`Exported ${count} file${count === 1 ? "" : "s"} from "${meta.name}"`);
+      },
+      (e) => {
+        exporting = false;
+        if (e !== "Export cancelled") toast.error(`Export failed: ${e}`);
+      },
+    );
+  }
 </script>
 
 <div class="bg-background flex flex-col" style="height: 100svh; padding-top: env(safe-area-inset-top);">
@@ -115,29 +134,15 @@
     </Button>
   </header>
 
-  <!-- Greeting -->
-  <div class="shrink-0 px-5 pt-2 pb-4">
-    <h1 class="text-2xl font-semibold tracking-tight">{greeting}</h1>
-    <p class="text-muted-foreground mt-0.5 text-sm">
-      {#if loading}
-        Loading your workspaces…
-      {:else if workspace.workspaces.length === 0}
-        Create a workspace to start writing.
-      {:else}
-        {workspace.workspaces.length} workspace{workspace.workspaces.length === 1 ? "" : "s"} · pick up where you left off
-      {/if}
-    </p>
-  </div>
-
   <!-- Content -->
-  <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5" style="padding-bottom: calc(env(safe-area-inset-bottom) + 6rem);">
+  <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 6rem);">
     {#if loading}
       <div class="flex flex-col gap-3">
         <Skeleton class="h-28 w-full rounded-3xl" />
         <Skeleton class="h-16 w-full rounded-2xl" />
         <Skeleton class="h-16 w-full rounded-2xl" />
       </div>
-    {:else if workspace.workspaces.length === 0}
+    {:else if userCount === 0}
       <div class="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
         <div class="bg-muted text-muted-foreground flex size-20 items-center justify-center rounded-3xl">
           <Icon icon={File02Icon} class="size-9" />
@@ -200,11 +205,38 @@
         </div>
       {/if}
     {/if}
+
+    <!-- App-managed storage (the Typst package store) — clearly not a user
+         workspace: its own section, package icon, explanatory subtitle. -->
+    {#if !loading && systemEntries.length > 0}
+      <h2 class="text-muted-foreground mt-6 mb-2 px-1 text-xs font-medium tracking-wide uppercase">App storage</h2>
+      <div class="flex flex-col gap-2">
+        {#each systemEntries as meta (meta.path)}
+          <button
+            class="bg-muted/40 active:bg-accent active:text-accent-foreground flex w-full items-center gap-3.5 rounded-2xl border border-dashed p-3 text-left transition-colors"
+            onclick={() => openWorkspace(meta)}
+            use:longpress={{ onLongpress: () => (menuTarget = meta) }}
+          >
+            <div class="bg-primary/10 text-primary flex size-11 shrink-0 items-center justify-center rounded-xl">
+              <Icon icon={Package01Icon} class="size-5" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <span class="truncate text-sm font-medium">{meta.name}</span>
+                <span class="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[10px] font-medium">Managed by app</span>
+              </div>
+              <div class="text-muted-foreground text-xs">Downloaded Typst packages — not one of your workspaces</div>
+            </div>
+            <Icon icon={ArrowRight01Icon} class="text-muted-foreground/50 size-4 shrink-0" />
+          </button>
+        {/each}
+      </div>
+    {/if}
   </div>
 </div>
 
 <!-- Floating "new workspace" action -->
-{#if !loading && workspace.workspaces.length > 0}
+{#if !loading && userCount > 0}
   <button
     class="bg-primary text-primary-foreground active:scale-95 fixed flex size-14 items-center justify-center rounded-2xl shadow-lg transition-transform"
     style="right: 1.25rem; bottom: calc(env(safe-area-inset-bottom) + 1.25rem);"
@@ -250,15 +282,26 @@
     <div class="flex flex-col gap-1 p-2 pb-6" style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);">
       <Button
         variant="ghost"
-        class="text-destructive justify-start"
-        onclick={() => {
-          confirmDelete = menuTarget;
-          menuTarget = null;
-        }}
+        class="justify-start"
+        disabled={exporting}
+        onclick={() => menuTarget && doExport(menuTarget)}
       >
-        <Icon icon={Delete02Icon} />
-        Delete workspace
+        <Icon icon={FolderExportIcon} />
+        Export to folder…
       </Button>
+      {#if !menuTarget?.system}
+        <Button
+          variant="ghost"
+          class="text-destructive justify-start"
+          onclick={() => {
+            confirmDelete = menuTarget;
+            menuTarget = null;
+          }}
+        >
+          <Icon icon={Delete02Icon} />
+          Delete workspace
+        </Button>
+      {/if}
     </div>
   </Drawer.Content>
 </Drawer.Root>

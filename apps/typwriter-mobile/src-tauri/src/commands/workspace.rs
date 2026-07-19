@@ -2,6 +2,11 @@
 //
 // Workspace lifecycle + file operations. Every mutation returns the refreshed
 // file tree (root node) so the frontend never patches the tree client-side.
+//
+// All commands here are `async` so they run on the async runtime instead of
+// the main thread — a sync command doing disk IO (or worse, a blocking dialog)
+// on the main thread can stall the whole UI on Android. Long-blocking bodies
+// (pickers, SAF reads) additionally hop to `spawn_blocking`.
 
 use std::{
     path::{Path, PathBuf},
@@ -13,6 +18,7 @@ use log::info;
 use tauri::{AppHandle, Manager, State};
 
 use crate::{
+    compiler::CompileState,
     workspace::{
         build_tree, detect_main_file, read_meta, resolve_in_root, workspaces_root, write_meta,
         FileNode, WorkspaceInfo, WorkspaceMeta, WorkspaceState,
@@ -26,7 +32,7 @@ fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
-fn root_dir(app: &AppHandle) -> PathBuf {
+pub(crate) fn root_dir(app: &AppHandle) -> PathBuf {
     let documents = app.path().document_dir().ok();
     let app_data = app
         .path()
@@ -58,9 +64,17 @@ fn validate_workspace_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The package store directory (if it lives under the workspaces root). Such
+/// an entry is listed as a `system` workspace so the UI can present it as
+/// app-managed rather than user-created.
+fn system_dir(app: &AppHandle) -> Option<PathBuf> {
+    crate::packages_dirs(app).1
+}
+
 #[tauri::command]
-pub fn list_workspaces(app: AppHandle) -> Result<Vec<WorkspaceMeta>, String> {
+pub async fn list_workspaces(app: AppHandle) -> Result<Vec<WorkspaceMeta>, String> {
     let root = root_dir(&app);
+    let system = system_dir(&app);
     let mut out = Vec::new();
     let Ok(entries) = std::fs::read_dir(&root) else {
         return Ok(out);
@@ -81,6 +95,7 @@ pub fn list_workspaces(app: AppHandle) -> Result<Vec<WorkspaceMeta>, String> {
             name: name.to_string(),
             path: path.to_string_lossy().into_owned(),
             last_opened_ms: meta.last_opened_ms,
+            system: system.as_deref() == Some(path.as_path()),
         });
     }
     out.sort_by(|a, b| b.last_opened_ms.cmp(&a.last_opened_ms).then(a.name.cmp(&b.name)));
@@ -88,7 +103,7 @@ pub fn list_workspaces(app: AppHandle) -> Result<Vec<WorkspaceMeta>, String> {
 }
 
 #[tauri::command]
-pub fn create_workspace(name: String, app: AppHandle) -> Result<WorkspaceMeta, String> {
+pub async fn create_workspace(name: String, app: AppHandle) -> Result<WorkspaceMeta, String> {
     validate_workspace_name(&name)?;
     let dir = root_dir(&app).join(&name);
     if dir.exists() {
@@ -104,13 +119,17 @@ pub fn create_workspace(name: String, app: AppHandle) -> Result<WorkspaceMeta, S
         name,
         path: dir.to_string_lossy().into_owned(),
         last_opened_ms: None,
+        system: false,
     })
 }
 
 #[tauri::command]
-pub fn delete_workspace(name: String, app: AppHandle) -> Result<(), String> {
+pub async fn delete_workspace(name: String, app: AppHandle) -> Result<(), String> {
     validate_workspace_name(&name)?;
     let dir = root_dir(&app).join(&name);
+    if system_dir(&app).as_deref() == Some(dir.as_path()) {
+        return Err("The package store is managed by the app and can't be deleted".into());
+    }
     if dir.exists() {
         std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
     }
@@ -119,11 +138,12 @@ pub fn delete_workspace(name: String, app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn open_workspace(
+pub async fn open_workspace(
     name: String,
     app: AppHandle,
     workspace: State<'_, Arc<WorkspaceState>>,
     world: State<'_, Arc<MobileWorld>>,
+    compile: State<'_, Arc<CompileState>>,
 ) -> Result<WorkspaceInfo, String> {
     let t = Instant::now();
     let dir = root_dir(&app).join(&name);
@@ -136,8 +156,12 @@ pub fn open_workspace(
 
     *workspace.root.write() = Some(dir.clone());
     world.set_root(dir.clone());
+    // Drop the previous workspace's compiled document so the preview (and PDF
+    // export) can never serve the old workspace's pages after a switch.
+    *compile.document.lock() = None;
+    compile.page_lookup.lock().clear();
     if let Some(rel) = &main_file {
-        world.set_main(world.rel_to_id(rel));
+        world.set_main(world.rel_to_id(rel)?);
     }
 
     // Record last-opened and persist the resolved main file.
@@ -179,12 +203,12 @@ pub fn open_workspace(
 }
 
 #[tauri::command]
-pub fn get_file_tree(workspace: State<'_, Arc<WorkspaceState>>) -> Result<FileNode, String> {
+pub async fn get_file_tree(workspace: State<'_, Arc<WorkspaceState>>) -> Result<FileNode, String> {
     tree_of(&workspace)
 }
 
 #[tauri::command]
-pub fn set_main_file(
+pub async fn set_main_file(
     rel_path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
     world: State<'_, Arc<MobileWorld>>,
@@ -194,7 +218,7 @@ pub fn set_main_file(
     if !abs.is_file() {
         return Err(format!("Not a file: {rel_path}"));
     }
-    world.set_main(world.rel_to_id(&rel_path));
+    world.set_main(world.rel_to_id(&rel_path)?);
     let mut meta = read_meta(&root);
     meta.main_file = Some(rel_path.clone());
     write_meta(&root, &meta)?;
@@ -203,7 +227,7 @@ pub fn set_main_file(
 }
 
 #[tauri::command]
-pub fn set_last_file(
+pub async fn set_last_file(
     rel_path: Option<String>,
     workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Result<(), String> {
@@ -216,22 +240,47 @@ pub fn set_last_file(
 /// Open the platform folder picker and persist the chosen folder as the
 /// app-wide fonts source. Returns the folder's display name, or `None` if the
 /// user cancelled. On Android this uses the SAF directory picker so the fonts
-/// are reachable after a restart; the fonts are loaded on the next launch (see
-/// `fonts::load_extra_fonts`).
+/// stay reachable after a restart. The fonts are (re)loaded immediately on a
+/// background thread — no app restart needed.
 #[tauri::command]
-pub fn pick_fonts_dir(app: AppHandle) -> Result<Option<String>, String> {
-    crate::fonts::pick(&app)
+pub async fn pick_fonts_dir(
+    app: AppHandle,
+    world: State<'_, Arc<MobileWorld>>,
+) -> Result<Option<String>, String> {
+    let world = world.inner().clone();
+    let handle = app.clone();
+    // The picker blocks until the user responds — keep it off the runtime.
+    let picked = tauri::async_runtime::spawn_blocking(move || crate::fonts::pick(&handle))
+        .await
+        .map_err(|e| format!("picker task panicked: {e}"))??;
+    if picked.is_some() {
+        crate::fonts::load_in_background(app, world);
+    }
+    Ok(picked)
 }
 
-/// Clear the app-wide fonts source (and release any SAF permission). Applied on
-/// the next launch.
+/// Clear the app-wide fonts source (and release any SAF permission), then
+/// reload the font set (back to embedded + the conventional folder).
 #[tauri::command]
-pub fn clear_fonts_dir(app: AppHandle) -> Result<(), String> {
-    crate::fonts::clear_source(&app)
+pub async fn clear_fonts_dir(
+    app: AppHandle,
+    world: State<'_, Arc<MobileWorld>>,
+) -> Result<(), String> {
+    crate::fonts::clear_source(&app)?;
+    crate::fonts::load_in_background(app, world.inner().clone());
+    Ok(())
+}
+
+/// Display name of the persisted fonts source, or `None` when unset. The
+/// settings UI reads this so the shown folder always matches what the backend
+/// actually loads.
+#[tauri::command]
+pub async fn get_fonts_dir(app: AppHandle) -> Result<Option<String>, String> {
+    Ok(crate::fonts::source_display_name(&app))
 }
 
 #[tauri::command]
-pub fn set_open_tabs(
+pub async fn set_open_tabs(
     open_tabs: Vec<String>,
     active_tab: Option<String>,
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -244,7 +293,7 @@ pub fn set_open_tabs(
 }
 
 #[tauri::command]
-pub fn create_file(
+pub async fn create_file(
     rel_path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Result<FileNode, String> {
@@ -262,7 +311,7 @@ pub fn create_file(
 }
 
 #[tauri::command]
-pub fn create_folder(
+pub async fn create_folder(
     rel_path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Result<FileNode, String> {
@@ -277,7 +326,7 @@ pub fn create_folder(
 }
 
 #[tauri::command]
-pub fn rename_entry(
+pub async fn rename_entry(
     rel_path: String,
     new_name: String,
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -300,7 +349,7 @@ pub fn rename_entry(
 }
 
 #[tauri::command]
-pub fn move_entry(
+pub async fn move_entry(
     rel_path: String,
     new_parent_rel: String,
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -333,7 +382,7 @@ pub fn move_entry(
 }
 
 #[tauri::command]
-pub fn delete_entry(
+pub async fn delete_entry(
     rel_path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Result<FileNode, String> {

@@ -1,19 +1,70 @@
 // fonts.rs
 //
 // App-wide font source: a user-chosen folder whose fonts are loaded into the
-// compiler at startup. On Android a plain filesystem path is not reachable
-// (scoped storage), so a folder picked via the SAF directory picker is stored
-// as a persisted content-tree URI and its fonts are read through
+// compiler. On Android a plain filesystem path is not reachable (scoped
+// storage), so a folder picked via the SAF directory picker is stored as a
+// persisted content-tree URI and its fonts are read through
 // `tauri-plugin-android-fs`. On desktop (the dev loop) a normal path is used.
 //
-// The chosen source is persisted to `<app_data>/fonts_source.json`. Changes
-// take effect on the next launch (fonts load once in `MobileWorld::new`).
+// The chosen source is persisted to `<app_data>/fonts_source.json`. Fonts are
+// loaded on a background thread — at startup (`load_in_background` from the
+// setup hook) and again right after the user picks/clears a folder — and
+// swapped into the world via `MobileWorld::install_fonts`. Nothing here may
+// run on the main thread: SAF reads are blocking plugin calls.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
+use log::error;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_android_fs::FileUri;
+use typst_kit::fonts::{self as kit_fonts, FontStore};
+
+use crate::world::MobileWorld;
+
+/// A `FontStore` holding only the embedded fonts — the synchronous fallback
+/// installed at construction, before the background load finishes.
+pub fn embedded_store() -> FontStore {
+    let mut store = FontStore::new();
+    store.extend(kit_fonts::embedded());
+    store
+}
+
+/// Build the full font set: embedded fonts, fonts scanned from regular
+/// directories, and fonts parsed out of raw buffers (read from a SAF tree).
+pub fn build_font_store(dirs: &[PathBuf], buffers: &[Vec<u8>]) -> FontStore {
+    let mut store = FontStore::new();
+    store.extend(kit_fonts::embedded());
+    for dir in dirs {
+        store.extend(kit_fonts::scan(dir));
+    }
+    for buffer in buffers {
+        let bytes = typst::foundations::Bytes::new(buffer.clone());
+        for font in typst::text::Font::iter(bytes) {
+            let info = font.info().clone();
+            store.push((font, info));
+        }
+    }
+    store
+}
+
+/// Load the user's extra fonts on a background thread and install the result
+/// into the world. Called from the setup hook and after every pick/clear so
+/// font changes apply without an app restart. A corrupt font file or a hung
+/// SAF read must never take the app down: panics fall back to embedded-only.
+pub fn load_in_background(app: AppHandle, world: Arc<MobileWorld>) {
+    std::thread::spawn(move || {
+        let store = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let (dirs, buffers) = load_extra_fonts(&app);
+            build_font_store(&dirs, &buffers)
+        }))
+        .unwrap_or_else(|_| {
+            error!("fonts: background load panicked; falling back to embedded fonts");
+            embedded_store()
+        });
+        world.install_fonts(store);
+    });
+}
 
 /// Where the app-wide fonts come from.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +95,12 @@ fn source_file(app: &AppHandle) -> Result<PathBuf, String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&app_data).map_err(|e| e.to_string())?;
     Ok(app_data.join("fonts_source.json"))
+}
+
+/// Display name of the persisted fonts source, if any — the settings UI reads
+/// this on open so the backend stays the single source of truth.
+pub fn source_display_name(app: &AppHandle) -> Option<String> {
+    read_source(app).map(|s| s.display_name())
 }
 
 /// Read the persisted fonts source, if any.

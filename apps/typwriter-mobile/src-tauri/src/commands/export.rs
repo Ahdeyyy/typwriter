@@ -1,11 +1,13 @@
 // commands/export.rs
 //
-// PDF export. `pdf_bytes` renders the last successfully compiled document;
+// Exports. `pdf_bytes` renders the last successfully compiled document;
 // `export_pdf_to_uri` saves it through the Android SAF save dialog (or the
 // desktop dialog in the dev loop); `export_pdf_to_cache_file` writes a temp PDF
-// for sharing.
+// for sharing; `export_workspace` copies a whole workspace into a user-chosen
+// folder. Everything runs async — the save/pick dialogs block until the user
+// responds, so their bodies hop to `spawn_blocking`.
 
-use std::{sync::Arc, time::Instant};
+use std::{path::Path, sync::Arc, time::Instant};
 
 use log::{error, info};
 use tauri::{AppHandle, Manager, State};
@@ -35,8 +37,7 @@ fn main_stem(world: &MobileWorld) -> String {
     world
         .main_id()
         .and_then(|id| {
-            id.vpath()
-                .as_rootless_path()
+            Path::new(id.vpath().get_without_slash())
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .map(|s| s.to_string())
@@ -48,14 +49,26 @@ fn main_stem(world: &MobileWorld) -> String {
 /// name of the created file. Android uses the SAF save dialog; the desktop dev
 /// loop falls back to tauri-plugin-dialog + std::fs.
 #[tauri::command]
-pub fn export_pdf_to_uri(
+pub async fn export_pdf_to_uri(
     app: AppHandle,
     world: State<'_, Arc<MobileWorld>>,
     compile: State<'_, Arc<CompileState>>,
 ) -> Result<String, String> {
+    let world = world.inner().clone();
+    let compile = compile.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || export_pdf_blocking(&app, &world, &compile))
+        .await
+        .map_err(|e| format!("export task panicked: {e}"))?
+}
+
+fn export_pdf_blocking(
+    app: &AppHandle,
+    world: &MobileWorld,
+    compile: &CompileState,
+) -> Result<String, String> {
     let t = Instant::now();
-    let bytes = pdf_bytes(&compile)?;
-    let suggested = format!("{}.pdf", main_stem(&world));
+    let bytes = pdf_bytes(compile)?;
+    let suggested = format!("{}.pdf", main_stem(world));
 
     #[cfg(target_os = "android")]
     {
@@ -106,7 +119,7 @@ pub fn export_pdf_to_uri(
 /// Write the compiled document to a temp PDF and return its absolute path (for
 /// a share intent). The Share button is optional in v1.
 #[tauri::command]
-pub fn export_pdf_to_cache_file(
+pub async fn export_pdf_to_cache_file(
     app: AppHandle,
     world: State<'_, Arc<MobileWorld>>,
     compile: State<'_, Arc<CompileState>>,
@@ -125,4 +138,114 @@ pub fn export_pdf_to_cache_file(
         e.to_string()
     })?;
     Ok(path.to_string_lossy().into_owned())
+}
+
+// ─── Workspace export ────────────────────────────────────────────────────────
+
+/// Copy the named workspace into a user-chosen folder (a `<name>/` subfolder is
+/// created there). Hidden entries (`.typwriter` etc.) are skipped. Returns the
+/// number of files copied. Android writes through the SAF directory picker;
+/// the desktop dev loop uses the plain folder dialog + std::fs.
+#[tauri::command]
+pub async fn export_workspace(name: String, app: AppHandle) -> Result<usize, String> {
+    tauri::async_runtime::spawn_blocking(move || export_workspace_blocking(&app, &name))
+        .await
+        .map_err(|e| format!("export task panicked: {e}"))?
+}
+
+fn export_workspace_blocking(app: &AppHandle, name: &str) -> Result<usize, String> {
+    let t = Instant::now();
+    let src = crate::commands::workspace::root_dir(app).join(name);
+    if !src.is_dir() {
+        return Err(format!("Workspace \"{name}\" not found"));
+    }
+
+    // Collect (relative path, absolute path) for every visible file up front so
+    // both platform branches share the same walk.
+    let mut files: Vec<(String, std::path::PathBuf)> = Vec::new();
+    collect_files(&src, &src, &mut files)?;
+    if files.is_empty() {
+        return Err("The workspace has no files to export".into());
+    }
+
+    #[cfg(target_os = "android")]
+    let copied = {
+        use tauri_plugin_android_fs::AndroidFsExt;
+        let api = app.android_fs();
+        let dest = api
+            .file_picker()
+            .pick_dir(None, false)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Export cancelled".to_string())?;
+        let mut copied = 0usize;
+        for (rel, abs) in &files {
+            let bytes = std::fs::read(abs).map_err(|e| e.to_string())?;
+            let uri = api
+                .create_new_file(&dest, format!("{name}/{rel}"), None)
+                .map_err(|e| e.to_string())?;
+            api.write(&uri, &bytes).map_err(|e| e.to_string())?;
+            copied += 1;
+        }
+        copied
+    };
+
+    #[cfg(not(target_os = "android"))]
+    let copied = {
+        use tauri_plugin_dialog::DialogExt;
+        let picked = app
+            .dialog()
+            .file()
+            .blocking_pick_folder()
+            .ok_or_else(|| "Export cancelled".to_string())?;
+        let dest = picked
+            .into_path()
+            .map_err(|e| format!("Invalid folder: {e}"))?
+            .join(name);
+        let mut copied = 0usize;
+        for (rel, abs) in &files {
+            let target = dest.join(rel);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::copy(abs, &target).map_err(|e| e.to_string())?;
+            copied += 1;
+        }
+        copied
+    };
+
+    info!(
+        "export_workspace: {name:?} {copied} files ({:.1}ms)",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
+    Ok(copied)
+}
+
+/// Recursively collect visible files under `dir` as workspace-relative
+/// forward-slash paths. Hidden (`.`-prefixed) entries are skipped.
+fn collect_files(
+    dir: &Path,
+    root: &Path,
+    out: &mut Vec<(String, std::path::PathBuf)>,
+) -> Result<(), String> {
+    let entries = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if file_name.starts_with('.') {
+            continue;
+        }
+        if path.is_dir() {
+            collect_files(&path, root, out)?;
+        } else {
+            let rel = path
+                .strip_prefix(root)
+                .map_err(|e| e.to_string())?
+                .to_string_lossy()
+                .replace('\\', "/");
+            out.push((rel, path));
+        }
+    }
+    Ok(())
 }

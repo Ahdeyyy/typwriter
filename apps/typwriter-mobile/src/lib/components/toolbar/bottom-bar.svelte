@@ -9,10 +9,13 @@
     Logout01Icon,
     MenuTwoLineIcon,
     MagicWand01Icon,
+    FolderExportIcon,
   } from "@hugeicons/core-free-icons";
+  import { toast } from "svelte-sonner";
   import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  import { exportWorkspace } from "$lib/ipc/commands";
   import { app } from "$lib/stores/app.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
@@ -27,6 +30,26 @@
 
   // Only typst buffers can be formatted; disable otherwise.
   const canFormat = $derived(editor.fileKind === "text" && !!editor.relPath?.endsWith(".typ"));
+
+  // Copy the whole open workspace to a user-chosen folder. Flush pending edits
+  // first so the copy contains what's on screen.
+  let exportingWorkspace = $state(false);
+  async function exportWorkspaceCopy() {
+    const name = workspace.name;
+    if (!name || exportingWorkspace) return;
+    exportingWorkspace = true;
+    await editor.flush();
+    exportWorkspace(name).match(
+      (count) => {
+        exportingWorkspace = false;
+        toast.success(`Exported ${count} file${count === 1 ? "" : "s"}`);
+      },
+      (e) => {
+        exportingWorkspace = false;
+        if (e !== "Export cancelled") toast.error(`Export failed: ${e}`);
+      },
+    );
+  }
 
   // Larger touch targets than the default dropdown item (which is sized for a
   // mouse): taller rows, bigger gap/icon, readable text.
@@ -61,6 +84,13 @@
       </DropdownMenu.Item>
       <DropdownMenu.Item class={itemClass} disabled={exporting} onclick={onExport}>
         <Icon icon={Pdf01Icon} /> Export PDF
+      </DropdownMenu.Item>
+      <DropdownMenu.Item
+        class={itemClass}
+        disabled={exportingWorkspace}
+        onclick={() => void exportWorkspaceCopy()}
+      >
+        <Icon icon={FolderExportIcon} /> Export workspace…
       </DropdownMenu.Item>
       <DropdownMenu.Item class={itemClass} onclick={() => app.openOverlay("diagnostics")}>
         <Icon icon={Alert02Icon} /> Diagnostics

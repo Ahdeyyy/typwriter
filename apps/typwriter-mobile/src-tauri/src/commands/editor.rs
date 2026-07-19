@@ -10,7 +10,8 @@ use base64::Engine;
 use log::info;
 use serde::Serialize;
 use tauri::State;
-use typst::{layout::PagedDocument, syntax::Source};
+use typst::syntax::Source;
+use typst_layout::PagedDocument;
 
 use crate::{compiler::CompileState, workspace::resolve_in_root, world::MobileWorld};
 
@@ -47,7 +48,7 @@ fn workspace_root(world: &MobileWorld) -> Result<std::path::PathBuf, String> {
 }
 
 #[tauri::command]
-pub fn read_file(
+pub async fn read_file(
     rel_path: String,
     world: State<'_, Arc<MobileWorld>>,
 ) -> Result<FileContent, String> {
@@ -105,7 +106,7 @@ pub fn read_file(
 }
 
 #[tauri::command]
-pub fn save_file(
+pub async fn save_file(
     rel_path: String,
     content: String,
     world: State<'_, Arc<MobileWorld>>,
@@ -135,7 +136,7 @@ pub fn save_file(
 }
 
 #[tauri::command]
-pub fn get_completions(
+pub async fn get_completions(
     rel_path: String,
     text: String,
     cursor: usize,
@@ -143,43 +144,51 @@ pub fn get_completions(
     world: State<'_, Arc<MobileWorld>>,
     compile: State<'_, Arc<CompileState>>,
 ) -> Result<CompletionsResponse, String> {
-    let t = Instant::now();
-    let id = world.rel_to_id(&rel_path);
-    let byte_cursor = utf16_to_byte(&text, cursor);
+    let world = world.inner().clone();
+    let compile = compile.inner().clone();
+    // The IDE traversal can take 100ms+ on a big document — keep it off the
+    // runtime worker threads.
+    tauri::async_runtime::spawn_blocking(move || {
+        let t = Instant::now();
+        let id = world.rel_to_id(&rel_path)?;
+        let byte_cursor = utf16_to_byte(&text, cursor);
 
-    // Snapshot the last compiled document for richer (doc-aware) completions.
-    let doc = compile.document.lock().clone();
-    let doc_ref: Option<&PagedDocument> = doc.as_deref();
+        // Snapshot the last compiled document for richer (doc-aware) completions.
+        let doc = compile.document.lock().clone();
+        let doc_ref: Option<&PagedDocument> = doc.as_deref();
 
-    let response = world.with_overlay(id, &text, |w| {
-        let source = Source::new(id, text.clone());
-        match typst_ide::autocomplete(w, doc_ref, &source, byte_cursor, explicit) {
-            Some((from, items)) => CompletionsResponse {
-                from: byte_to_utf16(&text, from),
-                completions: items
-                    .into_iter()
-                    .take(MAX_COMPLETIONS)
-                    .map(|c| CompletionItem {
-                        kind: format!("{:?}", c.kind),
-                        label: c.label.to_string(),
-                        apply: c.apply.map(|a| a.to_string()),
-                        detail: c.detail.map(|d| d.to_string()),
-                    })
-                    .collect(),
-            },
-            None => CompletionsResponse {
-                from: cursor,
-                completions: vec![],
-            },
-        }
-    });
+        let response = world.with_overlay(id, &text, |w| {
+            let source = Source::new(id, text.clone());
+            match typst_ide::autocomplete(w, doc_ref, &source, byte_cursor, explicit) {
+                Some((from, items)) => CompletionsResponse {
+                    from: byte_to_utf16(&text, from),
+                    completions: items
+                        .into_iter()
+                        .take(MAX_COMPLETIONS)
+                        .map(|c| CompletionItem {
+                            kind: format!("{:?}", c.kind),
+                            label: c.label.to_string(),
+                            apply: c.apply.map(|a| a.to_string()),
+                            detail: c.detail.map(|d| d.to_string()),
+                        })
+                        .collect(),
+                },
+                None => CompletionsResponse {
+                    from: cursor,
+                    completions: vec![],
+                },
+            }
+        });
 
-    info!(
-        "get_completions: {rel_path:?} {} items explicit={explicit} ({:.1}ms)",
-        response.completions.len(),
-        t.elapsed().as_secs_f64() * 1000.0
-    );
-    Ok(response)
+        info!(
+            "get_completions: {rel_path:?} {} items explicit={explicit} ({:.1}ms)",
+            response.completions.len(),
+            t.elapsed().as_secs_f64() * 1000.0
+        );
+        Ok(response)
+    })
+    .await
+    .map_err(|e| format!("completions task panicked: {e}"))?
 }
 
 // ─── Offset conversion ───────────────────────────────────────────────────────

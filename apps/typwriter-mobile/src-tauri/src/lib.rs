@@ -22,7 +22,9 @@ use world::MobileWorld;
 
 /// Resolve the (cache, packages) directories for the package store. Both point
 /// at an app-reachable `Typwriter/Packages` dir; `std::fs` can always read it.
-fn packages_dirs(app: &tauri::AppHandle) -> (Option<PathBuf>, Option<PathBuf>) {
+/// Note this lives *inside* the managed-workspaces root, so the workspace list
+/// marks it as a system entry (see `commands::workspace::list_workspaces`).
+pub(crate) fn packages_dirs(app: &tauri::AppHandle) -> (Option<PathBuf>, Option<PathBuf>) {
     let base = app
         .path()
         .document_dir()
@@ -93,13 +95,14 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             let (cache, pkgdir) = packages_dirs(&handle);
-            let (font_dirs, font_buffers) = fonts::load_extra_fonts(&handle);
-            app.manage(Arc::new(MobileWorld::new(
-                cache,
-                pkgdir,
-                font_dirs,
-                font_buffers,
-            )));
+            // The world starts with embedded fonts only so setup never touches
+            // the filesystem or (worse) does blocking SAF plugin calls on the
+            // main thread — that stalled the whole app at startup whenever a
+            // fonts folder had been picked. The full font set loads on a
+            // background thread and is swapped in when ready.
+            let world = Arc::new(MobileWorld::new(cache, pkgdir));
+            app.manage(world.clone());
+            fonts::load_in_background(handle, world);
             app.manage(Arc::new(CompileState::default()));
             app.manage(Arc::new(Renderer::new()));
             app.manage(Arc::new(WorkspaceState::default()));
@@ -116,6 +119,7 @@ pub fn run() {
             commands::workspace::set_open_tabs,
             commands::workspace::pick_fonts_dir,
             commands::workspace::clear_fonts_dir,
+            commands::workspace::get_fonts_dir,
             commands::workspace::create_file,
             commands::workspace::create_folder,
             commands::workspace::rename_entry,
@@ -129,6 +133,7 @@ pub fn run() {
             commands::format::format_typst_cursor_virtual,
             commands::export::export_pdf_to_uri,
             commands::export::export_pdf_to_cache_file,
+            commands::export::export_workspace,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

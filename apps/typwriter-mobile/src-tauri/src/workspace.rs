@@ -22,6 +22,8 @@ pub struct WorkspaceMeta {
     pub name: String,
     pub path: String,
     pub last_opened_ms: Option<i64>,
+    /// App-managed entry (the Typst package store), not a user workspace.
+    pub system: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]

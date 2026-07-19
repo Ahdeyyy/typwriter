@@ -41,6 +41,24 @@ class CompileStore {
     void this.run();
   }
 
+  /**
+   * A different workspace was opened. The old workspace's pages must never be
+   * shown (the backend also dropped its compiled document), so clear
+   * everything; when the new workspace has a main file, eagerly rebuild in the
+   * background so the preview is correct the moment it's opened.
+   */
+  onWorkspaceOpened(hasMain: boolean) {
+    if (hasMain) {
+      this.onMainChanged();
+    } else {
+      this.pages = [];
+      this.errors = [];
+      this.warnings = [];
+      this.status = "idle";
+      this.stale = true;
+    }
+  }
+
   run(): ResultAsync<void, string> {
     this.status = "compiling";
     return ipc.compile().map((res) => {

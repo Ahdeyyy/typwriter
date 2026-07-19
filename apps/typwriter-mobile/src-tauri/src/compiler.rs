@@ -13,9 +13,10 @@ use parking_lot::Mutex;
 use serde::Serialize;
 use typst::{
     diag::{Severity, SourceDiagnostic},
-    layout::PagedDocument,
-    World,
+    syntax::VirtualRoot,
+    World, WorldExt,
 };
+use typst_layout::PagedDocument;
 
 use crate::world::MobileWorld;
 
@@ -88,7 +89,8 @@ fn serialize_one(world: &MobileWorld, d: &SourceDiagnostic) -> Diagnostic {
             Severity::Warning => "warning".into(),
         },
         message: d.message.to_string(),
-        hints: d.hints.iter().map(|h| h.to_string()).collect(),
+        // In 0.15 `hints` are `Spanned<EcoString>`; `.v` is the text value.
+        hints: d.hints.iter().map(|h| h.v.to_string()).collect(),
         file_path,
         range,
     }
@@ -105,15 +107,14 @@ fn resolve_span(
         return (None, None);
     };
     // Package/internal spans have no workspace-relative path.
-    let file_path = if id.package().is_some() {
+    let file_path = if matches!(id.root(), VirtualRoot::Package(_)) {
         None
     } else {
-        id.vpath()
-            .as_rootless_path()
-            .to_str()
-            .map(|s| s.replace('\\', "/"))
+        // `get_without_slash` already yields a forward-slash relative path.
+        Some(id.vpath().get_without_slash().to_string())
     };
-    let range = source.range(diag.span).and_then(|r| {
+    // 0.15: spans resolve to byte ranges via `WorldExt::range`, not `Source`.
+    let range = world.range(diag.span).and_then(|r| {
         let lines = source.lines();
         let (sl, sc) = lines.byte_to_line_column(r.start)?;
         let (el, ec) = lines.byte_to_line_column(r.end)?;

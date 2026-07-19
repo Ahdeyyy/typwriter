@@ -7,15 +7,11 @@
   import { settings } from "$lib/stores/settings.svelte";
   import PageList from "./page-list.svelte";
 
+  // No pinch-to-zoom: the pinch gesture fought the scroll gesture and made
+  // panning through pages miserable. Zoom is double-tap only (fit-width ↔ 2×).
   let bucket = $state<1 | 2 | 3 | 4>(settings.previewScaleBucket);
   let committedZoom = $state(1);
-  let gestureScale = $state(1);
   let currentPage = $state(0);
-
-  // Active pinch pointers and their starting distance.
-  const pointers = new Map<number, { x: number; y: number }>();
-  let pinchStartDist = 0;
-  let pinchStartZoom = 1;
   let lastTap = 0;
 
   const visible = $derived(app.overlay === "preview");
@@ -37,50 +33,15 @@
     return best[1];
   }
 
-  function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
-    return Math.hypot(a.x - b.x, a.y - b.y);
-  }
-
-  function onPointerDown(e: PointerEvent) {
-    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 2) {
-      const [p1, p2] = [...pointers.values()];
-      pinchStartDist = dist(p1, p2);
-      pinchStartZoom = committedZoom;
-    }
-  }
-
-  function onPointerMove(e: PointerEvent) {
-    if (!pointers.has(e.pointerId)) return;
-    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 2 && pinchStartDist > 0) {
-      const [p1, p2] = [...pointers.values()];
-      const ratio = dist(p1, p2) / pinchStartDist;
-      gestureScale = Math.min(4, Math.max(0.5, ratio));
-    }
-  }
-
-  function endPinch() {
-    committedZoom = Math.min(4, Math.max(0.5, pinchStartZoom * gestureScale));
-    gestureScale = 1;
-    pinchStartDist = 0;
-    bucket = bucketForZoom(committedZoom);
-  }
-
-  function onPointerUp(e: PointerEvent) {
-    if (pointers.size === 2) endPinch();
-    pointers.delete(e.pointerId);
-
-    // Double-tap toggles fit-width ↔ 2×.
-    if (pointers.size === 0) {
-      const now = Date.now();
-      if (now - lastTap < 300) {
-        committedZoom = committedZoom > 1.5 ? 1 : 2;
-        bucket = bucketForZoom(committedZoom);
-        lastTap = 0;
-      } else {
-        lastTap = now;
-      }
+  // Double-tap toggles fit-width ↔ 2×.
+  function onPointerUp() {
+    const now = Date.now();
+    if (now - lastTap < 300) {
+      committedZoom = committedZoom > 1.5 ? 1 : 2;
+      bucket = bucketForZoom(committedZoom);
+      lastTap = 0;
+    } else {
+      lastTap = now;
     }
   }
 </script>
@@ -119,26 +80,19 @@
       </Button>
     </div>
 
-    <!-- Scroller + pinch zoom -->
+    <!-- Scroller (native pan; double-tap toggles zoom) -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="relative flex-1 touch-pan-y touch-pan-x overflow-auto overscroll-contain"
+      class="relative flex-1 overflow-auto overscroll-contain"
       style="padding-bottom: env(safe-area-inset-bottom);"
-      onpointerdown={onPointerDown}
-      onpointermove={onPointerMove}
       onpointerup={onPointerUp}
-      onpointercancel={onPointerUp}
     >
       {#if total === 0 && compileStore.status !== "compiling"}
         <div class="text-muted-foreground flex h-full items-center justify-center p-8 text-center text-sm">
           Nothing to preview yet.
         </div>
       {:else}
-        <div
-          class="origin-top"
-          style:width={`${committedZoom * 100}%`}
-          style:transform={gestureScale === 1 ? undefined : `scale(${gestureScale})`}
-        >
+        <div class="origin-top" style:width={`${committedZoom * 100}%`}>
           <PageList pages={compileStore.pages} {bucket} onVisible={(i) => (currentPage = i)} />
         </div>
       {/if}

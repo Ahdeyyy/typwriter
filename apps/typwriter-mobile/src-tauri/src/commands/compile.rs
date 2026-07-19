@@ -13,7 +13,7 @@ use std::{
 
 use log::info;
 use tauri::State;
-use typst::layout::PagedDocument;
+use typst_layout::PagedDocument;
 
 use crate::{
     compiler::{serialize_diags, CompileResult, CompileState, PageMeta},
@@ -37,6 +37,12 @@ fn run_compile(world: &MobileWorld, state: &CompileState) -> CompileResult {
     let t = Instant::now();
     let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
 
+    // Give the background font load a chance to finish so the first compile
+    // doesn't render with the embedded-only set. Bounded: a hung SAF read
+    // must never freeze the pipeline, so after the timeout we compile with
+    // whatever fonts are installed.
+    world.wait_for_fonts(std::time::Duration::from_secs(10));
+
     // Re-read edited files from disk on every compile (disk is the truth).
     world.reset();
 
@@ -59,7 +65,7 @@ fn run_compile(world: &MobileWorld, state: &CompileState) -> CompileResult {
             // Fingerprint each page and build the lookup map.
             let mut lookup: HashMap<String, usize> = HashMap::new();
             let pages: Vec<PageMeta> = doc
-                .pages
+                .pages()
                 .iter()
                 .enumerate()
                 .map(|(i, page)| {

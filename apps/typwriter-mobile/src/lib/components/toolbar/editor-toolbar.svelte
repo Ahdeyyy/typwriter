@@ -16,7 +16,15 @@
   import Icon from "$lib/components/icon.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { completions } from "$lib/editor/completion-controller.svelte";
-  import { insertOrWrap, insertLinePrefix } from "$lib/editor/insert";
+  import { insertOrWrap } from "$lib/editor/insert";
+  import {
+    toggleBold,
+    toggleItalic,
+    toggleRawInline,
+    toggleMath,
+    toggleHeading,
+    toggleBulletList,
+  } from "$lib/editor/commands";
   import type { EditorView } from "@codemirror/view";
 
   // Symbols inserted/wrapped at the cursor. Order matters (most-used first).
@@ -25,15 +33,25 @@
     "(", ")", "[", "]", "{", "}", '"', "<", ">", "@",
   ];
 
-  // Obsidian-style formatting quick commands.
+  // Formatting quick commands — same buttons as before, but they now run the
+  // desktop toolbar's toggle semantics (wrap ⇄ unwrap, prefix on ⇄ off)
+  // instead of blind insertion. The commands re-focus via `focused(...)`.
   const COMMANDS: { icon: IconSvgElement; label: string; run: (v: EditorView) => void }[] = [
-    { icon: TextBoldIcon, label: "Bold", run: (v) => insertOrWrap(v, "*") },
-    { icon: TextItalicIcon, label: "Italic", run: (v) => insertOrWrap(v, "_") },
-    { icon: SourceCodeIcon, label: "Code", run: (v) => insertOrWrap(v, "`") },
-    { icon: MathIcon, label: "Math", run: (v) => insertOrWrap(v, "$") },
-    { icon: Heading01Icon, label: "Heading", run: (v) => insertLinePrefix(v, "= ") },
-    { icon: ListViewIcon, label: "List", run: (v) => insertLinePrefix(v, "- ") },
+    { icon: TextBoldIcon, label: "Bold", run: focused(toggleBold) },
+    { icon: TextItalicIcon, label: "Italic", run: focused(toggleItalic) },
+    { icon: SourceCodeIcon, label: "Code", run: focused(toggleRawInline) },
+    { icon: MathIcon, label: "Math", run: focused(toggleMath) },
+    { icon: Heading01Icon, label: "Heading", run: focused(toggleHeading) },
+    { icon: ListViewIcon, label: "List", run: focused(toggleBulletList) },
   ];
+
+  /** Run a command and keep focus (and the soft keyboard) on the editor. */
+  function focused(cmd: (v: EditorView) => boolean) {
+    return (v: EditorView) => {
+      cmd(v);
+      v.focus();
+    };
+  }
 
   // Tapping a button steals focus from the editor's contenteditable on
   // mousedown, which blurs it and dismisses the soft keyboard. Preventing the
