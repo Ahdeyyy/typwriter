@@ -719,6 +719,17 @@
     mountActiveView(activeTabId);
   });
 
+  // Let the store read the live selection of any tab's view — this is how
+  // format paths without an explicit cursor (format-on-save, idle-save) get
+  // cursor maintenance. See EditorStore.cursorProvider.
+  $effect(() => {
+    editor.cursorProvider = (tabId) =>
+      tabViews.get(tabId)?.state.selection.main.head;
+    return () => {
+      editor.cursorProvider = null;
+    };
+  });
+
   $effect(() => {
     return () => {
       for (const view of tabViews.values()) view.destroy();
@@ -776,27 +787,26 @@
       scrollIntoView: false,
     });
 
-    // Now set the cursor in the new document. If Rust returned one, trust it
-    // directly — the algorithm already works in the correct coordinate space.
-    // Otherwise fall back to a simple delta map for cursors outside the
-    // changed region (callers without a cursor don't need precision here).
+    // Now set the cursor in the new document. If Rust returned one, use it —
+    // the algorithm already works in the correct coordinate space. Otherwise
+    // fall back to a simple delta map for cursors outside the changed region
+    // (callers without a cursor don't need precision here).
     const oldCursor = view.state.selection.main.head;
     let newCursor: number;
     if (typeof req.cursor === "number") {
       newCursor = req.cursor;
-      console.log('[sync:cm] rust cursor=%d (newText.length=%d)', newCursor, newText.length);
     } else if (oldCursor <= lcp) {
       newCursor = oldCursor;
-      console.log('[sync:cm] no rust cursor; kept oldCursor=%d (before change)', oldCursor);
     } else if (oldCursor >= oldEnd) {
       newCursor = oldCursor + (newText.length - oldText.length);
-      console.log('[sync:cm] no rust cursor; shifted %d → %d (after change)', oldCursor, newCursor);
     } else {
       newCursor = Math.min(oldCursor, newEnd);
-      console.log('[sync:cm] no rust cursor; clamped %d → %d (inside change)', oldCursor, newCursor);
     }
 
-    console.log('[sync:cm] setting cursor: lcp=%d oldEnd=%d newEnd=%d newCursor=%d', lcp, oldEnd, newEnd, newCursor);
+    // Clamp defensively: an out-of-bounds anchor makes dispatch throw a
+    // RangeError, killing this effect mid-sync. The doc is `newText` at this
+    // point, but read the live length in case anything intervened.
+    newCursor = Math.max(0, Math.min(newCursor, view.state.doc.length));
     view.dispatch({
       selection: { anchor: newCursor },
       scrollIntoView: false,
@@ -804,19 +814,32 @@
     view.scrollDOM.scrollTop = scrollTop;
   });
 
-  // ── Preview → Editor: apply cursor jump requested by preview click
+  // ── Preview → Editor: apply cursor jump requested by preview click.
+  // Depends on `mountedTabId` as well as the request: when the jump targets a
+  // tab whose view isn't built yet (file still loading, mount slower than one
+  // frame), the request stays pending and this re-runs once the view mounts —
+  // a single rAF retry used to drop those jumps silently.
   $effect(() => {
     const req = editor.cursorJumpRequest;
+    mountedTabId;
     if (!req) return;
     // rAF lets any pending tab mount complete before we look up the view
     requestAnimationFrame(() => {
+      if (editor.cursorJumpRequest?.tabId !== req.tabId) return;
       const view = tabViews.get(req.tabId);
-      if (view && editor.cursorJumpRequest?.tabId === req.tabId) {
-        editor.cursorJumpRequest = null;
-        const offset = Math.min(req.offset, view.state.doc.length);
-        view.dispatch({ selection: { anchor: offset }, scrollIntoView: true });
-        if (!editorSearch.open) view.focus();
+      if (!view) {
+        // Keep the request pending while its tab still exists (the mount
+        // dependency will retry); drop it once the tab is gone so a stale
+        // jump can't fire on a much later remount.
+        if (!editor.tabs.some((t) => t.id === req.tabId)) {
+          editor.cursorJumpRequest = null;
+        }
+        return;
       }
+      editor.cursorJumpRequest = null;
+      const offset = Math.max(0, Math.min(req.offset, view.state.doc.length));
+      view.dispatch({ selection: { anchor: offset }, scrollIntoView: true });
+      if (!editorSearch.open) view.focus();
     });
   });
 

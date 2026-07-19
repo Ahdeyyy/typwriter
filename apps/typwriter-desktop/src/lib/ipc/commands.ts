@@ -234,10 +234,11 @@ export interface FormatWithCursorResponse {
 
 /** Format a Typst source string while tracking the cursor through the rewrite.
  *
- * Uses the virtual-marker strategy: a unique block-comment marker is spliced
- * at the cursor, the marked source is formatted, and the marker's new offset
- * is read back. If the marker is lost or duplicated post-format, the cursor
- * clamps to its original byte offset.
+ * The returned text is always byte-identical to a plain format of the source.
+ * The cursor is located with the virtual-marker strategy — a unique block
+ * comment spliced at the cursor's word-run start in a second, throwaway
+ * format pass — and degrades to a common-prefix/suffix mapping when the
+ * marker can't be used (never failing the format itself).
  *
  * `cursor` is a UTF-16 code-unit offset (CodeMirror's units). All cursor
  * maintenance happens in Rust on UTF-8 byte offsets; only the IPC boundary

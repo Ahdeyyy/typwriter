@@ -58,6 +58,14 @@ class EditorStore {
     } | null>(null);
     private _contentSyncVersion = 0;
 
+    /** Live cursor lookup registered by the editor component (maps a tab id to
+     *  the head of its CodeMirror selection, in UTF-16 code units). Lets format
+     *  paths that receive no explicit cursor — format-on-save, idle-save,
+     *  menu actions — still run cursor maintenance instead of letting the
+     *  content sync's coarse fallback yank the caret. Deliberately not
+     *  reactive state: it's a callback, not data. */
+    cursorProvider: ((tabId: string) => number | undefined) | null = null;
+
     private _shadowWriteVersions = new Map<string, number>();
     private _idleSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private _typingPreviewTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -356,9 +364,19 @@ class EditorStore {
         };
 
         // Cursor maintenance runs in Rust on UTF-8 bytes; the IPC boundary
-        // is the only place we deal in UTF-16.
-        if (typeof cursor === 'number' && cursor >= 0) {
-            return formatTypstSourceWithCursor(original, cursor).map((res) => {
+        // is the only place we deal in UTF-16. Callers that don't know the
+        // cursor (format-on-save, menu actions) fall back to the live view's
+        // selection via the registered provider.
+        const effectiveCursor =
+            typeof cursor === 'number' && cursor >= 0
+                ? cursor
+                : this.cursorProvider?.(tabId);
+        if (typeof effectiveCursor === 'number' && effectiveCursor >= 0) {
+            // Clamp against the buffer we're actually sending: a cursor read
+            // from a view that is mid-sync could be momentarily out of range,
+            // and Rust rejects out-of-range offsets outright.
+            const clamped = Math.min(effectiveCursor, original.length);
+            return formatTypstSourceWithCursor(original, clamped).map((res) => {
                 applyResult(res.formatted, res.cursor);
             });
         }
