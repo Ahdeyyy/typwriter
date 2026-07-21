@@ -7,7 +7,6 @@
     File02Icon,
     Image01Icon,
     File01Icon,
-    StarIcon,
   } from "@hugeicons/core-free-icons";
   import Icon from "$lib/components/icon.svelte";
   import { longpress } from "$lib/actions/longpress";
@@ -18,14 +17,12 @@
     node,
     expanded,
     mainFile,
-    depth = 0,
     onOpenFile,
     onLongpress,
   }: {
     node: FileNode;
     expanded: SvelteSet<string>;
     mainFile: string | null;
-    depth?: number;
     onOpenFile: (relPath: string) => void;
     onLongpress: (node: FileNode) => void;
   } = $props();
@@ -69,8 +66,7 @@
 
 <div class="select-none">
   <button
-    class="active:bg-accent active:text-accent-foreground flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors"
-    style="padding-left: {depth * 0.75 + 0.5}rem;"
+    class="active:bg-accent active:text-accent-foreground flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors"
     onpointerdown={onPointerDown}
     onpointerup={onPointerUp}
     use:longpress={{
@@ -83,7 +79,7 @@
     {#if node.isDir}
       <Icon
         icon={ArrowRight01Icon}
-        class="size-3.5 shrink-0 transition-transform {isOpen ? 'rotate-90' : ''}"
+        class="text-muted-foreground size-3.5 shrink-0 transition-transform {isOpen ? 'rotate-90' : ''}"
       />
       {#if isOpen}
         <Icon icon={FolderOpenIcon} class="text-muted-foreground size-4 shrink-0" />
@@ -102,13 +98,17 @@
     {/if}
     <span class="min-w-0 flex-1 truncate">{node.name}</span>
     {#if !node.isDir && node.relPath === mainFile}
-      <Icon icon={StarIcon} class="text-primary size-3.5 shrink-0" />
+      <!-- Main-file marker: a small colored dot beside the name. -->
+      <span class="bg-primary size-2 shrink-0 rounded-full" aria-label="Main file"></span>
     {/if}
   </button>
 
   {#if node.isDir && isOpen}
-    {#each node.children as child (child.relPath)}
-      <Self node={child} {expanded} {mainFile} depth={depth + 1} {onOpenFile} {onLongpress} />
-    {/each}
+    <!-- Nested children sit inside a guide-line rail (Obsidian-style). -->
+    <div class="border-border/50 ml-[1.15rem] border-l pl-1">
+      {#each node.children as child (child.relPath)}
+        <Self node={child} {expanded} {mainFile} {onOpenFile} {onLongpress} />
+      {/each}
+    </div>
   {/if}
 </div>

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Typwriter Mobile",
+  "productName": "Typwriter",
   "version": "0.1.0",
   "identifier": "com.ahdey.typwriter.mobile",
   "build": {

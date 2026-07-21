@@ -9,7 +9,10 @@
     StarIcon,
     Delete02Icon,
     FolderOpenIcon,
+    ArrowShrink01Icon,
+    Settings01Icon,
   } from "@hugeicons/core-free-icons";
+  import type { IconSvgElement } from "@hugeicons/svelte";
   import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -71,10 +74,17 @@
     return parent ? `${parent}/${name}` : name;
   }
 
+  /** Does the entered name already end in an extension (e.g. `.md`, `.png`)? */
+  function hasExtension(name: string): boolean {
+    return /\.[A-Za-z0-9]+$/.test(name);
+  }
+
   function submitDialog() {
-    const name = inputValue.trim();
+    let name = inputValue.trim();
     if (dialogMode === "newFile" || dialogMode === "newFolder") {
       if (!name) return toast.error("Name cannot be empty");
+      // A new file with no extension defaults to a Typst document.
+      if (dialogMode === "newFile" && !hasExtension(name)) name += ".typ";
       const relPath = joinPath(createParent, name);
       const op = dialogMode === "newFile" ? workspace.createFile(relPath) : workspace.createFolder(relPath);
       op.match(
@@ -114,6 +124,38 @@
     workspace.setMain(node.relPath).mapErr((e) => toast.error(`Failed: ${e}`));
   }
 
+  function collapseAll() {
+    expanded.clear();
+  }
+
+  function openSettings() {
+    app.openOverlay("settings");
+  }
+
+  /** Total files and folders in the workspace, for the footer summary. */
+  const counts = $derived.by(() => {
+    let files = 0;
+    let folders = 0;
+    const walk = (node: FileNode) => {
+      for (const child of node.children) {
+        if (child.isDir) {
+          folders++;
+          walk(child);
+        } else {
+          files++;
+        }
+      }
+    };
+    if (workspace.tree) walk(workspace.tree);
+    return { files, folders };
+  });
+
+  /** Parent folder of the action target, shown as a subtitle in the drawer. */
+  function parentDir(relPath: string): string {
+    const i = relPath.lastIndexOf("/");
+    return i === -1 ? "/" : relPath.slice(0, i);
+  }
+
   const dialogTitle = $derived.by(() => {
     switch (dialogMode) {
       case "newFile":
@@ -140,18 +182,7 @@
 >
   <Sheet.Content side="left" class="w-[85vw] max-w-80 p-0" showCloseButton={false}>
     <div class="flex h-full flex-col" style="padding-top: env(safe-area-inset-top);">
-      <div class="flex items-center justify-between gap-2 border-b px-3 py-2">
-        <span class="truncate text-sm font-semibold">{workspace.name ?? "Files"}</span>
-        <div class="flex shrink-0 items-center gap-1">
-          <Button variant="ghost" size="icon-sm" aria-label="New file" onclick={() => startCreate("newFile", "")}>
-            <Icon icon={FileAddIcon} />
-          </Button>
-          <Button variant="ghost" size="icon-sm" aria-label="New folder" onclick={() => startCreate("newFolder", "")}>
-            <Icon icon={FolderAddIcon} />
-          </Button>
-        </div>
-      </div>
-      <ScrollArea class="flex-1">
+      <ScrollArea class="min-h-0 flex-1">
         <div class="p-1">
           {#if workspace.tree}
             {#each workspace.tree.children as child (child.relPath)}
@@ -166,46 +197,94 @@
           {/if}
         </div>
       </ScrollArea>
+
+      <!-- Action toolbar -->
+      <div class="border-border/60 flex items-center gap-1 border-t px-2 py-1.5">
+        <Button variant="ghost" size="icon-sm" aria-label="New file" onclick={() => startCreate("newFile", "")}>
+          <Icon icon={FileAddIcon} />
+        </Button>
+        <Button variant="ghost" size="icon-sm" aria-label="New folder" onclick={() => startCreate("newFolder", "")}>
+          <Icon icon={FolderAddIcon} />
+        </Button>
+        <Button variant="ghost" size="icon-sm" aria-label="Collapse all" onclick={collapseAll}>
+          <Icon icon={ArrowShrink01Icon} />
+        </Button>
+      </div>
+
+      <!-- Footer: vault name, counts, settings -->
+      <div
+        class="border-border/60 flex items-center gap-2 border-t px-3 py-2.5"
+        style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.625rem);"
+      >
+        <div class="min-w-0 flex-1">
+          <div class="truncate text-sm font-semibold">{workspace.name ?? "Files"}</div>
+          <div class="text-muted-foreground truncate text-xs">
+            {counts.files} file{counts.files === 1 ? "" : "s"}, {counts.folders} folder{counts.folders === 1 ? "" : "s"}
+          </div>
+        </div>
+        <Button variant="ghost" size="icon-sm" aria-label="Settings" onclick={openSettings}>
+          <Icon icon={Settings01Icon} />
+        </Button>
+      </div>
     </div>
   </Sheet.Content>
 </Sheet.Root>
 
+<!-- A single tappable row inside a grouped action card. -->
+{#snippet actionRow(
+  icon: IconSvgElement,
+  label: string,
+  onclick: () => void,
+  destructive = false,
+)}
+  <button
+    type="button"
+    {onclick}
+    class="active:bg-accent flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm transition-colors {destructive
+      ? 'text-destructive'
+      : ''}"
+  >
+    <Icon icon={icon} class="size-5 shrink-0 {destructive ? '' : 'text-muted-foreground'}" />
+    <span class="min-w-0 flex-1 truncate">{label}</span>
+  </button>
+{/snippet}
+
 <!-- Long-press action drawer -->
 <Drawer.Root open={actionTarget !== null} onOpenChange={(o) => { if (!o) actionTarget = null; }}>
   <Drawer.Content>
-    <Drawer.Header>
-      <Drawer.Title>{actionTarget?.name}</Drawer.Title>
-    </Drawer.Header>
     {#if actionTarget}
       {@const target = actionTarget}
+      <div class="px-4 pb-2 pt-1">
+        <Drawer.Title class="truncate text-base font-semibold">{target.name}</Drawer.Title>
+        <Drawer.Description class="text-muted-foreground truncate text-xs">
+          {target.isDir ? "Folder" : "File"} · {parentDir(target.relPath)}
+        </Drawer.Description>
+      </div>
       <div
-        class="flex flex-col gap-1 p-2 pb-6"
+        class="flex flex-col gap-3 px-3 pb-4 pt-2"
         style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);"
       >
-        {#if target.isDir}
-          <Button variant="ghost" class="justify-start" onclick={() => startCreate("newFile", target.relPath)}>
-            <Icon icon={FileAddIcon} /> New file inside
-          </Button>
-          <Button variant="ghost" class="justify-start" onclick={() => startCreate("newFolder", target.relPath)}>
-            <Icon icon={FolderAddIcon} /> New folder inside
-          </Button>
-        {:else}
-          <Button variant="ghost" class="justify-start" onclick={() => openFile(target.relPath)}>
-            <Icon icon={FolderOpenIcon} /> Open
-          </Button>
-          <Button variant="ghost" class="justify-start" onclick={() => setAsMain(target)}>
-            <Icon icon={StarIcon} /> Set as main file
-          </Button>
-        {/if}
-        <Button variant="ghost" class="justify-start" onclick={() => startRename(target)}>
-          <Icon icon={PencilEdit01Icon} /> Rename
-        </Button>
-        <Button variant="ghost" class="justify-start" onclick={() => startMove(target)}>
-          <Icon icon={Move02Icon} /> Move to…
-        </Button>
-        <Button variant="ghost" class="text-destructive justify-start" onclick={() => startDelete(target)}>
-          <Icon icon={Delete02Icon} /> Delete
-        </Button>
+        <!-- Primary actions -->
+        <div class="bg-muted/40 divide-border/60 divide-y overflow-hidden rounded-xl">
+          {#if target.isDir}
+            {@render actionRow(FileAddIcon, "New file inside", () => startCreate("newFile", target.relPath))}
+            {@render actionRow(FolderAddIcon, "New folder inside", () => startCreate("newFolder", target.relPath))}
+          {:else}
+            {@render actionRow(FolderOpenIcon, "Open", () => openFile(target.relPath))}
+            {@render actionRow(StarIcon, "Set as main file", () => setAsMain(target))}
+          {/if}
+        </div>
+
+        <!-- File management -->
+        <div class="bg-muted/40 divide-border/60 divide-y overflow-hidden rounded-xl">
+          {@render actionRow(PencilEdit01Icon, "Rename", () => startRename(target))}
+          {@render actionRow(Move02Icon, "Move to…", () => startMove(target))}
+        </div>
+
+        <!-- Destructive -->
+        <div class="bg-muted/40 overflow-hidden rounded-xl">
+          {@render actionRow(Delete02Icon, "Delete", () => startDelete(target), true)}
+        </div>
       </div>
     {/if}
   </Drawer.Content>

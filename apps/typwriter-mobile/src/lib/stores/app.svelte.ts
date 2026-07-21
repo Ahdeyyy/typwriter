@@ -10,7 +10,8 @@ export type Overlay =
   | "preview"
   | "diagnostics"
   | "settings"
-  | "quickswitcher";
+  | "quickswitcher"
+  | "tabswitcher";
 
 interface HistoryState {
   screen?: Screen;

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { toast } from "svelte-sonner";
-  import { SidebarLeft01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+  import { SidebarLeft01Icon, Book02Icon } from "@hugeicons/core-free-icons";
   import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
@@ -17,10 +17,10 @@
   import EditorToolbar from "$lib/components/toolbar/editor-toolbar.svelte";
   import CompletionStrip from "$lib/components/toolbar/completion-strip.svelte";
   import PreviewOverlay from "$lib/components/preview/preview-overlay.svelte";
-  import TabBar from "$lib/components/editor/tab-bar.svelte";
   import EmptyTab from "$lib/components/editor/empty-tab.svelte";
   import BottomBar from "$lib/components/toolbar/bottom-bar.svelte";
   import QuickSwitcher from "$lib/components/screens/quick-switcher.svelte";
+  import TabSwitcher from "$lib/components/screens/tab-switcher.svelte";
 
   onMount(() => {
     // Let the history/back integration flush unsaved content when leaving.
@@ -92,11 +92,11 @@
   style="top: var(--vv-top, 0px); left: var(--vv-left, 0px); width: var(--vv-width, 100vw); height: var(--app-height, 100svh);"
 >
   <header
-    class="flex h-12 shrink-0 items-center gap-1 border-b px-1"
+    class="flex h-12 shrink-0 items-center justify-between gap-1 border-b px-2"
     style="padding-top: env(safe-area-inset-top);"
   >
     <Button
-      variant="ghost"
+      variant="secondary"
       size="icon"
       aria-label="Toggle files"
       onclick={() => (app.overlay === "filetree" ? app.closeOverlay() : app.openOverlay("filetree"))}
@@ -104,26 +104,17 @@
       <Icon icon={SidebarLeft01Icon} />
     </Button>
 
-    <div class="flex min-w-0 flex-1 items-center justify-center gap-1.5">
-      <span class="truncate text-sm font-medium">{editor.fileName ?? "New tab"}</span>
-      {#if editor.dirty || editor.saving}
-        <span class="bg-muted-foreground/70 size-1.5 shrink-0 rounded-full" class:animate-pulse={editor.saving}></span>
+    <div class="flex items-center gap-1">
+      {#if compileStore.errors.length > 0}
+        <Badge variant="destructive" onclick={() => app.openOverlay("diagnostics")}>
+          {compileStore.errors.length}
+        </Badge>
       {/if}
+      <Button variant="secondary" size="icon" aria-label="Preview" onclick={openPreview}>
+        <Icon icon={Book02Icon} />
+      </Button>
     </div>
-
-    {#if compileStore.errors.length > 0}
-      <Badge variant="destructive" class="mr-1" onclick={() => app.openOverlay("diagnostics")}>
-        {compileStore.errors.length}
-      </Badge>
-    {/if}
-
-    <Button variant="ghost" size="icon" aria-label="Search files" onclick={() => app.openOverlay("quickswitcher")}>
-      <Icon icon={Search01Icon} />
-    </Button>
   </header>
-
-  <!-- Obsidian-style tabs -->
-  <TabBar />
 
   <main class="min-h-0 flex-1">
     {#if editor.loading}
@@ -152,13 +143,14 @@
     <CompletionStrip />
     <EditorToolbar />
   {:else}
-    <BottomBar onPreview={openPreview} onExport={exportPdf} onFormat={formatFile} {exporting} />
+    <BottomBar onExport={exportPdf} onFormat={formatFile} {exporting} />
   {/if}
 </div>
 
 <TreeSheet />
 <PreviewOverlay />
 <QuickSwitcher />
+<TabSwitcher />
 
 <!-- Export-with-errors confirmation -->
 <Dialog.Root open={confirmExportOpen} onOpenChange={(o) => { if (!o) confirmExportOpen = false; }}>
