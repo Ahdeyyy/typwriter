@@ -73,6 +73,19 @@ Reviewed and corrected 2026-06-12 against desktop `9baf8a5`:
 - **00-overview** — snapshot anchor + drift instructions, per-phase status column,
   reconciled the `tauri-plugin-android-fs` phase note with 01.
 
+## Mobile app — Notion-style block editor (2026-07)
+
+A second editing surface for `typwriter-mobile`: the document as a list of
+blocks whose inactive state shows crops of the **real compiled output** (reusing
+the cached preview page PNGs), tap-to-edit source, slash insert menu, block
+convert menu, toggled alongside the classic source editor. Product decisions
+were settled with the user and are recorded in the plan — do not relitigate.
+Stamped against `988692f`.
+
+| # | Plan | What | Effort | Status |
+|---|------|------|--------|--------|
+| 09 | [typwriter-mobile/09-block-editor.md](typwriter-mobile/09-block-editor.md) | Block surface: segmentation, span→extent Rust command, fragment crops, tap-to-edit, slash + convert menus (milestones 9a–9d) | L | TODO |
+
 ## Considered and rejected (do not re-audit)
 
 - `Box::leak` on font reload, unbounded in-memory source/file caches, the
