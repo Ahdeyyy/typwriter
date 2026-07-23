@@ -79,7 +79,7 @@
   class="shrink-0 px-3 pt-1 pb-2"
   style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);"
 >
-  <div class="bg-muted flex h-12 items-center justify-between gap-1 rounded-full border px-2 shadow-lg">
+  <div class="bg-muted/70 flex h-12 items-center justify-between gap-1 rounded-full border px-2 shadow-lg backdrop-blur-md">
     <button
       class="active:bg-accent active:text-accent-foreground text-foreground flex size-10 shrink-0 items-center justify-center rounded-full"
       aria-label="Previous tab"

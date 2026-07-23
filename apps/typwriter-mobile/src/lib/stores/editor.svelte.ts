@@ -56,6 +56,25 @@ class EditorStore {
     return parts[parts.length - 1] ?? this.relPath;
   }
 
+  /**
+   * Title for the top bar: the file's basename, disambiguated by a parent-folder
+   * prefix when another open tab shares the same basename (the scheme the desktop
+   * tab bar uses). Null on an empty new tab.
+   */
+  get displayName(): string | null {
+    if (this.newTabOpen || !this.relPath) return null;
+    const name = this.fileName;
+    if (!name) return null;
+    const basename = (p: string) => {
+      const parts = p.split("/");
+      return parts[parts.length - 1] ?? p;
+    };
+    const duplicated = this.tabs.filter((t) => basename(t) === name).length > 1;
+    if (!duplicated) return name;
+    const parts = this.relPath.split("/");
+    return parts.length > 1 ? `${parts[parts.length - 2]}/${name}` : name;
+  }
+
   loadFile(relPath: string): ResultAsync<void, string> {
     return this.flush().andThen(() => {
       this.loading = true;

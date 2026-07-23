@@ -46,12 +46,21 @@ export function toStripItem(c: IpcCompletion): StripItem {
 }
 
 /** Whether auto-trigger applies, given the text on the current line before the
- *  cursor. Fires after `#`, `@`, `.`, or a word of ≥2 word-chars; declines
- *  inside a `//` line comment. */
+ *  cursor. Fires on a trigger sigil (`#`, `@`, `.`), while typing an identifier
+ *  that follows one (`#i`, `@r`, `dict.k`), or on a standalone word of ≥2
+ *  word-chars; declines inside a `//` line comment.
+ *
+ *  The sigil-identifier branch is what keeps the list from flickering off: a
+ *  bare `#` fires, but so does `#i` and `#im` — without it, the single-char
+ *  state (`#i`) matched neither the sigil nor the ≥2-word branch, so the strip
+ *  cleared for one keystroke and reappeared, reading as broken. */
 export function autoTriggerApplies(beforeCursor: string): boolean {
   // Cheap noise filter: a line comment before the cursor.
   if (beforeCursor.includes("//")) return false;
   const lastChar = beforeCursor.at(-1);
   if (lastChar === "#" || lastChar === "@" || lastChar === ".") return true;
+  // Mid-identifier right after a sigil — complete from the first character.
+  if (/[#@.][\w-]+$/.test(beforeCursor)) return true;
+  // A standalone word of 2+ chars, so plain prose doesn't request on every key.
   return /[\w-]{2,}$/.test(beforeCursor);
 }

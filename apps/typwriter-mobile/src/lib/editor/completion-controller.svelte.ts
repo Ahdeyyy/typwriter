@@ -14,16 +14,26 @@ const MAX_ITEMS = 20;
 class CompletionStore {
   items = $state<StripItem[]>([]);
   from = $state(0); // UTF-16 doc offset the items replace from
-  anchorCursor = $state(0); // cursor position at request time
 
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private requestSeq = 0;
 
   /** Called from the CM updateListener (docChanged || selectionSet). */
   onCursorActivity(update: ViewUpdate) {
-    const head = update.state.selection.main.head;
-    // Cursor moved off the active region → clear.
-    if (this.items.length && (head < this.from || head > this.anchorCursor + 1)) this.clear();
+    const sel = update.state.selection.main;
+    const head = sel.head;
+    // Drop the strip once the cursor leaves the active replacement region: a
+    // non-empty selection, moved before `from`, or the text from `from` to the
+    // cursor is no longer the single identifier being completed. Anchoring to
+    // `from` + token continuity (rather than a cursor-delta guess) keeps the
+    // list stable through continuous typing while still clearing on a tap away.
+    if (this.items.length) {
+      const inRegion =
+        sel.empty &&
+        head >= this.from &&
+        /^[#@.]?[\w-]*$/.test(update.state.doc.sliceString(this.from, head));
+      if (!inRegion) this.clear();
+    }
     if (!update.docChanged) return;
     const line = update.state.doc.lineAt(head);
     const before = update.state.doc.sliceString(line.from, head);
@@ -56,7 +66,6 @@ class CompletionStore {
       (r) => {
         this.items = r.completions.slice(0, MAX_ITEMS).map(toStripItem);
         this.from = r.from;
-        this.anchorCursor = head;
       },
       () => this.clear(),
     );

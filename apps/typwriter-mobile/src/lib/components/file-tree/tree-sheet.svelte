@@ -11,6 +11,7 @@
     FolderOpenIcon,
     ArrowShrink01Icon,
     Settings01Icon,
+    Home01Icon,
   } from "@hugeicons/core-free-icons";
   import type { IconSvgElement } from "@hugeicons/svelte";
   import Icon from "$lib/components/icon.svelte";
@@ -200,6 +201,9 @@
 
       <!-- Action toolbar -->
       <div class="border-border/60 flex items-center gap-1 border-t px-2 py-1.5">
+        <Button variant="ghost" size="icon-sm" aria-label="Go to home" onclick={() => app.goHome()}>
+          <Icon icon={Home01Icon} />
+        </Button>
         <Button variant="ghost" size="icon-sm" aria-label="New file" onclick={() => startCreate("newFile", "")}>
           <Icon icon={FileAddIcon} />
         </Button>

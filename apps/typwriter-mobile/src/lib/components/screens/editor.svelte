@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { toast } from "svelte-sonner";
-  import { SidebarLeft01Icon, Book02Icon } from "@hugeicons/core-free-icons";
+  import { SidebarLeft01Icon, EyeIcon } from "@hugeicons/core-free-icons";
   import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
@@ -91,28 +91,41 @@
   class="fixed flex flex-col"
   style="top: var(--vv-top, 0px); left: var(--vv-left, 0px); width: var(--vv-width, 100vw); height: var(--app-height, 100svh);"
 >
+  <!-- Translucent, blurred top bar; extra padding keeps buttons clear of the
+       status bar (safe-area inset can read 0 on Android edge-to-edge). -->
   <header
-    class="flex h-12 shrink-0 items-center justify-between gap-1 border-b px-2"
-    style="padding-top: env(safe-area-inset-top);"
+    class="bg-background/70 shrink-0 border-b backdrop-blur-md"
+    style="padding-top: calc(env(safe-area-inset-top) + 0.5rem);"
   >
-    <Button
-      variant="secondary"
-      size="icon"
-      aria-label="Toggle files"
-      onclick={() => (app.overlay === "filetree" ? app.closeOverlay() : app.openOverlay("filetree"))}
-    >
-      <Icon icon={SidebarLeft01Icon} />
-    </Button>
-
-    <div class="flex items-center gap-1">
-      {#if compileStore.errors.length > 0}
-        <Badge variant="destructive" onclick={() => app.openOverlay("diagnostics")}>
-          {compileStore.errors.length}
-        </Badge>
-      {/if}
-      <Button variant="secondary" size="icon" aria-label="Preview" onclick={openPreview}>
-        <Icon icon={Book02Icon} />
+    <div class="relative flex h-12 items-center justify-between gap-1 px-2">
+      <Button
+        variant="secondary"
+        size="icon"
+        aria-label="Toggle files"
+        onclick={() => (app.overlay === "filetree" ? app.closeOverlay() : app.openOverlay("filetree"))}
+      >
+        <Icon icon={SidebarLeft01Icon} />
       </Button>
+
+      <!-- Centered file name (disambiguated by parent folder when duplicated). -->
+      {#if editor.displayName}
+        <span
+          class="pointer-events-none absolute left-1/2 max-w-[55%] -translate-x-1/2 truncate text-center text-sm font-bold"
+        >
+          {editor.displayName}
+        </span>
+      {/if}
+
+      <div class="flex items-center gap-1">
+        {#if compileStore.errors.length > 0}
+          <Badge variant="destructive" onclick={() => app.openOverlay("diagnostics")}>
+            {compileStore.errors.length}
+          </Badge>
+        {/if}
+        <Button variant="secondary" size="icon" aria-label="Preview" onclick={openPreview}>
+          <Icon icon={EyeIcon} />
+        </Button>
+      </div>
     </div>
   </header>
 
