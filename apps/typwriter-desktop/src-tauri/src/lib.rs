@@ -30,7 +30,7 @@ use commands::{
         format_workspace_typ_files,
     },
     logs::get_log_file_path,
-    lsp::{lsp_send, lsp_start, lsp_stop},
+    lsp::{lsp_probe, lsp_send, lsp_start, lsp_stop},
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     settings::{
         get_app_settings, get_onboarding_completed, list_font_families, set_app_settings,
@@ -229,6 +229,7 @@ pub fn run() {
             lsp_start,
             lsp_send,
             lsp_stop,
+            lsp_probe,
             // settings
             get_app_settings,
             set_app_settings,

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
     Folder01Icon,
@@ -33,8 +34,31 @@
   } from "$lib/stores/settings.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { setOnboardingCompleted } from "$lib/ipc/commands";
+  import { lspClient } from "$lib/lsp/client.svelte";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
+
+  // tinymist may be installed (or removed) while the app runs, so re-probe every
+  // time the settings page opens rather than trusting a launch-time answer.
+  onMount(() => {
+    if (!platform.isMobile) void lspClient.probeInstalled();
+  });
+
+  const tinymistInstalled = $derived(lspClient.isInstalled === true);
+  const tinymistDotClass = $derived(
+    lspClient.isInstalled === null
+      ? "bg-muted-foreground/40"
+      : lspClient.isInstalled
+        ? "bg-green-500"
+        : "bg-destructive",
+  );
+  const tinymistStatusLabel = $derived(
+    lspClient.isInstalled === null
+      ? "Checking for tinymist…"
+      : lspClient.isInstalled
+        ? `tinymist found${lspClient.installedVersion ? ` — ${lspClient.installedVersion}` : ""}`
+        : "tinymist not found on PATH — install it to enable this",
+  );
 
   let fontFilter = $state("");
   let editorFontFilter = $state("");
@@ -406,15 +430,43 @@
             </label>
 
             {#if !platform.isMobile}
-              <label class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3 cursor-pointer">
+              <label
+                class="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3 {tinymistInstalled
+                  ? 'cursor-pointer'
+                  : 'cursor-not-allowed'}"
+              >
                 <div class="min-w-0">
                   <p class="text-sm font-medium">Typst language server</p>
                   <p class="truncate text-xs text-muted-foreground">
                     Use tinymist for completion, hover, and diagnostics when it's installed.
                   </p>
+                  <!-- Availability indicator: green once the tinymist CLI is
+                       found on PATH, red when it isn't (the switch is then
+                       disabled — enabling it could not do anything). -->
+                  <p class="mt-1 flex items-center gap-1.5 text-xs">
+                    <span
+                      class="size-2 shrink-0 rounded-full {tinymistDotClass}"
+                      aria-hidden="true"
+                    ></span>
+                    <span class={tinymistInstalled ? "text-muted-foreground" : "text-destructive"}>
+                      {tinymistStatusLabel}
+                    </span>
+                    <button
+                      type="button"
+                      class="text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+                      disabled={lspClient.probing}
+                      onclick={(e) => {
+                        e.preventDefault();
+                        void lspClient.probeInstalled();
+                      }}
+                    >
+                      Re-check
+                    </button>
+                  </p>
                 </div>
                 <Switch
-                  checked={settings.useLsp}
+                  checked={settings.useLsp && tinymistInstalled}
+                  disabled={!tinymistInstalled}
                   onCheckedChange={(v) => settings.setUseLsp(v)}
                 />
               </label>

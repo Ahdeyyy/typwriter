@@ -42,7 +42,8 @@
     const moved = Math.hypot(e.clientX - startX, e.clientY - startY);
     if (moved > TAP_SLOP) return; // it was a scroll, not a tap
     e.preventDefault();
-    if (editor.view) completions.accept(editor.view, item);
+    const view = editor.activeView;
+    if (view) completions.accept(view, item);
   }
 
   // Buttons steal focus from the editor's contenteditable on mousedown, which

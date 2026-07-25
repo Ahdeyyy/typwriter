@@ -194,6 +194,17 @@ export function lspStop() {
     return ResultAsync.fromPromise(invoke<void>('lsp_stop'), toErrString);
 }
 
+/** Whether the `tinymist` CLI is installed, plus its version string. */
+export interface LspAvailability {
+    available: boolean;
+    version: string | null;
+}
+
+/** Probe `PATH` for the tinymist CLI (runs `tinymist --version`). */
+export function lspProbe() {
+    return ResultAsync.fromPromise(invoke<LspAvailability>('lsp_probe'), toErrString);
+}
+
 // ─── Click / Jump ─────────────────────────────────────────────────────────────
 
 export function jumpFromClick(page: number, x: number, y: number) {

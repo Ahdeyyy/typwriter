@@ -78,7 +78,7 @@ fn run_compile(world: &MobileWorld, state: &CompileState) -> CompileResult {
                 .collect();
 
             *state.page_lookup.lock() = lookup;
-            *state.document.lock() = Some(Arc::new(doc));
+            state.store_document(generation, Arc::new(doc));
 
             info!(
                 "compile: ok gen={generation} pages={} warnings={} ({compile_ms:.1}ms)",

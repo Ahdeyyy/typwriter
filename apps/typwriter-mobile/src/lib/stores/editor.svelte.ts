@@ -26,10 +26,68 @@ class EditorStore {
   /** True when the active tab is an empty "new tab" (no file selected yet). */
   newTabOpen = $state(false);
 
-  /** Text most recently loaded from disk; the editor screen seeds CM with it. */
+  /** Text most recently loaded from disk; the editor screen seeds CM with it.
+   *  On the block surface — where no full-document CM exists — this doubles as
+   *  the master buffer, rewritten on every block commit. */
   loadedText = $state("");
-  /** Set by the screen component once the EditorView exists. */
+  /** Set by the screen component once the EditorView exists. Null while the
+   *  block surface is shown. */
   view: EditorView | null = null;
+  /** The mini-editor mounted into the active block, when the block surface is
+   *  editing one. It holds a *slice* of the document, never the whole thing. */
+  subView = $state<EditorView | null>(null);
+  /** Master-document offset of `subView`'s first character. */
+  subOffset = 0;
+  /** Returns the master document with `subView`'s live text spliced in. Set by
+   *  the block surface alongside `subView`, so an autosave mid-edit persists
+   *  what's on screen instead of the pre-edit text. */
+  liveText: (() => string) | null = null;
+
+  /** The view holding the caret — the block mini-editor when one is mounted.
+   *  Toolbar commands and completions act on this. */
+  get activeView(): EditorView | null {
+    return this.subView ?? this.view;
+  }
+
+  /** The whole document as it currently stands, wherever the buffer lives. */
+  get text(): string {
+    if (this.liveText) return this.liveText();
+    return this.view ? this.view.state.doc.toString() : this.loadedText;
+  }
+
+  /**
+   * Resolve `view`'s text + cursor into master-document coordinates. A block's
+   * mini-editor only holds its own span, so language features (completions)
+   * would otherwise run against a fragment of the file.
+   */
+  masterContext(
+    view: EditorView,
+    offset: number,
+  ): { text: string; offset: number } {
+    if (view === this.subView && this.liveText) {
+      return { text: this.text, offset: this.subOffset + offset };
+    }
+    return { text: view.state.doc.toString(), offset };
+  }
+
+  /** Master-document offset → offset within `view`. */
+  localOffset(view: EditorView, masterOffset: number): number {
+    return view === this.subView ? masterOffset - this.subOffset : masterOffset;
+  }
+
+  /** Replace the whole buffer — a block-surface commit. Marks the buffer dirty
+   *  and schedules autosave exactly as typing does. */
+  replaceText(next: string) {
+    const view = this.view;
+    if (view) {
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: next },
+      });
+    } else {
+      this.loadedText = next;
+      this.handleDocChanged();
+    }
+  }
 
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private liveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -184,6 +242,10 @@ class EditorStore {
     this.dirty = true;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => void this.flush(), settings.autosaveMs);
+    // The block surface drives its own save → compile → refresh chain when a
+    // block is committed; a second debounced compile here would double the
+    // work on every edit.
+    if (settings.editorSurface === "blocks") return;
     // Keep diagnostics live: debounce a compile that follows a save. This does
     // NOT render the preview (renderer stays lazy) — it only refreshes
     // errors/warnings. Debounced so it never runs on the per-keystroke hot path.
@@ -200,8 +262,11 @@ class EditorStore {
    * only place we deal in UTF-16 code units.
    */
   formatActive(): ResultAsync<void, string> {
-    const view = this.view;
-    if (this.fileKind !== "text" || !this.relPath || !view) return okAsync(undefined);
+    // Formats whichever buffer has the caret: the whole file on the classic
+    // surface, the active block's source on the block surface.
+    const view = this.activeView;
+    if (this.fileKind !== "text" || !this.relPath || !view)
+      return okAsync(undefined);
     if (!this.relPath.endsWith(".typ")) return okAsync(undefined);
 
     const original = view.state.doc.toString();
@@ -226,7 +291,7 @@ class EditorStore {
   /** Persist now. Single-flight: concurrent calls coalesce. */
   flush(): ResultAsync<void, string> {
     if (this.inflight) return this.inflight;
-    if (!this.dirty || this.fileKind !== "text" || !this.relPath || !this.view) {
+    if (!this.dirty || this.fileKind !== "text" || !this.relPath) {
       return okAsync(undefined);
     }
     if (this.saveTimer) {
@@ -234,7 +299,7 @@ class EditorStore {
       this.saveTimer = null;
     }
     const relPath = this.relPath;
-    const content = this.view.state.doc.toString();
+    const content = this.text;
     this.saving = true;
     const run = ipc
       .saveFile(relPath, content)

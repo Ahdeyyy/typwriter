@@ -2,7 +2,7 @@
 // (per the phase-2 decision: no Rust settings commands). Writes are debounced.
 
 import { load, type Store } from "@tauri-apps/plugin-store";
-import type { AppSettings } from "$lib/ipc/types";
+import type { AppSettings, EditorSurface } from "$lib/ipc/types";
 
 const STORE_FILE = "settings.json";
 const SAVE_DEBOUNCE_MS = 300;
@@ -19,6 +19,8 @@ class SettingsStore {
   previewScaleBucket = $state<1 | 2 | 3 | 4>(defaultBucket());
   lastWorkspace = $state<string | null>(null);
   fontsDir = $state<string | null>(null);
+  /** Editing surface: the classic source editor, or the block surface. */
+  editorSurface = $state<EditorSurface>("source");
 
   private store: Store | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -38,6 +40,7 @@ class SettingsStore {
         this.previewScaleBucket = saved.previewScaleBucket ?? this.previewScaleBucket;
         this.lastWorkspace = saved.lastWorkspace ?? this.lastWorkspace;
         this.fontsDir = saved.fontsDir ?? this.fontsDir;
+        this.editorSurface = saved.editorSurface ?? this.editorSurface;
       }
     } catch (e) {
       console.error("settings: load failed", e);
@@ -52,6 +55,7 @@ class SettingsStore {
       previewScaleBucket: this.previewScaleBucket,
       lastWorkspace: this.lastWorkspace,
       fontsDir: this.fontsDir,
+      editorSurface: this.editorSurface,
     };
   }
 
@@ -93,6 +97,10 @@ class SettingsStore {
   }
   setFontsDir(dir: string | null) {
     this.fontsDir = dir;
+    this.save();
+  }
+  setEditorSurface(surface: EditorSurface) {
+    this.editorSurface = surface;
     this.save();
   }
 }

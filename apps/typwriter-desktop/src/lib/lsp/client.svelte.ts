@@ -19,7 +19,7 @@ import type { Extension } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
-import { lspStart, lspStop } from '$lib/ipc/commands';
+import { lspProbe, lspStart, lspStop } from '$lib/ipc/commands';
 import { workspace } from '$lib/stores/workspace.svelte';
 import { diagnostics } from '$lib/stores/diagnostics.svelte';
 import { platform } from '$lib/stores/platform.svelte';
@@ -117,6 +117,14 @@ class LspClientStore {
      *  handshake — never a half-connected client. */
     isActive = $state(false);
 
+    /** Whether the `tinymist` CLI is installed. `null` until the first probe
+     *  resolves — the settings indicator shows "checking" for that window. */
+    isInstalled = $state<boolean | null>(null);
+    /** `tinymist --version` output, when the probe could read it. */
+    installedVersion = $state<string | null>(null);
+    /** True while a probe is in flight (drives the indicator's refresh spinner). */
+    probing = $state(false);
+
     private client: LSPClient | null = null;
     private transport: TauriLspTransport | null = null;
     private rootUri: string | null = null;
@@ -138,6 +146,27 @@ class LspClientStore {
 
     private enqueue(f: () => Promise<void>): void {
         this.chain = this.chain.then(f).catch(() => {});
+    }
+
+    /** Ask the backend whether the tinymist CLI is on `PATH`. Cheap (one
+     *  `--version` run) and safe to call whenever the settings page opens; the
+     *  user may install tinymist without restarting the app. */
+    async probeInstalled(): Promise<void> {
+        if (this.probing) return;
+        this.probing = true;
+        const result = await lspProbe();
+        this.probing = false;
+        result.match(
+            ({ available, version }) => {
+                this.isInstalled = available;
+                this.installedVersion = version;
+            },
+            (err) => {
+                logError('tinymist probe failed:', err);
+                this.isInstalled = false;
+                this.installedVersion = null;
+            },
+        );
     }
 
     /** Re-run on every change of the `useLsp` setting or the workspace root.
@@ -162,6 +191,10 @@ class LspClientStore {
         // A missing binary never becomes present by retrying: fall back for good.
         if (started.isOk() && started.value === false) {
             logInfo('tinymist not found; using built-in language features');
+            // A failed spawn is the authoritative "not installed" answer — keep
+            // the settings indicator in step without re-probing.
+            this.isInstalled = false;
+            this.installedVersion = null;
             return;
         }
         if (started.isErr()) {
@@ -281,6 +314,7 @@ class LspClientStore {
         this.rootUri = rootUri;
         this.closedUnlisten = closedUnlisten;
         this.isActive = true;
+        this.isInstalled = true;
         diagnostics.setLspActive(true);
         logInfo('tinymist language server connected');
     }

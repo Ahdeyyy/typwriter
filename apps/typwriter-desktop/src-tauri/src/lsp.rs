@@ -14,6 +14,7 @@ use std::sync::Mutex;
 use std::thread::JoinHandle;
 
 use log::{info, warn};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime};
 
 /// Event carrying one de-framed JSON-RPC message body from the server.
@@ -56,18 +57,11 @@ impl LspState {
             }
         }
 
-        let mut cmd = Command::new("tinymist");
+        let mut cmd = tinymist_command();
         cmd.arg("lsp")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        // No console window flash on Windows.
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
-        }
 
         let mut child = match cmd.spawn() {
             Ok(child) => child,
@@ -144,6 +138,71 @@ impl LspState {
                 let _ = handle.join();
             }
             info!("lsp: tinymist language server stopped");
+        }
+    }
+}
+
+/// A `tinymist` invocation with the platform tweaks we always want (no console
+/// window flash on Windows).
+fn tinymist_command() -> Command {
+    let cmd = Command::new("tinymist");
+    #[cfg(windows)]
+    let cmd = {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let mut cmd = cmd;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd
+    };
+    cmd
+}
+
+/// Whether the `tinymist` CLI can be found, reported to the settings UI so the
+/// language-server toggle can say *why* it's unavailable instead of silently
+/// falling back.
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LspAvailability {
+    /// `tinymist` was found on `PATH` and could be executed.
+    pub available: bool,
+    /// First line of `tinymist --version`, when it printed one.
+    pub version: Option<String>,
+}
+
+/// Probe for the CLI by running `tinymist --version`. Blocking (spawns a
+/// process and waits for it) — call it off the main thread.
+///
+/// A successful *spawn* is what makes the binary "available": a version flag
+/// that errors out still means tinymist is installed, and `lsp_start` would
+/// work. Only a spawn failure (not found / not executable) reports `false`.
+pub fn probe() -> LspAvailability {
+    let output = tinymist_command()
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output();
+
+    match output {
+        Ok(output) => {
+            let version = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_string);
+            info!("lsp: tinymist found ({})", version.as_deref().unwrap_or("?"));
+            LspAvailability {
+                available: true,
+                version,
+            }
+        }
+        Err(err) => {
+            info!("lsp: tinymist not found ({err})");
+            LspAvailability {
+                available: false,
+                version: None,
+            }
         }
     }
 }
