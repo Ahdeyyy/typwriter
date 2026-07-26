@@ -26,10 +26,6 @@
     const view = createEditorView(host, editor.loadedText, editor.relPath ?? "");
     editor.view = view;
     return () => {
-      // Hand the live buffer back to the store before the view goes away: with
-      // no full-document editor mounted, `loadedText` *is* the buffer (that's
-      // what the block surface adopts when you switch to it).
-      editor.loadedText = view.state.doc.toString();
       view.destroy();
       editor.view = null;
     };

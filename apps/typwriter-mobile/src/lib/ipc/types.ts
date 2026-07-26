@@ -79,31 +79,6 @@ export interface CompileResult {
   compileMs: number;
 }
 
-/** Which editing surface the editor screen shows. */
-export type EditorSurface = "source" | "blocks";
-
-/** One block's span in the main source, in UTF-16 code units. */
-export interface BlockSpanReq {
-  id: string;
-  from: number;
-  to: number;
-}
-
-/** A vertical band of a rendered page that a block occupies. */
-export interface BlockExtent {
-  /** 0-based page index. */
-  page: number;
-  y0Pt: number;
-  y1Pt: number;
-}
-
-export interface BlockExtentsResult {
-  /** The compile these extents describe. */
-  generation: number;
-  /** `[block id, extents]`; empty extents mean the block rendered nothing. */
-  blocks: [string, BlockExtent[]][];
-}
-
 /** Persisted app settings (frontend-owned via tauri-plugin-store). */
 export interface AppSettings {
   editorFontSize: number;
@@ -114,6 +89,4 @@ export interface AppSettings {
   lastWorkspace: string | null;
   /** App-wide fonts source folder (path or SAF URI) loaded into the compiler. */
   fontsDir: string | null;
-  /** Classic source editor vs. the Notion-style block surface. */
-  editorSurface: EditorSurface;
 }

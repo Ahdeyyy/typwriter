@@ -1,12 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { toast } from "svelte-sonner";
-  import {
-    SidebarLeft01Icon,
-    EyeIcon,
-    LayoutTable01Icon,
-    SourceCodeIcon,
-  } from "@hugeicons/core-free-icons";
+  import { SidebarLeft01Icon, EyeIcon } from "@hugeicons/core-free-icons";
   import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
@@ -14,14 +9,11 @@
   import { exportPdfToUri } from "$lib/ipc/commands";
   import { app } from "$lib/stores/app.svelte";
   import { editor } from "$lib/stores/editor.svelte";
-  import { blocks } from "$lib/stores/blocks.svelte";
   import { compileStore } from "$lib/stores/compile.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
   import { keyboard } from "$lib/editor/keyboard-visibility.svelte";
   import { Skeleton } from "$lib/components/ui/skeleton";
   import TreeSheet from "$lib/components/file-tree/tree-sheet.svelte";
   import EditorHost from "$lib/components/editor/editor-host.svelte";
-  import BlockSurface from "$lib/components/blocks/block-surface.svelte";
   import EditorToolbar from "$lib/components/toolbar/editor-toolbar.svelte";
   import CompletionStrip from "$lib/components/toolbar/completion-strip.svelte";
   import PreviewOverlay from "$lib/components/preview/preview-overlay.svelte";
@@ -46,24 +38,10 @@
   });
 
   async function openPreview() {
-    blocks.commitActive(); // block surface: fold any in-progress edit in first
     app.openOverlay("preview"); // opens immediately (skeleton / last pages)
     await editor.flush(); // persist current text
     if (compileStore.stale) await compileStore.run();
   }
-
-  /** Switch editing surface. Both views read and write the same buffer, so
-   *  committing the active block is all the handover needs. */
-  function toggleSurface() {
-    blocks.commitActive();
-    settings.setEditorSurface(settings.editorSurface === "blocks" ? "source" : "blocks");
-  }
-
-  // Non-`.typ` files have no block structure worth showing — they fall back to
-  // the source editor regardless of the setting.
-  const blockSurface = $derived(
-    settings.editorSurface === "blocks" && (editor.relPath?.endsWith(".typ") ?? false),
-  );
 
   let exporting = $state(false);
   let confirmExportOpen = $state(false);
@@ -144,16 +122,6 @@
             {compileStore.errors.length}
           </Badge>
         {/if}
-        {#if editor.fileKind === "text" && editor.relPath?.endsWith(".typ")}
-          <Button
-            variant="secondary"
-            size="icon"
-            aria-label={blockSurface ? "Switch to source editor" : "Switch to block editor"}
-            onclick={toggleSurface}
-          >
-            <Icon icon={blockSurface ? SourceCodeIcon : LayoutTable01Icon} />
-          </Button>
-        {/if}
         <Button variant="secondary" size="icon" aria-label="Preview" onclick={openPreview}>
           <Icon icon={EyeIcon} />
         </Button>
@@ -177,11 +145,7 @@
         This file type can't be opened in the editor.
       </div>
     {:else if editor.fileKind === "text"}
-      {#if blockSurface}
-        <BlockSurface />
-      {:else}
-        <EditorHost />
-      {/if}
+      <EditorHost />
     {:else}
       <EmptyTab />
     {/if}

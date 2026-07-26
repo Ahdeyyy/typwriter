@@ -4,10 +4,7 @@
 
 use std::{
     collections::HashMap,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
+    sync::{atomic::AtomicU64, Arc},
 };
 
 use parking_lot::Mutex;
@@ -28,29 +25,8 @@ pub struct CompileState {
     pub generation: AtomicU64,
     /// Last successfully compiled document (for render + export + IDE calls).
     pub document: Mutex<Option<Arc<PagedDocument>>>,
-    /// Generation of the compile `document` came from. Only ever written while
-    /// holding the `document` lock, so the two can be read as a pair.
-    document_generation: AtomicU64,
     /// fingerprint (hex) -> page index in `document`, rebuilt per compile.
     pub page_lookup: Mutex<HashMap<String, usize>>,
-}
-
-impl CompileState {
-    /// Publish a freshly compiled document along with its generation.
-    pub fn store_document(&self, generation: u64, document: Arc<PagedDocument>) {
-        let mut slot = self.document.lock();
-        self.document_generation.store(generation, Ordering::SeqCst);
-        *slot = Some(document);
-    }
-
-    /// The last successful document and the generation it belongs to, or
-    /// `None` when nothing has compiled yet. The pair is consistent: writers
-    /// update the generation under the `document` lock this call holds.
-    pub fn document_snapshot(&self) -> Option<(u64, Arc<PagedDocument>)> {
-        let slot = self.document.lock();
-        let document = slot.clone()?;
-        Some((self.document_generation.load(Ordering::SeqCst), document))
-    }
 }
 
 // ─── Serialisable IPC types (mirror src/lib/ipc/types.ts) ────────────────────

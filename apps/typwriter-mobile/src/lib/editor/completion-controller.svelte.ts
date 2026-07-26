@@ -58,17 +58,14 @@ class CompletionStore {
     if (!editor.relPath) return;
     const seq = ++this.requestSeq;
     const head = view.state.selection.main.head;
-    // A block's mini-editor holds only its own span, so resolve the request in
-    // master-document coordinates — otherwise completions would be computed
-    // against a fragment of the file — and map the answer back.
-    const master = editor.masterContext(view, head);
-    const res = await getCompletions(editor.relPath, master.text, master.offset, explicit);
+    const text = view.state.doc.toString();
+    const res = await getCompletions(editor.relPath, text, head, explicit);
     if (seq !== this.requestSeq) return; // stale response
     if (view.state.selection.main.head !== head) return; // cursor moved while waiting
     res.match(
       (r) => {
         this.items = r.completions.slice(0, MAX_ITEMS).map(toStripItem);
-        this.from = editor.localOffset(view, r.from);
+        this.from = r.from;
       },
       () => this.clear(),
     );

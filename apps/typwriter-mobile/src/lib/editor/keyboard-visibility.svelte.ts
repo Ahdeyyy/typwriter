@@ -69,7 +69,7 @@ class KeyboardVisibility {
    *  computes against stale geometry and leaves the caret behind the keyboard.
    *  Cancel any in-flight deferral so a burst of resize events doesn't stack. */
   private scrollCaretIntoView() {
-    const view = editor.activeView;
+    const view = editor.view;
     if (!view) return;
     cancelAnimationFrame(this.pendingScroll);
     this.pendingScroll = requestAnimationFrame(() => {

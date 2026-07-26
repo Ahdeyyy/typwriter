@@ -6,8 +6,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { ResultAsync } from "neverthrow";
 import type {
   AppSettings,
-  BlockExtentsResult,
-  BlockSpanReq,
   CompileResult,
   CompletionsResponse,
   FileContent,
@@ -63,11 +61,6 @@ export const getCompletions = (
 // ─── Compile + preview ──────────────────────────────────────────────────────────
 
 export const compile = () => call<CompileResult>("compile");
-
-/** Map block spans (UTF-16 offsets in the main source) to the vertical bands
- *  they occupy on the last compile's pages — the block surface's fragments. */
-export const blockExtents = (spans: BlockSpanReq[]) =>
-  call<BlockExtentsResult>("block_extents", { spans });
 
 // ─── Format ──────────────────────────────────────────────────────────────────
 

@@ -125,30 +125,6 @@
             </div>
           </section>
 
-          <section class="flex flex-col gap-2">
-            <span class="text-sm font-medium">Editing surface</span>
-            <div class="grid grid-cols-2 gap-1">
-              <Button
-                variant={settings.editorSurface === "source" ? "default" : "secondary"}
-                size="sm"
-                onclick={() => settings.setEditorSurface("source")}
-              >
-                Source
-              </Button>
-              <Button
-                variant={settings.editorSurface === "blocks" ? "default" : "secondary"}
-                size="sm"
-                onclick={() => settings.setEditorSurface("blocks")}
-              >
-                Blocks
-              </Button>
-            </div>
-            <p class="text-muted-foreground text-xs">
-              Blocks shows the compiled output of each part of the document; tap one to edit its
-              source. Switchable any time from the editor's top bar.
-            </p>
-          </section>
-
           <section class="flex items-center justify-between">
             <span class="text-sm font-medium">Line numbers</span>
             <Switch

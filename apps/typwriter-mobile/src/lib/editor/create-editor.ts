@@ -33,29 +33,23 @@ export function fontThemeFor(size: number): Extension {
   });
 }
 
-/** `compact` builds the theme for the block surface's mini-editor, which is one
- *  item in a scrolling list rather than the full-height editor: it must size to
- *  its content and must not reserve a keyboard-sized run-off at the bottom. */
-function baseTheme(compact: boolean): Extension {
+function baseTheme(): Extension {
   return EditorView.theme({
-    "&": compact ? {} : { height: "100%" },
+    "&": { height: "100%" },
     ".cm-scroller": {
-      overflow: compact ? "visible" : "auto",
+      overflow: "auto",
       WebkitOverflowScrolling: "touch",
       fontFamily: "var(--font-mono)",
       lineHeight: "1.6",
     },
     // Caret can always scroll above the soft keyboard.
-    ".cm-content": { paddingBottom: compact ? "0" : "40vh" },
+    ".cm-content": { paddingBottom: "40vh" },
     ".cm-line": { padding: "0 0.5rem" },
   });
 }
 
 /** The lean extension set. `lang` is the language support (or null for plain text). */
-export function createExtensions(
-  lang: Extension | null,
-  opts: { compact?: boolean } = {},
-): Extension[] {
+export function createExtensions(lang: Extension | null): Extension[] {
   return [
     history(),
     indentOnInput(),
@@ -94,7 +88,7 @@ export function createExtensions(
       spellcheck: "false",
       "data-enable-grammarly": "false",
     }),
-    baseTheme(opts.compact ?? false),
+    baseTheme(),
   ];
 }
 

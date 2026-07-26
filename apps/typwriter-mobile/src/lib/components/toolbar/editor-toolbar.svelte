@@ -49,11 +49,9 @@
   let headingOpen = $state(false);
 
   function applyHeading(level: number) {
-    // `activeView` so the toolbar drives the block surface's mini-editor too.
-    const view = editor.activeView;
-    if (view) {
-      setHeadingLevel(level)(view);
-      view.focus();
+    if (editor.view) {
+      setHeadingLevel(level)(editor.view);
+      editor.view.focus();
     }
     headingOpen = false;
   }
@@ -80,8 +78,7 @@
   function withView(fn: (v: EditorView) => void) {
     return (e: PointerEvent) => {
       e.preventDefault();
-      const view = editor.activeView;
-      if (view) fn(view);
+      if (editor.view) fn(editor.view);
     };
   }
 
@@ -97,8 +94,7 @@
     return (e: PointerEvent) => {
       if (Math.hypot(e.clientX - startX, e.clientY - startY) > 8) return; // scrolled
       e.preventDefault();
-      const view = editor.activeView;
-      if (view) fn(view);
+      if (editor.view) fn(editor.view);
     };
   }
 </script>
