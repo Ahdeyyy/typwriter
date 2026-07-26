@@ -18,7 +18,7 @@ use workspace::WorkspaceState;
 use world::EditorWorld;
 
 use commands::{
-    app::{is_fonts_loaded, prepare_onboarding_workspace},
+    app::{get_typst_version, is_fonts_loaded, prepare_onboarding_workspace},
     click::{jump_from_click, jump_from_cursor},
     editor::{
         discard_shadow, get_completions, get_definitions, get_tooltip, read_file, save_file,
@@ -187,6 +187,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // app init
             is_fonts_loaded,
+            get_typst_version,
             prepare_onboarding_workspace,
             // workspace / file-system
             open_folder,

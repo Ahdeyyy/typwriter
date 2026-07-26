@@ -140,6 +140,41 @@ export function emitSettingsChanged<T>(payload: T) {
     return ResultAsync.fromPromise(emit('settings:changed', payload), toErrString);
 }
 
+// ─── Cross-window light/dark mode sync ───────────────────────────────────────
+//
+// The mode lives in mode-watcher's own per-window state, so a change made from
+// Settings › Appearance has to be replayed into the other windows. Listeners
+// apply the mode locally and never re-emit, so there's no ping-pong.
+
+export type ModePreference = 'light' | 'dark' | 'system';
+
+export function onAppModeChanged(handler: (mode: ModePreference) => void) {
+    return ResultAsync.fromPromise(
+        listen<ModePreference>('app:mode-changed', (event) => handler(event.payload)),
+        toErrString
+    );
+}
+
+export function emitAppModeChanged(mode: ModePreference) {
+    return ResultAsync.fromPromise(emit('app:mode-changed', mode), toErrString);
+}
+
+// ─── Settings window → main window: show the onboarding tutorial ─────────────
+//
+// The tutorial is a page in the *main* window, so the Settings window can only
+// ask for it. Delegated the same way as `vcs:restore-file-request`.
+
+export function onShowTutorialRequest(handler: () => void) {
+    return ResultAsync.fromPromise(
+        listen<void>('app:show-tutorial', () => handler()),
+        toErrString
+    );
+}
+
+export function emitShowTutorialRequest() {
+    return ResultAsync.fromPromise(emit('app:show-tutorial', undefined), toErrString);
+}
+
 // ─── Cross-window vcs diff window sync ───────────────────────────────────────
 
 export interface VcsDiffSelectionPayload {

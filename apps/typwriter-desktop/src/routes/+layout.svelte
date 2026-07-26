@@ -4,10 +4,17 @@
   import { Toaster } from "$lib/components/ui/sonner/index.js";
   import { installGlobalErrorLogging } from "$lib/logger";
   import { updater } from "$lib/stores/updater.svelte";
-  import { mode, ModeWatcher, setTheme, systemPrefersMode } from "mode-watcher";
+  import { mode, ModeWatcher, setMode, resetMode, setTheme, systemPrefersMode } from "mode-watcher";
   import { app } from "@tauri-apps/api"
+  import { Window } from "@tauri-apps/api/window";
   import { settings, type SettingsSyncPayload } from "$lib/stores/settings.svelte";
-  import { onAppFontsLoaded, onSettingsChanged } from "$lib/ipc/events";
+  import {
+    onAppFontsLoaded,
+    onSettingsChanged,
+    onAppModeChanged,
+    onShowTutorialRequest,
+  } from "$lib/ipc/events";
+  import { page } from "$lib/stores/page.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
@@ -107,6 +114,27 @@
     onSettingsChanged<SettingsSyncPayload>((payload) => {
       settings.applyExternal(payload);
     }).mapErr((err) => logError("settings sync listener failed:", err));
+
+    // Light/dark lives in mode-watcher, not the settings store, so it needs its
+    // own replay. Apply locally only — re-emitting would ping-pong.
+    onAppModeChanged((next) => {
+      if (next === "system") {
+        resetMode();
+      } else {
+        setMode(next);
+      }
+      app.setTheme(mode.current === "dark" ? "dark" : "light");
+    }).mapErr((err) => logError("mode sync listener failed:", err));
+
+    // Settings › General › Tutorial delegates here: only the main window hosts
+    // the page stack the onboarding tutorial lives in.
+    const currentWindow = Window.getCurrent();
+    if (currentWindow.label === "main") {
+      onShowTutorialRequest(() => {
+        page.navigate("onboarding");
+        currentWindow.setFocus().catch((err) => logError("main window focus failed:", err));
+      }).mapErr((err) => logError("tutorial request listener failed:", err));
+    }
   });
 
   // ── Apply settings to <html> reactively ──────────────────────────────────

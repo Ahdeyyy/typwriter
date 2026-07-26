@@ -4,6 +4,7 @@
   import PreviewWindow from "$lib/components/pages/preview-window.svelte";
   import SettingsWindow from "$lib/components/pages/settings.svelte";
   import DiffWindow from "$lib/components/pages/diff-window.svelte";
+  import Button from "$lib/components/ui/button/button.svelte";
 
   import { Window } from "@tauri-apps/api/window";
   import { watch } from "runed";
@@ -63,5 +64,18 @@
     {:else}
       <page.current.component />
     {/if}
+
+    <!-- Without this the boundary swallows render errors and leaves a blank
+         window with nothing in the UI to explain it. -->
+    {#snippet failed(error, reset)}
+      <div class="flex h-full w-full flex-col items-center justify-center gap-3 p-8 text-center">
+        <p class="text-sm font-medium">Something went wrong rendering this screen.</p>
+        <pre
+          class="max-h-48 max-w-full overflow-auto rounded-md border border-border bg-muted px-3 py-2 text-left text-xs">{String(
+            error,
+          )}</pre>
+        <Button variant="outline" size="sm" onclick={reset}>Try again</Button>
+      </div>
+    {/snippet}
   </svelte:boundary>
 </section>

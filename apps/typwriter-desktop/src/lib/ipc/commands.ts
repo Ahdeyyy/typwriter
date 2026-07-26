@@ -355,6 +355,11 @@ export function isFontsLoaded() {
     return ResultAsync.fromPromise(invoke<boolean>('is_fonts_loaded'), toErrString);
 }
 
+/** Version of the Typst compiler this build links against (e.g. `"0.15.1"`). */
+export function getTypstVersion() {
+    return ResultAsync.fromPromise(invoke<string>('get_typst_version'), toErrString);
+}
+
 // ─── Onboarding ─────────────────────────────────────────────────────────────────
 
 /** A single seed file for the onboarding workspace. */
