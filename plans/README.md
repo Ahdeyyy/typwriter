@@ -84,7 +84,7 @@ Stamped against `988692f`.
 
 | # | Plan | What | Effort | Status |
 |---|------|------|--------|--------|
-| 09 | [typwriter-mobile/09-block-editor.md](typwriter-mobile/09-block-editor.md) | Block surface: segmentation, span→extent Rust command, fragment crops, tap-to-edit, slash + convert menus (milestones 9a–9d) | L | TODO |
+| 09 | [typwriter-mobile/09-block-editor.md](typwriter-mobile/09-block-editor.md) | Block surface: segmentation, span→extent Rust command, fragment crops, tap-to-edit, slash + convert menus (milestones 9a–9d) | L | NOT DONE — a first pass landed in `b549481` and was removed again on 2026-07-26; the plan is to be refined before a second attempt |
 
 ## Considered and rejected (do not re-audit)
 

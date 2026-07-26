@@ -1,5 +1,12 @@
 # Phase 9 — Notion-style block editor (real-render blocks)
 
+**Status: NOT DONE.** A first implementation landed in commit `b549481`
+(2026-07-25) and was removed again on 2026-07-26 — `typwriter-mobile` ships the
+classic source editor only. The plan below is kept for a second attempt but is
+to be **refined first**; treat it as a draft, not as executable-as-written. The
+removed code (segmentation, `block_extents`, fragment crops, block components,
+`BlockStore`) is recoverable from `b549481` if any of it is worth reusing.
+
 Goal: a second editing surface on mobile that presents the document as a vertical
 list of **blocks**, Notion-style. Inactive blocks display the block's **actual
 compiled output** (cropped from the already-rendered preview pages — never a
