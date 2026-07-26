@@ -194,10 +194,19 @@ export function lspStop() {
     return ResultAsync.fromPromise(invoke<void>('lsp_stop'), toErrString);
 }
 
-/** Whether the `tinymist` CLI is installed, plus its version string. */
+/** Whether the `tinymist` CLI is installed, plus the Typst version it embeds
+ *  next to the one this app compiles with. */
 export interface LspAvailability {
     available: boolean;
+    /** tinymist's own release version (e.g. `0.15.2`). */
     version: string | null;
+    /** The Typst version tinymist was built against (e.g. `0.15.0`). */
+    typstVersion: string | null;
+    /** The Typst version this app compiles with. */
+    bundledTypstVersion: string;
+    /** `false` when the two Typst versions differ enough to change results;
+     *  `null` when tinymist didn't report one. */
+    typstCompatible: boolean | null;
 }
 
 /** Probe `PATH` for the tinymist CLI (runs `tinymist --version`). */

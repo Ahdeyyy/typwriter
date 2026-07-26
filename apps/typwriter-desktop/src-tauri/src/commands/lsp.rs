@@ -21,14 +21,12 @@ pub fn lsp_stop(state: State<'_, LspState>) {
     state.stop();
 }
 
-/// Report whether the `tinymist` CLI is installed. Runs the probe on a blocking
+/// Report whether the `tinymist` CLI is installed, and which Typst version it
+/// speaks relative to the one this app bundles. Runs the probe on a blocking
 /// thread — it spawns a process and waits for it.
 #[tauri::command]
 pub async fn lsp_probe() -> LspAvailability {
     tauri::async_runtime::spawn_blocking(crate::lsp::probe)
         .await
-        .unwrap_or(LspAvailability {
-            available: false,
-            version: None,
-        })
+        .unwrap_or_else(|_| LspAvailability::unavailable())
 }

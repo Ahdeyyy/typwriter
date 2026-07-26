@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { Alert01Icon } from "@hugeicons/core-free-icons";
   import { Switch } from "$lib/components/ui/switch/index.js";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
@@ -16,20 +18,28 @@
   });
 
   const tinymistInstalled = $derived(lspClient.isInstalled === true);
+  // tinymist embeds its own Typst compiler. When that differs from the one the
+  // app compiles with, the server still works — its answers just may not match
+  // what gets rendered — so this is a warning, never a block on the toggle.
+  const typstMismatch = $derived(lspClient.typstMismatch);
   const tinymistDotClass = $derived(
     lspClient.isInstalled === null
       ? "bg-muted-foreground/40"
-      : lspClient.isInstalled
-        ? "bg-green-500"
-        : "bg-destructive",
+      : !lspClient.isInstalled
+        ? "bg-destructive"
+        : typstMismatch
+          ? "bg-yellow-500"
+          : "bg-green-500",
   );
-  const tinymistStatusLabel = $derived(
-    lspClient.isInstalled === null
-      ? "Checking for tinymist…"
-      : lspClient.isInstalled
-        ? `tinymist found${lspClient.installedVersion ? ` — ${lspClient.installedVersion}` : ""}`
-        : "tinymist not found on PATH — install it to enable this",
-  );
+  const tinymistStatusLabel = $derived.by(() => {
+    if (lspClient.isInstalled === null) return "Checking for tinymist…";
+    if (!lspClient.isInstalled) return "tinymist not found on PATH — install it to enable this";
+    const name = lspClient.installedVersion ? `tinymist ${lspClient.installedVersion}` : "tinymist";
+    // Older builds don't report the Typst they target; show what we have.
+    return lspClient.installedTypstVersion
+      ? `${name} · Typst ${lspClient.installedTypstVersion}`
+      : `${name} found`;
+  });
 </script>
 
 <SettingGroup
@@ -121,8 +131,9 @@
         description="Use tinymist for completion, hover, and diagnostics when it's installed."
       >
         <!-- Availability indicator: green once the tinymist CLI is found on
-             PATH, red when it isn't (the switch is then disabled — enabling it
-             could not do anything). -->
+             PATH, amber when it's found but targets a different Typst than the
+             app bundles, red when it isn't found at all (the switch is then
+             disabled — enabling it could not do anything). -->
         <p class="mt-1 flex items-center gap-1.5 text-xs">
           <span class="size-2 shrink-0 rounded-full {tinymistDotClass}" aria-hidden="true"></span>
           <span class={tinymistInstalled ? "text-muted-foreground" : "text-destructive"}>
@@ -140,6 +151,23 @@
             Re-check
           </button>
         </p>
+        {#if typstMismatch}
+          <p
+            class="mt-1.5 flex items-start gap-1.5 text-xs text-yellow-700 dark:text-yellow-400"
+            role="status"
+          >
+            <HugeiconsIcon
+              icon={Alert01Icon}
+              class="mt-px size-3.5 shrink-0 text-yellow-500"
+              aria-hidden="true"
+            />
+            <span>
+              This app compiles with Typst {lspClient.bundledTypstVersion}. Update tinymist to a
+              build that targets it — until then completion, hover, and diagnostics may not match
+              what actually renders.
+            </span>
+          </p>
+        {/if}
         {#snippet control()}
           <Switch
             checked={settings.useLsp && tinymistInstalled}
