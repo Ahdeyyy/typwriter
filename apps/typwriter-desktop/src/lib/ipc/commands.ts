@@ -440,3 +440,19 @@ export function setTypstFontDirectories(dirs: string[]) {
         toErrString
     );
 }
+
+/** A font family installed on the device, as reported by the OS font scan. */
+export interface SystemFontFamily {
+    name: string;
+    monospace: boolean;
+}
+
+/** Font families installed on this device, for the UI / editor font pickers.
+ *  The first call runs an OS font scan (cached in Rust afterwards), so it can
+ *  take a moment. */
+export function listSystemFontFamilies() {
+    return ResultAsync.fromPromise(
+        invoke<SystemFontFamily[]>('list_system_font_families'),
+        toErrString
+    );
+}

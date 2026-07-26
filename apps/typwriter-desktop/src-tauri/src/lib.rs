@@ -33,8 +33,8 @@ use commands::{
     lsp::{lsp_probe, lsp_send, lsp_start, lsp_stop},
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     settings::{
-        get_app_settings, get_onboarding_completed, list_font_families, set_app_settings,
-        set_onboarding_completed, set_typst_font_directories,
+        get_app_settings, get_onboarding_completed, list_font_families, list_system_font_families,
+        set_app_settings, set_onboarding_completed, set_typst_font_directories,
     },
     vcs::{
         vcs_create_restore_point, vcs_current_id, vcs_diff_between, vcs_diff_vs_current,
@@ -238,6 +238,7 @@ pub fn run() {
             get_onboarding_completed,
             set_onboarding_completed,
             list_font_families,
+            list_system_font_families,
             set_typst_font_directories,
             // export
             export_pdf,

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { SunIcon, Moon02Icon } from "@hugeicons/core-free-icons";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
@@ -6,6 +7,21 @@
   import FontPicker from "../font-picker.svelte";
   import ModeControl from "../mode-control.svelte";
   import { settings, BUNDLED_UI_FONTS } from "$lib/stores/settings.svelte";
+  import { systemFonts, withoutBundled, type FontGroup } from "$lib/stores/system-fonts.svelte";
+
+  // The OS font scan takes a moment, so kick it off as soon as this pane opens
+  // rather than when the picker is first clicked.
+  onMount(() => {
+    void systemFonts.load();
+  });
+
+  const uiFontGroups = $derived<FontGroup[]>([
+    { label: "Typwriter fonts", families: BUNDLED_UI_FONTS },
+    {
+      label: "Installed on this device",
+      families: withoutBundled(systemFonts.names, BUNDLED_UI_FONTS),
+    },
+  ]);
 </script>
 
 <SettingGroup
@@ -38,10 +54,14 @@
       />
     </div>
 
-    <SettingRow title="UI font" description="Used across the app interface.">
+    <SettingRow
+      title="UI font"
+      description="Used across the app interface. Fonts installed on this device are listed alongside the bundled ones."
+    >
       {#snippet control()}
         <FontPicker
-          families={BUNDLED_UI_FONTS}
+          groups={uiFontGroups}
+          loading={systemFonts.loading}
           value={settings.uiFontFamily}
           onselect={(f) => settings.setUiFontFamily(f)}
         />

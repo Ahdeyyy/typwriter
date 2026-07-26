@@ -8,6 +8,7 @@
   import FontPicker from "../font-picker.svelte";
   import SliderControl from "../slider-control.svelte";
   import { settings, BUNDLED_EDITOR_FONTS } from "$lib/stores/settings.svelte";
+  import { systemFonts, withoutBundled, type FontGroup } from "$lib/stores/system-fonts.svelte";
   import { platform } from "$lib/stores/platform.svelte";
   import { lspClient } from "$lib/lsp/client.svelte";
 
@@ -15,7 +16,24 @@
   // time this pane opens rather than trusting a launch-time answer.
   onMount(() => {
     if (!platform.isMobile) void lspClient.probeInstalled();
+    // The OS font scan takes a moment; start it with the pane, not on click.
+    void systemFonts.load();
   });
+
+  // Code fonts should be monospace, so installed monospace families come right
+  // after the bundled ones — but the rest stay reachable, since the user may
+  // well know their font is fixed-width even when it doesn't say so.
+  const editorFontGroups = $derived<FontGroup[]>([
+    { label: "Typwriter fonts", families: BUNDLED_EDITOR_FONTS },
+    {
+      label: "Installed monospace",
+      families: withoutBundled(systemFonts.monospaceNames, BUNDLED_EDITOR_FONTS),
+    },
+    {
+      label: "Other installed fonts",
+      families: withoutBundled(systemFonts.proportionalNames, BUNDLED_EDITOR_FONTS),
+    },
+  ]);
 
   const tinymistInstalled = $derived(lspClient.isInstalled === true);
   // tinymist embeds its own Typst compiler. When that differs from the one the
@@ -47,10 +65,14 @@
   description="How the code editor looks and behaves while you type."
 >
   <div class="flex flex-col gap-3">
-    <SettingRow title="Editor font" description="Monospace font used in the code editor.">
+    <SettingRow
+      title="Editor font"
+      description="Font used in the code editor. Fonts installed on this device are listed alongside the bundled ones."
+    >
       {#snippet control()}
         <FontPicker
-          families={BUNDLED_EDITOR_FONTS}
+          groups={editorFontGroups}
+          loading={systemFonts.loading}
           value={settings.editorFontFamily}
           onselect={(f) => settings.setEditorFontFamily(f)}
           fallback="monospace"
