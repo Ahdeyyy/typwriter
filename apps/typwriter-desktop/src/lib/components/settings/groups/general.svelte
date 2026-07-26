@@ -2,7 +2,6 @@
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
     RefreshIcon,
-    Refresh01Icon,
     Mortarboard01Icon,
     File01Icon,
   } from "@hugeicons/core-free-icons";
@@ -12,7 +11,6 @@
   import SettingRow from "../setting-row.svelte";
   import { settings } from "$lib/stores/settings.svelte";
   import { platform } from "$lib/stores/platform.svelte";
-  import { updater } from "$lib/stores/updater.svelte";
   import { setOnboardingCompleted, getLogFilePath } from "$lib/ipc/commands";
   import { emitShowTutorialRequest } from "$lib/ipc/events";
   import { openPath } from "@tauri-apps/plugin-opener";
@@ -65,27 +63,6 @@
           checked={settings.autoCheckUpdates}
           onCheckedChange={(v) => settings.setAutoCheckUpdates(v)}
         />
-      {/snippet}
-    </SettingRow>
-
-    <SettingRow
-      title="Check for updates now"
-      description="Look for a newer release and download it if one is available."
-    >
-      {#snippet control()}
-        <Button
-          variant="outline"
-          size="sm"
-          class="gap-2 shrink-0"
-          onclick={() => updater.checkManual()}
-          disabled={updater.checking || updater.downloading}
-        >
-          <HugeiconsIcon
-            icon={Refresh01Icon}
-            class="size-4 {updater.checking ? 'animate-spin' : ''}"
-          />
-          {updater.downloading ? "Downloading…" : updater.checking ? "Checking…" : "Check now"}
-        </Button>
       {/snippet}
     </SettingRow>
 

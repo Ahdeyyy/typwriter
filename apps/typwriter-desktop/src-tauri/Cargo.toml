@@ -47,6 +47,8 @@ log = "0.4.29"
 png = "0.18"
 typstyle-core = "0.15"
 tauri-plugin-updater = "2"
+# `relaunch()` after an update is installed — the only thing this is used for.
+tauri-plugin-process = "2"
 thiserror = "2.0.18"
 # Versioning / restore-point system. Pure-Rust content-addressed store under
 # .typwriter/history/ inside each workspace — no gix dependency. zstd shrinks

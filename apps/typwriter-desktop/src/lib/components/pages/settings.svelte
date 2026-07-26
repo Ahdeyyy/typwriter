@@ -4,6 +4,7 @@
   import Button from "$lib/components/ui/button/button.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import SettingsNav from "$lib/components/settings/nav.svelte";
   import {
     SETTINGS_GROUPS,
@@ -26,7 +27,11 @@
 </script>
 
 <!-- Rendered in its own undecorated webview window (label "settings"), so it
-     carries the shared custom titlebar; there's no in-app back navigation. -->
+     carries the shared custom titlebar; there's no in-app back navigation.
+     The Tooltip.Provider is explicit here — the workspace window inherits one
+     from Sidebar.Provider, but this window has no sidebar context, and
+     Tooltip.Root throws without a provider above it. -->
+<Tooltip.Provider>
 <div class="relative flex h-screen w-screen flex-col overflow-hidden">
   <Titlebar variant="minimal" title="Settings" />
 
@@ -55,3 +60,4 @@
     </div>
   </div>
 </div>
+</Tooltip.Provider>

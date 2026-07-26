@@ -51,6 +51,7 @@ use commands::{
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .register_uri_scheme_protocol("previewimg", |ctx, request| {
             // URL form on Windows: http://previewimg.localhost/{key}.png
             // URL form on macOS/Linux: previewimg://localhost/{key}.png
