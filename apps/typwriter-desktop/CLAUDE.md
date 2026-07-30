@@ -26,7 +26,7 @@ The Typst editor for desktop. Tauri 2 + SvelteKit (static adapter) + a Rust core
 - `routes/+page.svelte` — single-page entry; the actual screens live in `lib/components/pages/`.
 - `lib/components/pages/` — `home`, `workspace`, `settings`, `keymaps`, `preview-window`.
 - `lib/components/editor/` — CodeMirror tab bar, editor pane, diagnostics, grammar pane, search, Typst toolbar.
-- `lib/components/sidebar/` — Obsidian-style sidebar (file tree, preview pane, export dialog, mode switcher).
+- `lib/components/sidebar/` — Obsidian-style sidebar (file tree, preview pane, export dialog). Theme switching lives only in the settings pane (`lib/components/settings/mode-control.svelte`).
 - `lib/components/titlebar/` — custom window chrome.
 - `lib/stores/` — Svelte 5 class-singleton stores (`workspace`, `editor`, `preview`, `diagnostics`, `grammar`, `editor-search`, `page`, `platform`, `settings`, `updater`). All `$state`/`$derived` lives inside a class; module-level `$state` exports lose reactivity.
 - `lib/ipc/` — `commands.ts` (thin wrappers around `invoke`) and `events.ts` (typed Tauri event listeners).

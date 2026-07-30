@@ -27,7 +27,6 @@
   import HistoryPane from "$lib/components/vcs/ledger.svelte";
   import { vcs } from "$lib/stores/vcs.svelte";
   import { openDiffWindow, openSettingsWindow } from "$lib/windows";
-  import ModeSwitcher from "./mode-switcher.svelte";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { defaultWindowIcon } from '@tauri-apps/api/app';
 
@@ -198,7 +197,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
     {/if}
   </Sidebar.Content>
 
-  <!-- ─── Footer: section toggles + home + theme (horizontal) ─────────────── -->
+  <!-- ─── Footer: section toggles + home + settings (horizontal) ──────────── -->
   <Sidebar.Footer class="border-t border-sidebar-border">
     <div class="flex items-center group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-center gap-0.5 p-1">
 
@@ -328,11 +327,6 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
         </Tooltip.Trigger>
         <Tooltip.Content side="top">Settings</Tooltip.Content>
       </Tooltip.Root>
-
-      <!-- Theme switcher -->
-      <div class="ml-auto group-data-[collapsible=icon]:ml-0">
-        <ModeSwitcher />
-      </div>
 
     </div>
   </Sidebar.Footer>
