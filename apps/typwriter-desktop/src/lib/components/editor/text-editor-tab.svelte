@@ -48,6 +48,10 @@
     type Diagnostic as CMDiagnostic,
   } from "@codemirror/lint";
   import { inlineDiagnostics } from "$lib/codemirror/inline-diagnostics";
+  import {
+    grammarLint,
+    setGrammarLints,
+  } from "$lib/codemirror/grammar-lint";
   import { search } from "@codemirror/search";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
   import { editorFormat } from "$lib/stores/editor-format.svelte";
@@ -69,6 +73,7 @@
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
+  import { grammar } from "$lib/stores/grammar.svelte";
   import { settings } from "$lib/stores/settings.svelte";
   import {
     getCompletions,
@@ -403,6 +408,14 @@
       // Error-lens-style inline messages instead of a lint gutter — the
       // diagnostic text renders faded at the end of the offending line.
       inlineDiagnostics(),
+      // Grammar lints live in their own layer, not `@codemirror/lint`, so
+      // compile diagnostics and Harper never overwrite one another.
+      // Both actions change the configuration, and the store re-checks every
+      // open buffer when that happens — so there's nothing to re-run here.
+      grammarLint({
+        onAddToDictionary: (word) => void grammar.addWord(word),
+        onDisableRule: (rule) => void grammar.setRuleEnabled(rule, false),
+      }),
       lineNumbersCompartment.of(lineNumbersExt()),
       lineWrapCompartment.of(lineWrapExt()),
       spellcheckCompartment.of(spellcheckExt(isTypst)),
@@ -999,6 +1012,37 @@
     untrack(() => {
       const view = tabViews.get(id);
       if (view) applyDiagnosticsToView(id, view);
+    });
+  });
+
+  // ── Grammar lints → their own decoration layer
+  //
+  // Separate from the diagnostics path above on purpose: grammar results
+  // arrive on their own (debounced, per-file) schedule and must not be cleared
+  // when a compile or an LSP toggle rewrites the lint state.
+  function applyGrammarToView(tabId: string, view: EditorView) {
+    const tab = editor.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    view.dispatch({
+      effects: setGrammarLints.of(grammar.lintsFor(tab.relPath)),
+    });
+  }
+
+  $effect(() => {
+    // Re-runs whenever a report lands or a tab opens/closes.
+    grammar.reports;
+    editor.tabs;
+    untrack(() => {
+      for (const [tabId, view] of tabViews) applyGrammarToView(tabId, view);
+    });
+  });
+
+  $effect(() => {
+    const id = mountedTabId;
+    if (!id) return;
+    untrack(() => {
+      const view = tabViews.get(id);
+      if (view) applyGrammarToView(id, view);
     });
   });
 </script>

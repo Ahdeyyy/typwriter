@@ -4,6 +4,7 @@
   import {
     Folder01Icon,
     Alert01Icon,
+    TextCheckIcon,
     Home01Icon,
     ArrowDown01Icon,
     Settings01Icon,
@@ -14,6 +15,7 @@
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
+  import { grammar } from "$lib/stores/grammar.svelte";
   import { page } from "$lib/stores/page.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { getRecentWorkspaces } from "$lib/ipc/commands";
@@ -21,6 +23,7 @@
   import { logError } from "$lib/logger";
   import FileTree from "$lib/components/sidebar/filetree.svelte";
   import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
+  import GrammarPane from "$lib/components/editor/grammar-pane.svelte";
   import HistoryPane from "$lib/components/vcs/ledger.svelte";
   import { vcs } from "$lib/stores/vcs.svelte";
   import { openDiffWindow, openSettingsWindow } from "$lib/windows";
@@ -52,7 +55,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
     return canvas.toDataURL('image/png');
 }
 
-  type Section = "files" | "diagnostics" | "history";
+  type Section = "files" | "diagnostics" | "grammar" | "history";
 
   let iconImage: HTMLImageElement | undefined = $state(undefined);
 
@@ -63,6 +66,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
 
   const diagCount = $derived(diagnostics.errors.length + diagnostics.warnings.length);
   const hasErrors = $derived(diagnostics.errors.length > 0);
+  const grammarCount = $derived(grammar.totalLints);
   const workspaceName = $derived(
     workspace.rootPath?.split(/[/\\]/).pop() ?? "Workspace"
   );
@@ -184,6 +188,8 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
       <FileTree />
     {:else if activeSection === "diagnostics"}
       <DiagnosticsPane onclose={() => sidebarCtx.setOpen(false)} />
+    {:else if activeSection === "grammar"}
+      <GrammarPane onclose={() => sidebarCtx.setOpen(false)} />
     {:else if activeSection === "history"}
       <HistoryPane
         onclose={() => sidebarCtx.setOpen(false)}
@@ -244,6 +250,32 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="top">Diagnostics</Tooltip.Content>
+      </Tooltip.Root>
+
+      <!-- Grammar toggle -->
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              class="relative size-8 shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground {sidebarCtx.open && activeSection === 'grammar' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/70'}"
+              onclick={() => toggleSection("grammar")}
+            >
+              <HugeiconsIcon icon={TextCheckIcon} class="size-4" />
+              {#if grammarCount > 0}
+                <span
+                  class="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5
+                         items-center justify-center rounded-full bg-muted-foreground
+                         text-[9px] font-bold leading-none text-background"
+                >
+                  {grammarCount > 9 ? "9+" : grammarCount}
+                </span>
+              {/if}
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content side="top">Grammar</Tooltip.Content>
       </Tooltip.Root>
 
       <!-- History toggle -->

@@ -12,6 +12,7 @@ import {
 import type { CompileReason } from '$lib/types';
 import { workspace } from './workspace.svelte';
 import { settings } from './settings.svelte';
+import { grammar } from './grammar.svelte';
 import { normalize, basename } from '$lib/paths';
 import { logError } from '$lib/logger';
 import { toast } from 'svelte-sonner';
@@ -207,6 +208,7 @@ class EditorStore {
         updateFileContent(tab.absPath, content).mapErr((err) =>
             logError('restore unsaved shadow write failed:', err)
         );
+        void grammar.checkNow(tab.relPath, content);
     }
 
     /** Load a tab's content from disk and let the backend response decide how to
@@ -235,6 +237,7 @@ class EditorStore {
                 liveTab.isEditable = true;
                 liveTab.content = res.content;
                 liveTab.imageSrc = null;
+                void grammar.checkNow(liveTab.relPath, res.content);
                 break;
             case 'image':
                 liveTab.viewMode = 'image';
@@ -270,6 +273,7 @@ class EditorStore {
         }
 
         this._clearTimers(id);
+        grammar.forget(tab.relPath);
         if (tab.viewMode === 'text') {
             discardShadow(tab.absPath).mapErr((err) =>
                 logError('discardShadow error on close:', err)
@@ -328,6 +332,10 @@ class EditorStore {
         // Refresh the live preview as the user types.
         this._scheduleTypingPreview(tab);
         this._scheduleIdleSave(tab);
+        // Grammar runs on its own, much lazier timer — a full Harper pass is
+        // far heavier than a preview compile, and mid-word suggestions are
+        // noise.
+        grammar.schedule(tab.relPath, content);
         // Persist the unsaved buffer to durable storage (debounced) so it
         // survives a non-graceful teardown — see getTabState / hot-exit restore.
         workspace.schedulePersistTabs();

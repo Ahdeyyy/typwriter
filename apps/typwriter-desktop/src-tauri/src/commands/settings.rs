@@ -15,6 +15,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_store::StoreExt;
 use typst::text::FontFlags;
 
+use crate::grammar::engine::GrammarConfig;
 use crate::vcs::SnapshotPolicy;
 use crate::world::EditorWorld;
 
@@ -26,6 +27,10 @@ const KEY_UI_SETTINGS: &str = "settings.ui";
 /// Settings page round-tripping the whole struct through `set_app_settings`
 /// can't accidentally reset it via serde defaults.
 const KEY_ONBOARDING_COMPLETED: &str = "settings.onboarding_completed";
+/// Grammar-checker configuration. Kept out of `AppSettings` for the same
+/// reason as the key above — it's a nested structure with rule maps and word
+/// lists, and `set_app_settings` round-trips the whole struct.
+const KEY_GRAMMAR: &str = "settings.grammar";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -132,6 +137,30 @@ fn write_font_directories(handle: &AppHandle, dirs: &[String]) {
     store.set(KEY_FONT_DIRECTORIES, json!(dirs));
     if let Err(err) = store.save() {
         warn!("settings: failed to save store: {err}");
+    }
+}
+
+/// Read the persisted grammar configuration, falling back to defaults.
+pub fn read_grammar_config(handle: &AppHandle) -> GrammarConfig {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        warn!("settings: could not open {STORE_FILE}");
+        return GrammarConfig::default();
+    };
+    store
+        .get(KEY_GRAMMAR)
+        .and_then(|v: JsonValue| serde_json::from_value(v).ok())
+        .unwrap_or_default()
+}
+
+/// Persist the grammar configuration.
+pub fn write_grammar_config(handle: &AppHandle, config: &GrammarConfig) {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        warn!("settings: could not open {STORE_FILE}");
+        return;
+    };
+    store.set(KEY_GRAMMAR, json!(config));
+    if let Err(err) = store.save() {
+        warn!("settings: failed to save grammar config: {err}");
     }
 }
 

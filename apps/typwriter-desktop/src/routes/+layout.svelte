@@ -11,9 +11,11 @@
   import {
     onAppFontsLoaded,
     onSettingsChanged,
+    onGrammarConfigChanged,
     onAppModeChanged,
     onShowTutorialRequest,
   } from "$lib/ipc/events";
+  import { grammar } from "$lib/stores/grammar.svelte";
   import { page } from "$lib/stores/page.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { editor } from "$lib/stores/editor.svelte";
@@ -114,6 +116,14 @@
     onSettingsChanged<SettingsSyncPayload>((payload) => {
       settings.applyExternal(payload);
     }).mapErr((err) => logError("settings sync listener failed:", err));
+
+    // Grammar config is per-window state too, and its settings pane is in the
+    // settings window while the underlines it controls are in the main one —
+    // so every window loads it and every window replays changes to the others.
+    grammar.init().mapErr((err) => logError("grammar init failed:", err));
+    onGrammarConfigChanged((config) => {
+      grammar.applyExternal(config);
+    }).mapErr((err) => logError("grammar sync listener failed:", err));
 
     // Light/dark lives in mode-watcher, not the settings store, so it needs its
     // own replay. Apply locally only — re-emitting would ping-pong.

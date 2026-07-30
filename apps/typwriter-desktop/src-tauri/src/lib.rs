@@ -2,6 +2,7 @@
 
 mod commands;
 mod compiler;
+mod grammar;
 mod lsp;
 mod vcs;
 mod workspace;
@@ -28,6 +29,10 @@ use commands::{
     format::{
         format_typst_cursor_virtual, format_typst_file, format_typst_source,
         format_workspace_typ_files,
+    },
+    grammar::{
+        add_grammar_dictionary_word, check_grammar, get_grammar_config, get_grammar_rules,
+        set_grammar_config, set_grammar_file_enabled,
     },
     logs::get_log_file_path,
     lsp::{lsp_probe, lsp_send, lsp_start, lsp_stop},
@@ -177,6 +182,9 @@ pub fn run() {
             app.manage(vcs);
             app.manage(snapshot_policy);
             app.manage(lsp::LspState::default());
+            // Cheap to construct — the dictionary and lint group behind it are
+            // built on the first actual check.
+            app.manage(commands::grammar::init_engine(&handle));
 
             // Fonts are loaded lazily: the first workspace open (and, as a
             // safety net, the first compile) calls `EditorWorld::ensure_fonts_loading`,
@@ -225,6 +233,13 @@ pub fn run() {
             // bidirectional jump
             jump_from_click,
             jump_from_cursor,
+            // grammar checking
+            check_grammar,
+            get_grammar_config,
+            set_grammar_config,
+            get_grammar_rules,
+            add_grammar_dictionary_word,
+            set_grammar_file_enabled,
             // logs
             get_log_file_path,
             // language server (tinymist) bridge

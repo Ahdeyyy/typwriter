@@ -15,7 +15,10 @@ import type {
     PngExportConfig,
     SvgExportConfig,
     RestorePoint,
-    WorkspaceDiff
+    WorkspaceDiff,
+    GrammarConfig,
+    GrammarReport,
+    GrammarRuleInfo
 } from '$lib/types';
 
 const toErrString = (e: unknown): string => String(e);
@@ -453,6 +456,48 @@ export interface SystemFontFamily {
 export function listSystemFontFamilies() {
     return ResultAsync.fromPromise(
         invoke<SystemFontFamily[]>('list_system_font_families'),
+        toErrString
+    );
+}
+
+// ─── Grammar checking ─────────────────────────────────────────────────────────
+
+/** Check one file. `path` is workspace-relative; it picks the reader and
+ *  decides whether the file has been opted out. The first call builds Harper's
+ *  dictionary and lint set, so it is noticeably slower than the rest. */
+export function checkGrammar(path: string, text: string) {
+    return ResultAsync.fromPromise(
+        invoke<GrammarReport>('check_grammar', { path, text }),
+        toErrString
+    );
+}
+
+export function getGrammarConfig() {
+    return ResultAsync.fromPromise(invoke<GrammarConfig>('get_grammar_config'), toErrString);
+}
+
+export function setGrammarConfig(config: GrammarConfig) {
+    return ResultAsync.fromPromise(invoke<void>('set_grammar_config', { config }), toErrString);
+}
+
+/** The full rule catalog for the settings pane. Forces Harper's lint set to be
+ *  built if it hasn't been already. */
+export function getGrammarRules() {
+    return ResultAsync.fromPromise(invoke<GrammarRuleInfo[]>('get_grammar_rules'), toErrString);
+}
+
+/** Add a word to the user dictionary. Returns the updated config. */
+export function addGrammarDictionaryWord(word: string) {
+    return ResultAsync.fromPromise(
+        invoke<GrammarConfig>('add_grammar_dictionary_word', { word }),
+        toErrString
+    );
+}
+
+/** Turn checking on or off for a single file. Returns the updated config. */
+export function setGrammarFileEnabled(path: string, enabled: boolean) {
+    return ResultAsync.fromPromise(
+        invoke<GrammarConfig>('set_grammar_file_enabled', { path, enabled }),
         toErrString
     );
 }

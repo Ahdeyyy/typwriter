@@ -6,6 +6,7 @@ pub mod click;
 pub mod editor;
 pub mod export;
 pub mod format;
+pub mod grammar;
 pub mod logs;
 pub mod lsp;
 pub mod preview;

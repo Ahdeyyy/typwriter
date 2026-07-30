@@ -9,6 +9,7 @@
   import EditorPane from "$lib/components/editor/editor-pane.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
+  import { grammar } from "$lib/stores/grammar.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";
   import { settings } from "$lib/stores/settings.svelte";
@@ -114,6 +115,13 @@
 
   onMount(() => {
     diagnostics.init();
+    // The grammar store is loaded and kept in sync in +layout.svelte (every
+    // window needs it). What it can't reach from there are the open buffers,
+    // so this is where it learns what a config change has to re-check.
+    grammar.openBuffers = () =>
+      editor.tabs
+        .filter((tab) => tab.viewMode === "text" && !tab.isLoading)
+        .map((tab) => ({ relPath: tab.relPath, text: tab.content }));
     preview.init().catch((err) => logError("preview init failed:", err));
 
     onPreviewSourceJump(({ path, offset }) => {
@@ -165,6 +173,8 @@
   onDestroy(() => {
     lspClient.destroy();
     diagnostics.destroy();
+    grammar.openBuffers = null;
+    grammar.destroy();
     preview.destroy();
     popoutCloseUnlisten?.();
     popoutCloseUnlisten = null;

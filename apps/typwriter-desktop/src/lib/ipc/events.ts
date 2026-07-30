@@ -21,6 +21,7 @@ import type {
     PageUpdatedPayload,
     PageRemovedPayload,
     CompileStatePayload,
+    GrammarConfig,
     WorkspaceFilesChangedPayload
 } from '$lib/types';
 
@@ -138,6 +139,27 @@ export function onSettingsChanged<T>(handler: (payload: T) => void) {
 
 export function emitSettingsChanged<T>(payload: T) {
     return ResultAsync.fromPromise(emit('settings:changed', payload), toErrString);
+}
+
+// ─── Cross-window grammar sync ───────────────────────────────────────────────
+//
+// The grammar configuration is owned by the Rust engine, but every window keeps
+// its own GrammarStore mirror of it — and the Grammar settings pane lives in a
+// window of its own. Without a replay, turning the checker off in Settings
+// leaves the editor underlining against a config the user has already changed,
+// and a word added from the editor's quick fix never shows up in the Settings
+// list. The payload is the config the emitter just persisted; receivers apply
+// it locally and never re-emit, so there's no ping-pong.
+
+export function onGrammarConfigChanged(handler: (config: GrammarConfig) => void) {
+    return ResultAsync.fromPromise(
+        listen<GrammarConfig>('grammar:config-changed', (event) => handler(event.payload)),
+        toErrString
+    );
+}
+
+export function emitGrammarConfigChanged(config: GrammarConfig) {
+    return ResultAsync.fromPromise(emit('grammar:config-changed', config), toErrString);
 }
 
 // ─── Cross-window light/dark mode sync ───────────────────────────────────────
