@@ -73,6 +73,14 @@ export function importFiles(sources: string[], destDir: string) {
     return ResultAsync.fromPromise(invoke<void>('import_files', { sources, destDir }), toErrString);
 }
 
+/** Import an external drag-and-drop batch. `body` is the framed payload built
+ *  by `$lib/services/drop-import` and is passed as the *raw* IPC body — an
+ *  object argument would JSON-encode the file bytes as a number array.
+ *  Resolves to the workspace-relative paths that were written. */
+export function importDropped(body: Uint8Array) {
+    return ResultAsync.fromPromise(invoke<string[]>('import_dropped', body), toErrString);
+}
+
 export function getRecentWorkspaces(options: { includeThumbnails?: boolean } = {}) {
     return ResultAsync.fromPromise(
         invoke<RecentWorkspaceEntry[]>('get_recent_workspaces', {

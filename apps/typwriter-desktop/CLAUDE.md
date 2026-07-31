@@ -31,13 +31,13 @@ The Typst editor for desktop. Tauri 2 + SvelteKit (static adapter) + a Rust core
 - `lib/stores/` — Svelte 5 class-singleton stores (`workspace`, `editor`, `preview`, `diagnostics`, `grammar`, `editor-search`, `page`, `platform`, `settings`, `updater`). All `$state`/`$derived` lives inside a class; module-level `$state` exports lose reactivity.
 - `lib/keybindings/` — the rebindable-shortcut layer: `registry.ts` (command catalog + shipped keys), `keys.ts` (CodeMirror-style chord notation, DOM event matching, display formatting), `index.ts` (`keysFor` / `matchesCommand` / `shortcutLabel`, resolved against the user's overrides). Overrides live in `settings.keybindings`, so they persist and sync across windows like any other setting. Hard-coding a keystroke anywhere else is a bug.
 - `lib/ipc/` — `commands.ts` (thin wrappers around `invoke`) and `events.ts` (typed Tauri event listeners).
-- `lib/services/` — orchestration on top of IPC (`workspace-file-service`, `export-service`).
+- `lib/services/` — orchestration on top of IPC (`workspace-file-service`, `export-service`, `drop-import`).
 - `lib/typst-codemirror-lang/` — Typst syntax highlighting for CodeMirror. The parser is **hand-written TypeScript** in `lezer-typst/` (`parser.ts`, `scanner.ts`, `markup.ts`, `math.ts`, `code.ts`, …) built on `@lezer/lr` — there is no `typst.grammar` and no codegen step; edit the parser sources directly.
 - `lib/hooks/`, `lib/utils.ts`, `lib/async.ts`, `lib/logger.ts`, `lib/preview-url.ts`, `lib/paths.ts` — shared helpers.
 
 ### Tauri config
 
-- `src-tauri/tauri.conf.json` — windows, CSP, asset protocol scope.
+- `src-tauri/tauri.conf.json` — windows, CSP, asset protocol scope. `dragDropEnabled: false` is load-bearing: it leaves HTML5 drag-and-drop to the webview, which the file tree, the tab bar, and external file/folder drops all rely on. The cost is that a drop hands us `File` objects and no paths, so external imports ship the bytes over IPC (`lib/services/drop-import` → the `import_dropped` command).
 - `src-tauri/capabilities/` — `default.json` (main + preview windows) and `desktop.json` (e.g. updater).
 
 ## bun cheatsheet

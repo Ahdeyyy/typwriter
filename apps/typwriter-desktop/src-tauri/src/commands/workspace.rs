@@ -1,9 +1,10 @@
 use std::{collections::HashMap, fs, path::PathBuf, sync::Arc, time::Instant};
 
 use log::{error, info};
+use serde::Deserialize;
 use tauri::State;
 
-use crate::workspace::{FileTreeEntry, RecentWorkspaceEntry, WorkspaceState};
+use crate::workspace::{DroppedFile, FileTreeEntry, RecentWorkspaceEntry, WorkspaceState};
 
 #[tauri::command]
 pub fn open_folder(
@@ -236,6 +237,80 @@ pub fn import_files(
         ),
         Err(e) => error!(
             "import_files: err=\"{e}\" ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        ),
+    }
+    result
+}
+
+/// Header framed in front of an [`import_dropped`] payload.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DroppedBatchHeader {
+    /// Workspace-relative destination directory; `""` is the workspace root.
+    dest_dir: String,
+    files: Vec<DroppedFile>,
+}
+
+/// Import files (and folders) dropped onto the window from outside the app.
+///
+/// The webview only ever hands the frontend file *contents* for an external
+/// drag-and-drop — there is no path to copy from — so the whole drop arrives as
+/// a single raw IPC body framed as:
+///
+/// ```text
+/// [u32 LE header length][UTF-8 JSON header][file bytes, concatenated]
+/// ```
+///
+/// Raw framing keeps the bytes out of JSON (where they'd be a number array),
+/// and batching the whole drop into one call means one restore point and one
+/// pass at resolving name collisions across everything dropped.
+///
+/// Returns the workspace-relative path of every file written.
+#[tauri::command]
+pub fn import_dropped(
+    request: tauri::ipc::Request<'_>,
+    workspace: State<'_, Arc<WorkspaceState>>,
+) -> Result<Vec<String>, String> {
+    let t = Instant::now();
+    let tauri::ipc::InvokeBody::Raw(payload) = request.body() else {
+        let e = "import_dropped expects a raw request body".to_string();
+        error!("import_dropped: err=\"{e}\"");
+        return Err(e);
+    };
+
+    let header_end = payload
+        .get(..4)
+        .map(|len| u32::from_le_bytes([len[0], len[1], len[2], len[3]]) as usize)
+        .and_then(|header_len| 4usize.checked_add(header_len))
+        .filter(|end| *end <= payload.len())
+        .ok_or_else(|| {
+            let e = "Malformed drop payload: truncated header".to_string();
+            error!("import_dropped: err=\"{e}\"");
+            e
+        })?;
+
+    let header: DroppedBatchHeader =
+        serde_json::from_slice(&payload[4..header_end]).map_err(|e| {
+            let e = format!("Malformed drop header: {e}");
+            error!("import_dropped: err=\"{e}\"");
+            e
+        })?;
+
+    info!(
+        "import_dropped: dest_dir={:?} count={}",
+        header.dest_dir,
+        header.files.len()
+    );
+    let result = workspace.import_dropped(&header.dest_dir, &header.files, &payload[header_end..]);
+    match &result {
+        Ok(written) => info!(
+            "import_dropped: ok — {} file(s) ({:.1}ms)",
+            written.len(),
+            t.elapsed().as_secs_f64() * 1000.0
+        ),
+        Err(e) => error!(
+            "import_dropped: err=\"{e}\" ({:.1}ms)",
             t.elapsed().as_secs_f64() * 1000.0
         ),
     }

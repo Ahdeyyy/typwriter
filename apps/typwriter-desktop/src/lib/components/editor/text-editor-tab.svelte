@@ -48,6 +48,7 @@
     type Diagnostic as CMDiagnostic,
   } from "@codemirror/lint";
   import { inlineDiagnostics } from "$lib/codemirror/inline-diagnostics";
+  import { imageDrop } from "$lib/codemirror/image-drop";
   import {
     grammarLint,
     setGrammarLints,
@@ -487,6 +488,9 @@
       // Language extension chosen by file extension; null = plain text
       ...(langExt ? [langExt] : []),
       ...(isTypst ? [typstCommentDecorations, keymap.of(typstListKeymap)] : []),
+      // Dropping an image imports it and writes `#image(…)` — Typst-only,
+      // since that call means nothing in the other file types we open.
+      ...(isTypst ? [imageDrop()] : []),
       indentMarkersCompartment.of(indentMarkersExt()),
       // Custom Svelte search panel — provide an empty CM panel so the
       // search extension's state is initialized but its UI is suppressed.
