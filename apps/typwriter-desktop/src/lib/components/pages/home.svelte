@@ -2,24 +2,20 @@
   import { onMount } from "svelte";
   import { page } from "@/stores/page.svelte";
   import Button from "../ui/button/button.svelte";
-  import { getRecentWorkspaces, createWorkspace, removeRecentWorkspace, clearRecentWorkspaces, getLogFilePath } from "$lib/ipc/commands";
+  import { getRecentWorkspaces, createWorkspace, removeRecentWorkspace, clearRecentWorkspaces } from "$lib/ipc/commands";
   import type { RecentWorkspaceEntry } from "$lib/types";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { onboarding } from "$lib/stores/onboarding.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, BookOpen01Icon, Refresh01Icon, File01Icon, KeyboardIcon, Settings01Icon, Mortarboard01Icon } from "@hugeicons/core-free-icons";
-  import { openUrl, openPath } from "@tauri-apps/plugin-opener";
-  import { updater } from "$lib/stores/updater.svelte";
+  import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, Settings01Icon } from "@hugeicons/core-free-icons";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
-  import ModeSwitcher from "$lib/components/sidebar/mode-switcher.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import { openSettingsWindow } from "$lib/windows";
-  import { platform } from "$lib/stores/platform.svelte";
 
   let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
   let loading = $state(true);
@@ -164,21 +160,6 @@
     );
   }
 
-  async function handleOpenLogsFile() {
-    const result = await getLogFilePath();
-    if (result.isErr()) {
-      logError("Failed to resolve log file path:", result.error);
-      toast.error(`Failed to resolve log file path: ${result.error}`);
-      return;
-    }
-    try {
-      await openPath(result.value);
-    } catch (err) {
-      logError("Failed to open log file:", err);
-      toast.error(`Failed to open log file: ${err}`);
-    }
-  }
-
   function handleNewWorkspaceKeydown(e: KeyboardEvent) {
     if (e.key === "Enter") {
       handleCreateWorkspace();
@@ -191,12 +172,31 @@
 <div class="flex h-full w-full flex-col">
   <Titlebar variant="minimal" title="Typwriter" />
   <main class="relative flex min-h-0 flex-1 flex-col">
+    <!-- Everything that used to be a footer link (docs, tutorial, updates,
+         logs) now lives in the settings window, so this is the one entry point
+         left on the home screen — it can't move there too. -->
     <div class="absolute right-3 top-3 z-10">
-      <ModeSwitcher />
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="icon"
+              class="size-8"
+              aria-label="Settings"
+              onclick={() => openSettingsWindow()}
+            >
+              <HugeiconsIcon icon={Settings01Icon} class="size-4" />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content side="left">Settings</Tooltip.Content>
+      </Tooltip.Root>
     </div>
   <!-- Fill the viewport exactly (no page-level scroll) so the whole screen —
-       header, action buttons and footer links — always stays visible on short
-       laptops; only the recents list shrinks-and-scrolls internally. -->
+       header and action buttons — always stays visible on short laptops; only
+       the recents list shrinks-and-scrolls internally. -->
     <div class="flex h-full min-h-0 w-full flex-col items-center justify-center gap-5 p-4">
       {@render homeContent()}
     </div>
@@ -205,7 +205,6 @@
 </Tooltip.Provider>
 
 {#snippet homeContent()}
-  <!-- Recent workspaces -->
   <section class="flex min-h-0 w-full max-w-3xl flex-col">
     <div class="mb-4 flex shrink-0 items-center justify-between gap-3">
       <h2 class="text-sm font-medium text-muted-foreground">
@@ -250,7 +249,6 @@
                          class="group/card flex w-full flex-col overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:bg-accent disabled:pointer-events-none cursor-pointer disabled:opacity-50"
                          onclick={() => handleOpenRecent(entry.path)}
                        >
-                         <!-- Thumbnail -->
                          <div class="flex h-28 w-full items-center justify-center overflow-hidden bg-muted">
                            {#if entry.thumbnail}
                              <img
@@ -263,7 +261,6 @@
                            {/if}
                          </div>
 
-                         <!-- Details -->
                          <div class="min-w-0 px-3 py-2">
                            <p class="truncate text-sm font-medium text-foreground group-hover/card:text-accent-foreground">
                              {entry.name}
@@ -274,7 +271,6 @@
                          </div>
                        </button>
 
-                       <!-- Per-entry delete button -->
                        <button
                          class="absolute right-1.5 top-1.5 flex h-6 w-6 rounded-lg items-center justify-center bg-background text-muted-foreground opacity-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 group-hover:opacity-100 "
                          onclick={(e) => handleRemoveRecent(e, entry.path)}
@@ -291,7 +287,6 @@
   </section>
 
   <div class="flex gap-2">
-    <!-- New Workspace dialog -->
     <Dialog.Root bind:open={newWorkspaceOpen}>
       <Dialog.Trigger>
         {#snippet child({ props })}
@@ -311,7 +306,6 @@
         </Dialog.Header>
 
         <div class="flex flex-col gap-4 py-2">
-          <!-- Name input -->
           <div class="flex flex-col gap-1.5">
             <label for="ws-name" class="text-sm font-medium">Name</label>
             <Input
@@ -323,7 +317,6 @@
             />
           </div>
 
-          <!-- Location picker -->
           <div class="flex flex-col gap-1.5">
             <label for="ws-location" class="text-sm font-medium">Location</label>
             <div class="flex gap-2">
@@ -374,70 +367,4 @@
     </Button>
   </div>
 
-  <div class="flex flex-wrap items-center justify-center gap-1">
-    <Button
-      variant="link"
-      size="sm"
-      class="gap-1.5 text-muted-foreground cursor-pointer"
-      onclick={() => openUrl("https://typst.app/docs/")}
-    >
-      <HugeiconsIcon icon={BookOpen01Icon} class="size-3.5" />
-      Typst Docs
-    </Button>
-
-    <Button
-      variant="link"
-      size="sm"
-      class="gap-1.5 text-muted-foreground"
-      onclick={() => page.navigate("onboarding")}
-    >
-      <HugeiconsIcon icon={Mortarboard01Icon} class="size-3.5" />
-      Tutorial
-    </Button>
-
-    <Button
-      variant="link"
-      size="sm"
-      class="gap-1.5 text-muted-foreground"
-      onclick={() => updater.checkManual()}
-      disabled={updater.checking || updater.downloading}
-    >
-      <HugeiconsIcon icon={Refresh01Icon} class="size-3.5 {updater.checking ? 'animate-spin' : ''}" />
-      Check for Updates
-    </Button>
-
-    <Button
-      variant="link"
-      size="sm"
-      class="gap-1.5 text-muted-foreground"
-      onclick={handleOpenLogsFile}
-    >
-      <HugeiconsIcon icon={File01Icon} class="size-3.5" />
-      Open Logs File
-    </Button>
-
-    <Button
-      variant="link"
-      size="sm"
-      class="gap-1.5 text-muted-foreground"
-      onclick={() => page.navigate("keymaps")}
-    >
-      <HugeiconsIcon icon={KeyboardIcon} class="size-3.5" />
-      Keymaps
-    </Button>
-
-    <Button
-      variant="link"
-      size="sm"
-      class="gap-1.5 text-muted-foreground"
-      onclick={() => openSettingsWindow()}
-    >
-      <HugeiconsIcon icon={Settings01Icon} class="size-3.5" />
-      Settings
-    </Button>
-  </div>
-
-  {#if platform.appVersion}
-    <p class="text-xs text-muted-foreground/60">Typwriter v{platform.appVersion}</p>
-  {/if}
 {/snippet}

@@ -1,4 +1,4 @@
-// semantic-tokens-theme.ts — palette-driven CSS for tinymist semantic tokens.
+// Palette-driven CSS for tinymist semantic tokens.
 //
 // `semantic-tokens.ts` paints ranges with `cm-tok-<type>` / `cm-tokmod-<mod>`
 // classes (the `<type>`/`<mod>` names come straight from the server's token

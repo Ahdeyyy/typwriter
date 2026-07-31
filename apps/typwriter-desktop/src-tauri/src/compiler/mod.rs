@@ -1,5 +1,3 @@
-// compiler/mod.rs
-//
 // PreviewPipeline orchestrates the full compile -> diff -> render -> emit cycle.
 //
 // Only pages whose frame content actually changed between two consecutive

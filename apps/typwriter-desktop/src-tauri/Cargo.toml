@@ -1,6 +1,6 @@
 [package]
 name = "typwriter"
-version = "0.8.4"
+version = "0.8.5"
 description = "A typsetting app built on top of typst, with a desktop interface built using Tauri."
 authors = ["ade"]
 edition = "2021"
@@ -47,9 +47,20 @@ log = "0.4.29"
 png = "0.18"
 typstyle-core = "0.15"
 tauri-plugin-updater = "2"
+# `relaunch()` after an update is installed — the only thing this is used for.
+tauri-plugin-process = "2"
 thiserror = "2.0.18"
 # Versioning / restore-point system. Pure-Rust content-addressed store under
 # .typwriter/history/ inside each workspace — no gix dependency. zstd shrinks
 # blob storage; sha2 produces the content + snapshot ids.
 sha2 = "0.10"
 zstd = { version = "0.13", default-features = false }
+# Grammar / style checking. `concurrent` swaps harper's `Lrc` from `Rc` to
+# `Arc` so the dictionary and lint group can live in Tauri managed state.
+# Note: harper-core pulls `burn` + `burn-ndarray` (CPU only — no GPU backend)
+# for its POS tagger, which is the bulk of the added compile time.
+harper-core = { version = "2.7", features = ["concurrent"] }
+# Depended on directly (rather than through the `typst` facade) because
+# `grammar/typst_parser/` walks the AST, and this pin is what decouples our
+# grammar checker from harper's own typst support.
+typst-syntax = "0.15"

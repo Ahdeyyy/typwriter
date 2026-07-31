@@ -1,5 +1,3 @@
-// commands/format.rs
-//
 // Typst source formatting via `typstyle-core`. Mobile only needs to format the
 // document currently open in the editor (an in-memory buffer), so unlike the
 // desktop app there are no file/workspace-on-disk variants here:

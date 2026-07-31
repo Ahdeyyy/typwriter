@@ -15,7 +15,10 @@ import type {
     PngExportConfig,
     SvgExportConfig,
     RestorePoint,
-    WorkspaceDiff
+    WorkspaceDiff,
+    GrammarConfig,
+    GrammarReport,
+    GrammarRuleInfo
 } from '$lib/types';
 
 const toErrString = (e: unknown): string => String(e);
@@ -194,6 +197,26 @@ export function lspStop() {
     return ResultAsync.fromPromise(invoke<void>('lsp_stop'), toErrString);
 }
 
+/** Whether the `tinymist` CLI is installed, plus the Typst version it embeds
+ *  next to the one this app compiles with. */
+export interface LspAvailability {
+    available: boolean;
+    /** tinymist's own release version (e.g. `0.15.2`). */
+    version: string | null;
+    /** The Typst version tinymist was built against (e.g. `0.15.0`). */
+    typstVersion: string | null;
+    /** The Typst version this app compiles with. */
+    bundledTypstVersion: string;
+    /** `false` when the two Typst versions differ enough to change results;
+     *  `null` when tinymist didn't report one. */
+    typstCompatible: boolean | null;
+}
+
+/** Probe `PATH` for the tinymist CLI (runs `tinymist --version`). */
+export function lspProbe() {
+    return ResultAsync.fromPromise(invoke<LspAvailability>('lsp_probe'), toErrString);
+}
+
 // ─── Click / Jump ─────────────────────────────────────────────────────────────
 
 export function jumpFromClick(page: number, x: number, y: number) {
@@ -344,6 +367,11 @@ export function isFontsLoaded() {
     return ResultAsync.fromPromise(invoke<boolean>('is_fonts_loaded'), toErrString);
 }
 
+/** Version of the Typst compiler this build links against (e.g. `"0.15.1"`). */
+export function getTypstVersion() {
+    return ResultAsync.fromPromise(invoke<string>('get_typst_version'), toErrString);
+}
+
 // ─── Onboarding ─────────────────────────────────────────────────────────────────
 
 /** A single seed file for the onboarding workspace. */
@@ -412,6 +440,64 @@ export function setAppSettings(settings: AppSettings) {
 export function setTypstFontDirectories(dirs: string[]) {
     return ResultAsync.fromPromise(
         invoke<void>('set_typst_font_directories', { dirs }),
+        toErrString
+    );
+}
+
+/** A font family installed on the device, as reported by the OS font scan. */
+export interface SystemFontFamily {
+    name: string;
+    monospace: boolean;
+}
+
+/** Font families installed on this device, for the UI / editor font pickers.
+ *  The first call runs an OS font scan (cached in Rust afterwards), so it can
+ *  take a moment. */
+export function listSystemFontFamilies() {
+    return ResultAsync.fromPromise(
+        invoke<SystemFontFamily[]>('list_system_font_families'),
+        toErrString
+    );
+}
+
+// ─── Grammar checking ─────────────────────────────────────────────────────────
+
+/** Check one file. `path` is workspace-relative; it picks the reader and
+ *  decides whether the file has been opted out. The first call builds Harper's
+ *  dictionary and lint set, so it is noticeably slower than the rest. */
+export function checkGrammar(path: string, text: string) {
+    return ResultAsync.fromPromise(
+        invoke<GrammarReport>('check_grammar', { path, text }),
+        toErrString
+    );
+}
+
+export function getGrammarConfig() {
+    return ResultAsync.fromPromise(invoke<GrammarConfig>('get_grammar_config'), toErrString);
+}
+
+export function setGrammarConfig(config: GrammarConfig) {
+    return ResultAsync.fromPromise(invoke<void>('set_grammar_config', { config }), toErrString);
+}
+
+/** The full rule catalog for the settings pane. Forces Harper's lint set to be
+ *  built if it hasn't been already. */
+export function getGrammarRules() {
+    return ResultAsync.fromPromise(invoke<GrammarRuleInfo[]>('get_grammar_rules'), toErrString);
+}
+
+/** Add a word to the user dictionary. Returns the updated config. */
+export function addGrammarDictionaryWord(word: string) {
+    return ResultAsync.fromPromise(
+        invoke<GrammarConfig>('add_grammar_dictionary_word', { word }),
+        toErrString
+    );
+}
+
+/** Turn checking on or off for a single file. Returns the updated config. */
+export function setGrammarFileEnabled(path: string, enabled: boolean) {
+    return ResultAsync.fromPromise(
+        invoke<GrammarConfig>('set_grammar_file_enabled', { path, enabled }),
         toErrString
     );
 }

@@ -7,6 +7,8 @@ export interface WorkspaceMeta {
   name: string;
   path: string;
   lastOpenedMs: number | null;
+  /** App-managed entry (the Typst package store), not a user workspace. */
+  system: boolean;
 }
 
 export interface FileNode {

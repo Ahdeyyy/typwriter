@@ -17,7 +17,7 @@
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { app } from "$lib/stores/app.svelte";
   import { settings } from "$lib/stores/settings.svelte";
-  import { pickFontsDir, clearFontsDir } from "$lib/ipc/commands";
+  import { pickFontsDir, clearFontsDir, getFontsDir } from "$lib/ipc/commands";
 
   let pickingFonts = $state(false);
 
@@ -29,7 +29,7 @@
         pickingFonts = false;
         if (name === null) return; // cancelled
         settings.setFontsDir(name);
-        toast.success("Fonts folder set — restart the app to load the fonts");
+        toast.success("Fonts folder set — loading fonts in the background");
       },
       (e) => {
         pickingFonts = false;
@@ -42,7 +42,7 @@
     void clearFontsDir().match(
       () => {
         settings.setFontsDir(null);
-        toast.success("Fonts folder cleared — restart to apply");
+        toast.success("Fonts folder cleared");
       },
       (e) => toast.error(`Failed: ${e}`),
     );
@@ -51,6 +51,10 @@
   let version = $state("");
   onMount(() => {
     getVersion().then((v) => (version = v)).catch(() => {});
+    // The backend's persisted source is the truth for the fonts folder — sync
+    // the display so a stale/failed frontend store can never show the wrong
+    // state after a restart.
+    void getFontsDir().map((name) => settings.setFontsDir(name));
   });
 
   const themes = [
@@ -83,7 +87,6 @@
       </div>
       <ScrollArea class="flex-1">
         <div class="flex flex-col gap-6 p-4">
-          <!-- Theme -->
           <section class="flex flex-col gap-2">
             <span class="text-sm font-medium">Theme</span>
             <div class="grid grid-cols-3 gap-1">
@@ -99,7 +102,6 @@
             </div>
           </section>
 
-          <!-- Editor font size -->
           <section class="flex items-center justify-between">
             <span class="text-sm font-medium">Editor font size</span>
             <div class="flex items-center gap-2">
@@ -123,7 +125,6 @@
             </div>
           </section>
 
-          <!-- Line numbers -->
           <section class="flex items-center justify-between">
             <span class="text-sm font-medium">Line numbers</span>
             <Switch
@@ -132,7 +133,6 @@
             />
           </section>
 
-          <!-- Autosave -->
           <section class="flex flex-col gap-2">
             <span class="text-sm font-medium">Autosave delay</span>
             <div class="grid grid-cols-3 gap-1">
@@ -148,7 +148,6 @@
             </div>
           </section>
 
-          <!-- Preview sharpness -->
           <section class="flex flex-col gap-2">
             <span class="text-sm font-medium">Preview sharpness</span>
             <div class="grid grid-cols-3 gap-1">
@@ -164,15 +163,14 @@
             </div>
           </section>
 
-          <!-- Fonts folder (app-wide font source) -->
           <section class="flex flex-col gap-2">
             <div class="flex items-center gap-2">
               <Icon icon={TextFontIcon} class="text-muted-foreground size-4" />
               <span class="text-sm font-medium">Fonts folder</span>
             </div>
             <p class="text-muted-foreground text-xs">
-              An app-wide folder whose fonts are loaded into the preview. Applied on the next
-              app launch.
+              An app-wide folder whose fonts are loaded into the preview. Fonts load in the
+              background right after you pick a folder — no restart needed.
             </p>
             {#if settings.fontsDir}
               <div class="bg-muted/50 flex items-center gap-2 rounded-md px-2.5 py-1.5">
@@ -196,7 +194,6 @@
             </div>
           </section>
 
-          <!-- About -->
           <section class="flex flex-col gap-2 border-t pt-4">
             <div class="flex items-center justify-between">
               <span class="text-muted-foreground text-sm">Version</span>

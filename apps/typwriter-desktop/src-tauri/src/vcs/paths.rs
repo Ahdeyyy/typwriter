@@ -1,5 +1,3 @@
-// vcs/paths.rs
-//
 // All snapshot data lives under `<workspace>/.typwriter/history/`. Keeping
 // everything inside the workspace folder means snapshots travel with the
 // folder when the user syncs / backs up / moves it — no "orphan on rename"

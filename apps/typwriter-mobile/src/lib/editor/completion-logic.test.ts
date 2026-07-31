@@ -62,6 +62,15 @@ describe("autoTriggerApplies", () => {
     expect(autoTriggerApplies("some image")).toBe(true);
   });
 
+  test("keeps firing while typing an identifier after a sigil (no flicker)", () => {
+    // The single-char-after-sigil state used to clear the strip; these must
+    // all trigger so `#` → `#i` → `#im` stays continuously open.
+    expect(autoTriggerApplies("#i")).toBe(true);
+    expect(autoTriggerApplies("#im")).toBe(true);
+    expect(autoTriggerApplies("text @r")).toBe(true);
+    expect(autoTriggerApplies("dict.k")).toBe(true);
+  });
+
   test("declines on a 1-char word", () => {
     expect(autoTriggerApplies("a")).toBe(false);
   });

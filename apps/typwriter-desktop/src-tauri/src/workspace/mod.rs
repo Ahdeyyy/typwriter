@@ -1,13 +1,6 @@
-// workspace/mod.rs
-//
-// WorkspaceState owns:
-//   - the workspace root path
-//   - the active main .typ file
-//   - the current preview zoom/scale level
-//   - the live FS watcher (kept alive for the app lifetime)
-//
-// All file-system operations (create/delete/rename/move) funnel through here
-// so that the EditorWorld caches stay consistent.
+// WorkspaceState owns the root path, active main file, preview zoom, and the
+// live FS watcher. All file-system operations funnel through here so the
+// EditorWorld caches stay consistent.
 
 mod error;
 mod path;

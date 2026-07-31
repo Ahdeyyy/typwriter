@@ -1,5 +1,3 @@
-// world/mod.rs
-
 mod progress;
 pub use progress::TauriProgress;
 

@@ -1,7 +1,8 @@
-// lib.rs — application entry point and Tauri state setup.
+// Application entry point and Tauri state setup.
 
 mod commands;
 mod compiler;
+mod grammar;
 mod lsp;
 mod vcs;
 mod workspace;
@@ -18,7 +19,7 @@ use workspace::WorkspaceState;
 use world::EditorWorld;
 
 use commands::{
-    app::{is_fonts_loaded, prepare_onboarding_workspace},
+    app::{get_typst_version, is_fonts_loaded, prepare_onboarding_workspace},
     click::{jump_from_click, jump_from_cursor},
     editor::{
         discard_shadow, get_completions, get_definitions, get_tooltip, read_file, save_file,
@@ -29,12 +30,16 @@ use commands::{
         format_typst_cursor_virtual, format_typst_file, format_typst_source,
         format_workspace_typ_files,
     },
+    grammar::{
+        add_grammar_dictionary_word, check_grammar, get_grammar_config, get_grammar_rules,
+        set_grammar_config, set_grammar_file_enabled,
+    },
     logs::get_log_file_path,
-    lsp::{lsp_send, lsp_start, lsp_stop},
+    lsp::{lsp_probe, lsp_send, lsp_start, lsp_stop},
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     settings::{
-        get_app_settings, get_onboarding_completed, list_font_families, set_app_settings,
-        set_onboarding_completed, set_typst_font_directories,
+        get_app_settings, get_onboarding_completed, list_font_families, list_system_font_families,
+        set_app_settings, set_onboarding_completed, set_typst_font_directories,
     },
     vcs::{
         vcs_create_restore_point, vcs_current_id, vcs_diff_between, vcs_diff_vs_current,
@@ -51,6 +56,7 @@ use commands::{
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .register_uri_scheme_protocol("previewimg", |ctx, request| {
             // URL form on Windows: http://previewimg.localhost/{key}.png
             // URL form on macOS/Linux: previewimg://localhost/{key}.png
@@ -176,6 +182,9 @@ pub fn run() {
             app.manage(vcs);
             app.manage(snapshot_policy);
             app.manage(lsp::LspState::default());
+            // Cheap to construct — the dictionary and lint group behind it are
+            // built on the first actual check.
+            app.manage(commands::grammar::init_engine(&handle));
 
             // Fonts are loaded lazily: the first workspace open (and, as a
             // safety net, the first compile) calls `EditorWorld::ensure_fonts_loading`,
@@ -187,6 +196,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // app init
             is_fonts_loaded,
+            get_typst_version,
             prepare_onboarding_workspace,
             // workspace / file-system
             open_folder,
@@ -223,18 +233,27 @@ pub fn run() {
             // bidirectional jump
             jump_from_click,
             jump_from_cursor,
+            // grammar checking
+            check_grammar,
+            get_grammar_config,
+            set_grammar_config,
+            get_grammar_rules,
+            add_grammar_dictionary_word,
+            set_grammar_file_enabled,
             // logs
             get_log_file_path,
             // language server (tinymist) bridge
             lsp_start,
             lsp_send,
             lsp_stop,
+            lsp_probe,
             // settings
             get_app_settings,
             set_app_settings,
             get_onboarding_completed,
             set_onboarding_completed,
             list_font_families,
+            list_system_font_families,
             set_typst_font_directories,
             // export
             export_pdf,

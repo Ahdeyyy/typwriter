@@ -1,5 +1,3 @@
-// filetree-controller.svelte.ts
-//
 // Shared logic for the file tree component. `filetree.svelte` wires this
 // controller up and supplies its own rendering — context menu, create-flow,
 // toolbar.

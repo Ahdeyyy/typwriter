@@ -17,17 +17,18 @@ The Typst editor for desktop. Tauri 2 + SvelteKit (static adapter) + a Rust core
 - `world/` — `EditorWorld<R: Runtime>` implements `typst::World` + `typst_ide::IdeWorld`. Owns fonts, source files, and the lazily-fetched package index. Fonts load lazily: `ensure_fonts_loading` (called on workspace open, and by the compile worker as a safety net) kicks off the background font search once; the compile worker calls `wait_until_fonts_loaded` so it never renders against the empty fallback book. `progress.rs` emits package-download progress events to the frontend.
 - `compiler/` — `PreviewPipeline` (background worker), `compile.rs`, `render.rs`, `diff.rs`, `cache.rs`, `disk_cache.rs`. Renders pages and serves them through the `previewimg://` protocol keyed by content fingerprint. The compile worker blocks on `EditorWorld::wait_until_fonts_loaded` before its first compile (fonts load lazily). `disk_cache.rs` persists rendered PNGs **and** a `preview-manifest.json` (ordered page keys + main file) so `restore_preview` can paint a re-opened workspace's preview from disk immediately, before the recompile finishes; the pane pulls this via `sync_preview`/`emit_current_state` on mount.
 - `workspace/` — `WorkspaceState`, filesystem `watcher`, path helpers, recent-workspaces store.
-- `commands/` — Tauri commands, grouped by domain: `app`, `editor`, `workspace`, `preview`, `click` (bidirectional source↔preview jump), `export` (PDF/PNG/SVG/HTML), `format` (typstyle), `settings`, `logs`, `vcs` (restore points).
+- `commands/` — Tauri commands, grouped by domain: `app`, `editor`, `workspace`, `preview`, `click` (bidirectional source↔preview jump), `export` (PDF/PNG/SVG/HTML), `format` (typstyle), `grammar` (Harper), `settings`, `logs`, `vcs` (restore points).
 - `vcs/` — versioning / restore-point system: pure-Rust content-addressed store under `.typwriter/history/` in each workspace (sha2 ids, zstd blobs). `fs.rs` defines the `WorkingTreeFs` trait all workspace reads route through.
+- `grammar/` — Harper-backed grammar / style checking. `typst_parser/` is our own `harper_core::parsers::Parser` for Typst, written against the pinned `typst-syntax` (not `harper-typst`) so upgrading Typst never waits on an upstream release; `maskers.rs` reduces the structured formats Typst can import (JSON/YAML/TOML/CSV/XML/BibTeX) to their prose; `format.rs` maps a path to a reader (source code gets none); `engine.rs` owns the dictionary and lint config. The lint group is built lazily on the first check.
 
 ### Frontend (`src/`)
 
 - `routes/+page.svelte` — single-page entry; the actual screens live in `lib/components/pages/`.
 - `lib/components/pages/` — `home`, `workspace`, `settings`, `keymaps`, `preview-window`.
-- `lib/components/editor/` — CodeMirror tab bar, editor pane, diagnostics, search, Typst toolbar.
-- `lib/components/sidebar/` — Obsidian-style sidebar (file tree, preview pane, export dialog, mode switcher).
+- `lib/components/editor/` — CodeMirror tab bar, editor pane, diagnostics, grammar pane, search, Typst toolbar.
+- `lib/components/sidebar/` — Obsidian-style sidebar (file tree, preview pane, export dialog). Theme switching lives only in the settings pane (`lib/components/settings/mode-control.svelte`).
 - `lib/components/titlebar/` — custom window chrome.
-- `lib/stores/` — Svelte 5 class-singleton stores (`workspace`, `editor`, `preview`, `diagnostics`, `editor-search`, `page`, `platform`, `settings`, `updater`). All `$state`/`$derived` lives inside a class; module-level `$state` exports lose reactivity.
+- `lib/stores/` — Svelte 5 class-singleton stores (`workspace`, `editor`, `preview`, `diagnostics`, `grammar`, `editor-search`, `page`, `platform`, `settings`, `updater`). All `$state`/`$derived` lives inside a class; module-level `$state` exports lose reactivity.
 - `lib/ipc/` — `commands.ts` (thin wrappers around `invoke`) and `events.ts` (typed Tauri event listeners).
 - `lib/services/` — orchestration on top of IPC (`workspace-file-service`, `export-service`).
 - `lib/typst-codemirror-lang/` — Typst syntax highlighting for CodeMirror. The parser is **hand-written TypeScript** in `lezer-typst/` (`parser.ts`, `scanner.ts`, `markup.ts`, `math.ts`, `code.ts`, …) built on `@lezer/lr` — there is no `typst.grammar` and no codegen step; edit the parser sources directly.

@@ -1,5 +1,3 @@
-// workspace/watcher.rs
-//
 // Wraps the `notify` crate to watch the workspace root for changes that
 // originate outside the editor (external editors, version control checkouts,
 // asset pipeline output, etc.).

@@ -21,6 +21,7 @@ import type {
     PageUpdatedPayload,
     PageRemovedPayload,
     CompileStatePayload,
+    GrammarConfig,
     WorkspaceFilesChangedPayload
 } from '$lib/types';
 
@@ -138,6 +139,62 @@ export function onSettingsChanged<T>(handler: (payload: T) => void) {
 
 export function emitSettingsChanged<T>(payload: T) {
     return ResultAsync.fromPromise(emit('settings:changed', payload), toErrString);
+}
+
+// ─── Cross-window grammar sync ───────────────────────────────────────────────
+//
+// The grammar configuration is owned by the Rust engine, but every window keeps
+// its own GrammarStore mirror of it — and the Grammar settings pane lives in a
+// window of its own. Without a replay, turning the checker off in Settings
+// leaves the editor underlining against a config the user has already changed,
+// and a word added from the editor's quick fix never shows up in the Settings
+// list. The payload is the config the emitter just persisted; receivers apply
+// it locally and never re-emit, so there's no ping-pong.
+
+export function onGrammarConfigChanged(handler: (config: GrammarConfig) => void) {
+    return ResultAsync.fromPromise(
+        listen<GrammarConfig>('grammar:config-changed', (event) => handler(event.payload)),
+        toErrString
+    );
+}
+
+export function emitGrammarConfigChanged(config: GrammarConfig) {
+    return ResultAsync.fromPromise(emit('grammar:config-changed', config), toErrString);
+}
+
+// ─── Cross-window light/dark mode sync ───────────────────────────────────────
+//
+// The mode lives in mode-watcher's own per-window state, so a change made from
+// Settings › Appearance has to be replayed into the other windows. Listeners
+// apply the mode locally and never re-emit, so there's no ping-pong.
+
+export type ModePreference = 'light' | 'dark' | 'system';
+
+export function onAppModeChanged(handler: (mode: ModePreference) => void) {
+    return ResultAsync.fromPromise(
+        listen<ModePreference>('app:mode-changed', (event) => handler(event.payload)),
+        toErrString
+    );
+}
+
+export function emitAppModeChanged(mode: ModePreference) {
+    return ResultAsync.fromPromise(emit('app:mode-changed', mode), toErrString);
+}
+
+// ─── Settings window → main window: show the onboarding tutorial ─────────────
+//
+// The tutorial is a page in the *main* window, so the Settings window can only
+// ask for it. Delegated the same way as `vcs:restore-file-request`.
+
+export function onShowTutorialRequest(handler: () => void) {
+    return ResultAsync.fromPromise(
+        listen<void>('app:show-tutorial', () => handler()),
+        toErrString
+    );
+}
+
+export function emitShowTutorialRequest() {
+    return ResultAsync.fromPromise(emit('app:show-tutorial', undefined), toErrString);
 }
 
 // ─── Cross-window vcs diff window sync ───────────────────────────────────────

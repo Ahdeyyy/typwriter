@@ -1,5 +1,3 @@
-// vcs/diff.rs
-//
 // Diff a snapshot against the working tree, or against another snapshot.
 // Each file entry carries both before/after blob contents; the actual
 // line-diff is computed in JS by `@pierre/diff` on the frontend.

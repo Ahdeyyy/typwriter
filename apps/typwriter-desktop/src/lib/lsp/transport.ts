@@ -1,5 +1,4 @@
-// transport.ts — adapts the Rust `lsp://*` event bridge to a
-// `@codemirror/lsp-client` `Transport`.
+// Adapts the Rust `lsp://*` event bridge to a `@codemirror/lsp-client` `Transport`.
 //
 // The Rust side emits each de-framed server message as an `lsp://message`
 // Tauri event and accepts outbound messages via the `lsp_send` command.

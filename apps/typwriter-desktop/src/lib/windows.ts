@@ -1,4 +1,4 @@
-// windows.ts — child webview windows (settings, version diff).
+// Child webview windows (settings, version diff).
 //
 // Each helper follows the preview-popout pattern in workspace.svelte: reuse
 // the window if it already exists (focus + optionally re-seed its state via

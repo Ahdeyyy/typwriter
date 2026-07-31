@@ -45,6 +45,8 @@ class WorkspaceStore {
         : [info.lastFile ?? info.mainFile].filter((f): f is string => !!f);
       const active = info.activeTab ?? info.lastFile ?? info.mainFile ?? initialTabs[0] ?? null;
       editor.seedTabs(initialTabs, active);
+      // The preview must never show a previous workspace's pages.
+      compileStore.onWorkspaceOpened(!!info.mainFile);
       return info;
     });
   }

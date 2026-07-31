@@ -1,5 +1,3 @@
-// compiler/compile.rs
-//
 // Thin wrapper around typst::compile() that converts the raw diag types into
 // JSON-serialisable forms we can send over Tauri IPC.
 

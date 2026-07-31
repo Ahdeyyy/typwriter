@@ -1,5 +1,3 @@
-// compiler/disk_cache.rs
-//
 // A persistent, on-disk mirror of `PageCache`. Rendered PNGs are written to
 // `<workspace_root>/.typwriter/cache/previews/<fp_hex>-<zoom>.png` so that:
 //

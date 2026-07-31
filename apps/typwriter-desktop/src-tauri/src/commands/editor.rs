@@ -1,10 +1,5 @@
-// commands/editor.rs
-//
-// Tauri commands for the editor pane:
-//   - update_file_content  (shadow write → disk flush)
-//   - get_completions      (typst-ide autocomplete)
-//   - get_tooltip          (typst-ide tooltip)
-//   - get_definitions      (typst-ide go-to-definition)
+// Tauri commands for the editor pane (shadow writes, completions, tooltips,
+// go-to-definition), backed by typst-ide.
 
 use std::{path::Path, sync::Arc, time::Instant};
 

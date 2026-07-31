@@ -1,5 +1,3 @@
-// workspace.rs
-//
 // Managed-storage workspaces (v1): each workspace is a direct subdirectory of
 // `<documents>/Typwriter/`, reachable with plain `std::fs`. SAF-picked external
 // folders are a later phase (08-saf-and-polish.md). All file IO is funnelled
@@ -22,6 +20,8 @@ pub struct WorkspaceMeta {
     pub name: String,
     pub path: String,
     pub last_opened_ms: Option<i64>,
+    /// App-managed entry (the Typst package store), not a user workspace.
+    pub system: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]

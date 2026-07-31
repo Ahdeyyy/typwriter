@@ -1,5 +1,3 @@
-// vcs/shared.ts
-//
 // Display helpers + thin store wrappers for the history pane, kept out
 // of the component so ledger.svelte only contains layout. Selection /
 // restore semantics:

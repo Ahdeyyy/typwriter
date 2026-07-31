@@ -212,3 +212,71 @@ export interface FileDiff {
 export interface WorkspaceDiff {
     files: FileDiff[];
 }
+
+// ─── Grammar checking ─────────────────────────────────────────────────────────
+
+export type GrammarDialect =
+    | 'american'
+    | 'british'
+    | 'canadian'
+    | 'australian'
+    | 'indian';
+
+/** Which reader a file gets. `data` formats are masked down to the prose-bearing
+ *  parts before checking; unlisted file types aren't checked at all. */
+export type CheckedFormat =
+    | 'typst'
+    | 'markdown'
+    | 'plain-text'
+    | { data: 'json' | 'yaml' | 'toml' | 'csv' | 'xml' | 'bib-tex' };
+
+/** Why a report came back empty. */
+export type GrammarSkipReason = 'disabled' | 'file-disabled' | 'unsupported-format';
+
+/** A suggested edit. Offsets come from the owning lint. */
+export type GrammarSuggestion =
+    | { type: 'replace'; text: string }
+    | { type: 'insert-after'; text: string }
+    | { type: 'remove' };
+
+export interface GrammarLint {
+    /** Start offset in UTF-16 code units — directly usable as a CodeMirror position. */
+    start: number;
+    end: number;
+    /** The text the lint covers. */
+    text: string;
+    message: string;
+    /** Harper's category: `spelling`, `grammar`, `style`, … */
+    kind: string;
+    /** The rule that fired, so the UI can offer to disable it. */
+    rule: string;
+    /** Lower is more important. */
+    priority: number;
+    suggestions: GrammarSuggestion[];
+}
+
+export interface GrammarReport {
+    filePath: string;
+    /** `null` when the file's type has no reader. */
+    format: CheckedFormat | null;
+    /** Display name of `format` ("Typst", "BibTeX", …). */
+    formatLabel: string | null;
+    skipped: GrammarSkipReason | null;
+    lints: GrammarLint[];
+}
+
+export interface GrammarConfig {
+    enabled: boolean;
+    dialect: GrammarDialect;
+    /** Per-rule overrides keyed by Harper's rule name; absent = curated default. */
+    rules: Record<string, boolean>;
+    userDictionary: string[];
+    /** Workspace-relative paths the user has opted out. */
+    disabledFiles: string[];
+}
+
+export interface GrammarRuleInfo {
+    name: string;
+    description: string;
+    enabled: boolean;
+}

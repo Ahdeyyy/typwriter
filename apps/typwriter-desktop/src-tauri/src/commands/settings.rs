@@ -1,8 +1,11 @@
-// commands/settings.rs
-//
 // App settings persisted via tauri-plugin-store.
 
-use std::{path::PathBuf, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, OnceLock},
+    time::Instant,
+};
 
 use log::{error, info, warn};
 use parking_lot::RwLock;
@@ -10,7 +13,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_store::StoreExt;
+use typst::text::FontFlags;
 
+use crate::grammar::engine::GrammarConfig;
 use crate::vcs::SnapshotPolicy;
 use crate::world::EditorWorld;
 
@@ -22,6 +27,10 @@ const KEY_UI_SETTINGS: &str = "settings.ui";
 /// Settings page round-tripping the whole struct through `set_app_settings`
 /// can't accidentally reset it via serde defaults.
 const KEY_ONBOARDING_COMPLETED: &str = "settings.onboarding_completed";
+/// Grammar-checker configuration. Kept out of `AppSettings` for the same
+/// reason as the key above — it's a nested structure with rule maps and word
+/// lists, and `set_app_settings` round-trips the whole struct.
+const KEY_GRAMMAR: &str = "settings.grammar";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -131,6 +140,30 @@ fn write_font_directories(handle: &AppHandle, dirs: &[String]) {
     }
 }
 
+/// Read the persisted grammar configuration, falling back to defaults.
+pub fn read_grammar_config(handle: &AppHandle) -> GrammarConfig {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        warn!("settings: could not open {STORE_FILE}");
+        return GrammarConfig::default();
+    };
+    store
+        .get(KEY_GRAMMAR)
+        .and_then(|v: JsonValue| serde_json::from_value(v).ok())
+        .unwrap_or_default()
+}
+
+/// Persist the grammar configuration.
+pub fn write_grammar_config(handle: &AppHandle, config: &GrammarConfig) {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        warn!("settings: could not open {STORE_FILE}");
+        return;
+    };
+    store.set(KEY_GRAMMAR, json!(config));
+    if let Err(err) = store.save() {
+        warn!("settings: failed to save grammar config: {err}");
+    }
+}
+
 /// Load font directories from disk on startup.
 pub fn load_font_directories(handle: &AppHandle) -> Vec<PathBuf> {
     read_settings(handle)
@@ -230,4 +263,82 @@ pub fn set_typst_font_directories(
 #[tauri::command]
 pub fn list_font_families(world: State<'_, Arc<EditorWorld>>) -> Vec<String> {
     world.font_families()
+}
+
+// ─── System fonts (UI / editor font pickers) ────────────────────────────────
+
+/// A font family installed on this machine.
+///
+/// These are the families the WebView can resolve by name, so the settings
+/// pickers can offer them alongside the bundled ones. `monospace` mirrors the
+/// font's own flag and lets the editor picker put real code fonts up front.
+#[derive(Serialize, Clone, Debug)]
+pub struct SystemFontFamily {
+    pub name: String,
+    pub monospace: bool,
+}
+
+/// Scanning the OS font directories takes long enough to notice, and the
+/// installed set doesn't change while the app runs, so do it once.
+static SYSTEM_FONT_FAMILIES: OnceLock<Vec<SystemFontFamily>> = OnceLock::new();
+
+fn scan_system_font_families() -> Vec<SystemFontFamily> {
+    let t = Instant::now();
+
+    // A corrupt font file can panic the fontdb scan. The picker is cosmetic —
+    // fall back to "no system fonts" rather than taking the app down.
+    let scanned = std::panic::catch_unwind(|| {
+        // A family counts as monospace when any of its faces is: the flag
+        // lives on the face, and italic/bold cuts sometimes omit it.
+        let mut families: HashMap<String, bool> = HashMap::new();
+        for (_, info) in typst_kit::fonts::system() {
+            if info.family.trim().is_empty() {
+                continue;
+            }
+            let monospace = info.flags.contains(FontFlags::MONOSPACE);
+            families
+                .entry(info.family)
+                .and_modify(|m| *m |= monospace)
+                .or_insert(monospace);
+        }
+        families
+    });
+
+    let Ok(families) = scanned else {
+        error!("scan_system_font_families: system font scan panicked");
+        return Vec::new();
+    };
+
+    let mut out: Vec<SystemFontFamily> = families
+        .into_iter()
+        .map(|(name, monospace)| SystemFontFamily { name, monospace })
+        .collect();
+    out.sort_unstable_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    info!(
+        "scan_system_font_families: {} families ({:.1}ms)",
+        out.len(),
+        t.elapsed().as_secs_f64() * 1000.0
+    );
+    out
+}
+
+/// Font families installed on the device, for the UI / editor font pickers.
+///
+/// Deliberately separate from [`list_font_families`], which reports everything
+/// Typst compiles with (embedded fonts and user font directories included).
+/// Those aren't registered with the WebView, so offering them here would let
+/// the user pick a font the interface can't actually render.
+#[tauri::command]
+pub async fn list_system_font_families() -> Vec<SystemFontFamily> {
+    if let Some(cached) = SYSTEM_FONT_FAMILIES.get() {
+        return cached.clone();
+    }
+    let scanned = tauri::async_runtime::spawn_blocking(scan_system_font_families)
+        .await
+        .unwrap_or_else(|err| {
+            error!("list_system_font_families: scan task failed: {err}");
+            Vec::new()
+        });
+    SYSTEM_FONT_FAMILIES.get_or_init(|| scanned).clone()
 }

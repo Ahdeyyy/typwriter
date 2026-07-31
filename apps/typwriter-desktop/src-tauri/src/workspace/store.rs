@@ -1,5 +1,3 @@
-// workspace/store.rs
-//
 // Persistence helpers using tauri-plugin-store.
 //
 // Stored in a single JSON file ("app_data.json") located in the Tauri app

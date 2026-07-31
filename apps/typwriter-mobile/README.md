@@ -42,9 +42,29 @@ After `bun tauri android init`, verify
 - `<uses-permission android:name="android.permission.INTERNET" />` — Typst package
   downloads.
 - `android:windowSoftInputMode="adjustResize"` on the main activity — so the soft
-  keyboard resizes the webview and the editor toolbar docks above it. `gen/android/` is
-  generated; if `adjustResize` is missing, **re-apply it after every `android init`**.
-  This is the one accepted hand-touch of the generated project.
+  keyboard resizes the webview and the editor toolbar docks above it. Tauri's template
+  does **not** set this; `gen/android/` is generated, so it must be **re-applied after
+  every `android init`**. CI does it in the "Patch AndroidManifest" step of
+  `.github/workflows/android.yml`; local dev builds need the hand-edit.
+
+## App icons (`bun tauri icon`)
+
+The source image is `app-icon.png` at the app root. **Order matters:**
+`tauri icon` writes Android launcher icons into
+`src-tauri/gen/android/app/src/main/res/` only when that project already exists —
+otherwise it drops them in `src-tauri/icons/android/`, a staging copy that
+*nothing* consumes. Since `src-tauri/gen/` is not committed and `android init`
+scaffolds the project with the default Tauri icons, regenerating them is part of
+every fresh Android build:
+
+```bash
+bun tauri android init      # or: any command that creates src-tauri/gen/android
+bun tauri icon app-icon.png # now lands in gen/android/.../res
+```
+
+Running `tauri icon` before init only refreshes the desktop icons and
+`src-tauri/icons/android/` — the APK still ships the default Tauri icon. CI does
+this in the "Generate app icons" step of `.github/workflows/android.yml`.
 
 ## IPC contract
 

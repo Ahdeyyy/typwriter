@@ -1,5 +1,3 @@
-// vcs/store.rs
-//
 // Low-level read/write for the snapshot store. Everything goes through
 // `WorkingTreeFs`. Snapshots and objects share a single trait surface and
 // never touch the filesystem directly.

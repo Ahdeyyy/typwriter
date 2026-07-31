@@ -1,5 +1,3 @@
-// commands/click.rs
-//
 // Bidirectional jump commands between the editor and the preview pane.
 //
 // Preview → Editor:

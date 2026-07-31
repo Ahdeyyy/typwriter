@@ -15,7 +15,6 @@
   }
   let { onclose }: Props = $props();
 
-  // Group all diagnostics by file_path
   const grouped = $derived.by(() => {
     const map = new Map<string, { errors: SerializedDiagnostic[]; warnings: SerializedDiagnostic[] }>();
 
@@ -66,7 +65,6 @@
 </script>
 
 <div class="flex h-full flex-col border-t border-border bg-background">
-  <!-- Header -->
   <div class="flex h-8 shrink-0 items-center justify-between border-b border-border px-3">
     <div class="flex items-center gap-2">
       <span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Problems</span>
@@ -86,14 +84,12 @@
     </Button>
   </div>
 
-  <!-- Body -->
   <ScrollArea.Root class="flex-1 min-h-0">
     {#if totalCount === 0}
       <p class="py-8 text-center text-sm text-muted-foreground select-none">No problems detected.</p>
     {:else}
       <div class="py-1">
         {#each grouped as [filePath, { errors, warnings }]}
-          <!-- File group header -->
           <div class="flex items-center gap-2 px-3 py-1 sticky top-0 bg-background/95 backdrop-blur-sm z-10 min-w-0">
             <Tooltip.Root>
               <Tooltip.Trigger class="truncate text-xs font-medium text-foreground shrink-0 max-w-[40%]">{basename(filePath)}</Tooltip.Trigger>
@@ -106,7 +102,6 @@
             <span class="ml-auto shrink-0 tabular-nums text-xs text-muted-foreground">{errors.length + warnings.length}</span>
           </div>
 
-          <!-- Errors -->
           {#each errors as diag}
             <button
               class="group flex w-full items-start gap-2 rounded-none px-6 py-1.5 text-left text-sm font-normal hover:bg-muted hover:text-foreground {diag.range ? 'cursor-pointer' : 'cursor-default'}"
@@ -129,7 +124,6 @@
             </button>
           {/each}
 
-          <!-- Warnings -->
           {#each warnings as diag}
             <button
               class="group flex w-full items-start gap-2 rounded-none px-6 py-1.5 text-left text-sm font-normal hover:bg-muted hover:text-foreground {diag.range ? 'cursor-pointer' : 'cursor-default'}"

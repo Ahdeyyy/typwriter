@@ -1,5 +1,3 @@
-// compiler/cache.rs
-//
 // A bounded LRU cache for already-rendered pages. Keys are
 // `(PageFingerprint, ZoomBucket)`: a 128-bit hash of the frame content paired
 // with the rasterization scale (zoom * 1000, rounded). Two requirements drive
