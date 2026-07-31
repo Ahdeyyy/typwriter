@@ -1,7 +1,11 @@
 // Tauri commands for the editor pane (shadow writes, completions, tooltips,
 // go-to-definition), backed by typst-ide.
 
-use std::{path::Path, sync::Arc, time::Instant};
+use std::{
+    path::Path,
+    sync::Arc,
+    time::{Instant, SystemTime},
+};
 
 use ecow::EcoString;
 use log::{debug, error, info, warn};
@@ -129,6 +133,21 @@ pub enum JumpResponse {
     },
 }
 
+/// What the filesystem knows about a file Typwriter can't render itself.
+/// Every field is optional: metadata reads fail on broken links, revoked
+/// permissions, and (for `created`) filesystems that simply don't record it.
+#[derive(Serialize)]
+pub struct FileMeta {
+    /// Size on disk, in bytes.
+    pub size: Option<u64>,
+    /// Last modification time, in milliseconds since the Unix epoch.
+    pub modified: Option<i64>,
+    /// Creation time, in milliseconds since the Unix epoch.
+    pub created: Option<i64>,
+    /// Whether the file is marked read-only.
+    pub readonly: Option<bool>,
+}
+
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FileContentResponse {
@@ -139,7 +158,37 @@ pub enum FileContentResponse {
         path: String,
         mime: String,
     },
-    Unsupported,
+    /// Nothing we can display — the tab shows a file-info card built from
+    /// [`FileMeta`] instead, so opening a PDF or a zip still tells the user
+    /// something about what they clicked.
+    Unsupported {
+        meta: FileMeta,
+    },
+}
+
+/// Read the metadata behind a file-info card. Never fails: a file we can't
+/// stat still gets a card, just an emptier one.
+fn file_meta(path: &Path) -> FileMeta {
+    let Ok(md) = std::fs::metadata(path) else {
+        return FileMeta {
+            size: None,
+            modified: None,
+            created: None,
+            readonly: None,
+        };
+    };
+    FileMeta {
+        size: Some(md.len()),
+        modified: md.modified().ok().and_then(unix_millis),
+        created: md.created().ok().and_then(unix_millis),
+        readonly: Some(md.permissions().readonly()),
+    }
+}
+
+fn unix_millis(time: SystemTime) -> Option<i64> {
+    time.duration_since(SystemTime::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_millis() as i64)
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -295,7 +344,46 @@ pub fn read_file(
         "read_file: ok unsupported ext ext={ext:?} ({:.1}ms)",
         t.elapsed().as_secs_f64() * 1000.0
     );
-    Ok(FileContentResponse::Unsupported)
+    Ok(FileContentResponse::Unsupported {
+        meta: file_meta(abs),
+    })
+}
+
+/// Show a workspace file in the OS file manager (Explorer / Finder / the
+/// desktop's default), selected.
+///
+/// Handing a path to the system shell is a capability, so the workspace root —
+/// not the caller — decides what's reachable: the path is resolved through
+/// [`WorkspaceState::resolve_any`], which rejects anything outside the open
+/// workspace. That's also why this lives in Rust rather than calling the
+/// opener plugin from the frontend, where the permission scope would have to be
+/// widened to every path on disk.
+#[tauri::command]
+pub fn reveal_file_in_manager(
+    path: String,
+    workspace: State<'_, Arc<WorkspaceState>>,
+) -> Result<(), String> {
+    let abs = workspace.resolve_any(&path)?;
+    info!("reveal_file_in_manager: abs={abs:?}");
+    tauri_plugin_opener::reveal_item_in_dir(&abs).map_err(|e| {
+        error!("reveal_file_in_manager: failed abs={abs:?} err=\"{e}\"");
+        e.to_string()
+    })
+}
+
+/// Open a workspace file in whatever application the OS associates with it.
+/// Same workspace-root guard as [`reveal_file_in_manager`].
+#[tauri::command]
+pub fn open_file_externally(
+    path: String,
+    workspace: State<'_, Arc<WorkspaceState>>,
+) -> Result<(), String> {
+    let abs = workspace.resolve_any(&path)?;
+    info!("open_file_externally: abs={abs:?}");
+    tauri_plugin_opener::open_path(&abs, None::<&str>).map_err(|e| {
+        error!("open_file_externally: failed abs={abs:?} err=\"{e}\"");
+        e.to_string()
+    })
 }
 
 /// Called on every keystroke.  Writes to the in-memory shadow buffer so the

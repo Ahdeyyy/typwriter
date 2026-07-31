@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { FileCodeIcon, BlockedIcon } from "@hugeicons/core-free-icons";
+  import { FileCodeIcon } from "@hugeicons/core-free-icons";
   import TabBar from "$lib/components/editor/tab-bar.svelte";
   import TextEditorTab from "$lib/components/editor/text-editor-tab.svelte";
+  import FileInfoTab from "$lib/components/editor/file-info-tab.svelte";
   import SearchPanel from "$lib/components/editor/search-panel.svelte";
   import TypstToolbar from "$lib/components/editor/typst-toolbar.svelte";
   import { editor } from "$lib/stores/editor.svelte";
@@ -59,11 +60,7 @@
       </div>
 
     {:else if editor.activeTab.viewMode === "unsupported"}
-      <div class="flex h-full flex-col items-center justify-center gap-2 select-none text-muted-foreground">
-        <HugeiconsIcon icon={BlockedIcon} class="size-10 opacity-30" />
-        <span class="text-sm">Binary format — preview not available</span>
-        <span class="text-xs opacity-50 max-w-xs truncate">{editor.activeTab.relPath}</span>
-      </div>
+      <FileInfoTab tab={editor.activeTab} />
 
     {:else}
       <div class="relative h-full w-full overflow-hidden">

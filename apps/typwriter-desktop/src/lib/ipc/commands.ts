@@ -120,6 +120,17 @@ export function readFile(path: string) {
     return ResultAsync.fromPromise(invoke<FileContentResponse>('read_file', { path }), toErrString);
 }
 
+/** Select the file in the OS file manager. Rust rejects paths outside the
+ *  open workspace. */
+export function revealFileInManager(path: string) {
+    return ResultAsync.fromPromise(invoke<void>('reveal_file_in_manager', { path }), toErrString);
+}
+
+/** Hand the file to whichever app the OS associates with it. */
+export function openFileExternally(path: string) {
+    return ResultAsync.fromPromise(invoke<void>('open_file_externally', { path }), toErrString);
+}
+
 export function updateFileContent(path: string, content: string) {
     return ResultAsync.fromPromise(
         invoke<void>('update_file_content', { path, content }),

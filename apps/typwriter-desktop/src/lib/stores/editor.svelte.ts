@@ -9,7 +9,7 @@ import {
     triggerPreview,
     updateFileContent,
 } from '$lib/ipc/commands';
-import type { CompileReason } from '$lib/types';
+import type { CompileReason, FileMeta } from '$lib/types';
 import { workspace } from './workspace.svelte';
 import { settings } from './settings.svelte';
 import { grammar } from './grammar.svelte';
@@ -32,6 +32,10 @@ export interface TabInfo {
     isEditable: boolean;
     content: string;
     imageSrc: string | null;
+    /** Filesystem details for an `unsupported` tab — the file-info card it
+     *  shows in place of the editor is built from these. Null for every other
+     *  view mode. */
+    fileMeta: FileMeta | null;
     hasUnsavedChanges: boolean;
     isLoading: boolean;
 }
@@ -190,6 +194,7 @@ class EditorStore {
             isEditable: false,
             content: '',
             imageSrc: null,
+            fileMeta: null,
             hasUnsavedChanges: false,
             isLoading: true,
         };
@@ -237,6 +242,7 @@ class EditorStore {
                 liveTab.isEditable = true;
                 liveTab.content = res.content;
                 liveTab.imageSrc = null;
+                liveTab.fileMeta = null;
                 void grammar.checkNow(liveTab.relPath, res.content);
                 break;
             case 'image':
@@ -244,12 +250,14 @@ class EditorStore {
                 liveTab.isEditable = false;
                 liveTab.imageSrc = imageAssetSrc(res.path);
                 liveTab.content = '';
+                liveTab.fileMeta = null;
                 break;
             case 'unsupported':
                 liveTab.viewMode = 'unsupported';
                 liveTab.isEditable = false;
                 liveTab.content = '';
                 liveTab.imageSrc = null;
+                liveTab.fileMeta = res.meta;
                 break;
         }
 
@@ -472,14 +480,19 @@ class EditorStore {
                     logError('reloadAllTabsFromDisk: discardShadow:', err)
                 );
             }
-            if (tab.viewMode === 'unsupported') {
-                continue;
-            }
-
             const response = await readFile(tab.absPath);
             if (response.isErr()) {
                 // File is gone (e.g. restore deleted it). Close the tab.
                 await this.closeTab(tab.id, { flush: false });
+                continue;
+            }
+
+            if (tab.viewMode === 'unsupported') {
+                // Nothing to re-render, but the info card's size/timestamps
+                // describe the file the restore just rewrote.
+                if (response.value.type === 'unsupported') {
+                    tab.fileMeta = response.value.meta;
+                }
                 continue;
             }
 

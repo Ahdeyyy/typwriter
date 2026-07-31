@@ -378,6 +378,22 @@ impl WorkspaceState {
             .map_err(|e| e.to_string())
     }
 
+    /// Resolve a path the frontend supplied — absolute or workspace-relative —
+    /// to an absolute path inside the workspace. Unlike [`Self::resolve`] this
+    /// accepts an already-absolute path (the editor tracks tabs by absolute
+    /// path), but still refuses anything that escapes the root.
+    pub fn resolve_any(&self, path: &str) -> Result<PathBuf, String> {
+        let root = self.root.read().clone().ok_or("No workspace open")?;
+        let candidate = PathBuf::from(path);
+        if candidate.is_absolute() {
+            WorkspacePath::from_absolute_inside(&root, candidate)
+        } else {
+            WorkspacePath::resolve(&root, path)
+        }
+        .map(WorkspacePath::into_path_buf)
+        .map_err(|e| e.to_string())
+    }
+
     /// Filesystem accessor for the current workspace root. Every structural
     /// file op routes its disk work through this [`WorkingTreeFs`].
     fn working_fs(&self) -> Result<Box<dyn WorkingTreeFs>, String> {
