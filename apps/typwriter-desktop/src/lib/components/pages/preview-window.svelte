@@ -4,6 +4,7 @@
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { preview } from "$lib/stores/preview.svelte";
+  import { matchesCommand } from "$lib/keybindings";
   import { logError } from "$lib/logger";
   import { toast } from "svelte-sonner";
 
@@ -23,7 +24,7 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && preview.presentationMode) {
+    if (preview.presentationMode && matchesCommand(e, "preview.exitPresentation")) {
       preview
         .togglePresentationMode()
         .catch((err) => logError("preview exit presentation failed:", err));

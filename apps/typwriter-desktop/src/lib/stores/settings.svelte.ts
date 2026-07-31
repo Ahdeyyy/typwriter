@@ -13,6 +13,7 @@ import {
     setTypstFontDirectories,
 } from '$lib/ipc/commands';
 import { emitSettingsChanged } from '$lib/ipc/events';
+import { commandById, normalizeKeybindings } from '$lib/keybindings/registry';
 import { logError } from '$lib/logger';
 
 const LS_KEY = 'typwriter:settings:v1';
@@ -138,6 +139,12 @@ export interface PersistedSettings {
     snapshotRetentionMaxCount: number;
     /** Maximum age, in days, for *auto* snapshots. `0` = unlimited. */
     snapshotRetentionMaxDays: number;
+
+    /** Keyboard shortcut overrides, keyed by command id (see
+     *  `$lib/keybindings/registry`). Only commands the user actually changed
+     *  appear here — everything else resolves to the shipped default, so
+     *  revising a default later still reaches users who never touched it. */
+    keybindings: Record<string, string[]>;
 }
 
 /** Payload broadcast to every window when settings change anywhere. The
@@ -181,6 +188,8 @@ const DEFAULTS: PersistedSettings = {
     autoSnapshotMinIntervalSeconds: 0,
     snapshotRetentionMaxCount: 0,
     snapshotRetentionMaxDays: 0,
+
+    keybindings: {},
 };
 
 /** Ranges for the numeric formatter options. `commands::format::
@@ -208,6 +217,7 @@ function normalizeSettings(value: Partial<PersistedSettings>): PersistedSettings
         ...settings,
         lightTheme: isThemeId(settings.lightTheme) ? settings.lightTheme : DEFAULTS.lightTheme,
         darkTheme: isThemeId(settings.darkTheme) ? settings.darkTheme : DEFAULTS.darkTheme,
+        keybindings: normalizeKeybindings(settings.keybindings),
     };
 }
 
@@ -267,6 +277,8 @@ class SettingsStore {
     snapshotRetentionMaxCount = $state(INITIAL.snapshotRetentionMaxCount);
     snapshotRetentionMaxDays = $state(INITIAL.snapshotRetentionMaxDays);
 
+    keybindings = $state<Record<string, string[]>>(INITIAL.keybindings);
+
     fontDirectories = $state<string[]>([]);
     fontsReloading = $state(false);
 
@@ -306,6 +318,7 @@ class SettingsStore {
                     autoSnapshotMinIntervalSeconds: s.auto_snapshot_min_interval_seconds,
                     snapshotRetentionMaxCount: s.snapshot_retention_max_count,
                     snapshotRetentionMaxDays: s.snapshot_retention_max_days,
+                    keybindings: normalizeKeybindings(s.keybindings),
                 };
                 const nextSettings = INITIAL_LOCAL.hasSettings
                     ? { ...rustSettings, ...INITIAL }
@@ -349,6 +362,9 @@ class SettingsStore {
             autoSnapshotMinIntervalSeconds: this.autoSnapshotMinIntervalSeconds,
             snapshotRetentionMaxCount: this.snapshotRetentionMaxCount,
             snapshotRetentionMaxDays: this.snapshotRetentionMaxDays,
+            // Snapshot the map: `$state` hands back a proxy, and this object is
+            // JSON-stringified, emitted to other windows, and sent to Rust.
+            keybindings: $state.snapshot(this.keybindings),
         };
     }
 
@@ -394,6 +410,7 @@ class SettingsStore {
             0,
             Math.min(3650, Math.round(settings.snapshotRetentionMaxDays)),
         );
+        this.keybindings = normalizeKeybindings(settings.keybindings);
     }
 
     private persistLocal(): void {
@@ -447,6 +464,7 @@ class SettingsStore {
             auto_snapshot_min_interval_seconds: current.autoSnapshotMinIntervalSeconds,
             snapshot_retention_max_count: current.snapshotRetentionMaxCount,
             snapshot_retention_max_days: current.snapshotRetentionMaxDays,
+            keybindings: current.keybindings,
         }).mapErr((err) => {
             logError('settings.persist setAppSettings failed:', err);
             return err;
@@ -597,6 +615,43 @@ class SettingsStore {
         this.persist();
     }
 
+    // ── Keyboard shortcuts ───────────────────────────────────────────────
+    //
+    // Stored as *overrides*: a command bound back to its shipped default drops
+    // out of the map. Every mutation goes through `persist()`, so a rebind made
+    // in the settings window reaches the editor windows on the next event loop
+    // turn — no restart, no re-open.
+
+    /** Rebind a command. An empty list unbinds it outright. */
+    setKeybinding(commandId: string, keys: string[]) {
+        if (!commandById(commandId)) return;
+        // Canonicalizes and de-dupes; yields `undefined` when the result is the
+        // command's own default, which is stored as "no override" rather than
+        // as a copy of the default.
+        const normalized = normalizeKeybindings({ [commandId]: keys })[commandId];
+        const next = { ...$state.snapshot(this.keybindings) };
+        if (normalized === undefined) delete next[commandId];
+        else next[commandId] = normalized;
+        this.keybindings = next;
+        this.persist();
+    }
+
+    /** Restore one command to its shipped keys. */
+    resetKeybinding(commandId: string) {
+        if (!(commandId in this.keybindings)) return;
+        const next = { ...$state.snapshot(this.keybindings) };
+        delete next[commandId];
+        this.keybindings = next;
+        this.persist();
+    }
+
+    /** Restore every shortcut to its shipped keys. */
+    resetAllKeybindings() {
+        if (Object.keys(this.keybindings).length === 0) return;
+        this.keybindings = {};
+        this.persist();
+    }
+
     resetToDefaults() {
         this.uiFontFamily = DEFAULTS.uiFontFamily;
         this.editorFontFamily = DEFAULTS.editorFontFamily;
@@ -626,6 +681,7 @@ class SettingsStore {
         this.autoSnapshotMinIntervalSeconds = DEFAULTS.autoSnapshotMinIntervalSeconds;
         this.snapshotRetentionMaxCount = DEFAULTS.snapshotRetentionMaxCount;
         this.snapshotRetentionMaxDays = DEFAULTS.snapshotRetentionMaxDays;
+        this.keybindings = { ...DEFAULTS.keybindings };
         this.persist();
     }
 

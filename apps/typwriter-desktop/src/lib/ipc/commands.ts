@@ -433,6 +433,9 @@ export interface AppSettings {
     auto_snapshot_min_interval_seconds: number;
     snapshot_retention_max_count: number;
     snapshot_retention_max_days: number;
+    /** Shortcut overrides, keyed by command id. Rust only stores these — the
+     *  frontend owns what they mean (see `$lib/keybindings/registry`). */
+    keybindings: Record<string, string[]>;
 }
 
 export function getAppSettings() {

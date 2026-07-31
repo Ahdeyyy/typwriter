@@ -82,6 +82,13 @@ pub struct AppSettings {
     pub snapshot_retention_max_count: u32,
     /// Maximum age, in days, for *auto* snapshots. `0` = unlimited.
     pub snapshot_retention_max_days: u32,
+
+    /// Keyboard shortcut overrides, keyed by frontend command id (e.g.
+    /// `editor.save` → `["Mod-s"]`). Rust only persists them; the command
+    /// catalog and the chord notation live in the frontend
+    /// (`src/lib/keybindings/`). Only commands the user actually rebound are
+    /// present, so revising a default still reaches everyone who left it alone.
+    pub keybindings: HashMap<String, Vec<String>>,
 }
 
 impl Default for AppSettings {
@@ -120,6 +127,8 @@ impl Default for AppSettings {
             auto_snapshot_min_interval_seconds: 0,
             snapshot_retention_max_count: 0,
             snapshot_retention_max_days: 0,
+
+            keybindings: HashMap::new(),
         }
     }
 }

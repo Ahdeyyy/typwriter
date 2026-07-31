@@ -23,7 +23,14 @@
   import { untrack } from "svelte";
   import { mode, systemPrefersMode } from "mode-watcher";
 
-  import { typst, light, dark, typstKeymap } from "$lib/typst-codemirror-lang";
+  import {
+    typst,
+    light,
+    dark,
+    typstListKeymap,
+    typstFormatCommands,
+  } from "$lib/typst-codemirror-lang";
+  import { keysFor } from "$lib/keybindings";
   import { settings } from "$lib/stores/settings.svelte";
 
   /**
@@ -99,7 +106,15 @@
           fontCompartment.of(fontExtension()),
           typst({ codeLanguages: resolveCodeLanguage }),
           // No line-number gutter — the tutorial editor is deliberately bare.
-          keymap.of(typstKeymap),
+          // Formatting keys come from the user's keymap (read once, at
+          // construction: the tutorial is short and this editor has no
+          // compartment plumbing).
+          keymap.of([
+            ...Object.entries(typstFormatCommands).flatMap(([id, run]) =>
+              keysFor(id).map((key) => ({ key, run })),
+            ),
+            ...typstListKeymap,
+          ]),
           keymap.of([
             ...defaultKeymap,
             ...historyKeymap,

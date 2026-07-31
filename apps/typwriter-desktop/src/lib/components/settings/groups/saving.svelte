@@ -4,15 +4,21 @@
   import SettingRow from "../setting-row.svelte";
   import SliderControl from "../slider-control.svelte";
   import { settings } from "$lib/stores/settings.svelte";
+  import { shortcutLabel } from "$lib/keybindings";
 
   const delayReadout = $derived(
     `${(settings.autoSaveDelayMs / 1000).toFixed(settings.autoSaveDelayMs % 1000 === 0 ? 0 : 2)}s`,
   );
+
+  // Follows whatever "Save current file" is bound to in the Keymaps pane.
+  const saveShortcut = $derived(shortcutLabel("editor.save"));
 </script>
 
 <SettingGroup
   title="Saving"
-  description="Save edits to disk after you stop typing. Disable auto-save to require a manual save (Ctrl+S)."
+  description="Save edits to disk after you stop typing. Disable auto-save to require a manual save{saveShortcut
+    ? ` (${saveShortcut})`
+    : ''}."
 >
   <div class="flex flex-col gap-3">
     <SettingRow
