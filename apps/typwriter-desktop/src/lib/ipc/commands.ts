@@ -422,6 +422,12 @@ export interface AppSettings {
     auto_save_enabled: boolean;
     auto_save_delay_ms: number;
     format_before_save: boolean;
+    format_tab_spaces: number;
+    format_max_width: number;
+    format_blank_lines_upper_bound: number;
+    format_collapse_markup_spaces: boolean;
+    format_reorder_import_items: boolean;
+    format_wrap_text: boolean;
     auto_snapshot_on_save: boolean;
     auto_snapshot_on_compile: boolean;
     auto_snapshot_min_interval_seconds: number;

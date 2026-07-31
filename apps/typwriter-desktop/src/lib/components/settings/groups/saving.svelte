@@ -49,7 +49,8 @@
 
     <SettingRow label title="Format before saving">
       {#snippet description()}
-        Run typstyle on <code>.typ</code> files immediately before each save.
+        Run typstyle on <code>.typ</code> files immediately before each save,
+        using the options under Formatting.
       {/snippet}
       {#snippet control()}
         <Switch

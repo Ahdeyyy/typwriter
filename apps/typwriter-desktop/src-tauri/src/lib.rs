@@ -176,11 +176,19 @@ pub fn run() {
                 commands::settings::snapshot_policy_from_handle(&handle),
             ));
 
+            // Same deal for the formatter: seeded from the persisted prefs and
+            // refreshed on every `set_app_settings`, so every format command
+            // reads the user's current typstyle options.
+            let formatter_config: commands::format::FormatterConfig = Arc::new(RwLock::new(
+                commands::settings::formatter_config_from_handle(&handle),
+            ));
+
             app.manage(world.clone());
             app.manage(pipeline);
             app.manage(workspace);
             app.manage(vcs);
             app.manage(snapshot_policy);
+            app.manage(formatter_config);
             app.manage(lsp::LspState::default());
             // Cheap to construct — the dictionary and lint group behind it are
             // built on the first actual check.

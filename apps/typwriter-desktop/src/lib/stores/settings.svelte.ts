@@ -119,6 +119,16 @@ export interface PersistedSettings {
     autoSaveDelayMs: number;
     formatBeforeSave: boolean;
 
+    // Formatter (typstyle). Mirrors typstyle's own Config; the Rust side keeps
+    // a live copy of these so a change here applies to the next format in the
+    // editor without a restart.
+    formatTabSpaces: number;
+    formatMaxWidth: number;
+    formatBlankLinesUpperBound: number;
+    formatCollapseMarkupSpaces: boolean;
+    formatReorderImportItems: boolean;
+    formatWrapText: boolean;
+
     // Auto-snapshot (version control)
     autoSnapshotOnSave: boolean;
     autoSnapshotOnCompile: boolean;
@@ -158,12 +168,33 @@ const DEFAULTS: PersistedSettings = {
     autoSaveDelayMs: 1500,
     formatBeforeSave: false,
 
+    // typstyle's own defaults.
+    formatTabSpaces: 2,
+    formatMaxWidth: 80,
+    formatBlankLinesUpperBound: 1,
+    formatCollapseMarkupSpaces: false,
+    formatReorderImportItems: true,
+    formatWrapText: false,
+
     autoSnapshotOnSave: true,
     autoSnapshotOnCompile: true,
     autoSnapshotMinIntervalSeconds: 0,
     snapshotRetentionMaxCount: 0,
     snapshotRetentionMaxDays: 0,
 };
+
+/** Ranges for the numeric formatter options. `commands::format::
+ *  formatter_config_from_settings` clamps to the same bounds — keep them in
+ *  step, and drive the settings sliders from here. */
+export const FORMAT_LIMITS = {
+    tabSpaces: { min: 1, max: 8 },
+    maxWidth: { min: 20, max: 240 },
+    blankLines: { min: 0, max: 8 },
+} as const;
+
+function clampInt(value: number, { min, max }: { min: number; max: number }): number {
+    return Math.max(min, Math.min(max, Math.round(value)));
+}
 
 const THEME_IDS = new Set<ThemeId>(THEMES.map((theme) => theme.id));
 
@@ -223,6 +254,13 @@ class SettingsStore {
     autoSaveDelayMs = $state(INITIAL.autoSaveDelayMs);
     formatBeforeSave = $state(INITIAL.formatBeforeSave);
 
+    formatTabSpaces = $state(INITIAL.formatTabSpaces);
+    formatMaxWidth = $state(INITIAL.formatMaxWidth);
+    formatBlankLinesUpperBound = $state(INITIAL.formatBlankLinesUpperBound);
+    formatCollapseMarkupSpaces = $state(INITIAL.formatCollapseMarkupSpaces);
+    formatReorderImportItems = $state(INITIAL.formatReorderImportItems);
+    formatWrapText = $state(INITIAL.formatWrapText);
+
     autoSnapshotOnSave = $state(INITIAL.autoSnapshotOnSave);
     autoSnapshotOnCompile = $state(INITIAL.autoSnapshotOnCompile);
     autoSnapshotMinIntervalSeconds = $state(INITIAL.autoSnapshotMinIntervalSeconds);
@@ -257,6 +295,12 @@ class SettingsStore {
                     autoSaveEnabled: s.auto_save_enabled,
                     autoSaveDelayMs: s.auto_save_delay_ms,
                     formatBeforeSave: s.format_before_save,
+                    formatTabSpaces: s.format_tab_spaces,
+                    formatMaxWidth: s.format_max_width,
+                    formatBlankLinesUpperBound: s.format_blank_lines_upper_bound,
+                    formatCollapseMarkupSpaces: s.format_collapse_markup_spaces,
+                    formatReorderImportItems: s.format_reorder_import_items,
+                    formatWrapText: s.format_wrap_text,
                     autoSnapshotOnSave: s.auto_snapshot_on_save,
                     autoSnapshotOnCompile: s.auto_snapshot_on_compile,
                     autoSnapshotMinIntervalSeconds: s.auto_snapshot_min_interval_seconds,
@@ -294,6 +338,12 @@ class SettingsStore {
             autoSaveEnabled: this.autoSaveEnabled,
             autoSaveDelayMs: this.autoSaveDelayMs,
             formatBeforeSave: this.formatBeforeSave,
+            formatTabSpaces: this.formatTabSpaces,
+            formatMaxWidth: this.formatMaxWidth,
+            formatBlankLinesUpperBound: this.formatBlankLinesUpperBound,
+            formatCollapseMarkupSpaces: this.formatCollapseMarkupSpaces,
+            formatReorderImportItems: this.formatReorderImportItems,
+            formatWrapText: this.formatWrapText,
             autoSnapshotOnSave: this.autoSnapshotOnSave,
             autoSnapshotOnCompile: this.autoSnapshotOnCompile,
             autoSnapshotMinIntervalSeconds: this.autoSnapshotMinIntervalSeconds,
@@ -321,6 +371,15 @@ class SettingsStore {
         this.autoSaveEnabled = settings.autoSaveEnabled;
         this.autoSaveDelayMs = Math.max(250, Math.min(60_000, Math.round(settings.autoSaveDelayMs)));
         this.formatBeforeSave = settings.formatBeforeSave;
+        this.formatTabSpaces = clampInt(settings.formatTabSpaces, FORMAT_LIMITS.tabSpaces);
+        this.formatMaxWidth = clampInt(settings.formatMaxWidth, FORMAT_LIMITS.maxWidth);
+        this.formatBlankLinesUpperBound = clampInt(
+            settings.formatBlankLinesUpperBound,
+            FORMAT_LIMITS.blankLines,
+        );
+        this.formatCollapseMarkupSpaces = settings.formatCollapseMarkupSpaces;
+        this.formatReorderImportItems = settings.formatReorderImportItems;
+        this.formatWrapText = settings.formatWrapText;
         this.autoSnapshotOnSave = settings.autoSnapshotOnSave;
         this.autoSnapshotOnCompile = settings.autoSnapshotOnCompile;
         this.autoSnapshotMinIntervalSeconds = Math.max(
@@ -377,6 +436,12 @@ class SettingsStore {
             auto_save_enabled: current.autoSaveEnabled,
             auto_save_delay_ms: current.autoSaveDelayMs,
             format_before_save: current.formatBeforeSave,
+            format_tab_spaces: current.formatTabSpaces,
+            format_max_width: current.formatMaxWidth,
+            format_blank_lines_upper_bound: current.formatBlankLinesUpperBound,
+            format_collapse_markup_spaces: current.formatCollapseMarkupSpaces,
+            format_reorder_import_items: current.formatReorderImportItems,
+            format_wrap_text: current.formatWrapText,
             auto_snapshot_on_save: current.autoSnapshotOnSave,
             auto_snapshot_on_compile: current.autoSnapshotOnCompile,
             auto_snapshot_min_interval_seconds: current.autoSnapshotMinIntervalSeconds,
@@ -473,6 +538,40 @@ class SettingsStore {
         this.persist();
     }
 
+    // Formatter options. Every one of these ends up in `set_app_settings`,
+    // which swaps the Rust-side typstyle config in place — the next format in
+    // any open window uses the new value.
+
+    setFormatTabSpaces(value: number) {
+        this.formatTabSpaces = clampInt(value, FORMAT_LIMITS.tabSpaces);
+        this.persist();
+    }
+
+    setFormatMaxWidth(value: number) {
+        this.formatMaxWidth = clampInt(value, FORMAT_LIMITS.maxWidth);
+        this.persist();
+    }
+
+    setFormatBlankLinesUpperBound(value: number) {
+        this.formatBlankLinesUpperBound = clampInt(value, FORMAT_LIMITS.blankLines);
+        this.persist();
+    }
+
+    setFormatCollapseMarkupSpaces(value: boolean) {
+        this.formatCollapseMarkupSpaces = value;
+        this.persist();
+    }
+
+    setFormatReorderImportItems(value: boolean) {
+        this.formatReorderImportItems = value;
+        this.persist();
+    }
+
+    setFormatWrapText(value: boolean) {
+        this.formatWrapText = value;
+        this.persist();
+    }
+
     setAutoSnapshotOnSave(value: boolean) {
         this.autoSnapshotOnSave = value;
         this.persist();
@@ -516,6 +615,12 @@ class SettingsStore {
         this.autoSaveEnabled = DEFAULTS.autoSaveEnabled;
         this.autoSaveDelayMs = DEFAULTS.autoSaveDelayMs;
         this.formatBeforeSave = DEFAULTS.formatBeforeSave;
+        this.formatTabSpaces = DEFAULTS.formatTabSpaces;
+        this.formatMaxWidth = DEFAULTS.formatMaxWidth;
+        this.formatBlankLinesUpperBound = DEFAULTS.formatBlankLinesUpperBound;
+        this.formatCollapseMarkupSpaces = DEFAULTS.formatCollapseMarkupSpaces;
+        this.formatReorderImportItems = DEFAULTS.formatReorderImportItems;
+        this.formatWrapText = DEFAULTS.formatWrapText;
         this.autoSnapshotOnSave = DEFAULTS.autoSnapshotOnSave;
         this.autoSnapshotOnCompile = DEFAULTS.autoSnapshotOnCompile;
         this.autoSnapshotMinIntervalSeconds = DEFAULTS.autoSnapshotMinIntervalSeconds;
