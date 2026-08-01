@@ -562,9 +562,9 @@
         // Line-number gutter — give the digits breathing room from the
         // content and a muted tone so they don't compete with the code.
         ".cm-lineNumbers .cm-gutterElement": {
-          padding: "0 0.3rem 0 0.1rem",
+          padding: "0 0.4rem",
           minWidth: "1em",
-          textAlign: "right",
+          textAlign: "center",
         },
         ".cm-foldGutter .cm-gutterElement": {
           padding: "0 0.1rem",
