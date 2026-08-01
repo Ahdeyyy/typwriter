@@ -40,11 +40,21 @@ export type JumpResponse =
     | { type: 'url'; url: string }
     | { type: 'position'; page: number; x: number; y: number };
 
+/** Filesystem metadata for a file the editor can't render. Every field is
+ *  optional — a stat can fail, and not every filesystem records a birth time.
+ *  Timestamps are milliseconds since the Unix epoch. */
+export interface FileMeta {
+    size: number | null;
+    modified: number | null;
+    created: number | null;
+    readonly: boolean | null;
+}
+
 /** Internally-tagged union (discriminant: `type`). */
 export type FileContentResponse =
     | { type: 'text'; content: string }
     | { type: 'image'; path: string; mime: string }
-    | { type: 'unsupported' };
+    | { type: 'unsupported'; meta: FileMeta };
 
 // ─── Click / Jump ─────────────────────────────────────────────────────────────
 

@@ -20,5 +20,7 @@ export {
   insertTable,
   computeFormatState,
   typstKeymap,
+  typstListKeymap,
+  typstFormatCommands,
 } from "./commands"
 export type { FormatState } from "./commands"

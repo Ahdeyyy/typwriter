@@ -21,6 +21,7 @@ import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
 import { editor } from './editor.svelte';
 import { preview } from './preview.svelte';
 import { importFilesToWorkspace } from '$lib/services/workspace-file-service';
+import { importDroppedFiles, type DroppedFile } from '$lib/services/drop-import';
 import { normalize, basename, dirname } from '$lib/paths';
 import { SerialQueue } from '$lib/async';
 
@@ -439,6 +440,20 @@ class WorkspaceStore {
         if (refreshResult.isErr()) {
             throw new Error(refreshResult.error);
         }
+    }
+
+    /** Copy files dropped from outside the app into `destDir` (`''` = the
+     *  workspace root). Resolves to the workspace-relative paths written —
+     *  a name that collided with an existing entry lands under a suffixed one. */
+    async importDroppedAction(destDir: string, files: DroppedFile[]): Promise<string[]> {
+        if (!this.rootPath) throw new Error('No workspace open');
+        const written = await importDroppedFiles(normalize(destDir), files);
+
+        const refreshResult = await this.refreshTree();
+        if (refreshResult.isErr()) {
+            throw new Error(refreshResult.error);
+        }
+        return written;
     }
 
     toggleFolder(path: string): void {

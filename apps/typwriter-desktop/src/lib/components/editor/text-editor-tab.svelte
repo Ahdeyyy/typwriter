@@ -48,6 +48,7 @@
     type Diagnostic as CMDiagnostic,
   } from "@codemirror/lint";
   import { inlineDiagnostics } from "$lib/codemirror/inline-diagnostics";
+  import { imageDrop } from "$lib/codemirror/image-drop";
   import {
     grammarLint,
     setGrammarLints,
@@ -63,8 +64,10 @@
     darkHighlightStyle,
     typstSpellcheck,
     typstCommentDecorations,
-    typstKeymap,
+    typstListKeymap,
+    typstFormatCommands,
   } from "$lib/typst-codemirror-lang";
+  import { keysFor } from "$lib/keybindings";
   import { lspClient } from "$lib/lsp/client.svelte";
   import { semanticTokenHighlighter } from "$lib/lsp/semantic-tokens";
   import { Compartment } from "@codemirror/state";
@@ -99,6 +102,8 @@
   const tabSizeCompartment = new Compartment();
   // Lezer syntax highlighting (swapped off per-file once tinymist paints tokens).
   const highlightCompartment = new Compartment();
+  // User-configurable shortcuts — reconfigured when the keymap settings change.
+  const keybindingsCompartment = new Compartment();
   // Typst language service: either the tinymist plugin or the typst-ide fallback.
   const lspCompartment = new Compartment();
 
@@ -398,6 +403,48 @@
     }
   }
 
+  // Every shortcut the user can rebind, resolved through the keymap settings.
+  // One CodeMirror binding per chord — a command may answer to several.
+  function configurableKeymap(tabId: string) {
+    const tab = editor.tabs.find((t) => t.id === tabId);
+    const isTypst = (tab?.relPath ?? tabId).endsWith(".typ");
+
+    const commands: Record<string, (view: EditorView) => boolean> = {
+      "editor.save": () => {
+        editor.saveTabById(tabId).mapErr((err) => logError("save error:", err));
+        return true;
+      },
+      "editor.format": (view) => {
+        const cursor = view.state.selection.main.head;
+        editor
+          .formatTabById(tabId, cursor)
+          .mapErr((err) => logError("format error:", err));
+        return true;
+      },
+      "editor.find": () => {
+        editorSearch.toggleFindPanel();
+        return true;
+      },
+      "editor.replace": () => {
+        editorSearch.toggleReplacePanel();
+        return true;
+      },
+      // Falls through when the panel is closed, so Escape keeps its other
+      // meanings (dismissing completions, leaving a snippet field).
+      "editor.closeSearch": () => {
+        if (!editorSearch.open) return false;
+        editorSearch.closePanel();
+        return true;
+      },
+      ...(isTypst ? typstFormatCommands : {}),
+    };
+
+    const bindings = Object.entries(commands).flatMap(([id, run]) =>
+      keysFor(id).map((key) => ({ key, run })),
+    );
+    return keymap.of(bindings);
+  }
+
   function makeExtensions(tabId: string) {
     const tab = editor.tabs.find((t) => t.id === tabId);
     const relPath = tab?.relPath ?? tabId;
@@ -440,7 +487,10 @@
       fontCompartment.of(fontExtension()),
       // Language extension chosen by file extension; null = plain text
       ...(langExt ? [langExt] : []),
-      ...(isTypst ? [typstCommentDecorations, keymap.of(typstKeymap)] : []),
+      ...(isTypst ? [typstCommentDecorations, keymap.of(typstListKeymap)] : []),
+      // Dropping an image imports it and writes `#image(…)` — Typst-only,
+      // since that call means nothing in the other file types we open.
+      ...(isTypst ? [imageDrop()] : []),
       indentMarkersCompartment.of(indentMarkersExt()),
       // Custom Svelte search panel — provide an empty CM panel so the
       // search extension's state is initialized but its UI is suppressed.
@@ -452,60 +502,16 @@
           return { dom };
         },
       }),
-      // Search bindings BEFORE vscodeKeymap so they take precedence over
-      // vscodeKeymap's built-in Mod-f (openSearchPanel) handler.
-      keymap.of([
-        {
-          key: "Mod-f",
-          run: () => {
-            editorSearch.toggleFindPanel();
-            return true;
-          },
-        },
-        {
-          key: "Mod-h",
-          run: () => {
-            editorSearch.toggleReplacePanel();
-            return true;
-          },
-        },
-        {
-          key: "Escape",
-          run: () => {
-            if (editorSearch.open) {
-              editorSearch.closePanel();
-              return true;
-            }
-            return false;
-          },
-        },
-        // Format the current .typ file (overrides vscodeKeymap's Format Document)
-        {
-          key: "Shift-Alt-f",
-          run: (view) => {
-            const cursor = view.state.selection.main.head;
-            editor
-              .formatTabById(tabId, cursor)
-              .mapErr((err) => logError("format error:", err));
-            return true;
-          },
-        },
-      ]),
+      // User-configurable bindings BEFORE vscodeKeymap, so a rebind wins over
+      // vscodeKeymap's built-ins (Mod-f = openSearchPanel, Shift-Alt-f =
+      // Format Document) rather than losing to them.
+      keybindingsCompartment.of(configurableKeymap(tabId)),
       keymap.of(vscodeKeymap),
       keymap.of([
         ...defaultKeymap,
         ...historyKeymap,
         ...closeBracketsKeymap,
         indentWithTab,
-        {
-          key: "Mod-s",
-          run: () => {
-            editor
-              .saveTabById(tabId)
-              .mapErr((err) => logError("save error:", err));
-            return true;
-          },
-        },
       ]),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
@@ -556,9 +562,9 @@
         // Line-number gutter — give the digits breathing room from the
         // content and a muted tone so they don't compete with the code.
         ".cm-lineNumbers .cm-gutterElement": {
-          padding: "0 0.3rem 0 0.1rem",
+          padding: "0 0.4rem",
           minWidth: "1em",
-          textAlign: "right",
+          textAlign: "center",
         },
         ".cm-foldGutter .cm-gutterElement": {
           padding: "0 0.1rem",
@@ -948,6 +954,20 @@
     for (const view of tabViews.values()) {
       view.dispatch({ effects: tabSizeCompartment.reconfigure(ext) });
     }
+  });
+
+  // ── Shortcut settings → rebuild the configurable keymap in every open tab.
+  // Rebinding in the settings window broadcasts on `settings:changed`, so this
+  // fires there too and the editor picks up the new keys without a restart.
+  $effect(() => {
+    settings.keybindings;
+    untrack(() => {
+      for (const [tabId, view] of tabViews) {
+        view.dispatch({
+          effects: keybindingsCompartment.reconfigure(configurableKeymap(tabId)),
+        });
+      }
+    });
   });
 
   // ── Diagnostics → CodeMirror lint markers

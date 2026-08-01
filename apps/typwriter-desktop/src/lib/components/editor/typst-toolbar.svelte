@@ -32,13 +32,16 @@
     insertLink,
     insertTable,
   } from "$lib/typst-codemirror-lang";
+  import { shortcutLabel } from "$lib/keybindings";
   import type { EditorView } from "@codemirror/view";
 
   type Cmd = (view: EditorView) => boolean;
 
   type Action = {
     label: string;
-    shortcut?: string;
+    /** Keybinding command id — the tooltip shows whatever it's bound to now,
+     *  so a rebind in settings is reflected here without touching this list. */
+    command?: string;
     icon: IconSvgElement;
     run: Cmd;
     active?: () => boolean;
@@ -66,9 +69,9 @@
   );
 
   const marks: Action[] = [
-    { label: "Bold", shortcut: "Ctrl+B", icon: TextBoldIcon, run: toggleBold, active: () => editorFormat.bold },
-    { label: "Italic", shortcut: "Ctrl+I", icon: TextItalicIcon, run: toggleItalic, active: () => editorFormat.italic },
-    { label: "Inline code", shortcut: "Ctrl+E", icon: CodeIcon, run: toggleRawInline, active: () => editorFormat.rawInline },
+    { label: "Bold", command: "typst.toggleBold", icon: TextBoldIcon, run: toggleBold, active: () => editorFormat.bold },
+    { label: "Italic", command: "typst.toggleItalic", icon: TextItalicIcon, run: toggleItalic, active: () => editorFormat.italic },
+    { label: "Inline code", command: "typst.toggleRawInline", icon: CodeIcon, run: toggleRawInline, active: () => editorFormat.rawInline },
     { label: "Strikethrough", icon: TextStrikethroughIcon, run: toggleStrikethrough },
   ];
 
@@ -87,6 +90,7 @@
 
 {#snippet toolButton(action: Action)}
   {@const isActive = action.active?.() ?? false}
+  {@const shortcut = action.command ? shortcutLabel(action.command) : undefined}
   <Tooltip.Root>
     <Tooltip.Trigger>
       {#snippet child({ props })}
@@ -104,8 +108,7 @@
       {/snippet}
     </Tooltip.Trigger>
     <Tooltip.Content side="bottom">
-      {action.label}{#if action.shortcut}<span class="ml-2 opacity-60"
-          >{action.shortcut}</span
+      {action.label}{#if shortcut}<span class="ml-2 opacity-60">{shortcut}</span
         >{/if}
     </Tooltip.Content>
   </Tooltip.Root>

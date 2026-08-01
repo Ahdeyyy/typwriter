@@ -14,7 +14,9 @@ use serde_json::{json, Value as JsonValue};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_store::StoreExt;
 use typst::text::FontFlags;
+use typstyle_core::Config as TypstyleConfig;
 
+use crate::commands::format::{formatter_config_from_settings, FormatterConfig};
 use crate::grammar::engine::GrammarConfig;
 use crate::vcs::SnapshotPolicy;
 use crate::world::EditorWorld;
@@ -55,6 +57,22 @@ pub struct AppSettings {
     pub auto_save_delay_ms: u32,
     pub format_before_save: bool,
 
+    // Formatter (typstyle). Mirrors `typstyle_core::Config` one-for-one;
+    // `commands::format::formatter_config_from_settings` does the projection
+    // and clamps each value.
+    /// Spaces per indentation level in formatted output.
+    pub format_tab_spaces: u8,
+    /// Column the formatter tries to keep lines within.
+    pub format_max_width: u32,
+    /// Consecutive blank lines the formatter preserves; extras are collapsed.
+    pub format_blank_lines_upper_bound: u8,
+    /// Collapse runs of whitespace in markup down to a single space.
+    pub format_collapse_markup_spaces: bool,
+    /// Sort the items of an import list alphabetically.
+    pub format_reorder_import_items: bool,
+    /// Reflow prose to fit `format_max_width` (implies collapsing spaces).
+    pub format_wrap_text: bool,
+
     // Auto-snapshot (version control)
     pub auto_snapshot_on_save: bool,
     pub auto_snapshot_on_compile: bool,
@@ -64,6 +82,13 @@ pub struct AppSettings {
     pub snapshot_retention_max_count: u32,
     /// Maximum age, in days, for *auto* snapshots. `0` = unlimited.
     pub snapshot_retention_max_days: u32,
+
+    /// Keyboard shortcut overrides, keyed by frontend command id (e.g.
+    /// `editor.save` → `["Mod-s"]`). Rust only persists them; the command
+    /// catalog and the chord notation live in the frontend
+    /// (`src/lib/keybindings/`). Only commands the user actually rebound are
+    /// present, so revising a default still reaches everyone who left it alone.
+    pub keybindings: HashMap<String, Vec<String>>,
 }
 
 impl Default for AppSettings {
@@ -88,11 +113,22 @@ impl Default for AppSettings {
             auto_save_delay_ms: 1500,
             format_before_save: false,
 
+            // typstyle's own defaults, so a fresh install formats exactly the
+            // way the `typstyle` CLI would.
+            format_tab_spaces: 2,
+            format_max_width: 80,
+            format_blank_lines_upper_bound: 1,
+            format_collapse_markup_spaces: false,
+            format_reorder_import_items: true,
+            format_wrap_text: false,
+
             auto_snapshot_on_save: true,
             auto_snapshot_on_compile: true,
             auto_snapshot_min_interval_seconds: 0,
             snapshot_retention_max_count: 0,
             snapshot_retention_max_days: 0,
+
+            keybindings: HashMap::new(),
         }
     }
 }
@@ -210,12 +246,23 @@ pub fn set_app_settings(handle: AppHandle, settings: AppSettings) {
     if let Some(policy) = handle.try_state::<Arc<RwLock<SnapshotPolicy>>>() {
         *policy.write() = SnapshotPolicy::from_settings(&settings);
     }
+    // Refresh the formatter config in place so the next format — in *any*
+    // window — uses what the user just picked, with no restart.
+    if let Some(config) = handle.try_state::<FormatterConfig>() {
+        *config.write() = formatter_config_from_settings(&settings);
+    }
 }
 
 /// Build the in-memory snapshot policy from the persisted settings.
 /// Called both at startup and when the user mutates settings from the UI.
 pub fn snapshot_policy_from_handle(handle: &AppHandle) -> SnapshotPolicy {
     SnapshotPolicy::from_settings(&read_settings(handle))
+}
+
+/// Build the typstyle config from the persisted settings. Seeds the managed
+/// [`FormatterConfig`] at startup; `set_app_settings` refreshes it thereafter.
+pub fn formatter_config_from_handle(handle: &AppHandle) -> TypstyleConfig {
+    formatter_config_from_settings(&read_settings(handle))
 }
 
 #[tauri::command]

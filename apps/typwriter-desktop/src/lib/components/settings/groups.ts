@@ -7,6 +7,7 @@ import type { IconSvgElement } from "@hugeicons/svelte";
 import {
   PaintBrush01Icon,
   FileCodeIcon,
+  MagicWand01Icon,
   FloppyDiskIcon,
   GitCommitIcon,
   EyeIcon,
@@ -18,6 +19,7 @@ import {
 
 import Appearance from "./groups/appearance.svelte";
 import Editor from "./groups/editor.svelte";
+import Formatting from "./groups/formatting.svelte";
 import Saving from "./groups/saving.svelte";
 import History from "./groups/history.svelte";
 import Preview from "./groups/preview.svelte";
@@ -29,6 +31,7 @@ import General from "./groups/general.svelte";
 export type SettingsGroupId =
   | "appearance"
   | "editor"
+  | "formatting"
   | "saving"
   | "history"
   | "preview"
@@ -52,6 +55,12 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     component: Appearance,
   },
   { id: "editor", label: "Editor", icon: FileCodeIcon, component: Editor },
+  {
+    id: "formatting",
+    label: "Formatting",
+    icon: MagicWand01Icon,
+    component: Formatting,
+  },
   { id: "saving", label: "Saving", icon: FloppyDiskIcon, component: Saving },
   { id: "history", label: "History", icon: GitCommitIcon, component: History },
   { id: "preview", label: "Preview", icon: EyeIcon, component: Preview },

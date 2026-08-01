@@ -332,9 +332,27 @@ export function insertTable(view: EditorView): boolean {
   return true;
 }
 
+/** Bindings that aren't user-configurable: continuing a list is Enter's
+ *  behaviour inside markup, not a shortcut competing for the key. */
+export const typstListKeymap: readonly KeyBinding[] = [
+  { key: "Enter", run: continueList },
+];
+
+/** The Typst bindings at their shipped keys. The main editor builds these from
+ *  the user's keymap instead (see `typstFormatCommands`); this is for surfaces
+ *  that deliberately stay on the defaults, like the onboarding tutorial. */
 export const typstKeymap: readonly KeyBinding[] = [
   { key: "Mod-b", run: toggleBold },
   { key: "Mod-i", run: toggleItalic },
   { key: "Mod-e", run: toggleRawInline },
-  { key: "Enter", run: continueList },
+  ...typstListKeymap,
 ];
+
+/** Rebindable Typst commands, keyed by the id they carry in the keybinding
+ *  registry. Kept next to the commands themselves so a new formatting action
+ *  can't be added here and forgotten in the settings pane. */
+export const typstFormatCommands: Record<string, Command> = {
+  "typst.toggleBold": toggleBold,
+  "typst.toggleItalic": toggleItalic,
+  "typst.toggleRawInline": toggleRawInline,
+};

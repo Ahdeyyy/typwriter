@@ -188,9 +188,14 @@
 {/if}
 
 <!-- ─── Pierre tree mount ──────────────────────────────────────────── -->
+<!-- Doubles as the external-drop target: the controller attaches the file /
+     folder drop handlers to this element (see its "External drag & drop"
+     section) and flips `externalDropActive` while a drag hovers. -->
 <div
   bind:this={treeMount}
-  class="trees-host flex-1 min-h-0"
+  class="trees-host flex-1 min-h-0 rounded-sm ring-inset transition-shadow {controller.externalDropActive
+    ? 'ring-2 ring-sidebar-ring'
+    : 'ring-0'}"
   style:--trees-theme-sidebar-bg="var(--sidebar)"
   style:--trees-theme-sidebar-fg="var(--sidebar-foreground)"
   style:--trees-theme-sidebar-header-fg="var(--sidebar-foreground)"

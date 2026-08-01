@@ -2,6 +2,7 @@
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { ArrowUp01Icon, ArrowDown01Icon, ArrowRight01Icon, Cancel01Icon, RotateClockwiseIcon, ReplaceAllIcon } from "@hugeicons/core-free-icons";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
+  import { matchesCommand, shortcutLabel } from "$lib/keybindings";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { tick } from "svelte";
@@ -18,59 +19,62 @@
     }
   });
 
-  function isToggleReplaceShortcut(e: KeyboardEvent): boolean {
-    return (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "h";
+  /** " (Ctrl+Enter)" for a tooltip, or nothing when the command is unbound. */
+  function hint(commandId: string): string {
+    const label = shortcutLabel(commandId);
+    return label ? ` (${label})` : "";
   }
 
-  function isToggleFindShortcut(e: KeyboardEvent): boolean {
-    return (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f";
+  /** The panel's inputs sit outside CodeMirror, so the editor's keymap never
+   *  sees these keystrokes — the panel-level shortcuts are matched here against
+   *  the same user-configurable commands. Handled first so the webview's native
+   *  finder can't grab the find chord. */
+  function handlePanelShortcut(e: KeyboardEvent): boolean {
+    if (matchesCommand(e, "editor.find")) {
+      e.preventDefault();
+      editorSearch.toggleFindPanel();
+      return true;
+    }
+    if (matchesCommand(e, "editor.replace")) {
+      e.preventDefault();
+      editorSearch.toggleReplacePanel();
+      return true;
+    }
+    if (matchesCommand(e, "editor.closeSearch")) {
+      e.preventDefault();
+      editorSearch.closePanel();
+      return true;
+    }
+    return false;
   }
 
   function onSearchKey(e: KeyboardEvent) {
-    if (isToggleFindShortcut(e)) {
-      // Intercept before the webview's native finder can grab it.
+    if (handlePanelShortcut(e)) return;
+    // Previous before next: with the defaults they differ only by Shift, and
+    // "Enter" would otherwise also match a Shift+Enter press if the user
+    // rebound one of them to a chord without modifiers.
+    if (matchesCommand(e, "find.previous")) {
       e.preventDefault();
-      editorSearch.toggleFindPanel();
-      return;
-    }
-    if (isToggleReplaceShortcut(e)) {
-      e.preventDefault();
-      editorSearch.toggleReplacePanel();
-      return;
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      editorSearch.closePanel();
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (e.shiftKey) editorSearch.prev();
-      else editorSearch.next();
+      editorSearch.prev();
       // findNext/findPrevious call view.focus() internally; steal it back.
+      searchInput?.focus();
+    } else if (matchesCommand(e, "find.next")) {
+      e.preventDefault();
+      editorSearch.next();
       searchInput?.focus();
     }
   }
 
   function onReplaceKey(e: KeyboardEvent) {
-    if (isToggleFindShortcut(e)) {
+    if (handlePanelShortcut(e)) return;
+    // "Replace all" first, for the same reason as above: it's the more
+    // specific chord of the pair.
+    if (matchesCommand(e, "replace.all")) {
       e.preventDefault();
-      editorSearch.toggleFindPanel();
-      return;
-    }
-    if (isToggleReplaceShortcut(e)) {
+      editorSearch.replaceAllMatches();
+    } else if (matchesCommand(e, "replace.current")) {
       e.preventDefault();
-      editorSearch.toggleReplacePanel();
-      return;
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      editorSearch.closePanel();
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (e.ctrlKey || e.metaKey || e.altKey) {
-        editorSearch.replaceAllMatches();
-      } else {
-        editorSearch.replaceCurrent();
-      }
+      editorSearch.replaceCurrent();
     }
   }
 
@@ -213,7 +217,7 @@
               </Button>
             {/snippet}
           </Tooltip.Trigger>
-          <Tooltip.Content>Previous Match (Shift+Enter)</Tooltip.Content>
+          <Tooltip.Content>Previous Match{hint("find.previous")}</Tooltip.Content>
         </Tooltip.Root>
         <Tooltip.Root>
           <Tooltip.Trigger>
@@ -230,7 +234,7 @@
               </Button>
             {/snippet}
           </Tooltip.Trigger>
-          <Tooltip.Content>Next Match (Enter)</Tooltip.Content>
+          <Tooltip.Content>Next Match{hint("find.next")}</Tooltip.Content>
         </Tooltip.Root>
         <Tooltip.Root>
           <Tooltip.Trigger>
@@ -246,7 +250,7 @@
               </Button>
             {/snippet}
           </Tooltip.Trigger>
-          <Tooltip.Content>Close (Escape)</Tooltip.Content>
+          <Tooltip.Content>Close{hint("editor.closeSearch")}</Tooltip.Content>
         </Tooltip.Root>
       </div>
 
@@ -283,7 +287,7 @@
                 </Button>
               {/snippet}
             </Tooltip.Trigger>
-            <Tooltip.Content>Replace (Enter)</Tooltip.Content>
+            <Tooltip.Content>Replace{hint("replace.current")}</Tooltip.Content>
           </Tooltip.Root>
           <Tooltip.Root>
             <Tooltip.Trigger>
@@ -300,7 +304,7 @@
                 </Button>
               {/snippet}
             </Tooltip.Trigger>
-            <Tooltip.Content>Replace All (Ctrl+Enter)</Tooltip.Content>
+            <Tooltip.Content>Replace All{hint("replace.all")}</Tooltip.Content>
           </Tooltip.Root>
         </div>
       {/if}

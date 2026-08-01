@@ -29,7 +29,7 @@
 
 mod commit;
 mod diff;
-mod fs;
+pub(crate) mod fs;
 mod history;
 mod paths;
 mod restore;

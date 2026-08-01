@@ -9,6 +9,7 @@ import { editor } from "$lib/stores/editor.svelte";
 import { workspace } from "$lib/stores/workspace.svelte";
 import { jumpFromClick, setVisiblePage, syncPreview, triggerPreview } from "$lib/ipc/commands";
 import { emitPreviewSourceJump } from "$lib/ipc/events";
+import { matchesCommand } from "$lib/keybindings";
 import { logError, logPreview } from "$lib/logger";
 import { buildPreviewUrl } from "$lib/preview-url";
 
@@ -596,16 +597,16 @@ export class PreviewController {
       const tag = target.tagName;
       if (target.isContentEditable || tag === "INPUT" || tag === "TEXTAREA") return;
     }
-    if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
+    if (matchesCommand(e, "preview.nextPage")) {
       e.preventDefault();
       this.nextPage();
-    } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+    } else if (matchesCommand(e, "preview.previousPage")) {
       e.preventDefault();
       this.prevPage();
-    } else if (e.key === "Home") {
+    } else if (matchesCommand(e, "preview.firstPage")) {
       e.preventDefault();
       this.goToPage(0);
-    } else if (e.key === "End") {
+    } else if (matchesCommand(e, "preview.lastPage")) {
       e.preventDefault();
       this.goToPage(preview.totalPages - 1);
     }

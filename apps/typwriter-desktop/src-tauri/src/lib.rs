@@ -22,8 +22,8 @@ use commands::{
     app::{get_typst_version, is_fonts_loaded, prepare_onboarding_workspace},
     click::{jump_from_click, jump_from_cursor},
     editor::{
-        discard_shadow, get_completions, get_definitions, get_tooltip, read_file, save_file,
-        update_file_content,
+        discard_shadow, get_completions, get_definitions, get_tooltip, open_file_externally,
+        read_file, reveal_file_in_manager, save_file, update_file_content,
     },
     export::{export_html, export_pdf, export_png, export_svg},
     format::{
@@ -47,8 +47,8 @@ use commands::{
     },
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
-        delete_folder, get_file_tree, get_recent_workspaces, get_workspace_tabs, import_files,
-        move_file, move_folder, open_folder, remove_recent_workspace, rename_file,
+        delete_folder, get_file_tree, get_recent_workspaces, get_workspace_tabs, import_dropped,
+        import_files, move_file, move_folder, open_folder, remove_recent_workspace, rename_file,
         save_workspace_tabs, set_main_file,
     },
 };
@@ -176,11 +176,19 @@ pub fn run() {
                 commands::settings::snapshot_policy_from_handle(&handle),
             ));
 
+            // Same deal for the formatter: seeded from the persisted prefs and
+            // refreshed on every `set_app_settings`, so every format command
+            // reads the user's current typstyle options.
+            let formatter_config: commands::format::FormatterConfig = Arc::new(RwLock::new(
+                commands::settings::formatter_config_from_handle(&handle),
+            ));
+
             app.manage(world.clone());
             app.manage(pipeline);
             app.manage(workspace);
             app.manage(vcs);
             app.manage(snapshot_policy);
+            app.manage(formatter_config);
             app.manage(lsp::LspState::default());
             // Cheap to construct — the dictionary and lint group behind it are
             // built on the first actual check.
@@ -216,6 +224,7 @@ pub fn run() {
             move_file,
             move_folder,
             import_files,
+            import_dropped,
             // editor buffer + IDE features
             read_file,
             update_file_content,
@@ -224,6 +233,8 @@ pub fn run() {
             get_completions,
             get_tooltip,
             get_definitions,
+            reveal_file_in_manager,
+            open_file_externally,
             // preview control
             trigger_preview,
             sync_preview,

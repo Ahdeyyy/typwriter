@@ -22,6 +22,7 @@
   import { editorSearch } from "$lib/stores/editor-search.svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { logError } from "$lib/logger";
+  import { hasExternalFiles } from "$lib/services/drop-import";
 
   const { children } = $props();
   let appliedTheme: string | undefined;
@@ -53,6 +54,34 @@
 
     document.addEventListener("click", onClick, true);
     return () => document.removeEventListener("click", onClick, true);
+  });
+
+  // ── Swallow file drops outside a drop zone ────────────────────────────────
+  //
+  // The window keeps HTML5 drag-and-drop (`dragDropEnabled: false`), so an
+  // unhandled file drop does what a browser does: navigates the WebView to the
+  // dropped file, replacing the whole app. The file tree and the editor take
+  // the drops they understand and stop propagation; this is the backstop for
+  // everywhere else. It only ever calls preventDefault — no import happens
+  // from a drop the app didn't ask for.
+  $effect(() => {
+    if (typeof window === "undefined") return;
+
+    const swallow = (e: DragEvent) => {
+      if (!hasExternalFiles(e.dataTransfer)) return;
+      e.preventDefault();
+      // The drop zones stop propagation before this runs, so reaching here
+      // means nothing will take the files — say so with the cursor instead of
+      // showing a copy affordance that does nothing.
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "none";
+    };
+
+    window.addEventListener("dragover", swallow);
+    window.addEventListener("drop", swallow);
+    return () => {
+      window.removeEventListener("dragover", swallow);
+      window.removeEventListener("drop", swallow);
+    };
   });
 
   // ── Persist + flush before the app is suspended/killed ────────────────────

@@ -13,7 +13,9 @@
   },
   "exclude": [
     "src/lib/typst-codemirror-lang/parser.js",
-    "src/lib/typst-codemirror-lang/test/**"
+    "src/lib/typst-codemirror-lang/test/**",
+    // `bun test` runs these; svelte-check has no `bun:test` types to resolve.
+    "src/**/*.test.ts"
   ]
   // Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
   // except $lib which is handled by https://svelte.dev/docs/kit/configuration#files

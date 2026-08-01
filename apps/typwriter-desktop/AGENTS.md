@@ -25,11 +25,12 @@ The Typst editor for desktop. Tauri 2 + SvelteKit (static adapter) + a Rust core
 ### Frontend (`src/`)
 
 - `routes/+page.svelte` — single-page entry; the actual screens live in `lib/components/pages/`.
-- `lib/components/pages/` — `home`, `workspace`, `settings`, `keymaps`, `preview-window`.
+- `lib/components/pages/` — `home`, `workspace`, `settings`, `onboarding`, `preview-window`, `diff-window`.
 - `lib/components/editor/` — CodeMirror tab bar, editor pane, diagnostics, grammar pane, search, Typst toolbar.
 - `lib/components/sidebar/` — Obsidian-style sidebar (file tree, preview pane, export dialog, mode switcher).
 - `lib/components/titlebar/` — custom window chrome.
 - `lib/stores/` — Svelte 5 class-singleton stores (`workspace`, `editor`, `preview`, `diagnostics`, `grammar`, `editor-search`, `page`, `platform`, `settings`, `updater`). All `$state`/`$derived` lives inside a class; module-level `$state` exports lose reactivity.
+- `lib/keybindings/` — the rebindable-shortcut layer: `registry.ts` (command catalog + shipped keys), `keys.ts` (CodeMirror-style chord notation, DOM event matching, display formatting), `index.ts` (`keysFor` / `matchesCommand` / `shortcutLabel`, resolved against the user's overrides). Overrides live in `settings.keybindings`, so they persist and sync across windows like any other setting. Hard-coding a keystroke anywhere else is a bug.
 - `lib/ipc/` — `commands.ts` (thin wrappers around `invoke`) and `events.ts` (typed Tauri event listeners).
 - `lib/services/` — orchestration on top of IPC (`workspace-file-service`, `export-service`).
 - `lib/typst-codemirror-lang/` — Typst syntax highlighting for CodeMirror. The parser is **hand-written TypeScript** in `lezer-typst/` (`parser.ts`, `scanner.ts`, `markup.ts`, `math.ts`, `code.ts`, …) built on `@lezer/lr` — no `typst.grammar`, no codegen; edit the parser sources directly.

@@ -23,18 +23,60 @@ use std::{
 };
 
 use log::{debug, error, info, warn};
+use parking_lot::RwLock;
 use serde::Serialize;
 use tauri::State;
-use typstyle_core::Typstyle;
+use typstyle_core::{Config, Typstyle};
 
+use crate::commands::settings::AppSettings;
 use crate::workspace::WorkspaceState;
 
+/// The user's typstyle configuration, shared with every format command.
+///
+/// Lives behind an `Arc<RwLock<_>>` managed by Tauri and is refreshed whenever
+/// the frontend mutates settings via `set_app_settings`, so a formatter option
+/// changed in the settings window applies to the next format in the editor
+/// window without a restart.
+pub type FormatterConfig = Arc<RwLock<Config>>;
+
+/// Project the persisted settings onto typstyle's own config, clamping each
+/// value to a range that can't produce nonsense output (a `max_width` of 0
+/// makes typstyle break after every token).
+///
+/// `wrap_text` implies `collapse_markup_spaces` — reflowing prose to a column
+/// only means something if runs of whitespace collapse first — so the flag is
+/// forced on here rather than left as a combination the user can't reason
+/// about. The settings pane locks the switch to match.
+pub fn formatter_config_from_settings(settings: &AppSettings) -> Config {
+    Config {
+        tab_spaces: (settings.format_tab_spaces as usize).clamp(1, 8),
+        max_width: (settings.format_max_width as usize).clamp(20, 240),
+        blank_lines_upper_bound: (settings.format_blank_lines_upper_bound as usize).clamp(0, 8),
+        collapse_markup_spaces: settings.format_collapse_markup_spaces || settings.format_wrap_text,
+        reorder_import_items: settings.format_reorder_import_items,
+        wrap_text: settings.format_wrap_text,
+    }
+}
+
+/// Snapshot the shared config. Cloned rather than held as a guard so a long
+/// format never blocks a settings write.
+fn snapshot(config: &State<'_, FormatterConfig>) -> Config {
+    config.read().clone()
+}
+
 #[tauri::command]
-pub fn format_typst_source(source: String) -> Result<String, String> {
+pub fn format_typst_source(
+    config: State<'_, FormatterConfig>,
+    source: String,
+) -> Result<String, String> {
+    format_source_with(&snapshot(&config), source)
+}
+
+fn format_source_with(config: &Config, source: String) -> Result<String, String> {
     let t = Instant::now();
     debug!("format_typst_source: bytes={}", source.len());
 
-    let formatted = Typstyle::default()
+    let formatted = Typstyle::new(config.clone())
         .format_text(source)
         .render()
         .map_err(|e| {
@@ -65,6 +107,15 @@ pub struct FormatWithCursorResponse {
 // locate where the cursor lands. See the module docs for the full strategy.
 #[tauri::command]
 pub fn format_typst_cursor_virtual(
+    config: State<'_, FormatterConfig>,
+    source: String,
+    cursor: u32,
+) -> Result<FormatWithCursorResponse, String> {
+    format_cursor_virtual_with(&snapshot(&config), source, cursor)
+}
+
+fn format_cursor_virtual_with(
+    config: &Config,
     source: String,
     cursor: u32,
 ) -> Result<FormatWithCursorResponse, String> {
@@ -73,7 +124,7 @@ pub fn format_typst_cursor_virtual(
 
     // Single source of truth for the text. If the source itself doesn't
     // format, the command fails here — exactly like the plain-format path.
-    let formatted = Typstyle::default()
+    let formatted = Typstyle::new(config.clone())
         .format_text(source.clone())
         .render()
         .map_err(|e| {
@@ -81,7 +132,7 @@ pub fn format_typst_cursor_virtual(
             e.to_string()
         })?;
 
-    let new_byte_cursor = locate_cursor_with_marker(&source, byte_cursor, &formatted)
+    let new_byte_cursor = locate_cursor_with_marker(config, &source, byte_cursor, &formatted)
         .unwrap_or_else(|| {
             // Marked copy failed to format (marker landed in a syntax-
             // sensitive spot) or the marker was lost — degrade to mapping
@@ -105,7 +156,11 @@ pub fn format_typst_cursor_virtual(
 /// result back, and returns the formatted content so the frontend can refresh
 /// any open editor view.
 #[tauri::command]
-pub fn format_typst_file(path: String) -> Result<String, String> {
+pub fn format_typst_file(
+    config: State<'_, FormatterConfig>,
+    path: String,
+) -> Result<String, String> {
+    let config = snapshot(&config);
     let t = Instant::now();
     info!("format_typst_file: path={path:?}");
 
@@ -115,7 +170,7 @@ pub fn format_typst_file(path: String) -> Result<String, String> {
         e.to_string()
     })?;
 
-    let formatted = Typstyle::default()
+    let formatted = Typstyle::new(config)
         .format_text(content.clone())
         .render()
         .map_err(|e| {
@@ -155,7 +210,9 @@ pub struct FormatWorkspaceReport {
 #[tauri::command]
 pub fn format_workspace_typ_files(
     workspace: State<'_, Arc<WorkspaceState>>,
+    config: State<'_, FormatterConfig>,
 ) -> Result<FormatWorkspaceReport, String> {
+    let config = snapshot(&config);
     let t = Instant::now();
     info!("format_workspace_typ_files");
 
@@ -169,7 +226,7 @@ pub fn format_workspace_typ_files(
     let total = files.len();
     info!("format_workspace_typ_files: found {total} .typ file(s)");
 
-    let typstyle = Typstyle::default();
+    let typstyle = Typstyle::new(config);
     let mut formatted_count = 0usize;
     let mut unchanged = 0usize;
     let mut failed: Vec<String> = Vec::new();
@@ -289,6 +346,7 @@ fn floor_char_boundary(s: &str, mut idx: usize) -> usize {
 /// [`map_cursor_by_affix`]. The returned offset is in bounds of `formatted`
 /// and on a char boundary.
 fn locate_cursor_with_marker(
+    config: &Config,
     source: &str,
     byte_cursor: usize,
     formatted: &str,
@@ -310,7 +368,10 @@ fn locate_cursor_with_marker(
         buf
     };
 
-    let raw = Typstyle::default().format_text(marked).render().ok()?;
+    let raw = Typstyle::new(config.clone())
+        .format_text(marked)
+        .render()
+        .ok()?;
     let idx = locate_unique(&raw, &marker)?;
     let mut stripped = String::with_capacity(raw.len() - marker.len());
     stripped.push_str(&raw[..idx]);
@@ -450,6 +511,21 @@ fn locate_unique(haystack: &str, needle: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The commands themselves read the user's config out of Tauri managed
+    // state, which doesn't exist in a unit test. These shims call the same
+    // implementations with typstyle's defaults — the configuration a fresh
+    // install formats with — and shadow the command wrappers of the same name.
+    fn format_typst_source(source: String) -> Result<String, String> {
+        format_source_with(&Config::default(), source)
+    }
+
+    fn format_typst_cursor_virtual(
+        source: String,
+        cursor: u32,
+    ) -> Result<FormatWithCursorResponse, String> {
+        format_cursor_virtual_with(&Config::default(), source, cursor)
+    }
 
     #[test]
     fn utf16_round_trip_ascii() {
@@ -1590,6 +1666,187 @@ by others @jones2021 in a follow-up study.
             "cursor should follow the final sentence; got prefix tail {:?}",
             res.formatted[..byte].chars().rev().take(12).collect::<String>()
         );
+    }
+
+    // ── User-configurable formatter options ─────────────────────────
+
+    #[test]
+    fn config_from_default_settings_matches_typstyle_defaults() {
+        let config = formatter_config_from_settings(&AppSettings::default());
+        assert_eq!(config, Config::default());
+    }
+
+    #[test]
+    fn config_from_settings_clamps_out_of_range_values() {
+        let settings = AppSettings {
+            format_tab_spaces: 0,
+            format_max_width: 5,
+            format_blank_lines_upper_bound: 200,
+            ..AppSettings::default()
+        };
+        let config = formatter_config_from_settings(&settings);
+        assert_eq!(config.tab_spaces, 1);
+        assert_eq!(config.max_width, 20);
+        assert_eq!(config.blank_lines_upper_bound, 8);
+    }
+
+    #[test]
+    fn config_from_settings_carries_flags_through() {
+        let settings = AppSettings {
+            format_collapse_markup_spaces: true,
+            format_reorder_import_items: false,
+            format_wrap_text: false,
+            ..AppSettings::default()
+        };
+        let config = formatter_config_from_settings(&settings);
+        assert!(config.collapse_markup_spaces);
+        assert!(!config.reorder_import_items);
+        assert!(!config.wrap_text);
+    }
+
+    #[test]
+    fn wrap_text_forces_collapse_markup_spaces() {
+        let settings = AppSettings {
+            format_collapse_markup_spaces: false,
+            format_wrap_text: true,
+            ..AppSettings::default()
+        };
+        let config = formatter_config_from_settings(&settings);
+        assert!(config.wrap_text);
+        assert!(
+            config.collapse_markup_spaces,
+            "wrap_text must imply collapse_markup_spaces"
+        );
+    }
+
+    #[test]
+    fn tab_spaces_setting_changes_indentation() {
+        // Long enough that typstyle must break the dict across lines at the
+        // default width — indentation only shows up once it does.
+        let source = "#let data = (alpha: 1, beta: 2, gamma: 3, delta: 4, epsilon: 5, zeta: 6, eta: 7, theta: 8)\n";
+        let two = format_source_with(&Config::default(), source.to_string()).unwrap();
+        let four = format_source_with(
+            &Config {
+                tab_spaces: 4,
+                ..Config::default()
+            },
+            source.to_string(),
+        )
+        .unwrap();
+        assert!(
+            two.contains("\n  alpha:"),
+            "expected 2-space indent:\n{two}"
+        );
+        assert!(
+            four.contains("\n    alpha:"),
+            "expected 4-space indent:\n{four}"
+        );
+    }
+
+    #[test]
+    fn max_width_setting_changes_line_breaking() {
+        let source = "#let data = (alpha: 1, beta: 2, gamma: 3)\n";
+        let wide = format_source_with(
+            &Config {
+                max_width: 120,
+                ..Config::default()
+            },
+            source.to_string(),
+        )
+        .unwrap();
+        let narrow = format_source_with(
+            &Config {
+                max_width: 20,
+                ..Config::default()
+            },
+            source.to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            wide.lines().count(),
+            1,
+            "wide output should stay on one line:\n{wide}"
+        );
+        assert!(
+            narrow.lines().count() > 1,
+            "narrow output should wrap:\n{narrow}"
+        );
+    }
+
+    /// typstyle applies this bound inside *code*; blank lines in markup are
+    /// preserved verbatim. The settings copy says so, and this pins the
+    /// behaviour we describe.
+    #[test]
+    fn blank_lines_upper_bound_setting_applies_to_code() {
+        let source = "#{\n  let a = 1\n\n\n\n\n  let b = 2\n}\n";
+        let one = format_source_with(&Config::default(), source.to_string()).unwrap();
+        let three = format_source_with(
+            &Config {
+                blank_lines_upper_bound: 3,
+                ..Config::default()
+            },
+            source.to_string(),
+        )
+        .unwrap();
+        assert!(
+            !one.contains("\n\n\n"),
+            "expected at most 1 blank line in code:\n{one}"
+        );
+        assert!(
+            three.contains("\n\n\n\n"),
+            "expected up to 3 blank lines kept in code:\n{three}"
+        );
+    }
+
+    #[test]
+    fn blank_lines_in_markup_are_left_alone() {
+        let source = "First.\n\n\n\n\nSecond.\n";
+        let out = format_source_with(&Config::default(), source.to_string()).unwrap();
+        assert!(
+            out.contains("\n\n\n\n"),
+            "markup blank-line runs should survive formatting:\n{out}"
+        );
+    }
+
+    #[test]
+    fn reorder_import_items_setting_is_respected() {
+        let source = "#import \"@preview/x:0.1.0\": zeta, alpha\n";
+        let sorted = format_source_with(&Config::default(), source.to_string()).unwrap();
+        let kept = format_source_with(
+            &Config {
+                reorder_import_items: false,
+                ..Config::default()
+            },
+            source.to_string(),
+        )
+        .unwrap();
+        assert!(
+            sorted.contains("alpha, zeta"),
+            "expected sorted items:\n{sorted}"
+        );
+        assert!(
+            kept.contains("zeta, alpha"),
+            "expected original order:\n{kept}"
+        );
+    }
+
+    /// The cursor path must honour the same config as the plain path, and the
+    /// two must agree byte-for-byte — the guarantee the whole virtual-marker
+    /// strategy rests on.
+    #[test]
+    fn cursor_format_honours_config_and_matches_plain_format() {
+        let config = Config {
+            tab_spaces: 4,
+            max_width: 40,
+            ..Config::default()
+        };
+        let source = "#let data = (alpha: 1, beta: 2, gamma: 3)\n\nBody with a SENTINEL anchor.\n";
+        let plain = format_source_with(&config, source.to_string()).unwrap();
+        let cursor = cursor_before(source, "SENTINEL");
+        let res = format_cursor_virtual_with(&config, source.to_string(), cursor).unwrap();
+        assert_eq!(res.formatted, plain);
+        assert_invariants(source, &res);
+        assert_cursor_at_anchor(&res, "SENTINEL");
     }
 }
 

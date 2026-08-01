@@ -1,6 +1,6 @@
 import { IsMobile } from "$lib/hooks/is-mobile.svelte.js";
 import { getContext, setContext } from "svelte";
-import { SIDEBAR_KEYBOARD_SHORTCUT } from "./constants.js";
+import { matchesCommand } from "$lib/keybindings";
 
 type Getter<T> = () => T;
 
@@ -40,13 +40,11 @@ class SidebarState {
 		return this.#isMobile.current;
 	}
 
-	// Event handler to apply to the `<svelte:window>`
+	// Event handler to apply to the `<svelte:window>`.
+	// The stock shadcn version hard-codes Ctrl/Cmd+B; ours resolves the chord
+	// from the user's keymap (`global.toggleSidebar`) so it can be rebound.
 	handleShortcutKeydown = (e: KeyboardEvent) => {
-		if (
-			e.key.toLowerCase() === SIDEBAR_KEYBOARD_SHORTCUT &&
-			e.shiftKey &&
-			(e.metaKey || e.ctrlKey)
-		) {
+		if (matchesCommand(e, "global.toggleSidebar")) {
 			e.preventDefault();
 			this.toggle();
 		}

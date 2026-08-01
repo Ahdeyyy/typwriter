@@ -21,6 +21,11 @@ import { workspace, type FileNode } from '$lib/stores/workspace.svelte';
 import { basename, dirname, ensureTypExtension, normalize } from '$lib/paths';
 import { editor } from '$lib/stores/editor.svelte';
 import { exportWorkspaceWithPicker } from '$lib/services/export-service';
+import {
+    collectDroppedFiles,
+    hasExternalFiles,
+    type DroppedFile,
+} from '$lib/services/drop-import';
 
 export type MenuState = {
     item: ContextMenuItem;
@@ -114,6 +119,17 @@ export class FiletreeController {
     menuState = $state<MenuState | null>(null);
     exportingWorkspace = $state(false);
 
+    /** True while files from outside the app hover over the tree — the mount
+     *  paints a ring so it's clear the whole panel is a drop target. */
+    externalDropActive = $state(false);
+    /** True while a dropped batch is being copied in. */
+    importingDrop = $state(false);
+
+    /** The row currently marked as the external-drop target, so the marker can
+     *  be taken off again when the pointer moves on. */
+    private externalDropRow: HTMLElement | null = null;
+    private treeMount: HTMLElement | null = null;
+
     private options: FiletreeControllerOptions;
 
     constructor(options: FiletreeControllerOptions) {
@@ -199,9 +215,23 @@ export class FiletreeController {
 
         this.tree.render({ containerWrapper: container });
         this.tree.subscribe(() => this.refreshExpandedDirs());
+
+        this.treeMount = container;
+        container.addEventListener('dragenter', this.onExternalDragOver);
+        container.addEventListener('dragover', this.onExternalDragOver);
+        container.addEventListener('dragleave', this.onExternalDragLeave);
+        container.addEventListener('drop', this.onExternalDrop);
     }
 
     destroy(): void {
+        if (this.treeMount) {
+            this.treeMount.removeEventListener('dragenter', this.onExternalDragOver);
+            this.treeMount.removeEventListener('dragover', this.onExternalDragOver);
+            this.treeMount.removeEventListener('dragleave', this.onExternalDragLeave);
+            this.treeMount.removeEventListener('drop', this.onExternalDrop);
+            this.treeMount = null;
+        }
+        this.clearExternalDropTarget();
         this.tree?.cleanUp();
         this.tree = null;
     }
@@ -296,6 +326,116 @@ export class FiletreeController {
             if (src === dst) continue;
             const result = await workspace.moveAction(src, dst, isDir);
             result.mapErr((err) => toast.error(`Move failed: ${err}`));
+        }
+    }
+
+    // ─── External drag & drop (files from outside the app) ───────────────
+    //
+    // Pierre owns drags that start inside the tree; these handlers only take
+    // over when the drag carries OS files, which its own handlers ignore (they
+    // bail without a drag session). Rows live in a shadow root, so the hovered
+    // one is found via `composedPath()` rather than `event.target`.
+
+    private rowAt(event: DragEvent): HTMLElement | null {
+        for (const node of event.composedPath()) {
+            if (!(node instanceof HTMLElement)) continue;
+            if (node.hasAttribute('data-item-path')) return node;
+        }
+        return null;
+    }
+
+    /** Destination directory for a drop over `row`: the folder itself, the
+     *  parent of a file, or the workspace root when the pointer is over empty
+     *  space below the tree. */
+    private dropDirFor(row: HTMLElement | null): string {
+        const path = row?.getAttribute('data-item-path');
+        if (!path) return '';
+        const clean = stripSlash(normalize(path));
+        return row?.getAttribute('data-item-type') === 'folder' ? clean : dirname(clean);
+    }
+
+    private markExternalDropTarget(row: HTMLElement | null): void {
+        if (this.externalDropRow === row) return;
+        // `data-item-drag-target` is Pierre's own marker, so the row picks up
+        // the same styling an internal move would give it. React never set the
+        // attribute here, so it won't be reconciled away underneath us.
+        this.externalDropRow?.removeAttribute('data-item-drag-target');
+        this.externalDropRow = row;
+        row?.setAttribute('data-item-drag-target', 'true');
+    }
+
+    private clearExternalDropTarget(): void {
+        this.markExternalDropTarget(null);
+        this.externalDropActive = false;
+    }
+
+    private onExternalDragOver = (event: DragEvent): void => {
+        if (!hasExternalFiles(event.dataTransfer) || !workspace.rootPath) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        this.externalDropActive = true;
+        const row = this.rowAt(event);
+        // Files land in a folder, so a file row highlights nothing — the
+        // panel-level ring already says the drop will be taken.
+        this.markExternalDropTarget(
+            row?.getAttribute('data-item-type') === 'folder' ? row : null
+        );
+    };
+
+    private onExternalDragLeave = (event: DragEvent): void => {
+        if (!hasExternalFiles(event.dataTransfer)) return;
+        // Moving between rows fires dragleave on the one being left; only a
+        // pointer that has actually left the panel should clear the state.
+        const next = event.relatedTarget;
+        if (next instanceof Node && this.treeMount?.contains(next)) return;
+        this.clearExternalDropTarget();
+    };
+
+    private onExternalDrop = (event: DragEvent): void => {
+        if (!hasExternalFiles(event.dataTransfer) || !workspace.rootPath) return;
+        event.preventDefault();
+        event.stopPropagation();
+
+        const destDir = this.dropDirFor(this.rowAt(event));
+        this.clearExternalDropTarget();
+        if (this.importingDrop) return;
+        // `DataTransfer` is emptied the moment this handler returns, so the
+        // entries have to be taken out before anything awaits.
+        const collected = collectDroppedFiles(event.dataTransfer!);
+        void this.runExternalDrop(destDir, collected);
+    };
+
+    private async runExternalDrop(
+        destDir: string,
+        collected: Promise<DroppedFile[]>,
+    ): Promise<void> {
+        this.importingDrop = true;
+        const label = destDir ? basename(destDir) : 'the workspace root';
+        // Expand up front: `syncPaths` rebuilds the tree once the import lands
+        // and carries the expanded set over, so expanding afterwards would be
+        // thrown away by that reset.
+        const dirHandle = destDir ? asDir(this.tree?.getItem(`${destDir}/`) ?? null) : null;
+        if (dirHandle && !dirHandle.isExpanded()) dirHandle.expand();
+
+        const toastId = toast.loading(`Importing into ${label}…`);
+        try {
+            const files = await collected;
+            if (files.length === 0) {
+                toast.dismiss(toastId);
+                return;
+            }
+            const written = await workspace.importDroppedAction(destDir, files);
+            toast.success(
+                `Imported ${written.length} file${written.length === 1 ? '' : 's'} into ${label}`,
+                { id: toastId },
+            );
+        } catch (err) {
+            toast.error(`Import failed: ${err instanceof Error ? err.message : String(err)}`, {
+                id: toastId,
+            });
+        } finally {
+            this.importingDrop = false;
         }
     }
 

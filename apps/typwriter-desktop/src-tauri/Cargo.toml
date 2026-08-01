@@ -1,6 +1,6 @@
 [package]
 name = "typwriter"
-version = "0.8.5"
+version = "0.8.6"
 description = "A typsetting app built on top of typst, with a desktop interface built using Tauri."
 authors = ["ade"]
 edition = "2021"
@@ -22,17 +22,17 @@ tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-typst = "0.15"
+typst = "0.15.1"
 # `Page` / `PagedDocument` moved out of the `typst` facade into `typst-layout`
 # in 0.15; depend on it directly for the document/page types.
-typst-layout = "0.15"
-typst-ide = "0.15"
-typst-render = "0.15"
-typst-svg = "0.15"
-typst-pdf = "0.15"
-typst-html = "0.15"
+typst-layout = "0.15.1"
+typst-ide = "0.15.1"
+typst-render = "0.15.1"
+typst-svg = "0.15.1"
+typst-pdf = "0.15.1"
+typst-html = "0.15.1"
 chrono = "0.4.44"
-typst-kit = { version = "0.15", features = ["embedded-fonts", "scan-fonts", "system-packages", "universe-packages", "system-downloader"] }
+typst-kit = { version = "0.15.1", features = ["embedded-fonts", "scan-fonts", "system-packages", "universe-packages", "system-downloader"] }
 ecow = { version = "0.2", features = ["serde"] }
 tauri-plugin-log = "2"
 tauri-plugin-store = "2"
@@ -63,4 +63,4 @@ harper-core = { version = "2.7", features = ["concurrent"] }
 # Depended on directly (rather than through the `typst` facade) because
 # `grammar/typst_parser/` walks the AST, and this pin is what decouples our
 # grammar checker from harper's own typst support.
-typst-syntax = "0.15"
+typst-syntax = "0.15.1"

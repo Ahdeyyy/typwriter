@@ -73,6 +73,14 @@ export function importFiles(sources: string[], destDir: string) {
     return ResultAsync.fromPromise(invoke<void>('import_files', { sources, destDir }), toErrString);
 }
 
+/** Import an external drag-and-drop batch. `body` is the framed payload built
+ *  by `$lib/services/drop-import` and is passed as the *raw* IPC body — an
+ *  object argument would JSON-encode the file bytes as a number array.
+ *  Resolves to the workspace-relative paths that were written. */
+export function importDropped(body: Uint8Array) {
+    return ResultAsync.fromPromise(invoke<string[]>('import_dropped', body), toErrString);
+}
+
 export function getRecentWorkspaces(options: { includeThumbnails?: boolean } = {}) {
     return ResultAsync.fromPromise(
         invoke<RecentWorkspaceEntry[]>('get_recent_workspaces', {
@@ -118,6 +126,17 @@ export function getLogFilePath() {
 
 export function readFile(path: string) {
     return ResultAsync.fromPromise(invoke<FileContentResponse>('read_file', { path }), toErrString);
+}
+
+/** Select the file in the OS file manager. Rust rejects paths outside the
+ *  open workspace. */
+export function revealFileInManager(path: string) {
+    return ResultAsync.fromPromise(invoke<void>('reveal_file_in_manager', { path }), toErrString);
+}
+
+/** Hand the file to whichever app the OS associates with it. */
+export function openFileExternally(path: string) {
+    return ResultAsync.fromPromise(invoke<void>('open_file_externally', { path }), toErrString);
 }
 
 export function updateFileContent(path: string, content: string) {
@@ -422,11 +441,20 @@ export interface AppSettings {
     auto_save_enabled: boolean;
     auto_save_delay_ms: number;
     format_before_save: boolean;
+    format_tab_spaces: number;
+    format_max_width: number;
+    format_blank_lines_upper_bound: number;
+    format_collapse_markup_spaces: boolean;
+    format_reorder_import_items: boolean;
+    format_wrap_text: boolean;
     auto_snapshot_on_save: boolean;
     auto_snapshot_on_compile: boolean;
     auto_snapshot_min_interval_seconds: number;
     snapshot_retention_max_count: number;
     snapshot_retention_max_days: number;
+    /** Shortcut overrides, keyed by command id. Rust only stores these — the
+     *  frontend owns what they mean (see `$lib/keybindings/registry`). */
+    keybindings: Record<string, string[]>;
 }
 
 export function getAppSettings() {

@@ -18,7 +18,7 @@ use std::{
 
 use base64::Engine;
 use notify::RecommendedWatcher;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
 use crate::{
@@ -46,6 +46,18 @@ pub struct FileTreeEntry {
     pub path: String,
     pub is_dir: bool,
     pub children: Vec<FileTreeEntry>,
+}
+
+// ─── External drag-and-drop ──────────────────────────────────────────────────
+
+/// One file inside a dropped batch. `path` is relative to the batch's
+/// destination directory and carries sub-directories when a folder was dropped
+/// (`assets/logo.png`); `len` is how many bytes of the batch payload belong to
+/// it. See [`WorkspaceState::import_dropped`].
+#[derive(Deserialize, Clone, Debug)]
+pub struct DroppedFile {
+    pub path: String,
+    pub len: usize,
 }
 
 // ─── WorkspaceState ──────────────────────────────────────────────────────────
@@ -378,6 +390,22 @@ impl WorkspaceState {
             .map_err(|e| e.to_string())
     }
 
+    /// Resolve a path the frontend supplied — absolute or workspace-relative —
+    /// to an absolute path inside the workspace. Unlike [`Self::resolve`] this
+    /// accepts an already-absolute path (the editor tracks tabs by absolute
+    /// path), but still refuses anything that escapes the root.
+    pub fn resolve_any(&self, path: &str) -> Result<PathBuf, String> {
+        let root = self.root.read().clone().ok_or("No workspace open")?;
+        let candidate = PathBuf::from(path);
+        if candidate.is_absolute() {
+            WorkspacePath::from_absolute_inside(&root, candidate)
+        } else {
+            WorkspacePath::resolve(&root, path)
+        }
+        .map(WorkspacePath::into_path_buf)
+        .map_err(|e| e.to_string())
+    }
+
     /// Filesystem accessor for the current workspace root. Every structural
     /// file op routes its disk work through this [`WorkingTreeFs`].
     fn working_fs(&self) -> Result<Box<dyn WorkingTreeFs>, String> {
@@ -640,6 +668,125 @@ impl WorkspaceState {
         Ok(())
     }
 
+    /// Write a batch of files dropped onto the window into `dest_dir`.
+    ///
+    /// Unlike [`Self::import_files`] the bytes arrive from the frontend rather
+    /// than from disk: an OS drag-and-drop hands the webview file *contents*,
+    /// never paths, so there is nothing here to read. Each entry's `path` is
+    /// relative to `dest_dir` and may contain sub-directories — that's how a
+    /// dropped folder arrives, flattened into its leaf files.
+    ///
+    /// Names that would collide with something already in `dest_dir` get a
+    /// ` (n)` suffix instead of failing the drop. Only the *first* segment of
+    /// each entry is ever renamed, so a dropped folder keeps its internal
+    /// structure and is de-duplicated as a unit.
+    ///
+    /// Returns the workspace-relative path of every file written.
+    pub fn import_dropped(
+        &self,
+        dest_dir: &str,
+        files: &[DroppedFile],
+        payload: &[u8],
+    ) -> Result<Vec<String>, String> {
+        let t = Instant::now();
+        let dest = self.resolve(dest_dir)?;
+        let fs = self.working_fs()?;
+        info!(
+            "WorkspaceState::import_dropped: dest={dest:?} count={} bytes={}",
+            files.len(),
+            payload.len()
+        );
+
+        // A readable directory listing confirms `dest` exists and is a folder.
+        if fs.read_dir(&dest).is_err() {
+            let e = format!("{} is not a directory", dest.display());
+            error!("WorkspaceState::import_dropped: err=\"{e}\"");
+            return Err(e);
+        }
+
+        let declared: usize = files.iter().map(|f| f.len).sum();
+        if declared != payload.len() {
+            let e = format!(
+                "Dropped payload is {} bytes, but its header declares {declared}",
+                payload.len()
+            );
+            error!("WorkspaceState::import_dropped: err=\"{e}\"");
+            return Err(e);
+        }
+
+        // Resolve every destination first: a collision on a dropped folder has
+        // to rename the folder once, not once per file inside it.
+        let mut renamed_roots: HashMap<String, String> = HashMap::new();
+        let mut claimed: Vec<String> = Vec::new();
+        let mut plan: Vec<(String, usize)> = Vec::with_capacity(files.len());
+        for file in files {
+            let segments = drop_path_segments(&file.path).map_err(|e| {
+                error!("WorkspaceState::import_dropped: err=\"{e}\"");
+                e
+            })?;
+            let (first, rest) = segments.split_first().expect("segments is never empty");
+            let root_name = match renamed_roots.get(first) {
+                Some(name) => name.clone(),
+                None => {
+                    let name = free_name(fs.as_ref(), &dest, first, &claimed);
+                    claimed.push(name.clone());
+                    renamed_roots.insert(first.clone(), name.clone());
+                    name
+                }
+            };
+            let mut rel = root_name;
+            for segment in rest {
+                rel.push('/');
+                rel.push_str(segment);
+            }
+            plan.push((rel, file.len));
+        }
+
+        let dest_prefix = dest_dir.trim_end_matches(['/', '\\']);
+        let mut written = Vec::with_capacity(plan.len());
+        let mut offset = 0usize;
+        for (rel, len) in plan {
+            let bytes = &payload[offset..offset + len];
+            offset += len;
+
+            let ws_rel = if dest_prefix.is_empty() {
+                rel
+            } else {
+                format!("{dest_prefix}/{rel}")
+            };
+            // Route through `resolve` so a crafted entry path can't escape the
+            // workspace root, even though the segments were validated above.
+            let abs = self.resolve(&ws_rel)?;
+            if let Some(parent) = abs.parent() {
+                fs.create_dir_all(parent).map_err(|e| {
+                    error!("WorkspaceState::import_dropped: create_dir_all failed parent={parent:?} err=\"{e}\"");
+                    e
+                })?;
+            }
+            fs.write_file(&abs, bytes).map_err(|e| {
+                error!("WorkspaceState::import_dropped: write failed dst={abs:?} err=\"{e}\"");
+                e
+            })?;
+            written.push(ws_rel);
+        }
+
+        let count = written.len();
+        let destination = if dest_prefix.is_empty() {
+            "the workspace root".to_string()
+        } else {
+            basename(dest_prefix).to_string()
+        };
+        self.snapshot_file_op(&format!(
+            "Imported {count} file{} into {destination}",
+            if count == 1 { "" } else { "s" }
+        ));
+        info!(
+            "WorkspaceState::import_dropped: ok — {count} file(s) ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
+        Ok(written)
+    }
+
     /// Move an entire directory to a new location.
     pub fn move_folder(&self, src: &str, dst: &str) -> Result<(), String> {
         let t = Instant::now();
@@ -836,6 +983,71 @@ fn rewrite_path_prefix(path: &Path, src_prefix: &Path, dst_prefix: &Path) -> Opt
     Some(dst_prefix.join(suffix))
 }
 
+/// Split a dropped entry's relative path into validated segments.
+///
+/// The frontend builds these from the names the webview reports for a drag-
+/// and-drop, so they're untrusted: anything that could climb out of the
+/// destination directory (`..`, a Windows drive prefix) is rejected outright
+/// rather than normalized away.
+fn drop_path_segments(path: &str) -> Result<Vec<String>, String> {
+    let mut segments = Vec::new();
+    for raw in path.split(['/', '\\']) {
+        let segment = raw.trim();
+        if segment.is_empty() || segment == "." {
+            continue;
+        }
+        if segment == ".." || segment.contains(':') {
+            return Err(format!("Refusing dropped path: {path}"));
+        }
+        segments.push(segment.to_string());
+    }
+    if segments.is_empty() {
+        return Err(format!("Dropped entry has no file name: {path}"));
+    }
+    Ok(segments)
+}
+
+/// Pick a name inside `dest` that collides with neither an existing entry nor
+/// one already claimed by this batch, suffixing ` (n)` before the extension the
+/// way desktop file managers do.
+fn free_name(fs: &dyn WorkingTreeFs, dest: &Path, name: &str, claimed: &[String]) -> String {
+    // macOS and Windows are case-insensitive, so `claimed` is compared that way
+    // too — `fs.exists` already answers for the real filesystem's rules.
+    let taken = |candidate: &str| {
+        fs.exists(&dest.join(candidate))
+            || claimed.iter().any(|c| c.eq_ignore_ascii_case(candidate))
+    };
+    if !taken(name) {
+        return name.to_string();
+    }
+
+    // Dotfiles (`.gitignore`) have no stem to suffix — treat the whole name as
+    // the stem so they become `.gitignore (1)`.
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => (stem, Some(ext)),
+        _ => (name, None),
+    };
+    for n in 1..10_000u32 {
+        let candidate = match ext {
+            Some(ext) => format!("{stem} ({n}).{ext}"),
+            None => format!("{stem} ({n})"),
+        };
+        if !taken(&candidate) {
+            return candidate;
+        }
+    }
+    // 10k collisions on one name is pathological; fall back to a timestamp so
+    // the drop still lands somewhere instead of failing.
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    match ext {
+        Some(ext) => format!("{stem} ({unique}).{ext}"),
+        None => format!("{stem} ({unique})"),
+    }
+}
+
 /// Last path segment of a workspace-relative (forward- or back-slash) path,
 /// used to build human-readable restore-point messages.
 fn basename(path: &str) -> &str {
@@ -852,5 +1064,109 @@ fn dirname(path: &str) -> &str {
     match trimmed.rfind(['/', '\\']) {
         Some(idx) => &trimmed[..idx],
         None => "",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vcs::fs::WorkingEntry;
+    use std::collections::HashSet;
+
+    /// Only `exists` matters for the drop-name helpers; the rest of the trait
+    /// is never reached from them.
+    struct FakeFs {
+        existing: HashSet<PathBuf>,
+    }
+
+    impl FakeFs {
+        fn with(names: &[&str]) -> Self {
+            Self {
+                existing: names.iter().map(|n| PathBuf::from("/ws").join(n)).collect(),
+            }
+        }
+    }
+
+    impl WorkingTreeFs for FakeFs {
+        fn read_dir(&self, _dir: &Path) -> Result<Vec<WorkingEntry>, String> {
+            unimplemented!()
+        }
+        fn read_file(&self, _path: &Path) -> Result<Vec<u8>, String> {
+            unimplemented!()
+        }
+        fn write_file(&self, _path: &Path, _bytes: &[u8]) -> Result<(), String> {
+            unimplemented!()
+        }
+        fn create_dir_all(&self, _path: &Path) -> Result<(), String> {
+            unimplemented!()
+        }
+        fn remove_file(&self, _path: &Path) -> Result<(), String> {
+            unimplemented!()
+        }
+        fn remove_dir(&self, _path: &Path) -> Result<(), String> {
+            unimplemented!()
+        }
+        fn exists(&self, path: &Path) -> bool {
+            self.existing.contains(path)
+        }
+    }
+
+    #[test]
+    fn drop_path_segments_splits_on_either_separator() {
+        assert_eq!(
+            drop_path_segments("assets/logos\\mark.png").unwrap(),
+            vec!["assets", "logos", "mark.png"]
+        );
+    }
+
+    #[test]
+    fn drop_path_segments_drops_noise_segments() {
+        assert_eq!(
+            drop_path_segments("./assets//mark.png").unwrap(),
+            vec!["assets", "mark.png"]
+        );
+    }
+
+    #[test]
+    fn drop_path_segments_rejects_escapes() {
+        assert!(drop_path_segments("../outside.png").is_err());
+        assert!(drop_path_segments("assets/../../outside.png").is_err());
+        assert!(drop_path_segments("C:/Windows/system.ini").is_err());
+        assert!(drop_path_segments("   ").is_err());
+    }
+
+    #[test]
+    fn free_name_keeps_an_unused_name() {
+        let fs = FakeFs::with(&["other.png"]);
+        assert_eq!(free_name(&fs, Path::new("/ws"), "logo.png", &[]), "logo.png");
+    }
+
+    #[test]
+    fn free_name_suffixes_before_the_extension() {
+        let fs = FakeFs::with(&["logo.png", "logo (1).png"]);
+        assert_eq!(
+            free_name(&fs, Path::new("/ws"), "logo.png", &[]),
+            "logo (2).png"
+        );
+    }
+
+    #[test]
+    fn free_name_suffixes_extensionless_names_whole() {
+        let fs = FakeFs::with(&["assets", ".gitignore"]);
+        assert_eq!(free_name(&fs, Path::new("/ws"), "assets", &[]), "assets (1)");
+        assert_eq!(
+            free_name(&fs, Path::new("/ws"), ".gitignore", &[]),
+            ".gitignore (1)"
+        );
+    }
+
+    #[test]
+    fn free_name_avoids_names_claimed_earlier_in_the_batch() {
+        let fs = FakeFs::with(&["logo.png"]);
+        let claimed = vec!["logo (1).png".to_string()];
+        assert_eq!(
+            free_name(&fs, Path::new("/ws"), "logo.png", &claimed),
+            "logo (2).png"
+        );
     }
 }
