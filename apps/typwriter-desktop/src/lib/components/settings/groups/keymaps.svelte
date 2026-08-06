@@ -13,6 +13,8 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import SettingGroup from "../setting-group.svelte";
+  import SettingMatch from "../setting-match.svelte";
+  import { getSettingsSearch } from "../search.svelte";
   import { settings } from "$lib/stores/settings.svelte";
   import { platform } from "$lib/stores/platform.svelte";
   import {
@@ -43,8 +45,13 @@
 
   const customizedCount = $derived(Object.keys(settings.keybindings).length);
 
+  // The settings-wide search takes over this pane's filter while it's running,
+  // so searching "bold" or "Ctrl+S" from the top of the window lands here.
+  const search = getSettingsSearch();
+  const activeFilter = $derived(search.active ? search.query : filter);
+
   const sections = $derived.by(() => {
-    const needle = filter.trim().toLowerCase();
+    const needle = activeFilter.trim().toLowerCase();
     return KEY_SECTIONS.map((section) => ({
       ...section,
       commands: commandsInScope(section.scope).filter(
@@ -94,6 +101,7 @@
 <SettingGroup
   title="Keymaps"
   description="Every shortcut below can be rebound. A command can answer to several key combinations — add as many as you like, or remove them all to switch the command off. Changes apply immediately, in every open window."
+  keywords={["shortcuts", "keyboard", "hotkeys", "key bindings", "keys", "rebind"]}
 >
   {#snippet aside()}
     {#if customizedCount > 0}
@@ -103,14 +111,33 @@
     {/if}
   {/snippet}
 
-  <div class="mb-4 flex items-center gap-2">
-    <HugeiconsIcon icon={Search01Icon} class="size-4 shrink-0 text-muted-foreground" />
-    <Input bind:value={filter} placeholder="Filter shortcuts…" />
-  </div>
+  <!-- `matched` keeps the pane on screen when the settings-wide query hits a
+       command or a chord rather than the word "keymaps". -->
+  <SettingMatch
+    keywords={[
+      "shortcuts",
+      "keyboard",
+      "hotkeys",
+      "key bindings",
+      "rebind",
+      // The non-rebindable list at the bottom isn't filtered, so its labels
+      // have to come in as keywords for "undo" and friends to find the pane.
+      ...BUILT_IN.map((binding) => binding.description),
+    ]}
+    matched={sections.length > 0}
+  >
+  <!-- Hidden while the settings-wide search drives the list: two filter boxes
+       over the same list would just be confusing. -->
+  {#if !search.active}
+    <div class="mb-4 flex items-center gap-2">
+      <HugeiconsIcon icon={Search01Icon} class="size-4 shrink-0 text-muted-foreground" />
+      <Input bind:value={filter} placeholder="Filter shortcuts…" />
+    </div>
+  {/if}
 
   {#if sections.length === 0}
     <p class="rounded-md border border-border px-4 py-6 text-center text-sm text-muted-foreground">
-      No shortcuts match "{filter}".
+      No shortcuts match "{activeFilter}".
     </p>
   {/if}
 
@@ -243,4 +270,5 @@
       </div>
     {/each}
   </div>
+  </SettingMatch>
 </SettingGroup>

@@ -1,53 +1,88 @@
 <script lang="ts">
+  // Palette dropdown, one per mode (light / dark). The list is short enough not
+  // to need a search box, but long enough that laying all the themes out inline
+  // dominated the Appearance pane — hence a popover, like the font picker.
+  import Button from "$lib/components/ui/button/button.svelte";
+  import * as Popover from "$lib/components/ui/popover/index.js";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import type { IconSvgElement } from "@hugeicons/svelte";
+  import { ArrowDown01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
   import { THEMES, type ThemeId } from "$lib/stores/settings.svelte";
 
   interface Props {
-    title: string;
-    icon: IconSvgElement;
     /** Render the swatches with each theme's dark palette. */
     dark?: boolean;
     selected: ThemeId;
     onselect: (id: ThemeId) => void;
   }
 
-  let { title, icon, dark = false, selected, onselect }: Props = $props();
+  let { dark = false, selected, onselect }: Props = $props();
+
+  let open = $state(false);
+
+  const current = $derived(THEMES.find((t) => t.id === selected) ?? THEMES[0]);
+
+  function select(id: ThemeId) {
+    onselect(id);
+    open = false;
+  }
 </script>
 
-<div class="rounded-md border border-border p-4">
-  <div class="mb-3 flex items-center gap-2">
-    <HugeiconsIcon {icon} class="size-4" />
-    <h3 class="text-sm font-medium">{title}</h3>
+{#snippet swatch(id: ThemeId)}
+  <div
+    class="theme-swatch flex h-5 w-9 shrink-0 rounded border border-border"
+    class:dark
+    data-theme={id}
+    aria-hidden="true"
+  >
+    <span class="flex-1 rounded-l" style="background: var(--background)"></span>
+    <span class="flex-1" style="background: var(--primary)"></span>
+    <span class="flex-1 rounded-r" style="background: var(--accent)"></span>
   </div>
-  <div class="flex flex-col gap-1.5">
-    {#each THEMES as theme (theme.id)}
-      <button
-        type="button"
-        class="group flex items-center gap-3 rounded-md border border-transparent px-2 py-1.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground {selected ===
-        theme.id
-          ? 'bg-accent text-accent-foreground border-border'
-          : ''}"
-        onclick={() => onselect(theme.id)}
+{/snippet}
+
+<Popover.Root bind:open>
+  <Popover.Trigger>
+    {#snippet child({ props })}
+      <!-- h-auto: the swatch is nearly as tall as a `sm` button, so let the
+           padding set the height rather than squeezing it into a fixed one. -->
+      <Button
+        {...props}
+        variant="outline"
+        size="sm"
+        class="h-auto min-w-44 justify-between gap-3 px-3 py-2"
       >
-        <div
-          class="theme-swatch flex h-6 w-10 shrink-0 rounded border border-border"
-          class:dark
-          data-theme={theme.id}
-          aria-hidden="true"
+        <span class="flex min-w-0 items-center gap-2">
+          {@render swatch(current.id)}
+          <span class="truncate">{current.label}</span>
+        </span>
+        <HugeiconsIcon icon={ArrowDown01Icon} class="size-4 shrink-0 opacity-60" />
+      </Button>
+    {/snippet}
+  </Popover.Trigger>
+  <Popover.Content align="end" class="w-72 p-1">
+    <div class="max-h-72 overflow-y-auto">
+      {#each THEMES as theme (theme.id)}
+        <button
+          type="button"
+          class="flex w-full items-center gap-3 rounded-sm px-2 py-1.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground {selected ===
+          theme.id
+            ? 'bg-accent/60 text-accent-foreground'
+            : ''}"
+          onclick={() => select(theme.id)}
         >
-          <span class="flex-1 rounded-l" style="background: var(--background)"></span>
-          <span class="flex-1" style="background: var(--primary)"></span>
-          <span class="flex-1 rounded-r" style="background: var(--accent)"></span>
-        </div>
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium">{theme.label}</p>
-          <p class="truncate text-xs text-muted-foreground">{theme.description}</p>
-        </div>
-      </button>
-    {/each}
-  </div>
-</div>
+          {@render swatch(theme.id)}
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-medium">{theme.label}</p>
+            <p class="truncate text-xs text-muted-foreground">{theme.description}</p>
+          </div>
+          {#if selected === theme.id}
+            <HugeiconsIcon icon={Tick02Icon} class="size-4 shrink-0" />
+          {/if}
+        </button>
+      {/each}
+    </div>
+  </Popover.Content>
+</Popover.Root>
 
 <style>
   /* Theme swatches render the variables of a specific preset regardless of

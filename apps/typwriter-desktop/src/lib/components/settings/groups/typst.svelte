@@ -12,6 +12,7 @@
   import Button from "$lib/components/ui/button/button.svelte";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
+  import SettingMatch from "../setting-match.svelte";
   import { settings } from "$lib/stores/settings.svelte";
   import { getTypstVersion } from "$lib/ipc/commands";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -55,6 +56,7 @@
 <SettingGroup
   title="Typst"
   description="Settings for the Typst compiler itself. Font directories are scanned for additional font files (.ttf, .otf); fonts found there are available in the editor, the font pickers, and in Typst documents."
+  keywords={["compiler", "engine", "fonts", "packages"]}
 >
   {#snippet aside()}
     {#if settings.fontsReloading}
@@ -68,6 +70,7 @@
   <SettingRow
     title="Compiler version"
     description="The Typst release bundled with this build of Typwriter. Documents see the same value as sys.version."
+    keywords={["typst version", "sys.version", "release", "about"]}
   >
     {#snippet control()}
       <span class="text-sm tabular-nums text-muted-foreground">
@@ -76,69 +79,87 @@
     {/snippet}
   </SettingRow>
 
-  <h3 class="mb-2 mt-6 text-sm font-medium">Font directories</h3>
-
-  <div class="rounded-md border border-border">
-    {#if settings.fontDirectories.length === 0}
-      <p class="px-4 py-6 text-center text-sm text-muted-foreground">
-        No extra font directories. Only system + bundled fonts are loaded.
-      </p>
-    {:else}
-      <ul>
-        {#each settings.fontDirectories as dir, i (dir)}
-          <li
-            class="flex items-center gap-3 px-4 py-2.5 {i > 0 ? 'border-t border-border' : ''}"
-          >
-            <HugeiconsIcon icon={Folder01Icon} class="size-4 shrink-0 text-muted-foreground" />
-            <span class="min-w-0 flex-1 truncate text-sm">{dir}</span>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onclick={() => handleRemoveFontDir(dir)}
-              aria-label="Remove font directory"
-              disabled={settings.fontsReloading}
-            >
-              <HugeiconsIcon icon={Delete01Icon} class="size-4 text-destructive" />
-            </Button>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </div>
-
-  <div class="mt-3 flex justify-end">
-    <Button
-      variant="outline"
-      size="sm"
-      class="gap-2"
-      onclick={handleAddFontDir}
-      disabled={settings.fontsReloading}
-    >
-      <HugeiconsIcon icon={FolderAddIcon} class="size-4" />
-      Add font directory
-    </Button>
-  </div>
-
-  <h3 class="mb-2 mt-6 text-sm font-medium">Reference</h3>
-
-  <SettingRow
-    title="Typst documentation"
-    description="The official language and library reference, opened in your browser."
+  <SettingMatch
+    keywords={[
+      "Font directories",
+      "fonts",
+      "typeface",
+      "ttf",
+      "otf",
+      "font folder",
+      "font path",
+      "add font directory",
+    ]}
   >
-    {#snippet control()}
+    <h3 class="mb-2 mt-6 text-sm font-medium">Font directories</h3>
+
+    <div class="rounded-md border border-border">
+      {#if settings.fontDirectories.length === 0}
+        <p class="px-4 py-6 text-center text-sm text-muted-foreground">
+          No extra font directories. Only system + bundled fonts are loaded.
+        </p>
+      {:else}
+        <ul>
+          {#each settings.fontDirectories as dir, i (dir)}
+            <li
+              class="flex items-center gap-3 px-4 py-2.5 {i > 0 ? 'border-t border-border' : ''}"
+            >
+              <HugeiconsIcon icon={Folder01Icon} class="size-4 shrink-0 text-muted-foreground" />
+              <span class="min-w-0 flex-1 truncate text-sm">{dir}</span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onclick={() => handleRemoveFontDir(dir)}
+                aria-label="Remove font directory"
+                disabled={settings.fontsReloading}
+              >
+                <HugeiconsIcon icon={Delete01Icon} class="size-4 text-destructive" />
+              </Button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+
+    <div class="mt-3 flex justify-end">
       <Button
         variant="outline"
         size="sm"
-        class="gap-2 shrink-0"
-        onclick={() =>
-          openUrl("https://typst.app/docs/").catch((err) =>
-            logError("open Typst docs failed:", err),
-          )}
+        class="gap-2"
+        onclick={handleAddFontDir}
+        disabled={settings.fontsReloading}
       >
-        <HugeiconsIcon icon={BookOpen01Icon} class="size-4" />
-        Open docs
-        <HugeiconsIcon icon={LinkSquare02Icon} class="size-3.5 text-muted-foreground" />
+        <HugeiconsIcon icon={FolderAddIcon} class="size-4" />
+        Add font directory
       </Button>
-    {/snippet}
-  </SettingRow>
+    </div>
+  </SettingMatch>
+
+  <SettingMatch
+    keywords={["Reference", "Typst documentation", "docs", "manual", "help", "guide"]}
+  >
+    <h3 class="mb-2 mt-6 text-sm font-medium">Reference</h3>
+
+    <SettingRow
+      title="Typst documentation"
+      description="The official language and library reference, opened in your browser."
+      keywords={["docs", "manual", "help", "guide"]}
+    >
+      {#snippet control()}
+        <Button
+          variant="outline"
+          size="sm"
+          class="gap-2 shrink-0"
+          onclick={() =>
+            openUrl("https://typst.app/docs/").catch((err) =>
+              logError("open Typst docs failed:", err),
+            )}
+        >
+          <HugeiconsIcon icon={BookOpen01Icon} class="size-4" />
+          Open docs
+          <HugeiconsIcon icon={LinkSquare02Icon} class="size-3.5 text-muted-foreground" />
+        </Button>
+      {/snippet}
+    </SettingRow>
+  </SettingMatch>
 </SettingGroup>

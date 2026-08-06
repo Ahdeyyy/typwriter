@@ -51,12 +51,17 @@
   }
 </script>
 
-<SettingGroup title="General" description="Updates, onboarding, and app information.">
+<SettingGroup
+  title="General"
+  description="Updates, onboarding, and app information."
+  keywords={["about", "misc", "other"]}
+>
   <div class="flex flex-col gap-3">
     <SettingRow
       label
       title="Check for updates on launch"
       description="Silently look for a new version each time Typwriter starts."
+      keywords={["auto update", "upgrade", "new version", "release"]}
     >
       {#snippet control()}
         <Switch
@@ -69,6 +74,7 @@
     <SettingRow
       title="Tutorial"
       description="Open the onboarding tutorial now, or reset it so it shows again on the next launch."
+      keywords={["onboarding", "walkthrough", "getting started", "help"]}
     >
       {#snippet control()}
         <Button variant="outline" size="sm" class="gap-2 shrink-0" onclick={handleOpenTutorial}>
@@ -85,6 +91,7 @@
     <SettingRow
       title="Log file"
       description="Open Typwriter's log file in your system's default editor."
+      keywords={["logs", "debug", "troubleshoot", "diagnostics"]}
     >
       {#snippet control()}
         <Button variant="outline" size="sm" class="gap-2 shrink-0" onclick={handleOpenLogsFile}>
@@ -97,6 +104,7 @@
     <SettingRow
       title="Typwriter"
       description={platform.appVersion ? `Version ${platform.appVersion}` : "Loading version…"}
+      keywords={["about", "app version", "build"]}
     />
   </div>
 </SettingGroup>

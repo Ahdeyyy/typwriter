@@ -16,7 +16,14 @@ import { normalizeChord } from './keys';
 /** Where a shortcut is listened for. Two commands in different scopes may
  *  share a keystroke without conflicting — the preview pane's `Escape` and the
  *  editor's are heard by different handlers. */
-export type KeyScope = 'global' | 'editor' | 'typst' | 'find' | 'replace' | 'preview';
+export type KeyScope =
+    | 'global'
+    | 'editor'
+    | 'typst'
+    | 'find'
+    | 'replace'
+    | 'preview'
+    | 'settings';
 
 export interface KeyCommandDef {
     id: string;
@@ -64,6 +71,11 @@ export const KEY_SECTIONS: KeySection[] = [
         scope: 'preview',
         title: 'Preview',
         description: 'Active in the preview pane and the presentation window.',
+    },
+    {
+        scope: 'settings',
+        title: 'Settings window',
+        description: 'Active in this window.',
     },
 ];
 
@@ -186,6 +198,15 @@ export const KEY_COMMANDS: KeyCommandDef[] = [
         label: 'Exit presentation mode',
         scope: 'preview',
         defaults: ['Escape'],
+    },
+
+    // ── Settings window ─────────────────────────────────────────────────
+    {
+        id: 'settings.search',
+        label: 'Search settings',
+        description: 'Jump to the search box at the top of this window.',
+        scope: 'settings',
+        defaults: ['Mod-f'],
     },
 ];
 
