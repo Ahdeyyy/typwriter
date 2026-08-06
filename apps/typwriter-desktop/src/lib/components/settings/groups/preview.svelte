@@ -6,12 +6,17 @@
   import { settings } from "$lib/stores/settings.svelte";
 </script>
 
-<SettingGroup title="Preview" description="Defaults applied each time you open a workspace.">
+<SettingGroup
+  title="Preview"
+  description="Defaults applied each time you open a workspace."
+  keywords={["render", "rendered document", "pdf view", "pane"]}
+>
   <div class="flex flex-col gap-3">
     <SettingRow
       label
       title="Show preview pane on open"
       description="Start the workspace with the preview pane visible."
+      keywords={["visible", "hide preview", "split"]}
     >
       {#snippet control()}
         <Switch
@@ -24,6 +29,7 @@
     <SettingRow
       title="Default zoom"
       description="Initial zoom applied to the preview on each launch."
+      keywords={["scale", "magnification", "percent"]}
     >
       {#snippet control()}
         <SliderControl

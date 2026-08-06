@@ -4,11 +4,11 @@
 
 **Typwriter** is a flexible, modern editor for [Typst](https://typst.app/), built with Tauri and Svelte. It allows you to write Typst documents, see a live preview of the compiled output, and export your documents directly to PDF, SVG, PNG and HTML.
 
-Note: Android version is currently buggy and not recommended for real use, I won't focus on it for now.
+Follow this [guide](https://github.com/st235/macos-unverified-signature-apps-installation) to install the app on MacOS. It is needed because the app is unsigned.
+
+Note: Android version is not well test so I don't recommended it for real use, Until I resolve the local compilation I won't be developing it at a steady pace.
 
 ## Features
-
-I have implemented most of the editor features in the official [web app](https://typst.app/)
 
 - **Live Preview:** See your compiled output update as you type.
 - **Source-Preview Sync:** The preview automatically scrolls to match your cursor position in the source code.
@@ -18,6 +18,7 @@ I have implemented most of the editor features in the official [web app](https:/
 - **Workspace Management:** View and load recently opened workspaces.
 - **Document Export:** Export your documents to PDF, SVG, PNG and HTML.
 - **Document Formatting:** Format your document using Typstyle.
+- **Grammar Checking:** Uses Harper for grammar checking locally
 
   ## Getting Started (Development)
 
@@ -74,3 +75,5 @@ To run the project locally, follow these steps:
 - **Typesetting Engine:** [Typst](https://typst.app/)
 - **Text Editor:** [CodeMirror](https://codemirror.net/)
 - **Formatter:** [Typstyle](https://github.com/typstyle-rs/typstyle)
+- **Grammer Checker:** [Harper](https://github.com/Automattic/harper/)
+- **UI Component:** [Shadcn-Svelte](https://www.shadcn-svelte.com/)

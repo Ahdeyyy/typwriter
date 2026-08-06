@@ -6,6 +6,7 @@
   import { Switch } from "$lib/components/ui/switch/index.js";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
+  import SettingMatch from "../setting-match.svelte";
   import SliderControl from "../slider-control.svelte";
   import { settings, FORMAT_LIMITS } from "$lib/stores/settings.svelte";
 
@@ -28,9 +29,13 @@
 <SettingGroup
   title="Formatting"
   description="How typstyle rewrites your .typ files. These options apply everywhere formatting runs — the editor's format command, format-on-save, and Format workspace."
+  keywords={["typstyle", "pretty print", "beautify", "style"]}
 >
   <div class="flex flex-col gap-3">
-    <SettingRow title="Indent width">
+    <SettingRow
+      title="Indent width"
+      keywords={["spaces per indentation level", "tab", "indentation"]}
+    >
       {#snippet description()}
         Spaces per indentation level in formatted output. Separate from the
         editor's own tab width.
@@ -51,6 +56,7 @@
     <SettingRow
       title="Maximum line width"
       description="The column typstyle tries to keep lines within before breaking them across lines."
+      keywords={["columns", "line length", "ruler"]}
     >
       {#snippet control()}
         <SliderControl
@@ -65,7 +71,10 @@
       {/snippet}
     </SettingRow>
 
-    <SettingRow title="Consecutive blank lines">
+    <SettingRow
+      title="Consecutive blank lines"
+      keywords={["empty lines", "collapse", "spacing in code"]}
+    >
       {#snippet description()}
         How many blank lines in a row to keep inside code; longer runs are
         collapsed. Blank lines in markup are always left as you wrote them.
@@ -83,7 +92,11 @@
       {/snippet}
     </SettingRow>
 
-    <SettingRow label title="Wrap prose to the line width">
+    <SettingRow
+      label
+      title="Wrap prose to the line width"
+      keywords={["reflow", "paragraphs", "hard wrap"]}
+    >
       {#snippet description()}
         Reflow paragraphs so they fit the maximum line width. Off by default —
         it rewrites how your prose is laid out, not just its spacing.
@@ -100,6 +113,7 @@
       label={!collapseForced}
       title="Collapse whitespace in markup"
       dimmed={collapseForced}
+      keywords={["spaces", "squash", "double space"]}
     >
       {#snippet description()}
         {#if collapseForced}
@@ -117,7 +131,11 @@
       {/snippet}
     </SettingRow>
 
-    <SettingRow label title="Sort import items">
+    <SettingRow
+      label
+      title="Sort import items"
+      keywords={["alphabetize", "reorder", "#import"]}
+    >
       {#snippet description()}
         Alphabetize the items in an <code>#import</code> list.
       {/snippet}
@@ -130,8 +148,10 @@
     </SettingRow>
   </div>
 
-  <p class="mt-4 text-xs text-muted-foreground">
-    Formatting also runs automatically before every save when
-    <span class="font-medium">Format before saving</span> is enabled under Saving.
-  </p>
+  <SettingMatch keywords={["format before saving", "format on save"]}>
+    <p class="mt-4 text-xs text-muted-foreground">
+      Formatting also runs automatically before every save when
+      <span class="font-medium">Format before saving</span> is enabled under Saving.
+    </p>
+  </SettingMatch>
 </SettingGroup>

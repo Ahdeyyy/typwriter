@@ -10,14 +10,16 @@
 		ViewIcon,
 		ArrowDataTransferHorizontalIcon,
 		FlashIcon,
-		FolderOpenIcon,
 		FileExportIcon,
 		Download04Icon,
 		Apple01Icon,
 		ComputerIcon,
 		SourceCodeIcon,
 		AndroidIcon,
-		LaptopIcon
+		LaptopIcon,
+		TextCheckIcon,
+		MagicWand01Icon,
+		GitCommitIcon
 	} from '@hugeicons/core-free-icons';
 
 	import showcaseDark from '$lib/assets/showcase_dark.png';
@@ -27,6 +29,9 @@
 
 	const GITHUB_URL = 'https://github.com/Ahdeyyy/typwriter';
 	const RELEASES_URL = 'https://github.com/Ahdeyyy/typwriter/releases/latest';
+	// The macOS build is unsigned, so Gatekeeper blocks it on first launch.
+	const MACOS_UNSIGNED_GUIDE_URL =
+		'https://github.com/st235/macos-unverified-signature-apps-installation';
 
 	const assets = $derived(data.release?.assets ?? []);
 	const version = $derived(data.release?.tag_name ?? null);
@@ -87,7 +92,7 @@
 			icon: SourceCodeIcon,
 			title: 'Syntax highlighting',
 			description:
-				'Full Typst highlighting across markup, math, and code blocks, so the source stays easy to read and navigate.'
+				'Full Typst highlighting across markup, math, and code blocks — plus the embedded languages inside raw code fences.'
 		},
 		{
 			icon: ArrowDataTransferHorizontalIcon,
@@ -99,19 +104,31 @@
 			icon: FlashIcon,
 			title: 'Autocomplete & docs',
 			description:
-				'Context-aware suggestions and inline documentation surface the right symbol while you write, not after you guess.'
+				'Context-aware suggestions, hover documentation, and go-to-definition. Point it at tinymist for a full language server.'
 		},
 		{
-			icon: FolderOpenIcon,
-			title: 'Workspaces',
+			icon: TextCheckIcon,
+			title: 'Grammar & spell check',
 			description:
-				'Organise documents as projects. Pick up where you left off from a recent-workspaces list, on every device.'
+				'Harper checks your prose entirely on your machine — no text leaves the app. Pick a dialect, add words to your dictionary.'
+		},
+		{
+			icon: MagicWand01Icon,
+			title: 'Formatting',
+			description:
+				'Typstyle formats the file, the selection, or every .typ file in the workspace. Run it on save if you prefer.'
+		},
+		{
+			icon: GitCommitIcon,
+			title: 'Restore points',
+			description:
+				'Local snapshots taken on save or on a successful compile. Diff any two, then roll back a single file or the whole workspace.'
 		},
 		{
 			icon: FileExportIcon,
 			title: 'Export anywhere',
 			description:
-				'Generate pixel-perfect PDF, SVG, or PNG output from the current document in one click.'
+				'Generate pixel-perfect PDF, SVG, PNG, or HTML output from the current document in one click.'
 		}
 	];
 </script>
@@ -120,7 +137,7 @@
 	<title>Typwriter — a Typst editor for desktop and mobile</title>
 	<meta
 		name="description"
-		content="Typwriter is a Typst editor for Windows, macOS, Linux, and Android. Live preview, syntax highlighting, autocomplete, and export to PDF, SVG, or PNG."
+		content="Typwriter is a Typst editor for Windows, macOS, Linux, and Android. Live preview, syntax highlighting, autocomplete, offline grammar checking, restore points, and export to PDF, SVG, PNG, or HTML."
 	/>
 </svelte:head>
 
@@ -130,7 +147,7 @@
 
 	<p class="mx-auto mb-10 max-w-xl text-base text-muted-foreground sm:text-lg">
 		A Typst editor for Windows, macOS, Linux, and Android*. Write with syntax highlighting and
-		autocomplete, watch your document render as you type, and export to PDF, SVG, or PNG.
+		autocomplete, watch your document render as you type, and export to PDF, SVG, PNG, or HTML.
 	</p>
 
 	<div class="flex flex-wrap items-center justify-center gap-3">
@@ -231,34 +248,6 @@
 			{/if}
 		</div>
 
-		<!-- macOS -->
-		<div class="flex flex-col gap-3">
-			<div class="flex items-center gap-2 text-sm font-medium">
-				<HugeiconsIcon icon={Apple01Icon} size={15} class="text-muted-foreground" />
-				macOS
-			</div>
-			{#if macosAssets.length > 0}
-				{#each macosAssets as asset (asset.name)}
-					<Button
-						variant="outline"
-						class="h-auto justify-between px-4 py-3"
-						href={asset.browser_download_url}
-					>
-						<span class="flex items-center gap-2">
-							<HugeiconsIcon icon={Download04Icon} size={14} />
-							{assetLabel(asset.name)}
-						</span>
-						<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
-					</Button>
-				{/each}
-			{:else}
-				<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
-					<HugeiconsIcon icon={Download04Icon} size={14} class="mr-2" />
-					View macOS releases
-				</Button>
-			{/if}
-		</div>
-
 		<!-- Linux -->
 		<div class="flex flex-col gap-3">
 			<div class="flex items-center gap-2 text-sm font-medium">
@@ -283,6 +272,51 @@
 				<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
 					<HugeiconsIcon icon={Download04Icon} size={14} class="mr-2" />
 					View Linux releases
+				</Button>
+			{/if}
+		</div>
+
+		<!-- macOS -->
+		<div class="flex flex-col gap-3">
+			<div class="flex items-center gap-2 text-sm font-medium">
+				<HugeiconsIcon icon={Apple01Icon} size={15} class="text-muted-foreground" />
+				macOS
+				<span
+					class="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[0.625rem] font-medium tracking-wide text-amber-600 uppercase dark:text-amber-400"
+				>
+					Unsigned
+				</span>
+			</div>
+			<p class="text-xs text-muted-foreground">
+				The macOS build isn't code-signed, so Gatekeeper will refuse to open it on first launch.
+				<a
+					href={MACOS_UNSIGNED_GUIDE_URL}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="text-foreground underline underline-offset-2 transition-colors hover:text-muted-foreground"
+				>
+					Follow this guide
+				</a>
+				to install it anyway.
+			</p>
+			{#if macosAssets.length > 0}
+				{#each macosAssets as asset (asset.name)}
+					<Button
+						variant="outline"
+						class="h-auto justify-between px-4 py-3"
+						href={asset.browser_download_url}
+					>
+						<span class="flex items-center gap-2">
+							<HugeiconsIcon icon={Download04Icon} size={14} />
+							{assetLabel(asset.name)}
+						</span>
+						<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
+					</Button>
+				{/each}
+			{:else}
+				<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
+					<HugeiconsIcon icon={Download04Icon} size={14} class="mr-2" />
+					View macOS releases
 				</Button>
 			{/if}
 		</div>

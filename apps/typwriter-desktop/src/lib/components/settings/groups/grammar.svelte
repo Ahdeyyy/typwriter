@@ -12,6 +12,8 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
+  import SettingMatch from "../setting-match.svelte";
+  import { getSettingsSearch } from "../search.svelte";
   import { grammar } from "$lib/stores/grammar.svelte";
   import type { GrammarDialect } from "$lib/types";
   import { toast } from "svelte-sonner";
@@ -31,8 +33,13 @@
     DIALECTS.find((d) => d.id === grammar.config.dialect)?.label ?? "American",
   );
 
+  // The settings-wide search takes over the rule filter while it's running, so
+  // looking for a rule by name from the top of the window finds it here.
+  const search = getSettingsSearch();
+  const activeRuleFilter = $derived(search.active ? search.query : ruleFilter);
+
   const visibleRules = $derived.by(() => {
-    const needle = ruleFilter.trim().toLowerCase();
+    const needle = activeRuleFilter.trim().toLowerCase();
     if (!needle) return grammar.rules;
     return grammar.rules.filter(
       (rule) =>
@@ -69,12 +76,14 @@
 <SettingGroup
   title="Grammar"
   description="Checks prose for spelling, grammar, and style as you write, using Harper. Typst files are read with a parser that understands markup, so code, maths, and raw blocks are left alone. Markdown, plain text, and the data formats Typst can import — JSON, YAML, TOML, CSV, XML, BibTeX — are checked too; source code never is."
+  keywords={["spelling", "proofreading", "harper", "lint", "writing style"]}
 >
   <div class="flex flex-col gap-3">
     <SettingRow
       label
       title="Check grammar"
       description="Turn the checker off to stop all analysis and clear existing suggestions."
+      keywords={["enable", "disable", "turn off", "spelling"]}
     >
       {#snippet control()}
         <Switch
@@ -90,6 +99,7 @@
     <SettingRow
       title="Dialect"
       description="Which English the checker treats as correct. Affects spelling variants like colour/color and regional word choice."
+      keywords={["language", "american", "british", "canadian", "australian", "indian", "locale"]}
       dimmed={!grammar.config.enabled}
     >
       {#snippet control()}
@@ -121,93 +131,112 @@
 
   <!-- ── Personal dictionary ─────────────────────────────────────────── -->
 
-  <h3 class="mb-2 mt-6 text-sm font-medium">Dictionary</h3>
-  <p class="mb-2 text-xs text-muted-foreground">
-    Words here are always treated as correctly spelled. The "Add to dictionary"
-    action on a spelling suggestion adds them too.
-  </p>
+  <SettingMatch
+    keywords={[
+      "Dictionary",
+      "custom words",
+      "personal dictionary",
+      "add a word",
+      "ignore word",
+      "spelling",
+    ]}
+  >
+    <h3 class="mb-2 mt-6 text-sm font-medium">Dictionary</h3>
+    <p class="mb-2 text-xs text-muted-foreground">
+      Words here are always treated as correctly spelled. The "Add to dictionary"
+      action on a spelling suggestion adds them too.
+    </p>
 
-  <div class="mb-3 flex gap-2">
-    <Input
-      bind:value={newWord}
-      placeholder="Add a word…"
-      onkeydown={(e: KeyboardEvent) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          addWord();
-        }
-      }}
-    />
-    <Button variant="outline" size="sm" onclick={addWord} disabled={!newWord.trim()}>
-      Add
-    </Button>
-  </div>
+    <div class="mb-3 flex gap-2">
+      <Input
+        bind:value={newWord}
+        placeholder="Add a word…"
+        onkeydown={(e: KeyboardEvent) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            addWord();
+          }
+        }}
+      />
+      <Button variant="outline" size="sm" onclick={addWord} disabled={!newWord.trim()}>
+        Add
+      </Button>
+    </div>
 
-  <div class="rounded-md border border-border">
-    {#if grammar.config.userDictionary.length === 0}
-      <p class="px-4 py-6 text-center text-sm text-muted-foreground">
-        No custom words yet.
-      </p>
-    {:else}
-      <ul>
-        {#each grammar.config.userDictionary as word, i (word)}
-          <li
-            class="flex items-center gap-3 px-4 py-2 {i > 0
-              ? 'border-t border-border'
-              : ''}"
-          >
-            <span class="min-w-0 flex-1 truncate text-sm">{word}</span>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Remove {word} from the dictionary"
-              onclick={() =>
-                grammar
-                  .removeWord(word)
-                  .mapErr((err) => toast.error(`Could not remove word: ${err}`))}
+    <div class="max-h-72 overflow-y-auto rounded-md border border-border">
+      {#if grammar.config.userDictionary.length === 0}
+        <p class="px-4 py-6 text-center text-sm text-muted-foreground">
+          No custom words yet.
+        </p>
+      {:else}
+        <ul>
+          {#each grammar.config.userDictionary as word, i (word)}
+            <li
+              class="flex items-center gap-3 px-4 py-2 {i > 0
+                ? 'border-t border-border'
+                : ''}"
             >
-              <HugeiconsIcon icon={Delete01Icon} class="size-4 text-destructive" />
-            </Button>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </div>
+              <span class="min-w-0 flex-1 truncate text-sm">{word}</span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Remove {word} from the dictionary"
+                onclick={() =>
+                  grammar
+                    .removeWord(word)
+                    .mapErr((err) => toast.error(`Could not remove word: ${err}`))}
+              >
+                <HugeiconsIcon icon={Delete01Icon} class="size-4 text-destructive" />
+              </Button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+  </SettingMatch>
 
   <!-- ── Per-file opt-outs ───────────────────────────────────────────── -->
 
   {#if grammar.config.disabledFiles.length > 0}
-    <h3 class="mb-2 mt-6 text-sm font-medium">Files not checked</h3>
-    <p class="mb-2 text-xs text-muted-foreground">
-      Switched off individually from the Grammar pane in the sidebar.
-    </p>
-    <div class="rounded-md border border-border">
-      <ul>
-        {#each grammar.config.disabledFiles as path, i (path)}
-          <li
-            class="flex items-center gap-3 px-4 py-2 {i > 0
-              ? 'border-t border-border'
-              : ''}"
-          >
-            <span class="min-w-0 flex-1 truncate text-sm">{path}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onclick={() =>
-                grammar
-                  .setFileEnabled(path, true)
-                  .mapErr((err) => toast.error(`Could not re-enable: ${err}`))}
+    <SettingMatch keywords={["Files not checked", "excluded", "ignored files", "opt out"]}>
+      <h3 class="mb-2 mt-6 text-sm font-medium">Files not checked</h3>
+      <p class="mb-2 text-xs text-muted-foreground">
+        Switched off individually from the Grammar pane in the sidebar.
+      </p>
+      <div class="rounded-md border border-border">
+        <ul>
+          {#each grammar.config.disabledFiles as path, i (path)}
+            <li
+              class="flex items-center gap-3 px-4 py-2 {i > 0
+                ? 'border-t border-border'
+                : ''}"
             >
-              Re-enable
-            </Button>
-          </li>
-        {/each}
-      </ul>
-    </div>
+              <span class="min-w-0 flex-1 truncate text-sm">{path}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onclick={() =>
+                  grammar
+                    .setFileEnabled(path, true)
+                    .mapErr((err) => toast.error(`Could not re-enable: ${err}`))}
+              >
+                Re-enable
+              </Button>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    </SettingMatch>
   {/if}
 
   <!-- ── Rules ───────────────────────────────────────────────────────── -->
 
+  <!-- `matched` keeps the block on screen when the settings-wide query hits a
+       rule name rather than the word "rules". -->
+  <SettingMatch
+    keywords={["Rules", "lints", "checks", "harper rules", "style rules"]}
+    matched={visibleRules.length > 0}
+  >
   <div class="mb-2 mt-6 flex items-center justify-between gap-3">
     <h3 class="text-sm font-medium">Rules</h3>
     {#if overriddenCount > 0}
@@ -242,18 +271,22 @@
       Loading rules…
     </div>
   {:else}
-    <div class="mb-3 flex items-center gap-2">
-      <HugeiconsIcon
-        icon={Search01Icon}
-        class="size-4 shrink-0 text-muted-foreground"
-      />
-      <Input bind:value={ruleFilter} placeholder="Filter rules…" />
-    </div>
+    <!-- Hidden while the settings-wide search is driving the list: two filter
+         boxes fighting over the same list would just be confusing. -->
+    {#if !search.active}
+      <div class="mb-3 flex items-center gap-2">
+        <HugeiconsIcon
+          icon={Search01Icon}
+          class="size-4 shrink-0 text-muted-foreground"
+        />
+        <Input bind:value={ruleFilter} placeholder="Filter rules…" />
+      </div>
+    {/if}
 
     <div class="max-h-96 overflow-y-auto rounded-md border border-border">
       {#if visibleRules.length === 0}
         <p class="px-4 py-6 text-center text-sm text-muted-foreground">
-          No rules match "{ruleFilter}".
+          No rules match "{activeRuleFilter}".
         </p>
       {:else}
         <ul>
@@ -298,4 +331,5 @@
       {/if}
     </div>
   {/if}
+  </SettingMatch>
 </SettingGroup>

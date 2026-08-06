@@ -19,12 +19,14 @@
   description="Save edits to disk after you stop typing. Disable auto-save to require a manual save{saveShortcut
     ? ` (${saveShortcut})`
     : ''}."
+  keywords={["autosave", "auto save", "write to disk", "persist"]}
 >
   <div class="flex flex-col gap-3">
     <SettingRow
       label
       title="Auto-save when idle"
       description="Flush unsaved edits after a pause in typing."
+      keywords={["autosave", "automatic"]}
     >
       {#snippet control()}
         <Switch
@@ -37,6 +39,7 @@
     <SettingRow
       title="Idle delay"
       description="How long to wait after the last keystroke before saving."
+      keywords={["autosave", "debounce", "timeout", "seconds"]}
       dimmed={!settings.autoSaveEnabled}
     >
       {#snippet control()}
@@ -53,7 +56,11 @@
       {/snippet}
     </SettingRow>
 
-    <SettingRow label title="Format before saving">
+    <SettingRow
+      label
+      title="Format before saving"
+      keywords={["format on save", "typstyle", "autoformat"]}
+    >
       {#snippet description()}
         Run typstyle on <code>.typ</code> files immediately before each save,
         using the options under Formatting.

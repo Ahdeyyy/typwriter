@@ -63,11 +63,13 @@
 <SettingGroup
   title="Editor"
   description="How the code editor looks and behaves while you type."
+  keywords={["code", "typing", "text area", "writing"]}
 >
   <div class="flex flex-col gap-3">
     <SettingRow
       title="Editor font"
       description="Font used in the code editor. Fonts installed on this device are listed alongside the bundled ones."
+      keywords={["typeface", "family", "monospace", "code font"]}
     >
       {#snippet control()}
         <FontPicker
@@ -80,7 +82,11 @@
       {/snippet}
     </SettingRow>
 
-    <SettingRow title="Editor font size" description="Between 8 and 32 pixels.">
+    <SettingRow
+      title="Editor font size"
+      description="Between 8 and 32 pixels."
+      keywords={["text size", "zoom", "bigger", "smaller", "px"]}
+    >
       {#snippet control()}
         <SliderControl
           min={8}
@@ -93,7 +99,12 @@
       {/snippet}
     </SettingRow>
 
-    <SettingRow label title="Line numbers" description="Show a gutter with line numbers.">
+    <SettingRow
+      label
+      title="Line numbers"
+      description="Show a gutter with line numbers."
+      keywords={["gutter", "numbering"]}
+    >
       {#snippet control()}
         <Switch
           checked={settings.showLineNumbers}
@@ -106,6 +117,7 @@
       label
       title="Indentation markers"
       description="Faint vertical guides showing indentation levels."
+      keywords={["indent guides", "whitespace"]}
     >
       {#snippet control()}
         <Switch
@@ -115,7 +127,12 @@
       {/snippet}
     </SettingRow>
 
-    <SettingRow label title="Spell check" description="Underline misspelled words in prose.">
+    <SettingRow
+      label
+      title="Spell check"
+      description="Underline misspelled words in prose."
+      keywords={["spelling", "typos", "dictionary"]}
+    >
       {#snippet control()}
         <Switch checked={settings.spellcheck} onCheckedChange={(v) => settings.setSpellcheck(v)} />
       {/snippet}
@@ -125,13 +142,18 @@
       label
       title="Word wrap"
       description="Wrap long lines instead of scrolling horizontally."
+      keywords={["soft wrap", "line wrap"]}
     >
       {#snippet control()}
         <Switch checked={settings.wordWrap} onCheckedChange={(v) => settings.setWordWrap(v)} />
       {/snippet}
     </SettingRow>
 
-    <SettingRow title="Tab width" description="Number of spaces a tab character represents.">
+    <SettingRow
+      title="Tab width"
+      description="Number of spaces a tab character represents."
+      keywords={["indent", "indentation", "tab size"]}
+    >
       {#snippet control()}
         <SliderControl
           min={1}
@@ -151,6 +173,7 @@
         class={tinymistInstalled ? "" : "cursor-not-allowed"}
         title="Typst language server"
         description="Use tinymist for completion, hover, and diagnostics when it's installed."
+        keywords={["lsp", "tinymist", "autocomplete", "intellisense"]}
       >
         <!-- Availability indicator: green once the tinymist CLI is found on
              PATH, amber when it's found but targets a different Typst than the

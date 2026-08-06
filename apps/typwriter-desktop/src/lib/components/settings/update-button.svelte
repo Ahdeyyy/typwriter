@@ -6,6 +6,7 @@
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
     Refresh01Icon,
+    Download01Icon,
     Download04Icon,
     ReloadIcon,
     Loading03Icon,
@@ -43,8 +44,9 @@
   const icon = $derived.by(() => {
     switch (updater.status) {
       case "available":
-      case "downloading":
         return Download04Icon;
+      case "downloading":
+        return Download01Icon;
       case "ready":
         return ReloadIcon;
       case "installing":

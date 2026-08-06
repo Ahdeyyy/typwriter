@@ -9,12 +9,14 @@
 <SettingGroup
   title="History"
   description="Typwriter records restore points automatically so you can roll back. Manual restore points from the timeline always work regardless of these toggles."
+  keywords={["versions", "snapshots", "backup", "undo", "timeline", "vcs", "revisions"]}
 >
   <div class="flex flex-col gap-3">
     <SettingRow
       label
       title="Snapshot on save"
       description="Record a restore point each time a file is saved."
+      keywords={["autosnapshot", "version on save"]}
     >
       {#snippet control()}
         <Switch
@@ -28,6 +30,7 @@
       label
       title="Snapshot on successful compile"
       description="Record a restore point after each successful preview compile."
+      keywords={["autosnapshot", "version on compile", "render"]}
     >
       {#snippet control()}
         <Switch
@@ -40,6 +43,7 @@
     <SettingRow
       title="Minimum interval between snapshots"
       description="Throttle automatic snapshots so they don't fire on every keystroke compile. Set to 0 for no throttle."
+      keywords={["rate limit", "debounce", "frequency"]}
     >
       {#snippet control()}
         <SliderControl
@@ -59,6 +63,7 @@
     <SettingRow
       title="Keep most recent auto-snapshots"
       description="Cap on auto-snapshots from save / compile. Manual restore points and the initial / pre-restore safety points are never pruned. Set to 0 for unlimited."
+      keywords={["retention", "limit", "prune", "cleanup", "disk space"]}
     >
       {#snippet control()}
         <SliderControl
@@ -78,6 +83,7 @@
     <SettingRow
       title="Discard auto-snapshots older than"
       description="Maximum age (in days) for auto-snapshots before they're swept on the next snapshot. Manual / initial / pre-restore points are exempt. Set to 0 for unlimited."
+      keywords={["retention", "expiry", "prune", "cleanup", "disk space"]}
     >
       {#snippet control()}
         <SliderControl
