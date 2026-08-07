@@ -180,8 +180,22 @@ class EditorStore {
     this.dirty = false;
   }
 
-  /** Reset all tab state (e.g. on closing a workspace). */
+  /**
+   * Reset all tab state (e.g. on closing or switching workspace), along with
+   * every debounced follow-up still scheduled against the workspace we're
+   * leaving: the tab persist (its tabs would land in the next workspace), the
+   * autosave and the live compile (both would run against the wrong root — the
+   * compile would clobber the fresh `onWorkspaceOpened` state with a compile of
+   * the new workspace). `clearFile()` below already makes a late autosave a
+   * no-op, but leaving live timers armed across a root swap is a trap.
+   */
   resetTabs() {
+    for (const timer of [this.tabsTimer, this.saveTimer, this.liveTimer]) {
+      if (timer) clearTimeout(timer);
+    }
+    this.tabsTimer = null;
+    this.saveTimer = null;
+    this.liveTimer = null;
     this.tabs = [];
     this.newTabOpen = false;
     this.clearFile();

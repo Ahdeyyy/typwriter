@@ -22,7 +22,7 @@
   import { workspace } from "$lib/stores/workspace.svelte";
   import { app } from "$lib/stores/app.svelte";
   import { longpress } from "$lib/actions/longpress";
-  import { timeAgo } from "$lib/time";
+  import { openedAgo } from "$lib/time";
   import { exportWorkspace } from "$lib/ipc/commands";
   import type { WorkspaceMeta } from "$lib/ipc/types";
 
@@ -170,7 +170,7 @@
               <div class="truncate text-2xl font-semibold tracking-tight">{r.name}</div>
               <div class="text-primary-foreground/70 mt-1 flex items-center gap-1.5 text-xs">
                 <Icon icon={Time04Icon} class="size-3.5" />
-                opened {timeAgo(r.lastOpenedMs)}
+                {openedAgo(r.lastOpenedMs)}
               </div>
             </div>
             <div class="bg-primary-foreground/15 flex size-11 shrink-0 items-center justify-center rounded-full">
@@ -195,7 +195,7 @@
               </div>
               <div class="min-w-0 flex-1">
                 <div class="truncate text-sm font-medium">{meta.name}</div>
-                <div class="text-muted-foreground text-xs">opened {timeAgo(meta.lastOpenedMs)}</div>
+                <div class="text-muted-foreground text-xs">{openedAgo(meta.lastOpenedMs)}</div>
               </div>
               <Icon icon={ArrowRight01Icon} class="text-muted-foreground/50 size-4 shrink-0" />
             </button>

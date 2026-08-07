@@ -2,7 +2,7 @@
 // replaces `tree` with the root node the command returns, so the UI never
 // patches the tree client-side.
 
-import { ResultAsync } from "neverthrow";
+import { ResultAsync, okAsync } from "neverthrow";
 import type { FileNode, WorkspaceInfo, WorkspaceMeta } from "$lib/ipc/types";
 import * as ipc from "$lib/ipc/commands";
 import { app } from "./app.svelte";
@@ -49,6 +49,34 @@ class WorkspaceStore {
       compileStore.onWorkspaceOpened(!!info.mainFile);
       return info;
     });
+  }
+
+  /**
+   * Switch to another workspace without going home. The pending buffer is
+   * written *before* the backend switches roots (a flush afterwards would save
+   * the old file's text at the same relative path inside the new workspace),
+   * and the tab state is dropped for the same reason.
+   */
+  switchTo(name: string): ResultAsync<void, string> {
+    if (name === this.name) return okAsync(undefined);
+    return editor
+      .flush()
+      .andThen(() => {
+        editor.resetTabs();
+        return this.open(name).map(() => undefined);
+      })
+      .mapErr((e) => {
+        // `open_workspace` swaps the backend root *before* it can still fail
+        // (resolving the main file, writing metadata), so a failure leaves us
+        // unable to say which workspace we are in. Restoring the old tabs would
+        // then re-read — and later save — the previous workspace's paths against
+        // the new root, which is exactly the corruption `resetTabs` above exists
+        // to prevent. Home is the only root-agnostic screen; drop to it and let
+        // the user pick again. `lastWorkspace` is deliberately left alone, so a
+        // relaunch re-opens it and re-syncs the backend either way.
+        app.goHome();
+        return e;
+      });
   }
 
   /** Close the current workspace and return home, clearing the auto-open hint. */

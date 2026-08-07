@@ -47,11 +47,16 @@ class AppStore {
     this.overlay = nextOverlay;
   }
 
-  /** Enter the editor screen (pushes a history entry so back returns home). */
+  /** Enter the editor screen (pushes a history entry so back returns home).
+   *  Re-entering from the editor — switching workspace without going home —
+   *  replaces the current entry instead, so back still lands on home. */
   openEditor() {
+    const entering = this.screen !== "editor";
     this.screen = "editor";
     this.overlay = "none";
-    history.pushState({ screen: "editor", overlay: "none" } satisfies HistoryState, "");
+    const state = { screen: "editor", overlay: "none" } satisfies HistoryState;
+    if (entering) history.pushState(state, "");
+    else history.replaceState(state, "");
   }
 
   openOverlay(o: Overlay) {
@@ -63,6 +68,36 @@ class AppStore {
   closeOverlay() {
     if (this.overlay === "none") return;
     history.back();
+  }
+
+  /** Close the current overlay and resolve once the history state has been
+   *  applied. `history.back()` is asynchronous, so anything that pushes or
+   *  replaces an entry afterwards (e.g. switching workspace from the file tree)
+   *  must wait for the popstate or it races with it. */
+  closeOverlayAsync(): Promise<void> {
+    if (this.overlay === "none") return Promise.resolve();
+    return new Promise((resolve) => {
+      // Declared before `done` so the closure can't reach it in its temporal
+      // dead zone. `history.back()` only queues the traversal today, but that's
+      // the spec's guarantee, not this function's.
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let settled = false;
+      // Resolves on the first popstate whichever entry it lands on — a
+      // concurrent back press satisfies the wait too, and all the caller needs
+      // is that history has settled. Our own popstate listener was registered
+      // first, so `screen`/`overlay` are already up to date when this runs.
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener("popstate", done);
+        if (timer !== null) clearTimeout(timer);
+        resolve();
+      };
+      // Safety net: never leave a caller hanging if no popstate arrives.
+      timer = setTimeout(done, 300);
+      window.addEventListener("popstate", done);
+      history.back();
+    });
   }
 
   /** Return to the home screen (e.g. "Close workspace"). */
