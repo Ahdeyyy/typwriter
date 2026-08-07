@@ -83,13 +83,13 @@
   }
 </script>
 
-<!-- Pinned to the visual-viewport rectangle (see keyboard-visibility) so the
-     shell always sits above the soft keyboard instead of behind it. Falls back
-     to a full-window static-ish box before the keyboard listener publishes the
-     vars. -->
+<!-- Anchored to the top of the layout viewport and shortened by the keyboard
+     inset (see keyboard-visibility), so the shell always ends where the soft
+     keyboard begins instead of running behind it. Falls back to a full-window
+     box before the keyboard listener publishes the vars. -->
 <div
-  class="fixed flex flex-col"
-  style="top: var(--vv-top, 0px); left: var(--vv-left, 0px); width: var(--vv-width, 100vw); height: var(--app-height, 100svh);"
+  class="fixed inset-x-0 top-0 flex flex-col"
+  style="height: var(--app-height, 100svh);"
 >
   <!-- Translucent, blurred top bar; extra padding keeps buttons clear of the
        status bar (safe-area inset can read 0 on Android edge-to-edge). -->

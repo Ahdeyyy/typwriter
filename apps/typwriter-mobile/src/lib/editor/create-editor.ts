@@ -15,6 +15,7 @@ import { indentOnInput, bracketMatching } from "@codemirror/language";
 import { typst, light, dark } from "./typst-lang";
 import { typstKeymap } from "./commands";
 import { inlineDiagnostics } from "./inline-diagnostics";
+import { caretVisibility } from "./caret-visibility";
 import { settings } from "$lib/stores/settings.svelte";
 import { editor } from "$lib/stores/editor.svelte";
 import { completions } from "./completion-controller.svelte";
@@ -58,6 +59,7 @@ export function createExtensions(lang: Extension | null): Extension[] {
     EditorView.lineWrapping, // always on — no horizontal scroll on phones
     highlightActiveLine(),
     inlineDiagnostics(),
+    caretVisibility(), // re-scrolls the caret when the keyboard/toolbar shrinks us
     lineNumbersC.of(settings.showLineNumbers ? lineNumbers() : []),
     themeC.of(themeExtensionFor(document.documentElement.classList.contains("dark"))),
     fontSizeC.of(fontThemeFor(settings.editorFontSize)),

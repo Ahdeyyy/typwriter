@@ -156,20 +156,43 @@ Deliberately **excluded** (vs. desktop) — do not re-add:
 keyboard), comfortable `.cm-line` padding, and — important on Android —
 `.cm-scroller { overflow: auto; -webkit-overflow-scrolling: touch; }`.
 
-Caret visibility: after focus or doc edits the caret can hide behind the keyboard;
-CM's `EditorView.scrollIntoView` on selection changes handles most of it, but verify
-on-device and, if needed, call `view.dispatch({ effects: EditorView.scrollIntoView(head, { y: "center" }) })`
-from a `geometryChangeRequested` hook tied to the visualViewport resize (below).
+Caret visibility: after focus or doc edits the caret can hide behind the keyboard.
+CM's `EditorView.scrollIntoView` on selection changes handles typing, but nothing
+handles the editor's *box* shrinking under the caret. Shipped as
+`lib/editor/caret-visibility.ts` — a ViewPlugin with a ResizeObserver on
+`view.scrollDOM` that, one rAF after the box shrinks (and only when the view has
+focus), dispatches `scrollIntoView(head, { y: "nearest", yMargin: 24 })`. Observing
+the box covers the keyboard, the toolbar mounting and the completion strip
+appearing alike; a fixed number of frames after the viewport event covers only the
+first, and `y: "center"` jumps the view when it does fire.
 
 ## 4.4 Keyboard toolbar — `components/toolbar/editor-toolbar.svelte`
 
 A horizontal, scrollable row of buttons docked at the bottom of the editor screen.
-Because `interactive-widget=resizes-content` + `adjustResize` make the keyboard shrink
-the layout viewport, **normal flex layout is enough**: the toolbar sits at the bottom
-of the flex column and lands exactly above the keyboard. Add a `visualViewport`
-`resize` listener only to detect "keyboard visible" (viewport height dropped > 150px)
-for showing/hiding keyboard-specific buttons. Keep that hook in
-`lib/editor/keyboard-visibility.svelte.ts`.
+`interactive-widget=resizes-content` turned out **not** to be what Android WebView
+gives us — the layout viewport keeps its full height and the keyboard only eats the
+bottom of the *visual* viewport — so flex layout alone is not enough.
+`lib/editor/keyboard-visibility.svelte.ts` derives two distinct numbers and
+publishes exactly one custom property, `--app-height` (= layout height − inset);
+the shell stays anchored at `top: 0` of the layout viewport and is shortened by the
+inset, so the toolbar lands exactly above the keyboard.
+
+- `covered = documentElement.clientHeight − vv.height` — the **keyboard height**.
+- `inset = covered − vv.offsetTop` — what to subtract from a shell anchored at
+  layout y=0, since a pan already accounts for that much of the keyboard.
+
+Three things that must not regress:
+
+- **Do not** translate the shell by `vv.offsetTop`. Chrome scrolls the visual
+  viewport to lift the caret above the keyboard; moving the shell down by the same
+  amount cancels that scroll and parks the caret behind the keyboard again.
+- **Do not** size with `covered` — with a pan in flight the shell overshoots and
+  the toolbar hides behind the keyboard.
+- **Do not** detect with `inset` — a large pan makes it read as "keyboard closed"
+  and swaps the keyboard toolbar out from under a live keyboard. Detection is
+  `covered > 150` OR a drop from the tallest layout height seen at the current
+  width (reset on rotation), which is what covers the `resizes-content` case where
+  both heights shrink together and `covered` is ~0.
 
 Two stacked rows, each 40px:
 

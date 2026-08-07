@@ -65,8 +65,8 @@
 
 {#if open}
   <div
-    class="bg-background fixed z-50 flex flex-col overflow-hidden"
-    style="top: var(--vv-top, 0px); left: var(--vv-left, 0px); width: var(--vv-width, 100vw); height: var(--app-height, 100svh); padding-top: env(safe-area-inset-top);"
+    class="bg-background fixed inset-x-0 top-0 z-50 flex flex-col overflow-hidden"
+    style="height: var(--app-height, 100svh); padding-top: env(safe-area-inset-top);"
     role="presentation"
   >
     <!-- Results — list on top, most relevant nearest the input below. -->
