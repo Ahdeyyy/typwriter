@@ -149,6 +149,23 @@ class EditorStore {
     this.persistTabs();
   }
 
+  /** Close every tab but `relPath`, which becomes the active one. */
+  closeOtherTabs(relPath: string) {
+    if (!this.tabs.includes(relPath)) return;
+    this.tabs = [relPath];
+    if (!this.isActiveTab(relPath)) void this.loadFile(relPath);
+    this.persistTabs();
+  }
+
+  /** Close every tab, leaving an empty new tab. */
+  closeAllTabs() {
+    void this.flush();
+    this.tabs = [];
+    this.newTabOpen = true;
+    this.clearFile();
+    this.persistTabs();
+  }
+
   /** Whether `relPath` is the active tab's file. */
   isActiveTab(relPath: string): boolean {
     return !this.newTabOpen && this.relPath === relPath;

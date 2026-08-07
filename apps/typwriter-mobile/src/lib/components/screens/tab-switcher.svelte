@@ -3,21 +3,46 @@
   import {
     Add01Icon,
     Cancel01Icon,
+    CancelCircleIcon,
+    RemoveSquareIcon,
     File02Icon,
     Image01Icon,
     File01Icon,
+    FolderOpenIcon,
   } from "@hugeicons/core-free-icons";
   import type { IconSvgElement } from "@hugeicons/svelte";
   import Icon from "$lib/components/icon.svelte";
+  import * as Drawer from "$lib/components/ui/drawer";
+  import { longpress } from "$lib/actions/longpress";
   import { app } from "$lib/stores/app.svelte";
   import { editor } from "$lib/stores/editor.svelte";
 
   const open = $derived(app.overlay === "tabswitcher");
   const count = $derived(editor.tabs.length + (editor.newTabOpen ? 1 : 0));
 
+  // Long-press action drawer for a single tab.
+  let actionTarget = $state<string | null>(null);
+  /** A long press already opened the drawer — don't also treat the release as a
+   *  tap (which would switch to the tab and dismiss the switcher). */
+  let longpressed = false;
+
+  // The drawer lives outside `{#if open}` (it has to — the grid unmounts under
+  // it) and isn't a history entry, so an Android back press pops the switcher
+  // and would leave the drawer floating over the editor. Tie its lifetime to the
+  // overlay's.
+  $effect(() => {
+    if (!open) actionTarget = null;
+  });
+
   function basename(rel: string): string {
     const parts = rel.split("/");
     return parts[parts.length - 1] ?? rel;
+  }
+
+  /** Parent folder, shown as the drawer subtitle. */
+  function parentDir(rel: string): string {
+    const i = rel.lastIndexOf("/");
+    return i === -1 ? "/" : rel.slice(0, i);
   }
 
   function iconFor(name: string): IconSvgElement {
@@ -26,15 +51,35 @@
     return File01Icon;
   }
 
-  function pick(rel: string) {
+  function openTab(rel: string) {
     app.closeOverlay();
     if (!editor.isActiveTab(rel)) {
       editor.loadFile(rel).mapErr((e) => toast.error(`Failed to open: ${e}`));
     }
   }
 
+  /** Tap on a tab card. Swallowed when the press was a long press. */
+  function pick(rel: string) {
+    if (longpressed) {
+      longpressed = false;
+      return;
+    }
+    openTab(rel);
+  }
+
   function newTab() {
     editor.openNewTab();
+    app.closeOverlay();
+  }
+
+  function closeOthers(rel: string) {
+    actionTarget = null;
+    editor.closeOtherTabs(rel);
+  }
+
+  function closeAll() {
+    actionTarget = null;
+    editor.closeAllTabs();
     app.closeOverlay();
   }
 </script>
@@ -56,6 +101,13 @@
                   ? 'ring-primary border-primary/60 ring-2'
                   : 'border-border'}"
                 onclick={() => pick(rel)}
+                onpointerdown={() => (longpressed = false)}
+                use:longpress={{
+                  onLongpress: () => {
+                    longpressed = true;
+                    actionTarget = rel;
+                  },
+                }}
               >
                 <Icon icon={iconFor(rel)} class="text-muted-foreground size-10" />
               </button>
@@ -108,3 +160,58 @@
     </div>
   </div>
 {/if}
+
+<!-- A single tappable row inside a grouped action card (mirrors the file tree). -->
+{#snippet actionRow(icon: IconSvgElement, label: string, onclick: () => void, disabled = false)}
+  <button
+    type="button"
+    {onclick}
+    {disabled}
+    class="active:bg-accent flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm transition-colors disabled:opacity-40"
+  >
+    <Icon icon={icon} class="text-muted-foreground size-5 shrink-0" />
+    <span class="min-w-0 flex-1 truncate">{label}</span>
+  </button>
+{/snippet}
+
+<!-- Long-press tab actions -->
+<Drawer.Root open={actionTarget !== null} onOpenChange={(o) => { if (!o) actionTarget = null; }}>
+  <Drawer.Content>
+    {#if actionTarget}
+      {@const target = actionTarget}
+      <div class="px-4 pb-2 pt-1">
+        <Drawer.Title class="truncate text-base font-semibold">{basename(target)}</Drawer.Title>
+        <Drawer.Description class="text-muted-foreground truncate text-xs">
+          {parentDir(target)}
+        </Drawer.Description>
+      </div>
+      <div
+        class="flex flex-col gap-3 px-3 pb-4 pt-2"
+        style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);"
+      >
+        {#if !editor.isActiveTab(target)}
+          <div class="bg-muted/40 overflow-hidden rounded-xl">
+            {@render actionRow(FolderOpenIcon, "Open", () => {
+              actionTarget = null;
+              openTab(target);
+            })}
+          </div>
+        {/if}
+
+        <div class="bg-muted/40 divide-border/60 divide-y overflow-hidden rounded-xl">
+          {@render actionRow(Cancel01Icon, "Close tab", () => {
+            actionTarget = null;
+            editor.closeTab(target);
+          })}
+          {@render actionRow(
+            RemoveSquareIcon,
+            "Close other tabs",
+            () => closeOthers(target),
+            editor.tabs.length < 2 && !editor.newTabOpen,
+          )}
+          {@render actionRow(CancelCircleIcon, "Close all tabs", closeAll)}
+        </div>
+      </div>
+    {/if}
+  </Drawer.Content>
+</Drawer.Root>
