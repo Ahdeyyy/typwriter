@@ -71,6 +71,12 @@ export class TypstParseContext implements PartialParse {
   parsedPos: number
   stoppedAt: number | null = null
 
+  /// Whether a newline currently ends the expression being parsed. True inside
+  /// an embedded `#…` expression in markup, false inside the brackets it may
+  /// open (`{…}`, `(…)`), mirroring typst's `AtNewline` mode. Saved and
+  /// restored by the constructs that change it.
+  newlineTerminates = false
+
   /// Stack of elements being built
   private elts: Elt[] = []
 

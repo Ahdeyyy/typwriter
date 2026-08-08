@@ -21,6 +21,21 @@ const KEYWORDS: Record<string, number> = {
 /// When `embedded` is true, we're in markup context and should only parse a single
 /// expression (not a full code block).
 export function parseCodeExpr(s: Scanner, ctx: TypstParseContext, embedded: boolean): Elt | null {
+  if (!embedded) {
+    // Nested value position (a `let` value, a `show` transform, …). It inherits
+    // the newline mode of whatever opened it.
+    return parseCodeExprInner(s, ctx, false)
+  }
+  const savedNewlineMode = ctx.newlineTerminates
+  ctx.newlineTerminates = true // an embedded `#…` runs to the end of its line
+  try {
+    return parseCodeExprInner(s, ctx, true)
+  } finally {
+    ctx.newlineTerminates = savedNewlineMode
+  }
+}
+
+function parseCodeExprInner(s: Scanner, ctx: TypstParseContext, embedded: boolean): Elt | null {
   skipWhitespaceAndComments(s)
 
   const ch = s.peek()
@@ -57,6 +72,16 @@ export function parseCodeExpr(s: Scanner, ctx: TypstParseContext, embedded: bool
 /// Parse a code block: { ... }
 export function parseCodeBlock(s: Scanner, ctx: TypstParseContext): Elt | null {
   if (s.peek() !== Ch.LeftBrace) return null
+  const savedNewlineMode = ctx.newlineTerminates
+  ctx.newlineTerminates = false // newlines separate statements, they don't end the block
+  try {
+    return parseCodeBlockInner(s, ctx)
+  } finally {
+    ctx.newlineTerminates = savedNewlineMode
+  }
+}
+
+function parseCodeBlockInner(s: Scanner, ctx: TypstParseContext): Elt {
   const start = s.pos
   s.next() // consume {
 
@@ -109,21 +134,32 @@ const enum Prec {
   Postfix = 8,
 }
 
+/// Expression shapes that can stand in front of a `=>` as a closure's
+/// parameter list. A bare identifier (`x => …`) or a parenthesized list, which
+/// comes back from `parseParenExpr` typed by its contents: `Parenthesized` for
+/// `(x)`, `Array` for `(a, b)`, `Dict` for defaults like `(a: 1)`.
+const CLOSURE_PARAMS = new Set<number>([Type.Ident, Type.Parenthesized, Type.Array, Type.Dict])
+
 function parseExpr(s: Scanner, ctx: TypstParseContext, minPrec: number, embedded: boolean): Elt | null {
   let left = parseUnary(s, ctx, embedded)
   if (!left) return null
 
-  // Bare closure: ident => expr
-  if (!embedded && minPrec === 0 && left.type === Type.Ident) {
+  // Closure: params => body
+  if (!embedded && minPrec === 0 && CLOSURE_PARAMS.has(left.type)) {
     const savedPos = s.pos
-    skipWhitespaceAndComments(s)
+    skipWhitespaceAndComments(s, undefined, ctx.newlineTerminates)
     if (s.peek() === Ch.Eq && s.peek(1) === Ch.Gt) {
       const arrowStart = s.pos
       s.next(); s.next()
       const arrowElt = new Elt(Type.Arrow, arrowStart, s.pos)
       skipWhitespaceAndComments(s)
       const body = parseExpr(s, ctx, 0, false)
-      const children: Elt[] = [left, arrowElt]
+      // A parenthesized list only turns out to be a parameter list once the
+      // arrow shows up, so re-label it here rather than guessing earlier.
+      const params = left.type === Type.Ident
+        ? left
+        : new Elt(Type.Params, left.from, left.to, left.children)
+      const children: Elt[] = [params, arrowElt]
       if (body) children.push(body)
       return new Elt(Type.Closure, left.from, s.pos, children)
     }
@@ -137,16 +173,35 @@ function parseExpr(s: Scanner, ctx: TypstParseContext, minPrec: number, embedded
     // But always allow postfix operations (field access, calls, content blocks)
     // when there's no space between them.
 
-    // Field access: .ident (no space required)
-    if (ch === Ch.Dot && isIdentStart(s.peek(1))) {
-      const dotStart = s.pos
-      s.next() // consume .
-      const dotElt = new Elt(Type.Dot, dotStart, s.pos)
-      const ident = parseIdentifier(s)
-      if (ident) {
-        left = new Elt(Type.FieldAccess, left.from, s.pos, [left, dotElt, ident])
-        continue
+    // Field access: .ident
+    //
+    // In embedded (`#…`) mode the dot has to be directly adjacent, or a line of
+    // markup that merely starts with `.` would get swallowed into the
+    // expression. Elsewhere typst reaches the dot through `eat_if`, which skips
+    // trivia — and inside brackets that trivia includes newlines, so a chain
+    // may be broken across lines:
+    //
+    //   items.map(f)
+    //     .join(", ")
+    //
+    // is one expression, not an expression followed by a stray `.`.
+    {
+      const beforeDot = s.pos
+      const trivia: Elt[] = []
+      if (!embedded) skipWhitespaceAndComments(s, trivia, ctx.newlineTerminates)
+      if (s.peek() === Ch.Dot && isIdentStart(s.peek(1))) {
+        const dotStart = s.pos
+        s.next() // consume .
+        const dotElt = new Elt(Type.Dot, dotStart, s.pos)
+        const ident = parseIdentifier(s)
+        if (ident) {
+          left = new Elt(Type.FieldAccess, left.from, s.pos, [left, ...trivia, dotElt, ident])
+          continue
+        }
       }
+      // Not a field access after all (a keyword followed the dot, or there was
+      // no dot) — give the trivia back to whoever comes next.
+      s.pos = beforeDot
     }
 
     // Function call: expr(...) - must be immediately adjacent (no space)
@@ -496,6 +551,16 @@ function parseIdentifier(s: Scanner): Elt | null {
 // ===== Parenthesized expressions, arrays, dicts =====
 
 function parseParenExpr(s: Scanner, ctx: TypstParseContext): Elt {
+  const savedNewlineMode = ctx.newlineTerminates
+  ctx.newlineTerminates = false // newlines are trivia between the parens
+  try {
+    return parseParenExprInner(s, ctx)
+  } finally {
+    ctx.newlineTerminates = savedNewlineMode
+  }
+}
+
+function parseParenExprInner(s: Scanner, ctx: TypstParseContext): Elt {
   const start = s.pos
   s.next() // consume (
   const children: Elt[] = [new Elt(Type.LeftParen, start, s.pos)]
@@ -617,6 +682,16 @@ function parseParenExpr(s: Scanner, ctx: TypstParseContext): Elt {
 
 function parseArgs(s: Scanner, ctx: TypstParseContext): Elt | null {
   if (s.peek() !== Ch.LeftParen) return null
+  const savedNewlineMode = ctx.newlineTerminates
+  ctx.newlineTerminates = false // newlines are trivia between the parens
+  try {
+    return parseArgsInner(s, ctx)
+  } finally {
+    ctx.newlineTerminates = savedNewlineMode
+  }
+}
+
+function parseArgsInner(s: Scanner, ctx: TypstParseContext): Elt {
   const start = s.pos
   s.next() // consume (
   const children: Elt[] = [new Elt(Type.LeftParen, start, s.pos)]
@@ -991,12 +1066,15 @@ function parseBlockBody(s: Scanner, ctx: TypstParseContext): Elt | null {
   return null
 }
 
-function skipWhitespaceAndComments(s: Scanner, elts?: Elt[]) {
+/// Skip over trivia. With `stopAtNewline`, whitespace is only skipped up to the
+/// end of the line — for callers that sit in a context where a newline ends the
+/// expression (an embedded `#…`, outside of any brackets).
+function skipWhitespaceAndComments(s: Scanner, elts?: Elt[], stopAtNewline = false) {
+  const skippable = stopAtNewline ? isLineWhitespace : isWhitespace
   while (!s.done) {
     const ch = s.peek()
-    if (isWhitespace(ch)) {
-      const start = s.pos
-      s.eatWhile(isWhitespace)
+    if (skippable(ch)) {
+      s.eatWhile(skippable)
       // Don't emit whitespace elements in code - they're trivia
       continue
     }
