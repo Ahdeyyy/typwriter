@@ -140,6 +140,7 @@ class EditorStore {
         tabPaths: string[],
         activeTabId: string | null,
         unsaved: Record<string, string>,
+        cursor: number | null = null,
     ): Promise<void> {
         const loads: Promise<void>[] = [];
 
@@ -172,10 +173,18 @@ class EditorStore {
         await Promise.all(loads);
 
         // Activate the previously-active tab, falling back to the first one.
-        this.activeTabId =
-            activeTabId && this.tabs.some((t) => t.id === activeTabId)
-                ? activeTabId
-                : (this.tabs[0]?.id ?? null);
+        const restoredActive =
+            activeTabId && this.tabs.some((t) => t.id === activeTabId) ? activeTabId : null;
+        this.activeTabId = restoredActive ?? this.tabs[0]?.id ?? null;
+
+        // Put the caret back where the user left it. Only the tab that was
+        // active when the state was written has a stored offset, so a fallback
+        // activation opens at the top as before. The jump goes through the
+        // regular request channel, which already waits for the tab's view to
+        // mount and clamps the offset against the loaded document.
+        if (restoredActive !== null && cursor !== null && cursor >= 0) {
+            this.requestCursorJump(restoredActive, cursor);
+        }
         workspace.schedulePersistTabs();
     }
 
@@ -687,7 +696,22 @@ class EditorStore {
         map.set(newId, timer);
     }
 
-    getTabState(): { tabs: string[]; activeTabId: string | null; unsaved: Record<string, string> } {
+    /** Called by the editor view when the caret moves without the document
+     *  changing (click, arrow key, selection). Document changes already
+     *  schedule a persist via `handleTabContentChange`, so this only covers the
+     *  pure-caret case — without it the stored offset would lag behind wherever
+     *  the user last typed. */
+    noteCursorMoved(tabId: string): void {
+        if (tabId !== this.activeTabId) return;
+        workspace.schedulePersistTabs();
+    }
+
+    getTabState(): {
+        tabs: string[];
+        activeTabId: string | null;
+        unsaved: Record<string, string>;
+        cursor: number | null;
+    } {
         // Capture the live buffer of every dirty, editable text tab so it can be
         // restored verbatim after a teardown (hot exit). Clean tabs are omitted
         // — their content is already on disk.
@@ -697,10 +721,17 @@ class EditorStore {
                 unsaved[t.relPath] = t.content;
             }
         }
+        // Caret of the active tab, read live from its CodeMirror view. Null for
+        // an image / unsupported / not-yet-mounted tab — those have no caret to
+        // restore.
+        const cursor =
+            this.activeTabId !== null ? (this.cursorProvider?.(this.activeTabId) ?? null) : null;
+
         return {
             tabs: this.tabs.map((t) => t.relPath),
             activeTabId: this.activeTabId,
             unsaved,
+            cursor,
         };
     }
 

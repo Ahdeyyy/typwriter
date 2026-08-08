@@ -31,6 +31,18 @@ class EditorStore {
   /** Set by the screen component once the EditorView exists. */
   view: EditorView | null = null;
 
+  /** Caret to place once the restored file's text reaches CodeMirror (UTF-16
+   *  code units), tagged with the file it belongs to. Set by `seedTabs` on
+   *  workspace open and consumed by the editor host — deliberately not
+   *  reactive: it's a one-shot hand-off, not rendered state. */
+  private pendingCursor: { relPath: string; offset: number } | null = null;
+  /** Whether `pendingCursor` may be claimed yet. The editor host is mounted
+   *  inside the screen's loading branch, so it mounts once against the *old*
+   *  buffer before `loadFile` flips `loading`, and again once the new text has
+   *  landed. Only that second mount may take the caret — otherwise the restore
+   *  is spent on a document that is about to be replaced. */
+  private pendingCursorReady = false;
+
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private liveTimer: ReturnType<typeof setTimeout> | null = null;
   private tabsTimer: ReturnType<typeof setTimeout> | null = null;
@@ -88,6 +100,14 @@ class EditorStore {
             this.fileKind = "text";
             this.loadedText = content.content;
             this.dirty = false;
+            // The buffer this caret was recorded against is now the one the
+            // host will seed; anything else means the user navigated away
+            // mid-restore, so the caret no longer applies.
+            if (this.pendingCursor?.relPath === relPath) {
+              this.pendingCursorReady = true;
+            } else {
+              this.pendingCursor = null;
+            }
           } else if (content.type === "image") {
             this.fileKind = "image";
             this.imageDataUrl = content.data;
@@ -109,9 +129,14 @@ class EditorStore {
 
   // ─── Tabs ─────────────────────────────────────────────────────────────────
 
-  /** Restore tabs for a freshly opened workspace and activate one (or none). */
-  seedTabs(tabs: string[], active: string | null) {
+  /** Restore tabs for a freshly opened workspace and activate one (or none).
+   *  `cursor` is the caret the active file was left at; pass null when the
+   *  activated file isn't the one the caret was recorded in. */
+  seedTabs(tabs: string[], active: string | null, cursor: number | null = null) {
     this.tabs = [...tabs];
+    this.pendingCursor =
+      active && cursor !== null && cursor >= 0 ? { relPath: active, offset: cursor } : null;
+    this.pendingCursorReady = false;
     if (active) {
       void this.loadFile(active);
     } else if (tabs.length) {
@@ -120,6 +145,17 @@ class EditorStore {
       this.newTabOpen = true;
       this.clearFile();
     }
+  }
+
+  /** Claim the restored caret for `relPath`, once its text has been read and
+   *  only for the file it was recorded in. One-shot: a second call returns
+   *  null, so a later re-seed of the same buffer doesn't yank the caret back. */
+  takePendingCursor(relPath: string): number | null {
+    const pending = this.pendingCursor;
+    if (!pending || !this.pendingCursorReady || pending.relPath !== relPath) return null;
+    this.pendingCursor = null;
+    this.pendingCursorReady = false;
+    return pending.offset;
   }
 
   /** Open an empty "new tab" — the editor shows the open/create/switch options. */
@@ -196,6 +232,8 @@ class EditorStore {
     this.tabsTimer = null;
     this.saveTimer = null;
     this.liveTimer = null;
+    this.pendingCursor = null;
+    this.pendingCursorReady = false;
     this.tabs = [];
     this.newTabOpen = false;
     this.clearFile();
@@ -203,10 +241,32 @@ class EditorStore {
 
   private persistTabs() {
     if (this.tabsTimer) clearTimeout(this.tabsTimer);
-    this.tabsTimer = setTimeout(() => {
-      const active = this.newTabOpen ? null : this.relPath;
-      void ipc.setOpenTabs([...this.tabs], active);
-    }, 400);
+    this.tabsTimer = setTimeout(() => this.persistTabsNow(), 400);
+  }
+
+  /** Write the tab state (and the active buffer's caret) out immediately.
+   *  Used when the app is about to be backgrounded, where a debounced write
+   *  may never fire. */
+  persistTabsNow() {
+    if (this.tabsTimer) {
+      clearTimeout(this.tabsTimer);
+      this.tabsTimer = null;
+    }
+    const active = this.newTabOpen ? null : this.relPath;
+    // Caret only travels with a text buffer — an image or unsupported file has
+    // none, and neither does an empty new tab.
+    const cursor =
+      active && this.fileKind === "text" ? (this.view?.state.selection.main.head ?? null) : null;
+    void ipc.setOpenTabs([...this.tabs], active, cursor);
+  }
+
+  /** Called from CM's updateListener whenever the caret moves — by a tap, an
+   *  arrow key or a keystroke. Keeps the persisted caret current: every other
+   *  persist trigger is a tab operation, so without this the stored offset
+   *  would only ever be the one from the last tab switch. Debounced like the
+   *  rest of the tab persist, so a burst of typing writes once. */
+  handleCursorMoved() {
+    this.persistTabs();
   }
 
   /** Called from CM's updateListener on every doc change. NO IPC here. */

@@ -43,6 +43,8 @@ pub struct WorkspaceInfo {
     pub last_file: Option<String>,
     pub open_tabs: Vec<String>,
     pub active_tab: Option<String>,
+    /// Caret offset (UTF-16 code units) inside `active_tab`, when one survived.
+    pub cursor: Option<usize>,
 }
 
 /// Per-workspace metadata persisted at `<workspace>/.typwriter/mobile.json`.
@@ -56,6 +58,11 @@ pub struct WorkspaceMetaFile {
     pub open_tabs: Vec<String>,
     #[serde(default)]
     pub active_tab: Option<String>,
+    /// Caret offset (UTF-16 code units, CodeMirror's coordinate space) inside
+    /// `active_tab`. Absent in metadata written before caret restore landed,
+    /// which simply means "open at the top".
+    #[serde(default)]
+    pub cursor: Option<usize>,
 }
 
 const META_DIR: &str = ".typwriter";

@@ -28,6 +28,9 @@ export interface WorkspaceInfo {
   openTabs: string[];
   /** Persisted active tab relPath, or null for an empty "new tab". */
   activeTab: string | null;
+  /** Caret offset (UTF-16 code units) inside `activeTab`, or null. Already
+   *  cleared by the backend when `activeTab` didn't survive the reopen. */
+  cursor: number | null;
 }
 
 export type FileContent =

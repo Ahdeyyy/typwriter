@@ -362,18 +362,24 @@ impl WorkspaceState {
         tabs: Vec<String>,
         active_tab_id: Option<String>,
         unsaved: HashMap<String, String>,
+        cursor: Option<usize>,
     ) {
         let root = self.root.read();
         let Some(root) = root.as_ref() else {
             return;
         };
-        store::save_workspace_tabs(&self.app_handle, root, tabs, active_tab_id, unsaved);
+        store::save_workspace_tabs(&self.app_handle, root, tabs, active_tab_id, unsaved, cursor);
     }
 
     pub fn get_workspace_tabs(
         &self,
         root: &str,
-    ) -> Option<(Vec<String>, Option<String>, HashMap<String, String>)> {
+    ) -> Option<(
+        Vec<String>,
+        Option<String>,
+        HashMap<String, String>,
+        Option<usize>,
+    )> {
         store::get_workspace_tabs(&self.app_handle, &PathBuf::from(root))
     }
 

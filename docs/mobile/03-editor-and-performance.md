@@ -45,13 +45,17 @@ only in WebView memory. If you tune this, remember the second safety net:
 The OS killing the process is *normal* on Android, so unsaved buffers are
 treated as durable state:
 
-1. While typing, `workspace.schedulePersistTabs()` (300 ms debounce)
-   serializes `{ tabs, activeTabId, unsaved: { relPath → content } }` through
-   `save_workspace_tabs` into the tauri store.
+1. While typing — and whenever the caret moves — `workspace.schedulePersistTabs()`
+   (300 ms debounce) serializes
+   `{ tabs, activeTabId, unsaved: { relPath → content }, cursor }` through
+   `save_workspace_tabs` into the tauri store. `cursor` is the active tab's
+   caret offset in UTF-16 code units, read live from its CodeMirror view.
 2. On the next workspace open, `get_workspace_tabs` returns that state;
    `EditorStore.restoreTabs` seeds dirty tabs from the `unsaved` map instead
    of the (stale) disk copy, marks them dirty, and re-seeds the Rust shadow
    buffer (`updateFileContent`) so the next compile renders the restored text.
+   It then replays `cursor` into the reactivated tab through the regular
+   cursor-jump channel, so the user lands where they left off.
 3. A successful save re-persists so the entry drops out of the unsaved map —
    a later restore can't resurrect stale edits.
 

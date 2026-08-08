@@ -32,8 +32,11 @@ export const openWorkspace = (name: string) => call<WorkspaceInfo>("open_workspa
 export const getFileTree = () => call<FileNode>("get_file_tree");
 export const setMainFile = (relPath: string) => call<null>("set_main_file", { relPath });
 export const setLastFile = (relPath: string | null) => call<null>("set_last_file", { relPath });
-export const setOpenTabs = (openTabs: string[], activeTab: string | null) =>
-  call<null>("set_open_tabs", { openTabs, activeTab });
+export const setOpenTabs = (
+  openTabs: string[],
+  activeTab: string | null,
+  cursor: number | null = null,
+) => call<null>("set_open_tabs", { openTabs, activeTab, cursor });
 /** Open the native folder picker and persist it as the app-wide fonts source.
  *  Resolves to the folder's display name, or `null` if the user cancelled. */
 export const pickFontsDir = () => call<string | null>("pick_fonts_dir");

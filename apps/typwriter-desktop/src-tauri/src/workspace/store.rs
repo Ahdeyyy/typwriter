@@ -177,15 +177,19 @@ pub fn get_workspace_main_file(handle: &AppHandle, root: &Path) -> Option<String
 
 // ─── Per-workspace open tabs ─────────────────────────────────────────────────
 
-/// Persist the list of open tabs, the active tab, and any unsaved editor
-/// buffers (`relPath -> content`) for the workspace at `root`. The unsaved map
-/// powers hot-exit restore: edits that never reached disk survive a teardown.
+/// Persist the list of open tabs, the active tab, any unsaved editor buffers
+/// (`relPath -> content`), and the active tab's caret offset for the workspace
+/// at `root`. The unsaved map powers hot-exit restore: edits that never reached
+/// disk survive a teardown. `cursor` is a UTF-16 code-unit offset (CodeMirror's
+/// coordinate space) and is `None` whenever the active tab has no caret — an
+/// image or unsupported tab, or no tab at all.
 pub fn save_workspace_tabs(
     handle: &AppHandle,
     root: &Path,
     tabs: Vec<String>,
     active_tab_id: Option<String>,
     unsaved: HashMap<String, String>,
+    cursor: Option<usize>,
 ) {
     let t = Instant::now();
     let Ok(store) = handle.store(STORE_FILE) else {
@@ -212,6 +216,7 @@ pub fn save_workspace_tabs(
             "tabs": tabs,
             "activeTabId": active_tab_id,
             "unsaved": unsaved,
+            "cursor": cursor,
         }),
     );
 
@@ -227,7 +232,12 @@ pub fn save_workspace_tabs(
 pub fn get_workspace_tabs(
     handle: &AppHandle,
     root: &Path,
-) -> Option<(Vec<String>, Option<String>, HashMap<String, String>)> {
+) -> Option<(
+    Vec<String>,
+    Option<String>,
+    HashMap<String, String>,
+    Option<usize>,
+)> {
     let store = handle.store(STORE_FILE).ok()?;
     let root_key = root.to_string_lossy().to_string();
 
@@ -254,8 +264,14 @@ pub fn get_workspace_tabs(
         .get("unsaved")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
+    // Absent for stores written before caret restore landed — `None` simply
+    // means "open the active tab at the top", the old behaviour.
+    let cursor: Option<usize> = entry
+        .get("cursor")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize);
 
-    Some((tabs, active_tab_id, unsaved))
+    Some((tabs, active_tab_id, unsaved, cursor))
 }
 
 // ─── .typwriter folder & thumbnail ───────────────────────────────────────────

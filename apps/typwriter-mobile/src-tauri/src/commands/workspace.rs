@@ -183,6 +183,10 @@ pub async fn open_workspace(
         .active_tab
         .clone()
         .filter(|rel| open_tabs.iter().any(|t| t == rel));
+    // The caret only means anything against the tab it was recorded in: drop it
+    // when that tab didn't survive, so the frontend can't seed it into whatever
+    // file it falls back to.
+    let cursor = meta.cursor.filter(|_| active_tab.is_some());
 
     info!(
         "open_workspace: {name:?} main={main_file:?} tabs={} ({:.1}ms)",
@@ -197,6 +201,7 @@ pub async fn open_workspace(
         last_file,
         open_tabs,
         active_tab,
+        cursor,
     })
 }
 
@@ -281,12 +286,14 @@ pub async fn get_fonts_dir(app: AppHandle) -> Result<Option<String>, String> {
 pub async fn set_open_tabs(
     open_tabs: Vec<String>,
     active_tab: Option<String>,
+    cursor: Option<usize>,
     workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Result<(), String> {
     let root = current_root(&workspace)?;
     let mut meta = read_meta(&root);
     meta.open_tabs = open_tabs;
     meta.active_tab = active_tab;
+    meta.cursor = cursor;
     write_meta(&root, &meta)
 }
 

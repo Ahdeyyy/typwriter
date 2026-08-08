@@ -24,10 +24,18 @@
 
   onMount(() => {
     // Let the history/back integration flush unsaved content when leaving.
-    app.flushEditor = () => void editor.flush();
+    app.flushEditor = () => {
+      // Where the caret sits is part of what "leaving the editor" should
+      // capture — the debounced persist may still be pending.
+      editor.persistTabsNow();
+      void editor.flush();
+    };
     keyboard.init();
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") void editor.flush();
+      if (document.visibilityState === "hidden") {
+        editor.persistTabsNow();
+        void editor.flush();
+      }
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {

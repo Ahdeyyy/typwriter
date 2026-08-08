@@ -76,7 +76,11 @@ export function createExtensions(lang: Extension | null): Extension[] {
     ]),
     EditorView.updateListener.of((u) => {
       if (u.docChanged) editor.handleDocChanged();
-      if (u.docChanged || u.selectionSet) completions.onCursorActivity(u);
+      if (u.docChanged || u.selectionSet) {
+        completions.onCursorActivity(u);
+        // Remember where the caret is so reopening the workspace lands here.
+        editor.handleCursorMoved();
+      }
     }),
     EditorView.domEventHandlers({
       blur: () => {
@@ -107,7 +111,27 @@ export function createEditorView(parent: HTMLElement, doc: string, relPath: stri
   });
 }
 
-/** Replace the document + language when switching files. */
-export function loadDocInto(view: EditorView, doc: string, relPath: string) {
-  view.setState(EditorState.create({ doc, extensions: createExtensions(languageFor(relPath)) }));
+/** Replace the document + language when switching files. `cursor` (UTF-16 code
+ *  units) restores a remembered caret; it is clamped to the new document and
+ *  scrolled into view. Omit it to start at the top. */
+export function loadDocInto(
+  view: EditorView,
+  doc: string,
+  relPath: string,
+  cursor?: number | null,
+) {
+  const anchor =
+    typeof cursor === "number" ? Math.max(0, Math.min(cursor, doc.length)) : undefined;
+  view.setState(
+    EditorState.create({
+      doc,
+      selection: anchor === undefined ? undefined : { anchor },
+      extensions: createExtensions(languageFor(relPath)),
+    }),
+  );
+  // `setState` doesn't scroll, so a restored caret deep in the file would sit
+  // off-screen until the user touched the editor.
+  if (anchor !== undefined) {
+    view.dispatch({ effects: EditorView.scrollIntoView(anchor, { y: "center" }) });
+  }
 }

@@ -98,22 +98,26 @@ export function clearRecentWorkspaces() {
     return ResultAsync.fromPromise(invoke<void>('clear_recent_workspaces'), toErrString);
 }
 
+/** `cursor` is the active tab's caret offset in UTF-16 code units (CodeMirror's
+ *  coordinate space), or null when the active tab has no caret. */
 export function saveWorkspaceTabs(
     tabs: string[],
     activeTabId: string | null,
-    unsaved: Record<string, string> = {}
+    unsaved: Record<string, string> = {},
+    cursor: number | null = null
 ) {
     return ResultAsync.fromPromise(
-        invoke<void>('save_workspace_tabs', { tabs, activeTabId, unsaved }),
+        invoke<void>('save_workspace_tabs', { tabs, activeTabId, unsaved, cursor }),
         toErrString
     );
 }
 
 export function getWorkspaceTabs(root: string) {
     return ResultAsync.fromPromise(
-        invoke<[string[], string | null, Record<string, string>] | null>('get_workspace_tabs', {
-            root,
-        }),
+        invoke<[string[], string | null, Record<string, string>, number | null] | null>(
+            'get_workspace_tabs',
+            { root }
+        ),
         toErrString
     );
 }

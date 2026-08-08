@@ -44,7 +44,10 @@ class WorkspaceStore {
         ? info.openTabs
         : [info.lastFile ?? info.mainFile].filter((f): f is string => !!f);
       const active = info.activeTab ?? info.lastFile ?? info.mainFile ?? initialTabs[0] ?? null;
-      editor.seedTabs(initialTabs, active);
+      // The caret belongs to `activeTab`; if we had to fall back to another
+      // file, open it at the top.
+      const cursor = active && active === info.activeTab ? info.cursor : null;
+      editor.seedTabs(initialTabs, active, cursor);
       // The preview must never show a previous workspace's pages.
       compileStore.onWorkspaceOpened(!!info.mainFile);
       return info;
