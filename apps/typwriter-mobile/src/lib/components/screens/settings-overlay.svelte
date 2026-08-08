@@ -9,7 +9,9 @@
     GithubIcon,
     TextFontIcon,
     Folder01Icon,
+    FavouriteIcon,
   } from "@hugeicons/core-free-icons";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
@@ -46,6 +48,16 @@
       },
       (e) => toast.error(`Failed: ${e}`),
     );
+  }
+
+  const REPO_URL = "https://github.com/Ahdeyyy/typwriter";
+  // Matches the `github:` entry in the repo's .github/FUNDING.yml.
+  const SPONSOR_URL = "https://github.com/sponsors/Ahdeyyy";
+
+  // The Android WebView won't hand a `target="_blank"` link to the system
+  // browser, so external links go through the opener plugin instead.
+  function openExternal(url: string) {
+    openUrl(url).catch(() => toast.error("Couldn't open the link"));
   }
 
   let version = $state("");
@@ -207,14 +219,20 @@
               <span class="text-muted-foreground text-sm">Typst</span>
               <span class="text-sm tabular-nums">{typstVersion ? `v${typstVersion}` : "—"}</span>
             </div>
-            <a
-              href="https://github.com/Ahdeyyy/typwriter"
-              target="_blank"
-              rel="noreferrer"
+            <button
+              type="button"
               class="text-muted-foreground active:text-foreground flex items-center gap-2 text-sm"
+              onclick={() => openExternal(REPO_URL)}
             >
               <Icon icon={GithubIcon} class="size-4" /> GitHub repository
-            </a>
+            </button>
+            <button
+              type="button"
+              class="text-muted-foreground active:text-foreground flex items-center gap-2 text-sm"
+              onclick={() => openExternal(SPONSOR_URL)}
+            >
+              <Icon icon={FavouriteIcon} class="size-4" /> Sponsor Typwriter
+            </button>
           </section>
         </div>
       </ScrollArea>
