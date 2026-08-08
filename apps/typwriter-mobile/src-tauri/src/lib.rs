@@ -107,6 +107,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::app::get_typst_version,
             commands::workspace::list_workspaces,
             commands::workspace::create_workspace,
             commands::workspace::delete_workspace,
@@ -127,6 +128,7 @@ pub fn run() {
             commands::editor::save_file,
             commands::editor::get_completions,
             commands::compile::compile,
+            commands::cursor::page_for_cursor,
             commands::format::format_typst_source,
             commands::format::format_typst_cursor_virtual,
             commands::export::export_pdf_to_uri,

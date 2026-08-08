@@ -17,7 +17,7 @@
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { app } from "$lib/stores/app.svelte";
   import { settings } from "$lib/stores/settings.svelte";
-  import { pickFontsDir, clearFontsDir, getFontsDir } from "$lib/ipc/commands";
+  import { pickFontsDir, clearFontsDir, getFontsDir, getTypstVersion } from "$lib/ipc/commands";
 
   let pickingFonts = $state(false);
 
@@ -49,8 +49,12 @@
   }
 
   let version = $state("");
+  let typstVersion = $state("");
   onMount(() => {
     getVersion().then((v) => (version = v)).catch(() => {});
+    // The Typst release this build compiles with — the same value documents see
+    // as `sys.version`, read from the compiler rather than hardcoded here.
+    void getTypstVersion().map((v) => (typstVersion = v));
     // The backend's persisted source is the truth for the fonts folder — sync
     // the display so a stale/failed frontend store can never show the wrong
     // state after a restart.
@@ -198,6 +202,10 @@
             <div class="flex items-center justify-between">
               <span class="text-muted-foreground text-sm">Version</span>
               <span class="text-sm tabular-nums">{version || "—"}</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-muted-foreground text-sm">Typst</span>
+              <span class="text-sm tabular-nums">{typstVersion ? `v${typstVersion}` : "—"}</span>
             </div>
             <a
               href="https://github.com/Ahdeyyy/typwriter"

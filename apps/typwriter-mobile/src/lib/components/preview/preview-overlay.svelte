@@ -7,15 +7,41 @@
   import { settings } from "$lib/stores/settings.svelte";
   import PageList from "./page-list.svelte";
 
+  let {
+    /** 0-based page the editor caret renders on, resolved while the overlay was
+     *  opening (null when it couldn't be placed). Scrolled to once per open. */
+    startPage = null,
+  }: { startPage?: number | null } = $props();
+
   // No pinch-to-zoom: the pinch gesture fought the scroll gesture and made
   // panning through pages miserable. Zoom is double-tap only (fit-width ↔ 2×).
   let bucket = $state<1 | 2 | 3 | 4>(settings.previewScaleBucket);
   let committedZoom = $state(1);
   let currentPage = $state(0);
   let lastTap = 0;
+  let scroller = $state<HTMLElement | null>(null);
+  /** Page already jumped to for this open; plain `let` so writing it can't
+   *  re-trigger the effect that sets it. */
+  let jumpedTo = -1;
 
   const visible = $derived(app.overlay === "preview");
   const total = $derived(compileStore.pages.length);
+
+  // Land on the caret's page. Runs when the pages arrive (the overlay opens
+  // before the compile finishes, showing a skeleton or the last render), and
+  // only once per open — a later recompile must not yank the reader back.
+  $effect(() => {
+    const page = startPage;
+    const pages = total;
+    if (!visible) {
+      jumpedTo = -1;
+      return;
+    }
+    if (page === null || pages === 0 || !scroller || jumpedTo === page) return;
+    jumpedTo = page;
+    const target = scroller.querySelector(`[data-page-index="${Math.min(page, pages - 1)}"]`);
+    target?.scrollIntoView({ block: "start" });
+  });
 
   function bucketForZoom(zoom: number): 1 | 2 | 3 | 4 {
     const dpr = typeof window !== "undefined" ? window.devicePixelRatio : 1;
@@ -82,6 +108,7 @@
     <!-- Scroller (native pan; double-tap toggles zoom) -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
+      bind:this={scroller}
       class="relative flex-1 overflow-auto overscroll-contain"
       style="padding-bottom: env(safe-area-inset-bottom);"
       onpointerup={onPointerUp}

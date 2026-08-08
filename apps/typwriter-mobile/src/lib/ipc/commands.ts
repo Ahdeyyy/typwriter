@@ -17,6 +17,11 @@ import type {
 const call = <T>(cmd: string, args?: Record<string, unknown>): ResultAsync<T, string> =>
   ResultAsync.fromPromise(invoke<T>(cmd, args), (e) => String(e));
 
+// ─── App ─────────────────────────────────────────────────────────────────────
+
+/** Version of the Typst compiler this build links against (`sys.version`). */
+export const getTypstVersion = () => call<string>("get_typst_version");
+
 // ─── Workspace ───────────────────────────────────────────────────────────────
 
 export const listWorkspaces = () => call<WorkspaceMeta[]>("list_workspaces");
@@ -61,6 +66,12 @@ export const getCompletions = (
 // ─── Compile + preview ──────────────────────────────────────────────────────────
 
 export const compile = () => call<CompileResult>("compile");
+
+/** 0-based preview page the caret renders on, or `null` when it can't be placed
+ *  (no compiled document, or the caret isn't on rendered content). `cursor` is a
+ *  UTF-16 offset, like every offset crossing this boundary. */
+export const pageForCursor = (relPath: string, cursor: number) =>
+  call<number | null>("page_for_cursor", { relPath, cursor });
 
 // ─── Format ──────────────────────────────────────────────────────────────────
 

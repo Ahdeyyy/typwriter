@@ -49,6 +49,7 @@
 
 <div
   bind:this={host}
+  data-page-index={index}
   class="w-full max-w-[820px] bg-white shadow-md"
   style:aspect-ratio={`${meta.widthPt} / ${meta.heightPt}`}
 >

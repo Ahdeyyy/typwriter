@@ -66,7 +66,7 @@
 {#if open}
   <div
     class="bg-background fixed inset-x-0 top-0 z-50 flex flex-col overflow-hidden"
-    style="height: var(--app-height, 100svh); padding-top: env(safe-area-inset-top);"
+    style="height: var(--app-height, 100svh); padding-top: calc(var(--app-inset-top, 0px) + env(safe-area-inset-top));"
     role="presentation"
   >
     <!-- Results — list on top, most relevant nearest the input below. -->

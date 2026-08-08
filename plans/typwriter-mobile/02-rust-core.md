@@ -276,6 +276,7 @@ typst-ide's given order, which is already relevance-ordered).
 | Command | Args | Returns |
 |---|---|---|
 | `compile` | — | `CompileResult` |
+| `page_for_cursor` | `relPath: string, cursor: number /* UTF-16 */` | `number \| null` — 0-based page the caret renders on, so opening the preview lands there; null when there's no compiled document or the caret isn't on rendered content |
 | `export_pdf_bytes_to_uri` | (phase 7, see `07-…md`) | |
 
 ```ts
@@ -307,6 +308,12 @@ There are **no compile/preview events** in v1 — the request/response result ca
 everything, and page images flow over HTTP. This is the main simplification vs.
 desktop's six event channels. (Phase 8 adds one optional event for package download
 progress.)
+
+### App
+
+| Command | Args | Returns |
+|---|---|---|
+| `get_typst_version` | — | `string` — the Typst release this build links against, read from the compiler (`sys.version`), shown in the settings sheet |
 
 ### Settings
 

@@ -16,14 +16,23 @@
 // and every further correction Chrome makes gets undone on the next scroll
 // event. Anchoring to the layout viewport leaves Chrome's adjustment intact.
 //
-//   --app-height  shell height = layout height − keyboard inset
+//   --app-height  shell height  = layout height − keyboard inset
+//   --app-inset-top  pan amount = how far the visual viewport is scrolled down
 //
-// The cost of that choice is that the shell box and the *visible* band stop
-// coinciding whenever `offsetTop > 0`: the shell's top `offsetTop` pixels are
-// scrolled off the screen. That's cosmetic for the header, but it means nothing
-// laid out inside the shell may assume "inside my box" == "on screen". Anything
-// that has to stay visible (i.e. the caret) must be checked against
-// `visibleViewportRect()` below, not against its own container.
+// The cost of anchoring to the layout viewport is that the shell *box* and the
+// *visible* band stop coinciding whenever `offsetTop > 0`: the shell's top
+// `offsetTop` pixels are scrolled off the screen, taking the top bar with them.
+// `--app-inset-top` is the fix: the shell pads its top edge by exactly that
+// much, so its content box is the visible band — the header sits at the top of
+// the screen and the toolbar on the keyboard, and the flexible editor in
+// between is the only thing that changes size. The shell's own bottom edge
+// never moves, so this doesn't disturb where the toolbar docks.
+//
+// Note that padding, unlike translating the shell, leaves the shell's *box*
+// anchored at layout y=0 — so nothing laid out inside it may assume "inside my
+// box" == "on screen". Anything that has to stay visible (i.e. the caret) must
+// be checked against `visibleViewportRect()` below, not against its own
+// container.
 //
 // `visible` additionally toggles the keyboard-specific toolbar.
 
@@ -96,6 +105,10 @@ class KeyboardVisibility {
       }
 
       const layoutH = root.clientHeight || window.innerHeight;
+      // How far Chrome has scrolled the visual viewport down within the layout
+      // viewport. Everything anchored at layout y=0 is off the top of the
+      // screen by this much until it pads itself back down.
+      const panned = Math.max(0, Math.round(vv.offsetTop));
       // How much of the layout viewport the keyboard covers. Under
       // `interactive-widget=resizes-visual` (what Android WebView actually gives
       // us) the layout viewport keeps its full height and the keyboard eats the
@@ -107,11 +120,12 @@ class KeyboardVisibility {
       // may have panned the visual viewport down by `offsetTop`, and that much of
       // the keyboard is already accounted for by the pan. Sizing needs this;
       // detection must NOT, or a large pan reads as "keyboard closed".
-      const inset = Math.max(0, covered - Math.round(vv.offsetTop));
+      const inset = Math.max(0, covered - panned);
       if (covered < KEYBOARD_MIN_PX) this.baseHeight = Math.max(this.baseHeight, layoutH);
 
       const shrunk = this.baseHeight - layoutH;
       root.style.setProperty("--app-height", `${Math.max(0, layoutH - inset)}px`);
+      root.style.setProperty("--app-inset-top", `${panned}px`);
       this.visible = covered > KEYBOARD_MIN_PX || shrunk > KEYBOARD_MIN_PX;
       // Whichever mode we're in, exactly one of the two terms is the keyboard.
       if (this.visible) this.lastHeight = Math.max(covered, shrunk);
@@ -137,6 +151,7 @@ class KeyboardVisibility {
       vv.removeEventListener("scroll", schedule);
       window.removeEventListener("orientationchange", schedule);
       root.style.removeProperty("--app-height");
+      root.style.removeProperty("--app-inset-top");
     };
   }
 
