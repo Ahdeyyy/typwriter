@@ -38,8 +38,13 @@ pub struct CompletionsResponse {
     pub completions: Vec<CompletionItem>,
 }
 
-/// Server-side cap on the completion list — the touch strip can't use more.
-const MAX_COMPLETIONS: usize = 48;
+/// Safety cap on the completion list. typst-ide returns its candidates
+/// *unfiltered* (for `#im` that's every binding in scope, in scope order), and
+/// the client is what ranks them against the typed prefix — so this has to stay
+/// above the size of the global scope (~200 in 0.15). Cutting closer to the
+/// strip's chip count would drop the item the user is typing towards before
+/// anything got a chance to rank it.
+const MAX_COMPLETIONS: usize = 256;
 
 fn workspace_root(world: &MobileWorld) -> Result<std::path::PathBuf, String> {
     world.root().ok_or_else(|| "No workspace open".to_string())

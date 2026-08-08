@@ -75,15 +75,19 @@
     e.preventDefault();
   }
 
-  function withView(fn: (v: EditorView) => void) {
-    return (e: PointerEvent) => {
-      e.preventDefault();
-      if (editor.view) fn(editor.view);
-    };
-  }
-
-  // Scroller buttons: tap-vs-scroll so the formatting row can pan horizontally.
-  // The run helpers re-focus the editor themselves (insert.ts calls view.focus).
+  // Tap-vs-scroll so the formatting row can still pan horizontally. The run
+  // helpers re-focus the editor themselves (insert.ts calls view.focus).
+  //
+  // Every button acts on pointer*up*, never pointerdown. Cancelling
+  // `pointerdown` suppresses the compatibility mouse events, which means
+  // `keepEditorFocus` — the mousedown guard that is what actually keeps focus
+  // (and the soft keyboard) on the editor — never runs. That left the buttons
+  // wired to pointerdown with no working focus guard at all: the tap could
+  // focus the button, and the focus round-trip on the contenteditable makes
+  // Chrome re-reveal the caret inside `.cm-scroller`, which reads as the editor
+  // scrolling on its own. Cancelling pointerdown can't prevent a scroll either
+  // (that is what `touch-action` is for), so these buttons declare
+  // `touch-action: none`: a tap on them is never a gesture.
   let startX = 0;
   let startY = 0;
   function tapDown(e: PointerEvent) {
@@ -139,9 +143,11 @@
     <!-- Manual completion trigger (replaces Ctrl+Space) -->
     <button
       class="active:bg-accent active:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
+      style="touch-action: none;"
       aria-label="Suggestions"
       onmousedown={keepEditorFocus}
-      onpointerdown={withView((v) => completions.trigger(v))}
+      onpointerdown={tapDown}
+      onpointerup={tapUp((v) => completions.trigger(v))}
     >
       <Icon icon={AiMagicIcon} class="size-5" />
     </button>
@@ -186,24 +192,31 @@
     <div class="flex shrink-0 items-center gap-0.5">
       <button
         class="active:bg-accent active:text-accent-foreground flex size-9 items-center justify-center rounded-full"
+        style="touch-action: none;"
         aria-label="Undo"
         onmousedown={keepEditorFocus}
-        onpointerdown={withView((v) => undo(v))}
+        onpointerdown={tapDown}
+        onpointerup={tapUp((v) => undo(v))}
       >
         <Icon icon={UndoIcon} class="size-5" />
       </button>
       <button
         class="active:bg-accent active:text-accent-foreground flex size-9 items-center justify-center rounded-full"
+        style="touch-action: none;"
         aria-label="Redo"
         onmousedown={keepEditorFocus}
-        onpointerdown={withView((v) => redo(v))}
+        onpointerdown={tapDown}
+        onpointerup={tapUp((v) => redo(v))}
       >
         <Icon icon={RedoIcon} class="size-5" />
       </button>
+      <!-- No focus guard here: this one blurs the editor on purpose. -->
       <button
         class="active:bg-accent active:text-accent-foreground flex size-9 items-center justify-center rounded-full"
+        style="touch-action: none;"
         aria-label="Hide keyboard"
-        onpointerdown={withView((v) => v.contentDOM.blur())}
+        onpointerdown={tapDown}
+        onpointerup={tapUp((v) => v.contentDOM.blur())}
       >
         <Icon icon={KeyboardIcon} class="size-5" />
       </button>
