@@ -157,14 +157,31 @@ keyboard), comfortable `.cm-line` padding, and — important on Android —
 `.cm-scroller { overflow: auto; -webkit-overflow-scrolling: touch; }`.
 
 Caret visibility: after focus or doc edits the caret can hide behind the keyboard.
-CM's `EditorView.scrollIntoView` on selection changes handles typing, but nothing
-handles the editor's *box* shrinking under the caret. Shipped as
-`lib/editor/caret-visibility.ts` — a ViewPlugin with a ResizeObserver on
-`view.scrollDOM` that, one rAF after the box shrinks (and only when the view has
-focus), dispatches `scrollIntoView(head, { y: "nearest", yMargin: 24 })`. Observing
-the box covers the keyboard, the toolbar mounting and the completion strip
-appearing alike; a fixed number of frames after the viewport event covers only the
-first, and `y: "center"` jumps the view when it does fire.
+Shipped as `lib/editor/caret-visibility.ts`, a ViewPlugin enforcing one rule — the
+caret's client rect must lie inside `scrollDOM.getBoundingClientRect()` ∩
+`visibleViewportRect()`, corrected by adjusting `scrollDOM.scrollTop` directly.
+
+**Occlusion must be measured against the visual viewport, never inferred from the
+editor's box.** Two earlier attempts failed because they used the box: CM's own
+`scrollIntoView` on selection changes, and a ResizeObserver that re-scrolled when
+`scrollDOM` *shrank*. Three cases defeat both:
+
+- A pan (`offsetTop` rises) makes `inset = covered − offsetTop` fall, so the shell
+  **grows**. The scroller gets bigger while the visible band slides down — no
+  shrink to observe, and the scroller's box now extends past the keyboard's top
+  edge, so `y: "nearest"` calls an occluded caret visible.
+- With the keyboard already up, moving the caret (typing, Enter at the bottom,
+  tapping a low line) resizes nothing at all.
+- While the keyboard animates in there is no measurement yet — some devices report
+  the viewport once, at the end.
+
+Triggers, all funnelling into one rAF-coalesced correction: `keyboard.onViewportChange`
+(the only signal for a pan), a ResizeObserver on `scrollDOM` (toolbar mounting,
+completion strip), `selectionSet`/`docChanged` while the keyboard is up, and a
+settle ramp at 0/60/160/320/500 ms after any of them. Within 700 ms of focus the
+band is pre-cut by `keyboard.lastHeight` (the last measured keyboard), so the caret
+clears the keyboard *as* it opens — which also removes Chrome's reason to pan, since
+it only pans when the focused caret isn't already visible.
 
 ## 4.4 Keyboard toolbar — `components/toolbar/editor-toolbar.svelte`
 
@@ -193,6 +210,13 @@ Three things that must not regress:
   `covered > 150` OR a drop from the tallest layout height seen at the current
   width (reset on rotation), which is what covers the `resizes-content` case where
   both heights shrink together and `covered` is ~0.
+
+The price of anchoring at `top: 0` is that the shell's box and the visible band stop
+coinciding whenever `offsetTop > 0` — the shell's top `offsetTop` px are scrolled off
+screen. Cosmetic for the header, but it means **nothing inside the shell may treat
+"inside my box" as "on screen"**. `visibleViewportRect()` (exported from the same
+module) is the on-screen band in `getBoundingClientRect()` coordinates; that is the
+reference for anything that must stay visible.
 
 Two stacked rows, each 40px:
 

@@ -59,7 +59,7 @@ export function createExtensions(lang: Extension | null): Extension[] {
     EditorView.lineWrapping, // always on — no horizontal scroll on phones
     highlightActiveLine(),
     inlineDiagnostics(),
-    caretVisibility(), // re-scrolls the caret when the keyboard/toolbar shrinks us
+    caretVisibility(), // keeps the caret out of the soft keyboard's rectangle
     lineNumbersC.of(settings.showLineNumbers ? lineNumbers() : []),
     themeC.of(themeExtensionFor(document.documentElement.classList.contains("dark"))),
     fontSizeC.of(fontThemeFor(settings.editorFontSize)),

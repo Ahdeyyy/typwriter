@@ -14,11 +14,16 @@
 // shell down by that same amount cancels the scroll exactly — the caret lands
 // back on the screen pixel it started on, which is the one behind the keyboard —
 // and every further correction Chrome makes gets undone on the next scroll
-// event. Anchoring to the layout viewport leaves Chrome's adjustment intact; the
-// worst case is the header being scrolled a few px out of view while the caret,
-// the toolbar and the keyboard edge all stay where they belong.
+// event. Anchoring to the layout viewport leaves Chrome's adjustment intact.
 //
 //   --app-height  shell height = layout height − keyboard inset
+//
+// The cost of that choice is that the shell box and the *visible* band stop
+// coinciding whenever `offsetTop > 0`: the shell's top `offsetTop` pixels are
+// scrolled off the screen. That's cosmetic for the header, but it means nothing
+// laid out inside the shell may assume "inside my box" == "on screen". Anything
+// that has to stay visible (i.e. the caret) must be checked against
+// `visibleViewportRect()` below, not against its own container.
 //
 // `visible` additionally toggles the keyboard-specific toolbar.
 
@@ -26,13 +31,55 @@
  *  gesture bar), not a soft keyboard. */
 const KEYBOARD_MIN_PX = 150;
 
+/**
+ * The band of the layout viewport that is actually on screen, in **client**
+ * coordinates — the same space as `getBoundingClientRect()`.
+ *
+ * `getBoundingClientRect()` is relative to the *layout* viewport and does not
+ * account for the visual viewport being panned or shrunk; `offsetTop`/`height`
+ * are exactly that missing information. So `offsetTop + height` is the top edge
+ * of the soft keyboard expressed in rect coordinates, which is what makes an
+ * "is this element covered by the keyboard?" test possible at all.
+ *
+ * (Valid because the app pins `maximum-scale=1, user-scalable=no`: at scale 1
+ * client pixels and visual-viewport pixels are the same unit.)
+ */
+export function visibleViewportRect(): { top: number; bottom: number } {
+  if (typeof window === "undefined") return { top: 0, bottom: 0 };
+  const layoutH = document.documentElement.clientHeight || window.innerHeight;
+  const vv = window.visualViewport;
+  if (!vv) return { top: 0, bottom: layoutH };
+  return { top: vv.offsetTop, bottom: vv.offsetTop + vv.height };
+}
+
 class KeyboardVisibility {
   visible = $state(false);
+  /**
+   * Height of the last soft keyboard we measured, in px; 0 until one opens.
+   * The viewport only reports the keyboard once it has finished animating in,
+   * so this is what lets the caret be moved clear of it on focus, before the
+   * measurement exists. Kept per session (it survives the keyboard closing).
+   */
+  lastHeight = 0;
+
   private cleanup: (() => void) | null = null;
   private frame = 0;
   /** Tallest layout height seen at `baseWidth` — i.e. a keyboard-free height. */
   private baseHeight = 0;
   private baseWidth = 0;
+  private readonly listeners = new Set<() => void>();
+
+  /**
+   * Run `fn` after every viewport change we process. Anything whose on-screen
+   * position depends on the keyboard has to re-check itself here: a viewport
+   * change is not always a resize of any particular element (a pan changes what
+   * is visible while every box keeps its size), so element-level observers
+   * cannot stand in for this.
+   */
+  onViewportChange(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
 
   init() {
     if (typeof window === "undefined" || !window.visualViewport) return;
@@ -63,8 +110,13 @@ class KeyboardVisibility {
       const inset = Math.max(0, covered - Math.round(vv.offsetTop));
       if (covered < KEYBOARD_MIN_PX) this.baseHeight = Math.max(this.baseHeight, layoutH);
 
+      const shrunk = this.baseHeight - layoutH;
       root.style.setProperty("--app-height", `${Math.max(0, layoutH - inset)}px`);
-      this.visible = covered > KEYBOARD_MIN_PX || this.baseHeight - layoutH > KEYBOARD_MIN_PX;
+      this.visible = covered > KEYBOARD_MIN_PX || shrunk > KEYBOARD_MIN_PX;
+      // Whichever mode we're in, exactly one of the two terms is the keyboard.
+      if (this.visible) this.lastHeight = Math.max(covered, shrunk);
+
+      for (const fn of this.listeners) fn();
     };
 
     // Coalesce to one write per frame: Android fires a burst of resize/scroll
