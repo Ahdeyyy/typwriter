@@ -57,9 +57,11 @@
     <img
       {src}
       alt={`Page ${index + 1}`}
-      class="block h-full w-full"
+      class="block h-full w-full select-none"
       loading="lazy"
       decoding="async"
+      draggable="false"
+      style="-webkit-touch-callout: none;"
       onerror={() => {
         // Rare 404 from a fingerprint/regeneration race → one refresh.
         if (compileStore.stale) void compileStore.run();

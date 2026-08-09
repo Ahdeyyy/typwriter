@@ -159,6 +159,36 @@ class EditorStore {
     return pending.offset;
   }
 
+  /**
+   * Open `relPath` and put the caret at `offset` (UTF-16 code units), scrolling
+   * it into view. Used by the preview's tap-to-source jump.
+   *
+   * When the file is already the active buffer the caret moves directly;
+   * otherwise the offset rides the same one-shot hand-off the workspace restore
+   * uses (`pendingCursor`), because the editor host is torn down and remounted
+   * around every load — dispatching into the outgoing view would be lost, and
+   * the new one seeds itself from `loadedText`.
+   *
+   * Deliberately does not focus the editor: the jump already swaps screens, and
+   * popping the soft keyboard on arrival would hide the line the user asked to
+   * see.
+   */
+  jumpTo(relPath: string, offset: number): ResultAsync<void, string> {
+    const view = this.view;
+    if (view && this.isActiveTab(relPath) && this.fileKind === "text") {
+      const pos = Math.max(0, Math.min(offset, view.state.doc.length));
+      view.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
+      this.handleCursorMoved();
+      return okAsync(undefined);
+    }
+    this.pendingCursor = { relPath, offset };
+    this.pendingCursorReady = false;
+    return this.loadFile(relPath).mapErr((e) => {
+      this.pendingCursor = null;
+      return e;
+    });
+  }
+
   /** Open an empty "new tab" — the editor shows the open/create/switch options. */
   openNewTab() {
     void this.flush();

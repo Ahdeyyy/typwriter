@@ -94,6 +94,17 @@ export interface PageMeta {
   heightPt: number;
 }
 
+/** Where a tap on a rendered preview page leads (mirrors `JumpTarget` in
+ *  src-tauri/src/commands/click.rs). */
+export type PreviewJump =
+  /** Into the source: open `relPath` with the caret at `offset` (UTF-16). */
+  | { type: "file"; relPath: string; offset: number }
+  /** Out of the app: an external link. */
+  | { type: "url"; url: string }
+  /** Elsewhere in the preview: 0-based page plus a point on it, in typst points
+   *  from the page's top-left. */
+  | { type: "position"; page: number; x: number; y: number };
+
 export interface CompileResult {
   generation: number;
   /** Present (possibly empty) on success; null when no document was produced. */

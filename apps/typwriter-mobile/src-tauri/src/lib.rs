@@ -130,6 +130,7 @@ pub fn run() {
             commands::editor::get_completions,
             commands::compile::compile,
             commands::cursor::page_for_cursor,
+            commands::click::jump_from_click,
             commands::format::format_typst_source,
             commands::format::format_typst_cursor_virtual,
             commands::export::export_pdf_to_uri,

@@ -12,6 +12,7 @@ import type {
   FileContent,
   FileNode,
   FontsStatus,
+  PreviewJump,
   WorkspaceInfo,
   WorkspaceMeta,
 } from "./types";
@@ -78,6 +79,12 @@ export const compile = () => call<CompileResult>("compile");
  *  UTF-16 offset, like every offset crossing this boundary. */
 export const pageForCursor = (relPath: string, cursor: number) =>
   call<number | null>("page_for_cursor", { relPath, cursor });
+
+/** Resolve a tap at `x`/`y` **typst points** on the 0-based preview `page` to a
+ *  jump target — a link's destination, or the source span that rendered it.
+ *  `null` when nothing was hit (or the hit lives in a package file). */
+export const jumpFromClick = (page: number, x: number, y: number) =>
+  call<PreviewJump | null>("jump_from_click", { page, x, y });
 
 // ─── Format ──────────────────────────────────────────────────────────────────
 
