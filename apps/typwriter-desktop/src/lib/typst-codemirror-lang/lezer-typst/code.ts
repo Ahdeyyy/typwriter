@@ -229,8 +229,14 @@ function parseExpr(s: Scanner, ctx: TypstParseContext, minPrec: number, embedded
     // In embedded mode, don't consume binary operators
     if (embedded) break
 
+    // A `#…` expression ends at its line, so the operator has to be on that
+    // line too. Skipping newlines here would let the markup that follows get
+    // swallowed as an operand: `#let x = 1` + `= Head` reads as `1 = Head`,
+    // and the heading (or `- item`, `+ item`, `/ term`, `*bold*`) stops being
+    // markup at all. Inside brackets/braces the mode is off and operators may
+    // legitimately sit on the next line.
     const beforeSkip = s.pos
-    skipWhitespaceAndComments(s)
+    skipWhitespaceAndComments(s, undefined, ctx.newlineTerminates)
 
     // Binary operators
     const binOp = getBinOp(s)

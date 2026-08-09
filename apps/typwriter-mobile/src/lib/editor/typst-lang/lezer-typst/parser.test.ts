@@ -78,3 +78,37 @@ describe("field access across lines", () => {
     expect(has("#value.len()", "FieldAccess")).toBe(true)
   })
 })
+
+describe("binary operators across lines", () => {
+  // The value of a `#let` / `#show` ends with its line. Reaching onto the next
+  // one turns markup that happens to start with an operator character into an
+  // operand: `#let x = 1` followed by `= Head` used to parse as `1 = Head`.
+  test.each([
+    ["#show heading.where(level: 2): smallcaps\n\n= Head", "Heading"],
+    ["#show heading: smallcaps\n= Head", "Heading"],
+    ["#let x = 1\n\n= Head", "Heading"],
+    ["#let f(x) = x\n\n= Head", "Heading"],
+    ["#let x = foo\n- item", "ListItem"],
+    ["#let x = foo\n+ item", "EnumItem"],
+    ["#let x = foo\n/ term: def", "TermItem"],
+    ["#let x = foo\n*bold*", "Strong"],
+  ])("%j stays markup", (src, node) => {
+    expect(errors(src)).toEqual([])
+    expect(has(src, node)).toBe(true)
+    expect(has(src, "Binary")).toBe(false)
+  })
+
+  test("same-line operators still bind", () => {
+    expect(has("#let x = 1 + 2", "Binary")).toBe(true)
+  })
+
+  // Inside brackets and braces newlines are trivia, so an operator may start
+  // the next line.
+  test.each(["#f(\n  1\n  + 2\n)", "#{\n  let x = 1\n    + 2\n}"])(
+    "operator on the next line still binds inside %j",
+    (src) => {
+      expect(errors(src)).toEqual([])
+      expect(has(src, "Binary")).toBe(true)
+    },
+  )
+})
