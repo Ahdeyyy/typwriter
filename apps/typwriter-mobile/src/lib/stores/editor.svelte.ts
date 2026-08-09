@@ -5,6 +5,7 @@
 import { ResultAsync, okAsync } from "neverthrow";
 import type { EditorView } from "@codemirror/view";
 import * as ipc from "$lib/ipc/commands";
+import { remapPath } from "$lib/paths";
 import { settings } from "./settings.svelte";
 import { compileStore } from "./compile.svelte";
 
@@ -205,6 +206,111 @@ class EditorStore {
   /** Whether `relPath` is the active tab's file. */
   isActiveTab(relPath: string): boolean {
     return !this.newTabOpen && this.relPath === relPath;
+  }
+
+  /**
+   * Carry the open tabs — and the active buffer — across a file or folder
+   * rename, move, or delete. `to` is null when the entry was deleted.
+   *
+   * Tabs hold workspace-relative paths, so without this an entry changing its
+   * name on disk leaves every tab that references it pointing at a path that no
+   * longer exists: the tab bar shows the old name, reopening it fails, and — the
+   * damaging one — the next autosave writes the buffer back to the *old* path,
+   * recreating the file the user just renamed away.
+   *
+   * A renamed active file keeps its buffer, caret and dirty flag untouched; only
+   * where it saves to changes. The paths on disk have already moved by the time
+   * this runs, so nothing is re-read.
+   */
+  applyEntryChange(from: string, to: string | null) {
+    const active = this.newTabOpen ? null : this.relPath;
+
+    const remapped: string[] = [];
+    // Where the active tab sits among the *survivors* — the index to fall back
+    // to if it was the one deleted. Counting its old index instead would be
+    // wrong whenever the same delete took tabs ahead of it (a folder holding
+    // several open files), because those shift everything left.
+    let survivorsBeforeActive = 0;
+    let reachedActive = false;
+    for (const tab of this.tabs) {
+      if (tab === active) reachedActive = true;
+      const change = remapPath(tab, from, to);
+      if (change.kind === "gone") continue;
+      const next = change.kind === "moved" ? change.to : tab;
+      // A move can land on a path another tab already holds open.
+      if (remapped.includes(next)) continue;
+      remapped.push(next);
+      if (!reachedActive) survivorsBeforeActive++;
+    }
+    this.tabs = remapped;
+
+    // A caret waiting to be restored is addressed by path too.
+    if (this.pendingCursor) {
+      const change = remapPath(this.pendingCursor.relPath, from, to);
+      if (change.kind === "gone") {
+        this.pendingCursor = null;
+        this.pendingCursorReady = false;
+      } else if (change.kind === "moved") {
+        this.pendingCursor = { relPath: change.to, offset: this.pendingCursor.offset };
+      }
+    }
+
+    if (active) {
+      const change = remapPath(active, from, to);
+      if (change.kind === "moved") {
+        this.relPath = change.to;
+        void ipc.setLastFile(change.to);
+      } else if (change.kind === "gone") {
+        // Never write a deleted file back out: drop the buffer and everything
+        // scheduled against it, then fall back the way closing its tab would.
+        this.discardPendingWrites();
+        if (this.tabs.length) {
+          // Deliberately no `persistTabsNow()` on this path. `loadFile` moves
+          // `relPath` in a microtask, so a persist here would still see the
+          // *deleted* path and write it out as the active tab — over the
+          // metadata the backend just remapped correctly. That metadata is
+          // already right; `loadFile` refreshes it once the switch lands.
+          void this.loadFile(this.tabs[Math.min(survivorsBeforeActive, this.tabs.length - 1)]);
+          return;
+        }
+        this.newTabOpen = true;
+        this.clearFile();
+      }
+    }
+
+    this.persistTabsNow();
+  }
+
+  /**
+   * Give up on writing the active buffer when `relPath` is about to be deleted,
+   * and resolve once nothing is still being written.
+   *
+   * Cancelling the timers is not enough on its own: a `flush()` already crossing
+   * IPC has no ordering guarantee against `delete_entry`, so its write can land
+   * *after* the unlink and put the file back on disk — the resurrection this
+   * whole path exists to prevent. Waiting for the in-flight write to settle
+   * before deleting is what actually orders the two.
+   *
+   * A pending write to some *other* file keeps its autosave; we only wait.
+   */
+  abandonWrites(relPath: string): ResultAsync<void, string> {
+    const active = this.newTabOpen ? null : this.relPath;
+    if (active && remapPath(active, relPath, null).kind === "gone") {
+      this.discardPendingWrites();
+    }
+    // A failed save must not block the delete — the user asked for the file to
+    // go away either way.
+    return (this.inflight ?? okAsync(undefined)).orElse(() => okAsync(undefined));
+  }
+
+  /** Forget the pending buffer: no autosave, no live compile, nothing dirty.
+   *  Used when the open file has been deleted out from under the editor. */
+  private discardPendingWrites() {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    if (this.liveTimer) clearTimeout(this.liveTimer);
+    this.saveTimer = null;
+    this.liveTimer = null;
+    this.dirty = false;
   }
 
   /** Drop the active document (empty-tab / closed-workspace state). */

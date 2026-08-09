@@ -3,8 +3,9 @@
 // patches the tree client-side.
 
 import { ResultAsync, okAsync } from "neverthrow";
-import type { FileNode, WorkspaceInfo, WorkspaceMeta } from "$lib/ipc/types";
+import type { EntryChange, FileNode, WorkspaceInfo, WorkspaceMeta } from "$lib/ipc/types";
 import * as ipc from "$lib/ipc/commands";
+import { remapPath } from "$lib/paths";
 import { app } from "./app.svelte";
 import { editor } from "./editor.svelte";
 import { settings } from "./settings.svelte";
@@ -108,14 +109,77 @@ class WorkspaceStore {
   createFolder(relPath: string): ResultAsync<void, string> {
     return ipc.createFolder(relPath).map((t) => this.replaceTree(t));
   }
+
+  /**
+   * Rename an entry, then move everything that referenced it by path.
+   *
+   * The buffer is flushed *first*: a flush afterwards would still be aimed at
+   * the old path (recreating the file the rename just removed), and the renamed
+   * file would keep the pre-edit text.
+   */
   renameEntry(relPath: string, newName: string): ResultAsync<void, string> {
-    return ipc.renameEntry(relPath, newName).map((t) => this.replaceTree(t));
+    return editor
+      .flush()
+      .andThen(() => ipc.renameEntry(relPath, newName))
+      .map((change) => this.applyEntryChange(change));
   }
+
+  /** Move an entry into another folder. Flushes first, for the same reason as
+   *  {@link renameEntry}. */
   moveEntry(relPath: string, newParentRel: string): ResultAsync<void, string> {
-    return ipc.moveEntry(relPath, newParentRel).map((t) => this.replaceTree(t));
+    return editor
+      .flush()
+      .andThen(() => ipc.moveEntry(relPath, newParentRel))
+      .map((change) => this.applyEntryChange(change));
   }
+
+  /**
+   * Delete an entry.
+   *
+   * Deliberately does *not* flush — saving a file that is about to be removed
+   * would only recreate it. But not *starting* a write isn't the same as not
+   * having one in flight, and a save already crossing IPC can land after the
+   * unlink. `abandonWrites` drops the buffer up front and waits for any such
+   * write to settle, so the delete is always the last word on that path.
+   */
   deleteEntry(relPath: string): ResultAsync<void, string> {
-    return ipc.deleteEntry(relPath).map((t) => this.replaceTree(t));
+    return editor
+      .abandonWrites(relPath)
+      .andThen(() => ipc.deleteEntry(relPath))
+      .map((change) => this.applyEntryChange(change));
+  }
+
+  /**
+   * Fan a rename / move / delete out across everything that holds a path: the
+   * tree, the main file, the open tabs, and the preview.
+   *
+   * The backend has already rewritten the persisted metadata and resynced the
+   * compiler's main file; this brings the live UI state in line with it.
+   */
+  private applyEntryChange(change: EntryChange) {
+    this.replaceTree(change.tree);
+
+    const main = this.mainFile ? remapPath(this.mainFile, change.from, change.to) : null;
+    if (main?.kind === "moved") this.mainFile = main.to;
+    else if (main?.kind === "gone") this.mainFile = null;
+
+    editor.applyEntryChange(change.from, change.to);
+
+    if (main?.kind === "gone") {
+      // Nothing left to compile; the old pages describe a document that no
+      // longer exists.
+      compileStore.clear();
+    } else if (main?.kind === "moved") {
+      // Same content, new identity — rebuild so the preview's spans point at
+      // the file under its new name.
+      compileStore.onMainChanged();
+    } else if (main) {
+      // Some other file changed. It may well be one the document imports, so
+      // treat it like a save: mark stale, refresh if the preview is open.
+      compileStore.onSaved();
+    }
+    // `main === null`: no main file is set at all, so there is nothing to
+    // compile — scheduling one here could only fail.
   }
 
   /** Flat list of all directory relPaths (for the "Move to…" picker). */

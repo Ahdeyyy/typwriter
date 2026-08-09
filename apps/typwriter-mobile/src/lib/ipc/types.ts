@@ -18,6 +18,27 @@ export interface FileNode {
   children: FileNode[];
 }
 
+/** The app-wide fonts folder and what the compiler actually loaded from it. */
+export interface FontsStatus {
+  /** Display name of the chosen folder, or null when none is set. */
+  folder: string | null;
+  /** Font families available to the compiler: embedded plus the folder's. */
+  familyCount: number;
+  /** Whether a background load is still running. `familyCount` only means
+   *  "that's all there was" once this is false. */
+  loading: boolean;
+}
+
+/** Result of renaming, moving, or deleting an entry: the refreshed tree plus
+ *  the path change, so open tabs can be carried across it. */
+export interface EntryChange {
+  tree: FileNode;
+  /** The entry's path before the operation. */
+  from: string;
+  /** Its path afterwards, or null when it was deleted. */
+  to: string | null;
+}
+
 export interface WorkspaceInfo {
   name: string;
   root: string;

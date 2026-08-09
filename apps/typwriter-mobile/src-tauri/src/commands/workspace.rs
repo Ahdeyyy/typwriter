@@ -18,8 +18,9 @@ use tauri::{AppHandle, Manager, State};
 use crate::{
     compiler::CompileState,
     workspace::{
-        build_tree, detect_main_file, read_meta, resolve_in_root, workspaces_root, write_meta,
-        FileNode, WorkspaceInfo, WorkspaceMeta, WorkspaceState,
+        build_tree, detect_main_file, read_meta, remap_meta, resolve_in_root, update_meta,
+        workspaces_root, EntryChange, FileNode, MetaRemap, WorkspaceInfo, WorkspaceMeta,
+        WorkspaceState,
     },
     world::MobileWorld,
 };
@@ -49,6 +50,60 @@ fn current_root(workspace: &WorkspaceState) -> Result<PathBuf, String> {
 
 fn tree_of(workspace: &WorkspaceState) -> Result<FileNode, String> {
     Ok(build_tree(&current_root(workspace)?))
+}
+
+/// Finish an entry rename / move / delete: rewrite every path the workspace
+/// metadata stores, resync the compiler's main file with it, and hand back the
+/// refreshed tree along with the change so the frontend can move its open tabs.
+///
+/// The world's main file is a `FileId` built from a path; leaving it pointing at
+/// the old one makes every later compile fail with "file not found" even though
+/// the document is sitting right there under its new name.
+fn finish_entry_change(
+    root: &Path,
+    workspace: &WorkspaceState,
+    world: &MobileWorld,
+    compile: &CompileState,
+    from: String,
+    to: Option<String>,
+) -> Result<EntryChange, String> {
+    let MetaRemap { meta, main_changed } = remap_meta(root, &from, to.as_deref())?;
+    match &meta.main_file {
+        Some(rel) => world.set_main(world.rel_to_id(rel)?),
+        None => world.clear_main(),
+    }
+    if main_changed {
+        // The cached document belongs to the main file's *old* identity. Left
+        // in place it outlives the file: `export_pdf` would still write out the
+        // document the user just deleted, and the renderer would keep serving
+        // its pages. Same reasoning as the reset in `open_workspace`.
+        *compile.document.lock() = None;
+        compile.page_lookup.lock().clear();
+    }
+    info!(
+        "entry change: {from:?} -> {to:?} (main={:?}, main_changed={main_changed})",
+        meta.main_file
+    );
+    Ok(EntryChange {
+        tree: tree_of(workspace)?,
+        from,
+        to,
+    })
+}
+
+/// The last `/`-separated segment of a workspace-relative path.
+fn last_segment(rel: &str) -> &str {
+    rel.rsplit('/').next().unwrap_or(rel)
+}
+
+/// Join a folder's relative path with a child name; an empty parent is the root.
+fn join_rel(parent: &str, name: &str) -> String {
+    let parent = parent.trim_end_matches('/');
+    if parent.is_empty() {
+        name.to_string()
+    } else {
+        format!("{parent}/{name}")
+    }
 }
 
 /// Reject names that are unsafe as a single path segment.
@@ -96,7 +151,11 @@ pub async fn list_workspaces(app: AppHandle) -> Result<Vec<WorkspaceMeta>, Strin
             system: system.as_deref() == Some(path.as_path()),
         });
     }
-    out.sort_by(|a, b| b.last_opened_ms.cmp(&a.last_opened_ms).then(a.name.cmp(&b.name)));
+    out.sort_by(|a, b| {
+        b.last_opened_ms
+            .cmp(&a.last_opened_ms)
+            .then(a.name.cmp(&b.name))
+    });
     Ok(out)
 }
 
@@ -109,9 +168,7 @@ pub async fn create_workspace(name: String, app: AppHandle) -> Result<WorkspaceM
     }
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     std::fs::write(dir.join("main.typ"), STARTER_MAIN).map_err(|e| e.to_string())?;
-    let mut meta = read_meta(&dir);
-    meta.main_file = Some("main.typ".to_string());
-    write_meta(&dir, &meta)?;
+    update_meta(&dir, |meta| meta.main_file = Some("main.typ".to_string()))?;
     info!("create_workspace: {name:?}");
     Ok(WorkspaceMeta {
         name,
@@ -149,8 +206,13 @@ pub async fn open_workspace(
         return Err(format!("Workspace \"{name}\" not found"));
     }
 
-    let mut meta = read_meta(&dir);
-    let main_file = detect_main_file(&dir, meta.main_file.as_deref());
+    // Record last-opened and persist the resolved main file in one pass.
+    let mut main_file = None;
+    let meta = update_meta(&dir, |meta| {
+        main_file = detect_main_file(&dir, meta.main_file.as_deref());
+        meta.main_file = main_file.clone();
+        meta.last_opened_ms = Some(now_ms());
+    })?;
 
     *workspace.root.write() = Some(dir.clone());
     world.set_root(dir.clone());
@@ -162,13 +224,11 @@ pub async fn open_workspace(
         world.set_main(world.rel_to_id(rel)?);
     }
 
-    // Record last-opened and persist the resolved main file.
-    meta.main_file = main_file.clone();
-    meta.last_opened_ms = Some(now_ms());
-    write_meta(&dir, &meta)?;
-
-    let still_exists =
-        |rel: &str| resolve_in_root(&dir, rel).map(|p| p.is_file()).unwrap_or(false);
+    let still_exists = |rel: &str| {
+        resolve_in_root(&dir, rel)
+            .map(|p| p.is_file())
+            .unwrap_or(false)
+    };
 
     let last_file = meta.last_file.clone().filter(|rel| still_exists(rel));
 
@@ -222,9 +282,7 @@ pub async fn set_main_file(
         return Err(format!("Not a file: {rel_path}"));
     }
     world.set_main(world.rel_to_id(&rel_path)?);
-    let mut meta = read_meta(&root);
-    meta.main_file = Some(rel_path.clone());
-    write_meta(&root, &meta)?;
+    update_meta(&root, |meta| meta.main_file = Some(rel_path.clone()))?;
     info!("set_main_file: {rel_path:?}");
     Ok(())
 }
@@ -235,9 +293,8 @@ pub async fn set_last_file(
     workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Result<(), String> {
     let root = current_root(&workspace)?;
-    let mut meta = read_meta(&root);
-    meta.last_file = rel_path;
-    write_meta(&root, &meta)
+    update_meta(&root, |meta| meta.last_file = rel_path)?;
+    Ok(())
 }
 
 /// Open the platform folder picker and persist the chosen folder as the
@@ -274,12 +331,20 @@ pub async fn clear_fonts_dir(
     Ok(())
 }
 
-/// Display name of the persisted fonts source, or `None` when unset. The
-/// settings UI reads this so the shown folder always matches what the backend
-/// actually loads.
+/// The persisted fonts folder and how many font families the compiler ended up
+/// with. The settings UI reads this so the shown folder always matches what the
+/// backend actually loads — and so a folder that yielded nothing is visible
+/// rather than silent.
 #[tauri::command]
-pub async fn get_fonts_dir(app: AppHandle) -> Result<Option<String>, String> {
-    Ok(crate::fonts::source_display_name(&app))
+pub async fn get_fonts_status(
+    app: AppHandle,
+    world: State<'_, Arc<MobileWorld>>,
+) -> Result<crate::fonts::FontsStatus, String> {
+    Ok(crate::fonts::FontsStatus {
+        folder: crate::fonts::source_display_name(&app),
+        family_count: world.font_family_count(),
+        loading: world.fonts_loading(),
+    })
 }
 
 #[tauri::command]
@@ -290,11 +355,12 @@ pub async fn set_open_tabs(
     workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Result<(), String> {
     let root = current_root(&workspace)?;
-    let mut meta = read_meta(&root);
-    meta.open_tabs = open_tabs;
-    meta.active_tab = active_tab;
-    meta.cursor = cursor;
-    write_meta(&root, &meta)
+    update_meta(&root, |meta| {
+        meta.open_tabs = open_tabs;
+        meta.active_tab = active_tab;
+        meta.cursor = cursor;
+    })?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -335,7 +401,9 @@ pub async fn rename_entry(
     rel_path: String,
     new_name: String,
     workspace: State<'_, Arc<WorkspaceState>>,
-) -> Result<FileNode, String> {
+    world: State<'_, Arc<MobileWorld>>,
+    compile: State<'_, Arc<CompileState>>,
+) -> Result<EntryChange, String> {
     if new_name.contains(['/', '\\']) {
         return Err("Name cannot contain path separators".into());
     }
@@ -349,8 +417,13 @@ pub async fn rename_entry(
         return Err(format!("Already exists: {new_name}"));
     }
     std::fs::rename(&abs, &dest).map_err(|e| e.to_string())?;
-    info!("rename_entry: {rel_path:?} -> {new_name:?}");
-    tree_of(&workspace)
+    // The entry keeps its parent, so only the last segment changes.
+    let parent_rel = match rel_path.rfind('/') {
+        Some(i) => &rel_path[..i],
+        None => "",
+    };
+    let to = join_rel(parent_rel, &new_name);
+    finish_entry_change(&root, &workspace, &world, &compile, rel_path, Some(to))
 }
 
 #[tauri::command]
@@ -358,7 +431,9 @@ pub async fn move_entry(
     rel_path: String,
     new_parent_rel: String,
     workspace: State<'_, Arc<WorkspaceState>>,
-) -> Result<FileNode, String> {
+    world: State<'_, Arc<MobileWorld>>,
+    compile: State<'_, Arc<CompileState>>,
+) -> Result<EntryChange, String> {
     let root = current_root(&workspace)?;
     let abs = resolve_in_root(&root, &rel_path)?;
     // Empty new_parent_rel means the workspace root.
@@ -382,20 +457,28 @@ pub async fn move_entry(
         return Err("Cannot move a folder into itself".into());
     }
     std::fs::rename(&abs, &dest).map_err(|e| e.to_string())?;
-    info!("move_entry: {rel_path:?} -> {new_parent_rel:?}");
-    tree_of(&workspace)
+    // The entry keeps its name, so only the parent changes.
+    let to = join_rel(&new_parent_rel, last_segment(&rel_path));
+    finish_entry_change(&root, &workspace, &world, &compile, rel_path, Some(to))
 }
 
 #[tauri::command]
 pub async fn delete_entry(
     rel_path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
-) -> Result<FileNode, String> {
+    world: State<'_, Arc<MobileWorld>>,
+    compile: State<'_, Arc<CompileState>>,
+) -> Result<EntryChange, String> {
     let root = current_root(&workspace)?;
     let abs = resolve_in_root(&root, &rel_path)?;
+    // A delete that removed nothing must not be reported as one: the caller
+    // fans the change out, closing tabs and clearing the main file for a path
+    // that was never there.
+    if !abs.exists() {
+        return Err(format!("Not found: {rel_path}"));
+    }
     delete_path(&abs)?;
-    info!("delete_entry: {rel_path:?}");
-    tree_of(&workspace)
+    finish_entry_change(&root, &workspace, &world, &compile, rel_path, None)
 }
 
 fn delete_path(abs: &Path) -> Result<(), String> {

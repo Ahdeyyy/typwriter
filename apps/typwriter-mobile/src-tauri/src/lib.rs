@@ -119,7 +119,7 @@ pub fn run() {
             commands::workspace::set_open_tabs,
             commands::workspace::pick_fonts_dir,
             commands::workspace::clear_fonts_dir,
-            commands::workspace::get_fonts_dir,
+            commands::workspace::get_fonts_status,
             commands::workspace::create_file,
             commands::workspace::create_folder,
             commands::workspace::rename_entry,

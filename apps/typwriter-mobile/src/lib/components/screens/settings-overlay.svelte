@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
+  import type { ResultAsync } from "neverthrow";
   import { getVersion } from "@tauri-apps/api/app";
   import { toast } from "svelte-sonner";
   import { setMode, userPrefersMode } from "mode-watcher";
@@ -19,9 +20,46 @@
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { app } from "$lib/stores/app.svelte";
   import { settings } from "$lib/stores/settings.svelte";
-  import { pickFontsDir, clearFontsDir, getFontsDir, getTypstVersion } from "$lib/ipc/commands";
+  import { pickFontsDir, clearFontsDir, getFontsStatus, getTypstVersion } from "$lib/ipc/commands";
 
   let pickingFonts = $state(false);
+  /** Font families the compiler has loaded, or null before we've asked. */
+  let fontFamilies = $state<number | null>(null);
+  /** True while a background font load is still running. */
+  let fontsLoading = $state(false);
+
+  /** How long to keep following a background load before giving up on it. */
+  const FONT_POLL_MS = 500;
+  const FONT_POLL_TIMEOUT_MS = 60_000;
+  let fontPoll: ReturnType<typeof setTimeout> | null = null;
+
+  /** Pull the folder + font count from the backend, which is the only place
+   *  that knows what actually loaded. */
+  function refreshFontsStatus(): ResultAsync<boolean, string> {
+    return getFontsStatus().map((status) => {
+      settings.setFontsDir(status.folder);
+      fontFamilies = status.familyCount;
+      fontsLoading = status.loading;
+      return status.loading;
+    });
+  }
+
+  /**
+   * Follow a background font load to completion.
+   *
+   * The load's slow case — a large SAF tree, one read per file — is exactly the
+   * one users come to this screen to diagnose, so a fixed delay would report the
+   * pre-load count and read as "the folder was empty".
+   */
+  function trackFontLoad(deadline = Date.now() + FONT_POLL_TIMEOUT_MS) {
+    if (fontPoll) clearTimeout(fontPoll);
+    fontPoll = setTimeout(() => {
+      fontPoll = null;
+      void refreshFontsStatus().map((loading) => {
+        if (loading && Date.now() < deadline) trackFontLoad(deadline);
+      });
+    }, FONT_POLL_MS);
+  }
 
   function chooseFontsFolder() {
     if (pickingFonts) return;
@@ -32,6 +70,8 @@
         if (name === null) return; // cancelled
         settings.setFontsDir(name);
         toast.success("Fonts folder set — loading fonts in the background");
+        fontsLoading = true;
+        trackFontLoad();
       },
       (e) => {
         pickingFonts = false;
@@ -45,10 +85,16 @@
       () => {
         settings.setFontsDir(null);
         toast.success("Fonts folder cleared");
+        fontsLoading = true;
+        trackFontLoad();
       },
       (e) => toast.error(`Failed: ${e}`),
     );
   }
+
+  onDestroy(() => {
+    if (fontPoll) clearTimeout(fontPoll);
+  });
 
   const REPO_URL = "https://github.com/Ahdeyyy/typwriter";
   // Matches the `github:` entry in the repo's .github/FUNDING.yml.
@@ -70,7 +116,11 @@
     // The backend's persisted source is the truth for the fonts folder — sync
     // the display so a stale/failed frontend store can never show the wrong
     // state after a restart.
-    void getFontsDir().map((name) => settings.setFontsDir(name));
+    void refreshFontsStatus().map((loading) => {
+      // Opening settings while the startup load is still running: follow it in
+      // rather than leaving the embedded-only count on screen as if it were final.
+      if (loading) trackFontLoad();
+    });
   });
 
   const themes = [
@@ -193,6 +243,13 @@
                 <Icon icon={Folder01Icon} class="text-muted-foreground size-4 shrink-0" />
                 <span class="truncate text-xs">{settings.fontsDir}</span>
               </div>
+            {/if}
+            {#if fontsLoading}
+              <p class="text-muted-foreground text-xs">Loading fonts…</p>
+            {:else if fontFamilies !== null}
+              <p class="text-muted-foreground text-xs tabular-nums">
+                {fontFamilies} font {fontFamilies === 1 ? "family" : "families"} available
+              </p>
             {/if}
             <div class="flex gap-2">
               <Button

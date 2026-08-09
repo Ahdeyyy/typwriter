@@ -14,6 +14,13 @@
       "runtimeArgs": ["run", "dev"],
       "cwd": "apps/typwriter-web",
       "port": 5173
+    },
+    {
+      "name": "typwriter-mobile",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "apps/typwriter-mobile",
+      "port": 1430
     }
   ]
 }

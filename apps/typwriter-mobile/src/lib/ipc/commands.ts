@@ -8,8 +8,10 @@ import type {
   AppSettings,
   CompileResult,
   CompletionsResponse,
+  EntryChange,
   FileContent,
   FileNode,
+  FontsStatus,
   WorkspaceInfo,
   WorkspaceMeta,
 } from "./types";
@@ -41,18 +43,19 @@ export const setOpenTabs = (
  *  Resolves to the folder's display name, or `null` if the user cancelled. */
 export const pickFontsDir = () => call<string | null>("pick_fonts_dir");
 export const clearFontsDir = () => call<null>("clear_fonts_dir");
-/** Display name of the persisted fonts folder (backend truth), or null. */
-export const getFontsDir = () => call<string | null>("get_fonts_dir");
+/** The persisted fonts folder (backend truth) and the font families the
+ *  compiler currently has loaded. */
+export const getFontsStatus = () => call<FontsStatus>("get_fonts_status");
 
 // ─── File operations ──────────────────────────────────────────────────────────
 
 export const createFile = (relPath: string) => call<FileNode>("create_file", { relPath });
 export const createFolder = (relPath: string) => call<FileNode>("create_folder", { relPath });
 export const renameEntry = (relPath: string, newName: string) =>
-  call<FileNode>("rename_entry", { relPath, newName });
+  call<EntryChange>("rename_entry", { relPath, newName });
 export const moveEntry = (relPath: string, newParentRel: string) =>
-  call<FileNode>("move_entry", { relPath, newParentRel });
-export const deleteEntry = (relPath: string) => call<FileNode>("delete_entry", { relPath });
+  call<EntryChange>("move_entry", { relPath, newParentRel });
+export const deleteEntry = (relPath: string) => call<EntryChange>("delete_entry", { relPath });
 
 // ─── Editor ────────────────────────────────────────────────────────────────────
 

@@ -17,7 +17,17 @@ class CompileStore {
   stale = $state(true);
   lastGeneration = 0;
 
-  /** Called by editor.flush() after every successful save. */
+  /** Drop every compile result — there is no document to show (no main file). */
+  clear() {
+    this.pages = [];
+    this.errors = [];
+    this.warnings = [];
+    this.status = "idle";
+    this.stale = true;
+  }
+
+  /** Called by editor.flush() after every successful save — and by any other
+   *  change to what's on disk, since that's what the compiler reads. */
   onSaved() {
     this.stale = true;
     // Background-refresh only while the preview is open (reading); otherwise
@@ -51,11 +61,7 @@ class CompileStore {
     if (hasMain) {
       this.onMainChanged();
     } else {
-      this.pages = [];
-      this.errors = [];
-      this.warnings = [];
-      this.status = "idle";
-      this.stale = true;
+      this.clear();
     }
   }
 
