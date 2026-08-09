@@ -13,7 +13,10 @@ use parking_lot::{Condvar, Mutex, RwLock};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        OnceLock,
+    },
     time::Duration as StdDuration,
 };
 use typst::{
@@ -57,6 +60,11 @@ pub struct MobileWorld {
     /// embedded-only set.
     fonts_ready: Mutex<bool>,
     fonts_cv: Condvar,
+    /// Background font loads currently running. Distinct from `fonts_ready`,
+    /// which is the one-shot startup gate the compile pipeline waits on: this
+    /// goes back up on every re-pick, so settings can tell "still loading" from
+    /// "finished, and that was all the folder had".
+    font_loads: AtomicUsize,
     /// File slot cache: FileId -> (Source | Bytes). Cleared by `reset()`.
     slots: Mutex<HashMap<FileId, FileSlot>>,
     /// Transient per-call overlay (used by `with_overlay` for completions).
@@ -106,10 +114,15 @@ impl MobileWorld {
         Self {
             root: RwLock::new(None),
             main: RwLock::new(None),
-            library: LazyHash::new(Library::builder().with_features(Features::default()).build()),
+            library: LazyHash::new(
+                Library::builder()
+                    .with_features(Features::default())
+                    .build(),
+            ),
             font_store: RwLock::new(Box::leak(Box::new(embedded))),
             fonts_ready: Mutex::new(false),
             fonts_cv: Condvar::new(),
+            font_loads: AtomicUsize::new(0),
             slots: Mutex::new(HashMap::new()),
             overlay: RwLock::new(HashMap::new()),
             packages,
@@ -126,6 +139,36 @@ impl MobileWorld {
         *self.font_store.write() = Box::leak(Box::new(store));
         *self.fonts_ready.lock() = true;
         self.fonts_cv.notify_all();
+    }
+
+    /// Mark a background font load as started. Paired with [`Self::end_font_load`].
+    pub fn begin_font_load(&self) {
+        self.font_loads.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Mark a background font load as finished.
+    pub fn end_font_load(&self) {
+        // Saturating: an unpaired end must not wrap the counter into "loading
+        // forever".
+        let _ = self
+            .font_loads
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
+                Some(n.saturating_sub(1))
+            });
+    }
+
+    /// Whether a background font load is still running. Settings polls this so
+    /// a slow SAF walk reads as "loading", not as "the folder was empty".
+    pub fn fonts_loading(&self) -> bool {
+        self.font_loads.load(Ordering::SeqCst) > 0
+    }
+
+    /// How many font families the compiler can currently use. Surfaced in
+    /// settings so "my fonts aren't loading" has an answer the user can read
+    /// without going through `adb logcat`.
+    pub fn font_family_count(&self) -> usize {
+        let store: &'static FontStore = *self.font_store.read();
+        store.book().families().count()
     }
 
     /// Block until the background font load has installed the full font set,
@@ -155,7 +198,7 @@ impl MobileWorld {
         *self.main.write() = Some(id);
     }
 
-    #[allow(dead_code)] // part of the world API; used when closing a workspace
+    /// Forget the main file — the document was deleted (or the workspace closed).
     pub fn clear_main(&self) {
         *self.main.write() = None;
     }
@@ -193,11 +236,10 @@ impl MobileWorld {
                 Ok(root.path().join(vpath.get_without_slash()))
             }
             VirtualRoot::Project => {
-                let root = self
-                    .root
-                    .read()
-                    .clone()
-                    .ok_or_else(|| FileError::Other(Some(EcoString::from("no workspace open"))))?;
+                let root =
+                    self.root.read().clone().ok_or_else(|| {
+                        FileError::Other(Some(EcoString::from("no workspace open")))
+                    })?;
                 Ok(root.join(vpath.get_without_slash()))
             }
         }
@@ -400,8 +442,14 @@ mod tests {
         // 2026-06-11 23:30 UTC: still June 11 at UTC, but past midnight east.
         let now = Utc.with_ymd_and_hms(2026, 6, 11, 23, 30, 0).unwrap();
         assert_eq!(ymd(today_from_secs(now, Some(0)).unwrap()), (2026, 6, 11));
-        assert_eq!(ymd(today_from_secs(now, Some(HOUR)).unwrap()), (2026, 6, 12));
-        assert_eq!(ymd(today_from_secs(now, Some(-HOUR)).unwrap()), (2026, 6, 11));
+        assert_eq!(
+            ymd(today_from_secs(now, Some(HOUR)).unwrap()),
+            (2026, 6, 12)
+        );
+        assert_eq!(
+            ymd(today_from_secs(now, Some(-HOUR)).unwrap()),
+            (2026, 6, 11)
+        );
     }
 
     #[test]

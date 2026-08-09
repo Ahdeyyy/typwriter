@@ -4,6 +4,8 @@
     RefreshIcon,
     Mortarboard01Icon,
     File01Icon,
+    FavouriteIcon,
+    LinkSquare02Icon,
   } from "@hugeicons/core-free-icons";
   import Button from "$lib/components/ui/button/button.svelte";
   import { Switch } from "$lib/components/ui/switch/index.js";
@@ -13,7 +15,7 @@
   import { platform } from "$lib/stores/platform.svelte";
   import { setOnboardingCompleted, getLogFilePath } from "$lib/ipc/commands";
   import { emitShowTutorialRequest } from "$lib/ipc/events";
-  import { openPath } from "@tauri-apps/plugin-opener";
+  import { openPath, openUrl } from "@tauri-apps/plugin-opener";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
 
@@ -48,6 +50,16 @@
       logError("Failed to open log file:", err);
       toast.error(`Failed to open log file: ${err}`);
     }
+  }
+
+  // Matches the `github:` entry in the repo's .github/FUNDING.yml.
+  const SPONSOR_URL = "https://github.com/sponsors/Ahdeyyy";
+
+  function handleSponsor() {
+    openUrl(SPONSOR_URL).catch((err) => {
+      logError("open sponsor page failed:", err);
+      toast.error("Couldn't open the sponsor page.");
+    });
   }
 </script>
 
@@ -97,6 +109,20 @@
         <Button variant="outline" size="sm" class="gap-2 shrink-0" onclick={handleOpenLogsFile}>
           <HugeiconsIcon icon={File01Icon} class="size-4" />
           Open logs
+        </Button>
+      {/snippet}
+    </SettingRow>
+
+    <SettingRow
+      title="Sponsor Typwriter"
+      description="Typwriter is free and open source. Sponsoring helps keep it that way."
+      keywords={["sponsor", "donate", "support", "funding", "github sponsors", "contribute"]}
+    >
+      {#snippet control()}
+        <Button variant="outline" size="sm" class="gap-2 shrink-0" onclick={handleSponsor}>
+          <HugeiconsIcon icon={FavouriteIcon} class="size-4" />
+          Sponsor
+          <HugeiconsIcon icon={LinkSquare02Icon} class="size-3.5 text-muted-foreground" />
         </Button>
       {/snippet}
     </SettingRow>

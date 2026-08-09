@@ -1,6 +1,6 @@
-/** Compact "opened X ago" relative time from an epoch-ms timestamp. */
+/** Compact relative time from an epoch-ms timestamp. */
 export function timeAgo(ms: number | null): string {
-  if (ms == null) return "never opened";
+  if (ms == null) return "never";
   const diff = Date.now() - ms;
   if (diff < 0) return "just now";
   const sec = Math.floor(diff / 1000);
@@ -14,4 +14,10 @@ export function timeAgo(ms: number | null): string {
   const mon = Math.floor(day / 30);
   if (mon < 12) return `${mon}mo ago`;
   return `${Math.floor(mon / 12)}y ago`;
+}
+
+/** Workspace last-opened label. A workspace that has never been opened has a
+ *  null timestamp — prefixing `timeAgo` at the call site read "opened never". */
+export function openedAgo(ms: number | null): string {
+  return ms == null ? "Never opened" : `Opened ${timeAgo(ms)}`;
 }

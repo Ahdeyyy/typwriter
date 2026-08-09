@@ -6,7 +6,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
   import * as Dialog from "$lib/components/ui/dialog";
-  import { exportPdfToUri } from "$lib/ipc/commands";
+  import { exportPdfToUri, pageForCursor } from "$lib/ipc/commands";
   import { app } from "$lib/stores/app.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { compileStore } from "$lib/stores/compile.svelte";
@@ -24,10 +24,18 @@
 
   onMount(() => {
     // Let the history/back integration flush unsaved content when leaving.
-    app.flushEditor = () => void editor.flush();
+    app.flushEditor = () => {
+      // Where the caret sits is part of what "leaving the editor" should
+      // capture — the debounced persist may still be pending.
+      editor.persistTabsNow();
+      void editor.flush();
+    };
     keyboard.init();
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") void editor.flush();
+      if (document.visibilityState === "hidden") {
+        editor.persistTabsNow();
+        void editor.flush();
+      }
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
@@ -37,10 +45,26 @@
     };
   });
 
+  /** Page the preview should land on, resolved from the caret while opening. */
+  let previewStartPage = $state<number | null>(null);
+
   async function openPreview() {
+    previewStartPage = null;
     app.openOverlay("preview"); // opens immediately (skeleton / last pages)
     await editor.flush(); // persist current text
     if (compileStore.stale) await compileStore.run();
+    // Only meaningful against the document we just compiled, hence after the
+    // run; a null result (caret in code, or nothing rendered) leaves the
+    // preview at the top.
+    previewStartPage = await cursorPage();
+  }
+
+  /** Ask the compiler which page the caret renders on. */
+  async function cursorPage(): Promise<number | null> {
+    const view = editor.view;
+    if (!view || editor.fileKind !== "text" || !editor.relPath) return null;
+    const cursor = view.state.selection.main.head;
+    return pageForCursor(editor.relPath, cursor).unwrapOr(null);
   }
 
   let exporting = $state(false);
@@ -83,13 +107,16 @@
   }
 </script>
 
-<!-- Pinned to the visual-viewport rectangle (see keyboard-visibility) so the
-     shell always sits above the soft keyboard instead of behind it. Falls back
-     to a full-window static-ish box before the keyboard listener publishes the
-     vars. -->
+<!-- Anchored to the top of the layout viewport and shortened by the keyboard
+     inset (see keyboard-visibility), so the shell always ends where the soft
+     keyboard begins instead of running behind it. `--app-inset-top` pads out
+     the part Chrome has scrolled off the top of the screen, which keeps the
+     header and the toolbar exactly on the visible band's edges and leaves the
+     flexible editor in between as the only thing that resizes. Falls back to a
+     full-window box before the keyboard listener publishes the vars. -->
 <div
-  class="fixed flex flex-col"
-  style="top: var(--vv-top, 0px); left: var(--vv-left, 0px); width: var(--vv-width, 100vw); height: var(--app-height, 100svh);"
+  class="fixed inset-x-0 top-0 flex flex-col"
+  style="height: var(--app-height, 100svh); padding-top: var(--app-inset-top, 0px);"
 >
   <!-- Translucent, blurred top bar; extra padding keeps buttons clear of the
        status bar (safe-area inset can read 0 on Android edge-to-edge). -->
@@ -161,7 +188,7 @@
 </div>
 
 <TreeSheet />
-<PreviewOverlay />
+<PreviewOverlay startPage={previewStartPage} />
 <QuickSwitcher />
 <TabSwitcher />
 

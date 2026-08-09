@@ -535,6 +535,10 @@
         // arrow key) — a selection change caused by typing shouldn't flash a
         // highlight on every keystroke.
         preview.setCursorPosition(tab.absPath, cursor, !update.docChanged);
+        // Keep the persisted caret current. A typing-driven move is already
+        // covered by handleTabContentChange's persist, so only pure caret
+        // moves need to schedule one here.
+        if (!update.docChanged) editor.noteCursorMoved(tabId);
       }),
       EditorView.updateListener.of((update) => {
         if (!editorSearch.open) return;

@@ -12,7 +12,7 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use log::error;
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_android_fs::FileUri;
@@ -33,16 +33,37 @@ pub fn embedded_store() -> FontStore {
 pub fn build_font_store(dirs: &[PathBuf], buffers: &[Vec<u8>]) -> FontStore {
     let mut store = FontStore::new();
     store.extend(kit_fonts::embedded());
+    let embedded = store.book().families().count();
+
     for dir in dirs {
         store.extend(kit_fonts::scan(dir));
     }
     for buffer in buffers {
         let bytes = typst::foundations::Bytes::new(buffer.clone());
+        let mut faces = 0;
         for font in typst::text::Font::iter(bytes) {
             let info = font.info().clone();
             store.push((font, info));
+            faces += 1;
+        }
+        if faces == 0 {
+            // A file that looked like a font but typst couldn't parse — most
+            // often a partial download or a format typst doesn't read.
+            log::warn!(
+                "fonts: a {}-byte font buffer yielded no faces",
+                buffer.len()
+            );
         }
     }
+
+    // Families, not faces: this is the number the user recognises from the
+    // font picker, and the one worth having in a bug report.
+    let total = store.book().families().count();
+    info!(
+        "fonts: {total} families ({embedded} embedded, {} scanned dirs, {} extra buffers)",
+        dirs.len(),
+        buffers.len()
+    );
     store
 }
 
@@ -51,6 +72,9 @@ pub fn build_font_store(dirs: &[PathBuf], buffers: &[Vec<u8>]) -> FontStore {
 /// font changes apply without an app restart. A corrupt font file or a hung
 /// SAF read must never take the app down: panics fall back to embedded-only.
 pub fn load_in_background(app: AppHandle, world: Arc<MobileWorld>) {
+    // Marked before the thread starts, so a `get_fonts_status` issued straight
+    // after a pick can't catch the gap and report the pre-load count as final.
+    world.begin_font_load();
     std::thread::spawn(move || {
         let store = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let (dirs, buffers) = load_extra_fonts(&app);
@@ -61,6 +85,7 @@ pub fn load_in_background(app: AppHandle, world: Arc<MobileWorld>) {
             embedded_store()
         });
         world.install_fonts(store);
+        world.end_font_load();
     });
 }
 
@@ -87,6 +112,22 @@ impl FontsSource {
             FontsSource::Saf { name, .. } => name.clone(),
         }
     }
+}
+
+/// What the settings sheet shows for the app-wide fonts folder.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FontsStatus {
+    /// Display name of the chosen folder, or `None` when none is set.
+    pub folder: Option<String>,
+    /// Font families the compiler can use right now — embedded plus whatever
+    /// the folder contributed. A folder that is set while this stays at the
+    /// embedded baseline is the visible symptom of fonts failing to load.
+    pub family_count: usize,
+    /// Whether a background load is still running. `family_count` only means
+    /// "that's all there was" once this is `false`; reported earlier it is just
+    /// the pre-load figure, which reads as a folder that yielded nothing.
+    pub loading: bool,
 }
 
 fn source_file(app: &AppHandle) -> Result<PathBuf, String> {
@@ -178,9 +219,9 @@ pub fn pick(app: &AppHandle) -> Result<Option<String>, String> {
     }
 }
 
-/// The font directories and raw font buffers to load at startup. Directories are
-/// fed to `FontSearcher` (std::fs); buffers are font files read out of a SAF
-/// tree on Android, registered directly into the font book.
+/// The font directories and raw font buffers to load at startup. Directories go
+/// through `typst_kit::fonts::scan` (std::fs); buffers are font files read out
+/// of a SAF tree on Android, parsed straight into the font book.
 pub fn load_extra_fonts(app: &AppHandle) -> (Vec<PathBuf>, Vec<Vec<u8>>) {
     let mut dirs = Vec::new();
     let mut buffers = Vec::new();
@@ -195,56 +236,148 @@ pub fn load_extra_fonts(app: &AppHandle) -> (Vec<PathBuf>, Vec<Vec<u8>>) {
 
     match read_source(app) {
         Some(FontsSource::Path { path }) => {
-            let p = PathBuf::from(path);
-            if p.is_dir() && !dirs.contains(&p) {
+            let p = PathBuf::from(&path);
+            if !p.is_dir() {
+                error!("fonts: configured folder is not readable: {path}");
+            } else if !dirs.contains(&p) {
                 dirs.push(p);
             }
         }
-        Some(FontsSource::Saf { uri, .. }) => collect_saf_fonts(app, &uri, &mut buffers),
-        None => {}
+        // A picker can hand back a plain `file://` URI (some providers do, and
+        // so does a desktop-picked folder that was later opened on Android).
+        // Those are reachable with `std::fs`, so scan them like any directory
+        // instead of paying for a SAF read per file.
+        Some(FontsSource::Saf { uri, name }) => match uri.to_path().filter(|p| p.is_dir()) {
+            Some(p) if !dirs.contains(&p) => dirs.push(p),
+            Some(_) => {}
+            None => {
+                collect_saf_fonts(app, &uri, &mut buffers);
+                if buffers.is_empty() {
+                    error!(
+                        "fonts: no font files found under the chosen folder {name:?} ({}) — \
+                         the permission may have been revoked, or it holds no .ttf/.otf files",
+                        uri.uri
+                    );
+                }
+            }
+        },
+        None => info!("fonts: no fonts folder chosen"),
     }
 
+    info!(
+        "fonts: {} dir(s) to scan, {} file(s) read over SAF",
+        dirs.len(),
+        buffers.len()
+    );
     (dirs, buffers)
 }
 
+/// File extensions `typst::text::Font::iter` can parse: TrueType, OpenType, and
+/// their collections.
+const FONT_EXTENSIONS: [&str; 4] = [".ttf", ".otf", ".ttc", ".otc"];
+
+/// MIME types that carry one of [`FONT_EXTENSIONS`]' formats.
+///
+/// Deliberately an allowlist rather than "contains `font`": `font/woff`,
+/// `font/woff2` and `application/vnd.ms-fontobject` are font MIME types that
+/// typst yields no faces for, and matching them means reading the whole file
+/// over SAF only to throw it away.
+const FONT_MIME_TYPES: [&str; 9] = [
+    "font/ttf",
+    "font/otf",
+    "font/sfnt",
+    "font/collection",
+    "application/font-sfnt",
+    "application/x-font-ttf",
+    "application/x-font-otf",
+    "application/x-font-truetype",
+    "application/x-font-opentype",
+];
+
+/// Whether a directory entry looks like a font typst can read.
+///
+/// Either signal is enough. The display name is the usual one, but SAF providers
+/// hand back names with the extension stripped — and a family name can carry
+/// dots of its own ("Noto.Sans.Regular"), so "has a dot" says nothing about what
+/// the file is. A provider that reports one of the exact types above has told us
+/// more than the name can, so it wins on its own.
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-fn is_font_file(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    [".ttf", ".otf", ".ttc", ".otc"]
-        .iter()
-        .any(|ext| lower.ends_with(ext))
+fn is_font_entry(name: Option<&str>, mime_type: Option<&str>) -> bool {
+    let by_name = name.is_some_and(|name| {
+        let lower = name.to_ascii_lowercase();
+        FONT_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
+    });
+    by_name
+        || mime_type.is_some_and(|m| {
+            // Providers may append parameters: `font/ttf; charset=binary`.
+            let base = m.split(';').next().unwrap_or(m).trim().to_ascii_lowercase();
+            FONT_MIME_TYPES.contains(&base.as_str())
+        })
 }
 
 /// Recursively read font files out of a SAF content-tree into `out`.
+///
+/// Enumeration is deliberately lenient: `AndroidFs::read_dir` insists that every
+/// entry report a size and a modification time, and a single provider that
+/// leaves one null (the SAF contract allows it) makes the whole listing fail —
+/// which reads exactly like "my fonts aren't loading". We ask only for the two
+/// fields we actually use, and skip entries individually.
 #[cfg(target_os = "android")]
 fn collect_saf_fonts(app: &AppHandle, root: &FileUri, out: &mut Vec<Vec<u8>>) {
-    use tauri_plugin_android_fs::{AndroidFsExt, Entry};
+    use tauri_plugin_android_fs::{AndroidFsExt, EntryOptions, OptionalEntry};
+
+    /// Directories to walk before giving up (a picked tree should be small;
+    /// this only guards against someone choosing their whole SD card).
+    const MAX_DIRS: u32 = 64;
 
     let api = app.android_fs();
+    let options = EntryOptions {
+        uri: true,
+        name: true,
+        mime_type: true,
+        last_modified: false,
+        len: false,
+    };
     let mut stack = vec![root.clone()];
     let mut visited = 0u32;
     while let Some(dir) = stack.pop() {
         visited += 1;
-        if visited > 64 {
-            log::warn!("fonts: SAF tree too deep/large, stopping enumeration");
+        if visited > MAX_DIRS {
+            log::warn!("fonts: stopped after {MAX_DIRS} folders; pick a smaller fonts folder");
             break;
         }
-        let entries = match api.read_dir(&dir) {
+        let entries = match api.read_dir_with_options(&dir, options) {
             Ok(entries) => entries,
             Err(e) => {
-                log::warn!("fonts: read_dir failed: {e}");
+                log::warn!("fonts: read_dir failed for {}: {e}", dir.uri);
                 continue;
             }
         };
+        log::debug!("fonts: {} entries under {}", entries.len(), dir.uri);
         for entry in entries {
             match entry {
-                Entry::Dir { uri, .. } => stack.push(uri),
-                Entry::File { uri, name, .. } => {
-                    if is_font_file(&name) {
-                        match api.read(&uri) {
-                            Ok(bytes) => out.push(bytes),
-                            Err(e) => log::warn!("fonts: read \"{name}\" failed: {e}"),
+                OptionalEntry::Dir { uri, .. } => {
+                    if let Some(uri) = uri {
+                        stack.push(uri);
+                    }
+                }
+                OptionalEntry::File {
+                    uri,
+                    name,
+                    mime_type,
+                    ..
+                } => {
+                    if !is_font_entry(name.as_deref(), mime_type.as_deref()) {
+                        continue;
+                    }
+                    let Some(uri) = uri else { continue };
+                    let label = name.unwrap_or_else(|| uri.uri.clone());
+                    match api.read(&uri) {
+                        Ok(bytes) => {
+                            info!("fonts: read \"{label}\" ({} bytes)", bytes.len());
+                            out.push(bytes);
                         }
+                        Err(e) => log::warn!("fonts: read \"{label}\" failed: {e}"),
                     }
                 }
             }
@@ -255,4 +388,60 @@ fn collect_saf_fonts(app: &AppHandle, root: &FileUri, out: &mut Vec<Vec<u8>>) {
 #[cfg(not(target_os = "android"))]
 fn collect_saf_fonts(_app: &AppHandle, _root: &FileUri, _out: &mut Vec<Vec<u8>>) {
     // SAF is Android-only; on desktop the picker always yields a `Path`.
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_font_entry;
+
+    #[test]
+    fn accepts_font_extensions_regardless_of_case_or_mime() {
+        assert!(is_font_entry(Some("Inter-Regular.ttf"), None));
+        assert!(is_font_entry(
+            Some("Inter-Regular.OTF"),
+            Some("application/octet-stream")
+        ));
+        assert!(is_font_entry(Some("Fonts.ttc"), None));
+    }
+
+    #[test]
+    fn rejects_other_file_types() {
+        assert!(!is_font_entry(Some("readme.txt"), None));
+        assert!(!is_font_entry(Some("cover.png"), Some("image/png")));
+        assert!(!is_font_entry(Some("licence.txt"), Some("text/plain")));
+    }
+
+    #[test]
+    fn rejects_font_formats_typst_cannot_parse() {
+        // Font MIME types all — and all useless to us. Matching them would mean
+        // reading the whole file over SAF only to get no faces out of it.
+        assert!(!is_font_entry(Some("Inter"), Some("font/woff")));
+        assert!(!is_font_entry(Some("Inter"), Some("font/woff2")));
+        assert!(!is_font_entry(
+            Some("Inter"),
+            Some("application/vnd.ms-fontobject")
+        ));
+        assert!(!is_font_entry(Some("Inter-Regular.woff2"), None));
+    }
+
+    #[test]
+    fn falls_back_to_mime_when_the_name_carries_no_usable_extension() {
+        // Some SAF providers hand back a display name with the extension
+        // stripped; the MIME type is the only signal left.
+        assert!(is_font_entry(Some("Inter Regular"), Some("font/ttf")));
+        assert!(is_font_entry(
+            Some("Inter Regular"),
+            Some("application/x-font-ttf")
+        ));
+        // Parameters after the type must not defeat the match.
+        assert!(is_font_entry(
+            Some("Inter Regular"),
+            Some("font/ttf; charset=binary")
+        ));
+        // A family name can carry dots without any of them being an extension.
+        assert!(is_font_entry(Some("Noto.Sans.Regular"), Some("font/ttf")));
+        assert!(!is_font_entry(Some("Inter Regular"), Some("text/plain")));
+        assert!(!is_font_entry(Some("Inter Regular"), None));
+        assert!(!is_font_entry(None, None));
+    }
 }

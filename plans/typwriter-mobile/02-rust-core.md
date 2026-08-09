@@ -226,12 +226,27 @@ separators, except workspace dirs which are absolute. TypeScript mirror types li
 |---|---|---|
 | `create_file` | `relPath: string` | `FileNode` (new tree root) — creates parents as needed, errors if exists |
 | `create_folder` | `relPath: string` | `FileNode` |
-| `rename_entry` | `relPath: string, newName: string` | `FileNode` — same parent, new name; works for files and dirs |
-| `move_entry` | `relPath: string, newParentRel: string` | `FileNode` |
-| `delete_entry` | `relPath: string` | `FileNode` — file or recursive dir |
+| `rename_entry` | `relPath: string, newName: string` | `EntryChange` — same parent, new name; works for files and dirs |
+| `move_entry` | `relPath: string, newParentRel: string` | `EntryChange` |
+| `delete_entry` | `relPath: string` | `EntryChange` — file or recursive dir; errors if the path doesn't exist |
 
 (Returning the refreshed tree from every mutation keeps the frontend trivially
 consistent — no client-side tree surgery.)
+
+`EntryChange` = `{ tree: FileNode, from: string, to: string | null }` (`to` is
+null for a delete). The path change travels with the tree because open tabs, the
+active buffer and the main file are all addressed *by path*: the backend rewrites
+`.typwriter/mobile.json` and the compiler's main `FileId`, and the frontend uses
+`from`/`to` to move its live tab state onto the new paths. Without it a rename
+strands every tab on a path that no longer exists — and the next autosave writes
+the buffer back to the old name, recreating the file the rename removed.
+
+When the main file is among the paths that changed, the backend also drops the
+cached `PagedDocument`: it belongs to the old identity, and left in place it
+outlives the file — `export_pdf` would still write out a document the user just
+deleted. A delete additionally has to be ordered against any save already in
+flight; the frontend waits for one to settle before issuing `delete_entry`,
+because a write landing after the unlink puts the file straight back on disk.
 
 ### Editor
 
@@ -276,6 +291,7 @@ typst-ide's given order, which is already relevance-ordered).
 | Command | Args | Returns |
 |---|---|---|
 | `compile` | — | `CompileResult` |
+| `page_for_cursor` | `relPath: string, cursor: number /* UTF-16 */` | `number \| null` — 0-based page the caret renders on, so opening the preview lands there; null when there's no compiled document or the caret isn't on rendered content |
 | `export_pdf_bytes_to_uri` | (phase 7, see `07-…md`) | |
 
 ```ts
@@ -307,6 +323,12 @@ There are **no compile/preview events** in v1 — the request/response result ca
 everything, and page images flow over HTTP. This is the main simplification vs.
 desktop's six event channels. (Phase 8 adds one optional event for package download
 progress.)
+
+### App
+
+| Command | Args | Returns |
+|---|---|---|
+| `get_typst_version` | — | `string` — the Typst release this build links against, read from the compiler (`sys.version`), shown in the settings sheet |
 
 ### Settings
 

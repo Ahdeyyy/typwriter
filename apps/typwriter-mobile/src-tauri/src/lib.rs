@@ -84,6 +84,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_android_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -107,6 +108,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::app::get_typst_version,
             commands::workspace::list_workspaces,
             commands::workspace::create_workspace,
             commands::workspace::delete_workspace,
@@ -117,7 +119,7 @@ pub fn run() {
             commands::workspace::set_open_tabs,
             commands::workspace::pick_fonts_dir,
             commands::workspace::clear_fonts_dir,
-            commands::workspace::get_fonts_dir,
+            commands::workspace::get_fonts_status,
             commands::workspace::create_file,
             commands::workspace::create_folder,
             commands::workspace::rename_entry,
@@ -127,6 +129,8 @@ pub fn run() {
             commands::editor::save_file,
             commands::editor::get_completions,
             commands::compile::compile,
+            commands::cursor::page_for_cursor,
+            commands::click::jump_from_click,
             commands::format::format_typst_source,
             commands::format::format_typst_cursor_virtual,
             commands::export::export_pdf_to_uri,

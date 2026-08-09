@@ -18,6 +18,27 @@ export interface FileNode {
   children: FileNode[];
 }
 
+/** The app-wide fonts folder and what the compiler actually loaded from it. */
+export interface FontsStatus {
+  /** Display name of the chosen folder, or null when none is set. */
+  folder: string | null;
+  /** Font families available to the compiler: embedded plus the folder's. */
+  familyCount: number;
+  /** Whether a background load is still running. `familyCount` only means
+   *  "that's all there was" once this is false. */
+  loading: boolean;
+}
+
+/** Result of renaming, moving, or deleting an entry: the refreshed tree plus
+ *  the path change, so open tabs can be carried across it. */
+export interface EntryChange {
+  tree: FileNode;
+  /** The entry's path before the operation. */
+  from: string;
+  /** Its path afterwards, or null when it was deleted. */
+  to: string | null;
+}
+
 export interface WorkspaceInfo {
   name: string;
   root: string;
@@ -28,6 +49,9 @@ export interface WorkspaceInfo {
   openTabs: string[];
   /** Persisted active tab relPath, or null for an empty "new tab". */
   activeTab: string | null;
+  /** Caret offset (UTF-16 code units) inside `activeTab`, or null. Already
+   *  cleared by the backend when `activeTab` didn't survive the reopen. */
+  cursor: number | null;
 }
 
 export type FileContent =
@@ -69,6 +93,17 @@ export interface PageMeta {
   widthPt: number;
   heightPt: number;
 }
+
+/** Where a tap on a rendered preview page leads (mirrors `JumpTarget` in
+ *  src-tauri/src/commands/click.rs). */
+export type PreviewJump =
+  /** Into the source: open `relPath` with the caret at `offset` (UTF-16). */
+  | { type: "file"; relPath: string; offset: number }
+  /** Out of the app: an external link. */
+  | { type: "url"; url: string }
+  /** Elsewhere in the preview: 0-based page plus a point on it, in typst points
+   *  from the page's top-left. */
+  | { type: "position"; page: number; x: number; y: number };
 
 export interface CompileResult {
   generation: number;

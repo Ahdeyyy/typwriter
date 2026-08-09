@@ -39,7 +39,11 @@
     const text = editor.loadedText;
     const view = editor.view;
     if (!view || editor.fileKind !== "text" || !relPath) return;
-    editor.programmatic(() => loadDocInto(view, text, relPath));
+    // Restores the caret this file was left at when the workspace was closed.
+    // One-shot per restore, so re-seeding the same buffer later starts at the
+    // top exactly as before.
+    const cursor = editor.takePendingCursor(relPath);
+    editor.programmatic(() => loadDocInto(view, text, relPath, cursor));
   });
 
   // Theme follows mode-watcher.

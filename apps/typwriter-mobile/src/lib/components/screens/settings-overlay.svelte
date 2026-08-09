@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
+  import type { ResultAsync } from "neverthrow";
   import { getVersion } from "@tauri-apps/api/app";
   import { toast } from "svelte-sonner";
   import { setMode, userPrefersMode } from "mode-watcher";
@@ -9,7 +10,9 @@
     GithubIcon,
     TextFontIcon,
     Folder01Icon,
+    FavouriteIcon,
   } from "@hugeicons/core-free-icons";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
@@ -17,9 +20,46 @@
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { app } from "$lib/stores/app.svelte";
   import { settings } from "$lib/stores/settings.svelte";
-  import { pickFontsDir, clearFontsDir, getFontsDir } from "$lib/ipc/commands";
+  import { pickFontsDir, clearFontsDir, getFontsStatus, getTypstVersion } from "$lib/ipc/commands";
 
   let pickingFonts = $state(false);
+  /** Font families the compiler has loaded, or null before we've asked. */
+  let fontFamilies = $state<number | null>(null);
+  /** True while a background font load is still running. */
+  let fontsLoading = $state(false);
+
+  /** How long to keep following a background load before giving up on it. */
+  const FONT_POLL_MS = 500;
+  const FONT_POLL_TIMEOUT_MS = 60_000;
+  let fontPoll: ReturnType<typeof setTimeout> | null = null;
+
+  /** Pull the folder + font count from the backend, which is the only place
+   *  that knows what actually loaded. */
+  function refreshFontsStatus(): ResultAsync<boolean, string> {
+    return getFontsStatus().map((status) => {
+      settings.setFontsDir(status.folder);
+      fontFamilies = status.familyCount;
+      fontsLoading = status.loading;
+      return status.loading;
+    });
+  }
+
+  /**
+   * Follow a background font load to completion.
+   *
+   * The load's slow case — a large SAF tree, one read per file — is exactly the
+   * one users come to this screen to diagnose, so a fixed delay would report the
+   * pre-load count and read as "the folder was empty".
+   */
+  function trackFontLoad(deadline = Date.now() + FONT_POLL_TIMEOUT_MS) {
+    if (fontPoll) clearTimeout(fontPoll);
+    fontPoll = setTimeout(() => {
+      fontPoll = null;
+      void refreshFontsStatus().map((loading) => {
+        if (loading && Date.now() < deadline) trackFontLoad(deadline);
+      });
+    }, FONT_POLL_MS);
+  }
 
   function chooseFontsFolder() {
     if (pickingFonts) return;
@@ -30,6 +70,8 @@
         if (name === null) return; // cancelled
         settings.setFontsDir(name);
         toast.success("Fonts folder set — loading fonts in the background");
+        fontsLoading = true;
+        trackFontLoad();
       },
       (e) => {
         pickingFonts = false;
@@ -43,18 +85,42 @@
       () => {
         settings.setFontsDir(null);
         toast.success("Fonts folder cleared");
+        fontsLoading = true;
+        trackFontLoad();
       },
       (e) => toast.error(`Failed: ${e}`),
     );
   }
 
+  onDestroy(() => {
+    if (fontPoll) clearTimeout(fontPoll);
+  });
+
+  const REPO_URL = "https://github.com/Ahdeyyy/typwriter";
+  // Matches the `github:` entry in the repo's .github/FUNDING.yml.
+  const SPONSOR_URL = "https://github.com/sponsors/Ahdeyyy";
+
+  // The Android WebView won't hand a `target="_blank"` link to the system
+  // browser, so external links go through the opener plugin instead.
+  function openExternal(url: string) {
+    openUrl(url).catch(() => toast.error("Couldn't open the link"));
+  }
+
   let version = $state("");
+  let typstVersion = $state("");
   onMount(() => {
     getVersion().then((v) => (version = v)).catch(() => {});
+    // The Typst release this build compiles with — the same value documents see
+    // as `sys.version`, read from the compiler rather than hardcoded here.
+    void getTypstVersion().map((v) => (typstVersion = v));
     // The backend's persisted source is the truth for the fonts folder — sync
     // the display so a stale/failed frontend store can never show the wrong
     // state after a restart.
-    void getFontsDir().map((name) => settings.setFontsDir(name));
+    void refreshFontsStatus().map((loading) => {
+      // Opening settings while the startup load is still running: follow it in
+      // rather than leaving the embedded-only count on screen as if it were final.
+      if (loading) trackFontLoad();
+    });
   });
 
   const themes = [
@@ -178,6 +244,13 @@
                 <span class="truncate text-xs">{settings.fontsDir}</span>
               </div>
             {/if}
+            {#if fontsLoading}
+              <p class="text-muted-foreground text-xs">Loading fonts…</p>
+            {:else if fontFamilies !== null}
+              <p class="text-muted-foreground text-xs tabular-nums">
+                {fontFamilies} font {fontFamilies === 1 ? "family" : "families"} available
+              </p>
+            {/if}
             <div class="flex gap-2">
               <Button
                 variant="secondary"
@@ -199,14 +272,24 @@
               <span class="text-muted-foreground text-sm">Version</span>
               <span class="text-sm tabular-nums">{version || "—"}</span>
             </div>
-            <a
-              href="https://github.com/Ahdeyyy/typwriter"
-              target="_blank"
-              rel="noreferrer"
+            <div class="flex items-center justify-between">
+              <span class="text-muted-foreground text-sm">Typst</span>
+              <span class="text-sm tabular-nums">{typstVersion ? `v${typstVersion}` : "—"}</span>
+            </div>
+            <button
+              type="button"
               class="text-muted-foreground active:text-foreground flex items-center gap-2 text-sm"
+              onclick={() => openExternal(REPO_URL)}
             >
               <Icon icon={GithubIcon} class="size-4" /> GitHub repository
-            </a>
+            </button>
+            <button
+              type="button"
+              class="text-muted-foreground active:text-foreground flex items-center gap-2 text-sm"
+              onclick={() => openExternal(SPONSOR_URL)}
+            >
+              <Icon icon={FavouriteIcon} class="size-4" /> Sponsor Typwriter
+            </button>
           </section>
         </div>
       </ScrollArea>

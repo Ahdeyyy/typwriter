@@ -346,16 +346,22 @@ pub fn save_workspace_tabs(
     tabs: Vec<String>,
     active_tab_id: Option<String>,
     unsaved: HashMap<String, String>,
+    cursor: Option<usize>,
     workspace: State<'_, Arc<WorkspaceState>>,
 ) {
-    workspace.save_workspace_tabs(tabs, active_tab_id, unsaved);
+    workspace.save_workspace_tabs(tabs, active_tab_id, unsaved, cursor);
 }
 
 #[tauri::command]
 pub fn get_workspace_tabs(
     root: String,
     workspace: State<'_, Arc<WorkspaceState>>,
-) -> Option<(Vec<String>, Option<String>, HashMap<String, String>)> {
+) -> Option<(
+    Vec<String>,
+    Option<String>,
+    HashMap<String, String>,
+    Option<usize>,
+)> {
     workspace.get_workspace_tabs(&root)
 }
 

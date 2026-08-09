@@ -8,14 +8,22 @@ import type {
   AppSettings,
   CompileResult,
   CompletionsResponse,
+  EntryChange,
   FileContent,
   FileNode,
+  FontsStatus,
+  PreviewJump,
   WorkspaceInfo,
   WorkspaceMeta,
 } from "./types";
 
 const call = <T>(cmd: string, args?: Record<string, unknown>): ResultAsync<T, string> =>
   ResultAsync.fromPromise(invoke<T>(cmd, args), (e) => String(e));
+
+// ─── App ─────────────────────────────────────────────────────────────────────
+
+/** Version of the Typst compiler this build links against (`sys.version`). */
+export const getTypstVersion = () => call<string>("get_typst_version");
 
 // ─── Workspace ───────────────────────────────────────────────────────────────
 
@@ -27,24 +35,28 @@ export const openWorkspace = (name: string) => call<WorkspaceInfo>("open_workspa
 export const getFileTree = () => call<FileNode>("get_file_tree");
 export const setMainFile = (relPath: string) => call<null>("set_main_file", { relPath });
 export const setLastFile = (relPath: string | null) => call<null>("set_last_file", { relPath });
-export const setOpenTabs = (openTabs: string[], activeTab: string | null) =>
-  call<null>("set_open_tabs", { openTabs, activeTab });
+export const setOpenTabs = (
+  openTabs: string[],
+  activeTab: string | null,
+  cursor: number | null = null,
+) => call<null>("set_open_tabs", { openTabs, activeTab, cursor });
 /** Open the native folder picker and persist it as the app-wide fonts source.
  *  Resolves to the folder's display name, or `null` if the user cancelled. */
 export const pickFontsDir = () => call<string | null>("pick_fonts_dir");
 export const clearFontsDir = () => call<null>("clear_fonts_dir");
-/** Display name of the persisted fonts folder (backend truth), or null. */
-export const getFontsDir = () => call<string | null>("get_fonts_dir");
+/** The persisted fonts folder (backend truth) and the font families the
+ *  compiler currently has loaded. */
+export const getFontsStatus = () => call<FontsStatus>("get_fonts_status");
 
 // ─── File operations ──────────────────────────────────────────────────────────
 
 export const createFile = (relPath: string) => call<FileNode>("create_file", { relPath });
 export const createFolder = (relPath: string) => call<FileNode>("create_folder", { relPath });
 export const renameEntry = (relPath: string, newName: string) =>
-  call<FileNode>("rename_entry", { relPath, newName });
+  call<EntryChange>("rename_entry", { relPath, newName });
 export const moveEntry = (relPath: string, newParentRel: string) =>
-  call<FileNode>("move_entry", { relPath, newParentRel });
-export const deleteEntry = (relPath: string) => call<FileNode>("delete_entry", { relPath });
+  call<EntryChange>("move_entry", { relPath, newParentRel });
+export const deleteEntry = (relPath: string) => call<EntryChange>("delete_entry", { relPath });
 
 // ─── Editor ────────────────────────────────────────────────────────────────────
 
@@ -61,6 +73,18 @@ export const getCompletions = (
 // ─── Compile + preview ──────────────────────────────────────────────────────────
 
 export const compile = () => call<CompileResult>("compile");
+
+/** 0-based preview page the caret renders on, or `null` when it can't be placed
+ *  (no compiled document, or the caret isn't on rendered content). `cursor` is a
+ *  UTF-16 offset, like every offset crossing this boundary. */
+export const pageForCursor = (relPath: string, cursor: number) =>
+  call<number | null>("page_for_cursor", { relPath, cursor });
+
+/** Resolve a tap at `x`/`y` **typst points** on the 0-based preview `page` to a
+ *  jump target — a link's destination, or the source span that rendered it.
+ *  `null` when nothing was hit (or the hit lives in a package file). */
+export const jumpFromClick = (page: number, x: number, y: number) =>
+  call<PreviewJump | null>("jump_from_click", { page, x, y });
 
 // ─── Format ──────────────────────────────────────────────────────────────────
 

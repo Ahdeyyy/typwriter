@@ -16,7 +16,7 @@
     },
     "apps/typwriter-desktop": {
       "name": "typwriter",
-      "version": "0.8.4",
+      "version": "0.8.7",
       "dependencies": {
         "@citedrive/codemirror-lang-bibtex": "^6.4.1",
         "@codemirror/autocomplete": "^6.20.3",
@@ -134,7 +134,7 @@
     },
     "apps/typwriter-mobile": {
       "name": "typwriter-mobile",
-      "version": "0.8.4",
+      "version": "0.8.7",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.0",
         "@codemirror/commands": "^6.10.2",
@@ -150,6 +150,7 @@
         "@tauri-apps/api": "^2",
         "@tauri-apps/plugin-dialog": "~2",
         "@tauri-apps/plugin-log": "~2",
+        "@tauri-apps/plugin-opener": "~2",
         "@tauri-apps/plugin-store": "~2",
         "neverthrow": "^8.2.0",
         "vaul-svelte": "^1.0.0-next.7",

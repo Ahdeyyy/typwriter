@@ -12,6 +12,8 @@
     ArrowShrink01Icon,
     Settings01Icon,
     Home01Icon,
+    Folder01Icon,
+    UnfoldMoreIcon,
   } from "@hugeicons/core-free-icons";
   import type { IconSvgElement } from "@hugeicons/svelte";
   import Icon from "$lib/components/icon.svelte";
@@ -24,10 +26,13 @@
   import { app } from "$lib/stores/app.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { editor } from "$lib/stores/editor.svelte";
+  import { openedAgo } from "$lib/time";
   import type { FileNode } from "$lib/ipc/types";
   import TreeNode from "./tree-node.svelte";
 
   const expanded = new SvelteSet<string>([""]); // root expanded by default
+
+  const sheetOpen = $derived(app.overlay === "filetree");
 
   // Long-press action drawer.
   let actionTarget = $state<FileNode | null>(null);
@@ -133,6 +138,46 @@
     app.openOverlay("settings");
   }
 
+  // ─── Workspace switcher ────────────────────────────────────────────────────
+  // The footer name is a menu: the three most recently opened *other*
+  // workspaces, plus a way back to the full list on home.
+
+  let switcherOpen = $state(false);
+
+  // The drawers and the dialog live outside `Sheet.Content` and aren't history
+  // entries, so an Android back press pops the sheet and would otherwise leave
+  // them floating over the editor. Tie their lifetime to the sheet's.
+  $effect(() => {
+    if (!sheetOpen) {
+      actionTarget = null;
+      switcherOpen = false;
+      dialogMode = null;
+    }
+  });
+
+  /** Other user workspaces, most recently opened first (backend order, re-sorted
+   *  defensively), capped at three. */
+  const recentOthers = $derived(
+    workspace.workspaces
+      .filter((w) => !w.system && w.name !== workspace.name)
+      .sort((a, b) => (b.lastOpenedMs ?? 0) - (a.lastOpenedMs ?? 0))
+      .slice(0, 3),
+  );
+
+  function openSwitcher() {
+    // `lastOpenedMs` moves every time a workspace is opened, and this list was
+    // last fetched on the home screen — refresh so the ordering is current.
+    workspace.refreshList().mapErr((e) => console.error("workspace list:", e));
+    switcherOpen = true;
+  }
+
+  async function switchTo(name: string) {
+    switcherOpen = false;
+    // Pop the file-tree entry first so back from the new workspace goes home.
+    await app.closeOverlayAsync();
+    workspace.switchTo(name).mapErr((e) => toast.error(`Failed to open: ${e}`));
+  }
+
   /** Total files and folders in the workspace, for the footer summary. */
   const counts = $derived.by(() => {
     let files = 0;
@@ -176,7 +221,7 @@
 </script>
 
 <Sheet.Root
-  open={app.overlay === "filetree"}
+  open={sheetOpen}
   onOpenChange={(o) => {
     if (!o) app.closeOverlay();
   }}
@@ -220,12 +265,20 @@
         class="border-border/60 flex items-center gap-2 border-t px-3 py-2.5"
         style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.625rem);"
       >
-        <div class="min-w-0 flex-1">
-          <div class="truncate text-sm font-semibold">{workspace.name ?? "Files"}</div>
-          <div class="text-muted-foreground truncate text-xs">
-            {counts.files} file{counts.files === 1 ? "" : "s"}, {counts.folders} folder{counts.folders === 1 ? "" : "s"}
+        <button
+          type="button"
+          class="active:bg-accent -mx-1.5 flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left transition-colors"
+          aria-label="Switch workspace"
+          onclick={openSwitcher}
+        >
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-sm font-semibold">{workspace.name ?? "Files"}</div>
+            <div class="text-muted-foreground truncate text-xs">
+              {counts.files} file{counts.files === 1 ? "" : "s"}, {counts.folders} folder{counts.folders === 1 ? "" : "s"}
+            </div>
           </div>
-        </div>
+          <Icon icon={UnfoldMoreIcon} class="text-muted-foreground size-4 shrink-0" />
+        </button>
         <Button variant="ghost" size="icon-sm" aria-label="Settings" onclick={openSettings}>
           <Icon icon={Settings01Icon} />
         </Button>
@@ -291,6 +344,49 @@
         </div>
       </div>
     {/if}
+  </Drawer.Content>
+</Drawer.Root>
+
+<!-- Workspace switcher: recent workspaces + the full list on home -->
+<Drawer.Root open={switcherOpen} onOpenChange={(o) => (switcherOpen = o)}>
+  <Drawer.Content>
+    <div class="px-4 pb-2 pt-1">
+      <Drawer.Title class="truncate text-base font-semibold">{workspace.name ?? "Workspace"}</Drawer.Title>
+      <Drawer.Description class="text-muted-foreground text-xs">Switch workspace</Drawer.Description>
+    </div>
+    <div
+      class="flex flex-col gap-3 px-3 pb-4 pt-2"
+      style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);"
+    >
+      {#if recentOthers.length > 0}
+        <div class="bg-muted/40 divide-border/60 divide-y overflow-hidden rounded-xl">
+          {#each recentOthers as meta (meta.path)}
+            <button
+              type="button"
+              class="active:bg-accent flex w-full items-center gap-3 px-4 py-3 text-left transition-colors"
+              onclick={() => void switchTo(meta.name)}
+            >
+              <Icon icon={Folder01Icon} class="text-muted-foreground size-5 shrink-0" />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm">{meta.name}</span>
+                <span class="text-muted-foreground block truncate text-xs">
+                  {openedAgo(meta.lastOpenedMs)}
+                </span>
+              </span>
+            </button>
+          {/each}
+        </div>
+      {:else}
+        <p class="text-muted-foreground px-4 py-2 text-sm">No other workspaces yet.</p>
+      {/if}
+
+      <div class="bg-muted/40 overflow-hidden rounded-xl">
+        {@render actionRow(Home01Icon, "All workspaces…", () => {
+          switcherOpen = false;
+          app.goHome();
+        })}
+      </div>
+    </div>
   </Drawer.Content>
 </Drawer.Root>
 
