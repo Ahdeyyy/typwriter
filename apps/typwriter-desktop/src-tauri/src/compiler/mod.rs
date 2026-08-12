@@ -256,6 +256,9 @@ fn parse_pdf_standard(s: &str) -> Result<typst_pdf::PdfStandards, String> {
     typst_pdf::PdfStandards::new(&standards).map_err(|e| format!("Invalid PDF standard: {e:?}"))
 }
 
+/// How many pages the background render pass holds in memory at a time.
+const RENDER_BATCH: usize = 16;
+
 #[derive(Default)]
 struct CompileQueueState {
     next_revision: u64,
@@ -566,7 +569,17 @@ impl PreviewPipeline {
                 queue.next_revision
             };
             self.emit_compile_state(CompileStatus::Started, revision, reason);
-            self.compile_and_emit(revision, reason, request_mark);
+            // An unwind out of this loop would kill the worker for the rest of
+            // the session, leaving the preview permanently silent with no error
+            // surfaced anywhere. Contain it to the one compile.
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.compile_and_emit(revision, reason, request_mark);
+            }));
+            if outcome.is_err() {
+                error!(
+                    "compile revision={revision} reason={reason:?} panicked; worker continuing"
+                );
+            }
 
             match rx.try_recv() {
                 Ok(next) => pending = Some(next),
@@ -818,9 +831,13 @@ impl PreviewPipeline {
         }
 
         let render_t = Instant::now();
-        let (priority_misses, rest_misses): (Vec<usize>, Vec<usize>) = cache_misses
+        let (priority_misses, mut rest_misses): (Vec<usize>, Vec<usize>) = cache_misses
             .into_iter()
             .partition(|&idx| idx == visible_page);
+
+        // Render outwards from the page on screen; in index order a long
+        // document makes the user wait for pages they aren't looking at.
+        rest_misses.sort_by_key(|&idx| idx.abs_diff(visible_page));
 
         for idx in &priority_misses {
             if self.is_stale_request(request_mark) {
@@ -851,7 +868,10 @@ impl PreviewPipeline {
             }
         }
 
-        if !rest_misses.is_empty() {
+        // Batched rather than one `collect()` over every page: that would hold
+        // the whole document's PNGs in memory until the last one finished, and
+        // publish nothing until then.
+        for batch in rest_misses.chunks(RENDER_BATCH) {
             if self.is_stale_request(request_mark) {
                 info!(
                     "compile revision={revision} reason={reason:?} skipped stale background render"
@@ -859,7 +879,7 @@ impl PreviewPipeline {
                 *self.last_emitted.lock() = new_emitted;
                 return;
             }
-            let rendered: Vec<(usize, PageCacheKey, Vec<u8>)> = rest_misses
+            let rendered: Vec<(usize, PageCacheKey, Vec<u8>)> = batch
                 .par_iter()
                 .filter_map(|&idx| {
                     let key: PageCacheKey = (new_fps[idx], zoom_bucket);

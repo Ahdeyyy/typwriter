@@ -82,7 +82,17 @@ pub fn run() {
             let Some(pipeline) = ctx.app_handle().try_state::<Arc<PreviewPipeline>>() else {
                 return not_found();
             };
-            let Some(bytes) = pipeline.page_bytes(key) else {
+            // On Windows this runs inside a WebView2 COM callback, which may not
+            // unwind: a panic escaping here aborts the process rather than
+            // failing one image. The frontend's `onerror` path already recovers
+            // from a 404, so degrade to that instead.
+            let fetched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                pipeline.page_bytes(key)
+            }));
+            let Ok(Some(bytes)) = fetched else {
+                if fetched.is_err() {
+                    log::error!("previewimg: page lookup panicked key={path}");
+                }
                 return not_found();
             };
 

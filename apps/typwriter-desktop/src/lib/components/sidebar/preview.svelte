@@ -59,18 +59,21 @@
   $effect(() => {
     if (!ctrl.restorePending) return;
     const idx = preview.visiblePage;
-    // Committed pages render their <img> with explicit width/height, so the
-    // layout above the target is only final once every page up to it has
-    // committed — before that, `offsetTop` would measure skeletons and
-    // still-loading images and the snap would land short of the target.
-    // Reading those slots (and `visiblePage`) retries the restore as decodes
-    // land and as a late cross-window snapshot arrives.
+    // The layout above the target is final once every page up to it has
+    // committed; before that `offsetTop` measures still-loading images and the
+    // snap lands short. Reading those slots (and `visiblePage`) retries the
+    // restore as decodes land and as a late cross-window snapshot arrives.
+    //
+    // Once decoding is windowed, distant pages never commit and that condition
+    // can't be met — but skeletons then reserve the same box their image would,
+    // so `pageMetricsKnown` makes `offsetTop` just as measurable.
     const settled =
       preview.paginated ||
       (ctrl.scrollEl !== null &&
         preview.pages.length > idx &&
         ctrl.committedPages.length > idx &&
-        ctrl.committedPages.slice(0, idx + 1).every((fp) => fp !== null));
+        (ctrl.committedPages.slice(0, idx + 1).every((fp) => fp !== null) ||
+          ctrl.pageMetricsKnown));
     if (settled) {
       untrack(() => ctrl.restoreScrollToVisiblePage());
     }
@@ -331,7 +334,11 @@
               />
             </Button>
           {:else}
-            <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
+            {@const sk = ctrl.skeletonDims(ctrl.visiblePage)}
+            <div
+              class="block h-auto max-w-full animate-pulse bg-muted"
+              style="width:{sk.w}px; aspect-ratio:{sk.w} / {sk.h};"
+            ></div>
           {/if}
           {@render highlightOverlay(ctrl.visiblePage)}
         </div>
@@ -376,14 +383,24 @@
                   width={dims?.w}
                   height={dims?.h}
                   draggable="false"
+                  loading="lazy"
+                  decoding="async"
                   class="block h-auto max-w-full"
                   onload={() => ctrl.notifyImageLoaded(i, fp)}
                   onerror={() => ctrl.notifyImageError(i, fp)}
                 />
               </Button>
             {:else}
-              <!-- Placeholder while page is rendering -->
-              <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
+              <!-- Placeholder while the page renders or sits outside the decode
+                   window. Laid out exactly like the image above so swapping
+                   between the two never changes the page's height, which is
+                   what keeps the scroll position stable as pages are decoded
+                   and released around the viewport. -->
+              {@const sk = ctrl.skeletonDims(i)}
+              <div
+                class="block h-auto max-w-full animate-pulse bg-muted"
+                style="width:{sk.w}px; aspect-ratio:{sk.w} / {sk.h};"
+              ></div>
             {/if}
             {@render highlightOverlay(i)}
           </div>

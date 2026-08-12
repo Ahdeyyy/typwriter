@@ -512,6 +512,25 @@ pub fn discard_shadow(path: String, world: State<'_, Arc<EditorWorld>>) -> Resul
     Ok(())
 }
 
+/// Whether it is safe to run `typst_ide` against the shared world yet.
+///
+/// Fonts load lazily; until they land `World::book()` serves an empty fallback.
+/// comemo's memo cache is process-global, so IDE work done in that window
+/// records the empty book into constraints that the compile worker (which does
+/// wait for fonts) then contradicts, tripping comemo's impurity panic — fatal
+/// in a synchronous command, which on Windows runs inside a WebView2 COM
+/// callback that may not unwind.
+///
+/// Callers degrade to an empty result for the second or so a font search takes.
+fn ide_world_ready(world: &Arc<EditorWorld>) -> bool {
+    world.ensure_fonts_loading();
+    if world.fonts_ready() {
+        return true;
+    }
+    debug!("typst-ide: skipped — fonts still loading");
+    false
+}
+
 /// Auto-complete at the given byte offset inside a source file.
 ///
 /// `explicit` is `true` when the user explicitly requested completions
@@ -527,6 +546,13 @@ pub fn get_completions(
 ) -> Result<CompletionsResponse, String> {
     let t = Instant::now();
     debug!("get_completions: path={path:?} cursor={cursor} explicit={explicit}");
+
+    if !ide_world_ready(world.inner()) {
+        return Ok(CompletionsResponse {
+            from: cursor,
+            completions: Vec::new(),
+        });
+    }
 
     let abs = Path::new(&path);
     let id = world.path_to_id(abs).ok_or_else(|| {
@@ -602,6 +628,10 @@ pub fn get_tooltip(
     let t = Instant::now();
     debug!("get_tooltip: path={path:?} cursor={cursor}");
 
+    if !ide_world_ready(world.inner()) {
+        return Ok(None);
+    }
+
     let abs = Path::new(&path);
     let id = world.path_to_id(abs).ok_or_else(|| {
         let e = "Could not resolve file path";
@@ -668,6 +698,10 @@ pub fn get_definitions(
 ) -> Result<Option<JumpResponse>, String> {
     let t = Instant::now();
     debug!("get_definitions: path={path:?} cursor={cursor}");
+
+    if !ide_world_ready(world.inner()) {
+        return Ok(None);
+    }
 
     let abs = Path::new(&path);
     let id = world.path_to_id(abs).ok_or_else(|| {
