@@ -24,6 +24,17 @@ function has(src: string, name: string): boolean {
   return found
 }
 
+/** The source text of the first node of the given type, or null. */
+function textOf(src: string, name: string): string | null {
+  let text: string | null = null
+  parser.parse(src).iterate({
+    enter(node) {
+      if (text === null && node.name === name) text = src.slice(node.from, node.to)
+    },
+  })
+  return text
+}
+
 describe("closures", () => {
   test("parenthesized parameter list", () => {
     const src = "#table(fill: (_, row) => if row == 0 { luma(225) } else { white })"
@@ -111,4 +122,43 @@ describe("binary operators across lines", () => {
       expect(has(src, "Binary")).toBe(true)
     },
   )
+})
+
+describe("line-scoped items inside a content block", () => {
+  // A heading / list / enum / term item runs to the end of its line, but the
+  // enclosing `[…]` binds tighter: `#big([ 1. one], size: 36pt)` used to let the
+  // enum item eat `], size: 36pt)`, so the content block never closed and every
+  // bracket after it was off by one for the rest of the file.
+  test.each([
+    ["#big([ 1. Not sure? Do not tap.], size: 36pt)", "EnumItem", "1. Not sure? Do not tap."],
+    ["#f([+ one], k: 1)", "EnumItem", "+ one"],
+    ["#f([- one], k: 1)", "ListItem", "- one"],
+    ["#f([= Head], k: 1)", "Heading", "= Head"],
+    ["#f([/ term: def], k: 1)", "TermItem", "/ term: def"],
+  ])("%j ends its item at the bracket", (src, node, text) => {
+    expect(errors(src)).toEqual([])
+    expect(textOf(src, node)).toBe(text)
+    expect(textOf(src, "ContentBlock")).toBe(src.slice(src.indexOf("["), src.indexOf("]") + 1))
+  })
+
+  test("the bracket still closes the block the item sits in", () => {
+    const src = "#slide[\n  = Two Safe Rules\n  #big([ 1. one], size: 36pt)\n]\n\n#slide[\n  = Next\n]"
+    expect(errors(src)).toEqual([])
+    // Two separate calls, not one swallowing the other.
+    expect(textOf(src, "FuncCall")).toBe(src.slice(0, src.indexOf("\n\n")))
+  })
+
+  // At the document root a stray `]` is ordinary text, so nothing should stop.
+  test("a bare bracket at the root does not cut the line short", () => {
+    const src = "= Head] and more"
+    expect(errors(src)).toEqual([])
+    expect(textOf(src, "Heading")).toBe(src)
+  })
+
+  test("emphasis in an item does not leak past the bracket", () => {
+    const src = "#f([- a *b], c: 1)"
+    expect(errors(src)).toEqual([])
+    expect(has(src, "Strong")).toBe(false)
+    expect(textOf(src, "ListItem")).toBe("- a *b")
+  })
 })
