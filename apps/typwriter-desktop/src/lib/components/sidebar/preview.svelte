@@ -312,7 +312,7 @@
       {:else}
         <div
           id="preview-page-{ctrl.visiblePage}"
-          class="relative shrink-0 overflow-hidden rounded shadow-md"
+          class="relative max-w-full shrink-0 overflow-hidden rounded shadow-md"
         >
           {#if ctrl.committedPages[ctrl.visiblePage]}
             {@const fp = ctrl.committedPages[ctrl.visiblePage]!}
@@ -365,9 +365,15 @@
         </div>
       {:else}
         {#each preview.pages as _, i}
+          <!-- `max-w-full` clamps the page box to the pane. The <img> shrinks
+               itself (a replaced element's percentage max-width collapses its
+               min-content), but a skeleton's fixed px width does not, so
+               without this the wrapper takes the skeleton's full natural width
+               and the pane gains a horizontal scrollbar. Resolved against the
+               flex container's definite width, so it bites for both. -->
           <div
             id="preview-page-{i}"
-            class="relative shrink-0 overflow-hidden rounded shadow-md"
+            class="relative max-w-full shrink-0 overflow-hidden rounded shadow-md"
           >
             {#if ctrl.committedPages[i]}
               {@const fp = ctrl.committedPages[i]!}
