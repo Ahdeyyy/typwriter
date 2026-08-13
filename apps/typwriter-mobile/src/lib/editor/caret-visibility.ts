@@ -23,6 +23,11 @@
 // correct with a direct `scrollTop` adjustment (exact, unlike `scrollIntoView`,
 // which resolves "nearest" against the scroller box we just established is the
 // wrong reference).
+//
+// Equally important is when NOT to correct. Scrolling the text under a finger
+// that is mid-gesture is a feedback loop, not a correction: the glyph the user
+// was pointing at moves, so the selection lands somewhere they never pointed,
+// so the head moves, so we scroll again. See `suspended()`.
 
 import { EditorView, ViewPlugin, type PluginValue, type ViewUpdate } from "@codemirror/view";
 import { keyboard, visibleViewportRect } from "./keyboard-visibility.svelte";
@@ -39,6 +44,14 @@ const MIN_CORRECTION_PX = 2;
 const SETTLE_DELAYS_MS = [0, 60, 160, 320, 500];
 /** How long after focus we assume a keyboard is on its way in. */
 const PREDICT_WINDOW_MS = 700;
+/**
+ * How long after a finger leaves the editor we keep treating the screen as
+ * being under a gesture. A lift is usually the middle of a gesture rather than
+ * the end of one — re-grabbing a selection handle, the second tap of a
+ * double-tap, the next flick of a scroll — and snapping the text in that gap is
+ * what turns "I lifted my finger for a moment" into "the editor moved".
+ */
+const GESTURE_GRACE_MS = 350;
 
 class CaretVisibility implements PluginValue {
   private readonly unsubscribe: () => void;
@@ -46,10 +59,27 @@ class CaretVisibility implements PluginValue {
   private timers: ReturnType<typeof setTimeout>[] = [];
   private frame = 0;
   private focusedAt = 0;
+  private pointersDown = 0;
+  private gestureEndedAt = 0;
 
   private readonly onFocus = () => {
     this.focusedAt = Date.now();
     this.settle();
+  };
+
+  private readonly onPointerDown = (e: PointerEvent) => {
+    if (e.pointerType === "mouse") return;
+    this.pointersDown++;
+  };
+
+  // Bound on the window, not the editor: a finger that starts on the text and
+  // lifts somewhere else (the toolbar, off the edge) must still clear the count,
+  // or corrections stay suspended for the rest of the session.
+  private readonly onPointerEnd = (e: PointerEvent) => {
+    if (e.pointerType === "mouse" || this.pointersDown === 0) return;
+    this.pointersDown--;
+    this.gestureEndedAt = Date.now();
+    this.settle(GESTURE_GRACE_MS);
   };
 
   constructor(private readonly view: EditorView) {
@@ -59,6 +89,9 @@ class CaretVisibility implements PluginValue {
     // touching the viewport.
     this.unsubscribe = keyboard.onViewportChange(() => this.settle());
     view.contentDOM.addEventListener("focus", this.onFocus);
+    view.dom.addEventListener("pointerdown", this.onPointerDown);
+    window.addEventListener("pointerup", this.onPointerEnd, true);
+    window.addEventListener("pointercancel", this.onPointerEnd, true);
     if (typeof ResizeObserver !== "undefined") {
       this.observer = new ResizeObserver(() => this.settle());
       this.observer.observe(view.scrollDOM);
@@ -73,11 +106,12 @@ class CaretVisibility implements PluginValue {
     if (keyboard.visible || this.predicting()) this.schedule();
   }
 
-  /** Correct now, and again as the keyboard animation settles. */
-  private settle() {
+  /** Correct now, and again as the keyboard animation settles. `after` delays
+   *  the whole ramp — used to start it once a gesture's grace has expired. */
+  private settle(after = 0) {
     this.clearTimers();
     for (const delay of SETTLE_DELAYS_MS) {
-      this.timers.push(setTimeout(() => this.schedule(), delay));
+      this.timers.push(setTimeout(() => this.schedule(), after + delay));
     }
   }
 
@@ -95,6 +129,18 @@ class CaretVisibility implements PluginValue {
     return (
       !keyboard.visible && keyboard.lastHeight > 0 && Date.now() - this.focusedAt < PREDICT_WINDOW_MS
     );
+  }
+
+  /**
+   * Whether a finger is on the editor, or recently was.
+   *
+   * A touch-scroll is the user deliberately looking somewhere else and the
+   * settle ramp is quite capable of firing mid-flick; the press that begins a
+   * long-press selection lands in this window too, before any range exists to
+   * notice. Either way the viewport belongs to the gesture, not to us.
+   */
+  private touching(): boolean {
+    return this.pointersDown > 0 || Date.now() - this.gestureEndedAt < GESTURE_GRACE_MS;
   }
 
   /**
@@ -122,6 +168,26 @@ class CaretVisibility implements PluginValue {
   private correct() {
     const view = this.view;
     if (!view.dom.isConnected || !view.hasFocus) return;
+    // A range means a selection gesture is live: Android's drag handles, its
+    // magnifier and its own edge autoscroll are driving the viewport, and the
+    // finger is resting on a particular glyph. Scrolling the text out from under
+    // it re-aims the handle at whatever slid into that spot, which moves the
+    // head, which brings us back here to scroll again — the runaway that ends
+    // with the selection somewhere the user never pointed and the caret off
+    // screen. Nothing here is worth that: this plugin keeps a *caret* clear of
+    // the keyboard, and during a range selection there isn't one.
+    //
+    // It re-checks itself, so there is nothing to re-arm — collapsing the
+    // selection is a `selectionSet` and arrives through `update`.
+    if (!view.state.selection.main.empty) return;
+    if (this.touching()) {
+      // A gesture, on the other hand, can end without a `pointerup` we ever see
+      // — Android's selection handles are browser chrome and swallow their own
+      // touches — so the signal that brought us here has to be carried forward
+      // by hand or it is simply lost.
+      this.timers.push(setTimeout(() => this.schedule(), GESTURE_GRACE_MS));
+      return;
+    }
 
     const head = view.state.selection.main.head;
     const caret = view.coordsAtPos(head);
@@ -161,6 +227,9 @@ class CaretVisibility implements PluginValue {
   destroy() {
     this.unsubscribe();
     this.view.contentDOM.removeEventListener("focus", this.onFocus);
+    this.view.dom.removeEventListener("pointerdown", this.onPointerDown);
+    window.removeEventListener("pointerup", this.onPointerEnd, true);
+    window.removeEventListener("pointercancel", this.onPointerEnd, true);
     this.observer?.disconnect();
     this.observer = null;
     this.clearTimers();

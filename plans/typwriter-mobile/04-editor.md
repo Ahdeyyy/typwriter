@@ -156,6 +156,21 @@ Deliberately **excluded** (vs. desktop) — do not re-add:
 keyboard), comfortable `.cm-line` padding, and — important on Android —
 `.cm-scroller { overflow: auto; -webkit-overflow-scrolling: touch; }`.
 
+Touch ergonomics, all of it about hitting a target you can't see under your own
+finger: `line-height: 1.75` (line height *is* the vertical touch target, and the
+gap between lines is what stops a long-press landing one line off), a 2px caret,
+and `EditorView.scrollMargins` of 32px so every `scrollIntoView` CodeMirror does
+on its own leaves context around the caret instead of tucking it under the
+completion strip.
+
+**Keep `@codemirror/view` current.** The root `package.json` pins it (both apps
+must resolve to exactly one copy — two trigger the tile-tree crash), and a stale
+pin silently withholds fixes that read as app bugs. 6.38.8 was holding back
+6.39.15 "fix scrolling cursor into view on Chrome Android", 6.39.16 scroll
+stabilization, 6.39.17 touch tap-selection on wrapped lines, and 6.43.2's Chrome
+Android select-all and tap-on-empty-line scroll workarounds — between them a
+large part of what was reported as "the cursor jumps out of frame".
+
 Caret visibility: after focus or doc edits the caret can hide behind the keyboard.
 Shipped as `lib/editor/caret-visibility.ts`, a ViewPlugin enforcing one rule — the
 caret's client rect must lie inside `scrollDOM.getBoundingClientRect()` ∩
@@ -182,6 +197,29 @@ settle ramp at 0/60/160/320/500 ms after any of them. Within 700 ms of focus the
 band is pre-cut by `keyboard.lastHeight` (the last measured keyboard), so the caret
 clears the keyboard *as* it opens — which also removes Chrome's reason to pan, since
 it only pans when the focused caret isn't already visible.
+
+**When not to correct** matters as much, and getting it wrong is what made
+selecting text on a phone feel broken. Two suspensions:
+
+- **A non-empty selection.** A range means a selection gesture is live — drag
+  handles, magnifier, the browser's own edge autoscroll — with a finger resting
+  on a specific glyph. Scrolling the text out from under it re-aims the handle at
+  whatever slid into that spot, which moves the head, which triggers another
+  correction: a runaway that ends with the selection somewhere the user never
+  pointed and the caret off screen. This plugin keeps a *caret* clear of the
+  keyboard; during a range selection there isn't one. No re-arm needed —
+  collapsing the selection arrives as a `selectionSet`.
+- **A finger on the editor**, plus a 350 ms grace after it lifts (a lift is
+  usually mid-gesture: re-grabbing a handle, the second tap of a double-tap, the
+  next flick of a scroll). This one *does* re-arm, because Android's selection
+  handles are browser chrome and swallow the `pointerup` that would otherwise
+  wake it.
+
+Related: `lib/editor/scroll-pin.ts` holds `scrollTop` across the Sparkle button's
+IPC round trip. Requesting suggestions must not move the viewport, and between
+the tap landing outside the contenteditable and the strip's first layout there
+are several things that will. It yields to a caret/doc change, to a finger on the
+scroller, and to a 700 ms deadline.
 
 ## 4.4 Keyboard toolbar — `components/toolbar/editor-toolbar.svelte`
 
@@ -221,17 +259,38 @@ reference for anything that must stay visible.
 Two stacked rows, each 40px:
 
 1. **Completion strip** (phase 5) — rendered only while suggestions exist.
-2. **Symbol row** (always visible while a text file is open):
-   buttons insert text at the cursor / wrap the selection via `view.dispatch`:
+2. **The pill.** Pinned left: the Sparkle (manual completions) and a mode toggle;
+   pinned right: undo, redo, hide-keyboard. The scrolling middle shows one of two
+   rows, because writing and positioning are different jobs and the row is only
+   wide enough to be good at one of them.
+
+   **Symbol row** (default) — buttons insert text at the cursor / wrap the
+   selection via `view.dispatch`:
 
    `#` `$` `*` `_` `` ` `` `=` `-` `+` `/` `(` `)` `[` `]` `{` `}` `"` `<` `>` `@`
-
-   plus, pinned at the right edge (not scrolling): undo, redo (from
-   `@codemirror/commands`), and a hide-keyboard button (`input.blur()` → also flushes).
 
    Insert behavior: single chars insert and place the cursor after; paired chars
    (`(`, `[`, `{`, `$`, `*`, `_`, `` ` ``, `"`) wrap the selection if non-empty,
    else insert the pair with the cursor in the middle. `$` wraps as `$…$` (Typst math).
+
+   **Cursor row** (`components/toolbar/cursor-row.svelte`, commands in
+   `lib/editor/selection.ts`) — caret placement and selection by button and
+   gesture, because placing a caret with a fingertip means aiming at a target a
+   few pixels wide that your own finger is covering, and Android's handles snap
+   to word boundaries as often as not. Three ways to move, and one modifier:
+
+   - tap an arrow — one character or line (char / word / line-boundary, both
+     directions, plus up/down);
+   - hold an arrow — the same step on repeat, 400 ms before the first and
+     accelerating after, stopping dead at the ends of the document;
+   - drag the grip — a trackpad: 11px per character horizontally, 26px per line
+     vertically, both axes at once. This is the one that makes long selections
+     bearable, because the hand is nowhere near the text being selected.
+   - the **Select** toggle turns all three into selection tools (`cursor*` →
+     `select*`), so a selection is built the same way it is navigated. Turning it
+     off collapses the range, so one can't be stranded on screen. Alongside it:
+     select word / line / all, with word the usual starting point — grab it, then
+     widen by character.
 
 Buttons: `pointerdown` + `event.preventDefault()` so the editor never loses focus /
 keyboard never dismisses when tapping toolbar buttons. This is critical — test it
@@ -263,3 +322,9 @@ first on-device.
 6. Switching files via the tree saves the old file first; images open in the viewer.
 7. Caret never ends up hidden behind the keyboard after typing at the bottom of a
    long document.
+8. Long-press to select, then drag a handle across several lines: the text under
+   the finger does not move, and the selection ends where the handle was left.
+   Same while finger-scrolling — the view stays where it was put.
+9. Tapping the Sparkle button does not move the editor by a pixel.
+10. Cursor row: arrows step and repeat on hold, the grip scrubs in both axes, and
+    with **Select** on all of them extend the selection instead of moving.

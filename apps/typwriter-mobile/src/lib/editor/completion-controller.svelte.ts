@@ -14,6 +14,7 @@ import type { EditorView, ViewUpdate } from "@codemirror/view";
 import { snippet } from "@codemirror/autocomplete";
 import { getCompletions } from "$lib/ipc/commands";
 import { editor } from "$lib/stores/editor.svelte";
+import { pinScroll } from "./scroll-pin";
 import {
   autoTriggerApplies,
   rankCompletions,
@@ -37,6 +38,8 @@ class CompletionStore {
   private all: StripItem[] = [];
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private requestSeq = 0;
+  /** Releases the scroll pin held across a manual trigger, if one is active. */
+  private unpin: (() => void) | null = null;
 
   /** Called from the CM updateListener (docChanged || selectionSet). */
   onCursorActivity(update: ViewUpdate) {
@@ -67,6 +70,12 @@ class CompletionStore {
 
   /** Manual trigger (Sparkle button) — reaches places auto-trigger declines. */
   trigger(view: EditorView) {
+    // Nothing about asking for suggestions should move the editor, but the tap
+    // lands outside the contenteditable and the answer comes back a round trip
+    // later, which between them give Chrome and the strip's first layout plenty
+    // of opportunity to re-anchor the scroller. See scroll-pin.ts.
+    this.unpin?.();
+    this.unpin = pinScroll(view);
     this.schedule(view, true, true);
   }
 
@@ -135,6 +144,10 @@ class CompletionStore {
   }
 
   accept(view: EditorView, item: StripItem) {
+    // Accepting is exactly the case the pin must get out of the way of: the
+    // insert scrolls the caret into view on purpose.
+    this.unpin?.();
+    this.unpin = null;
     // Focus first: an unfocused view makes Chrome reveal the caret its own way
     // after the insert, on top of the scroll `snippet` already asks for.
     view.focus();

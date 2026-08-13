@@ -10,9 +10,12 @@
     SourceCodeIcon,
     MathIcon,
     ListViewIcon,
+    CursorTextIcon,
+    TextFontIcon,
   } from "@hugeicons/core-free-icons";
   import type { IconSvgElement } from "@hugeicons/svelte";
   import Icon from "$lib/components/icon.svelte";
+  import CursorRow from "./cursor-row.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { completions } from "$lib/editor/completion-controller.svelte";
   import { insertOrWrap } from "$lib/editor/insert";
@@ -47,6 +50,12 @@
   // Heading-level picker (bottom sheet). Kept open without stealing focus from
   // the editor so the soft keyboard stays up while the user picks a level.
   let headingOpen = $state(false);
+
+  // What the scrolling middle of the pill shows. Writing and positioning are
+  // different jobs — you are either producing text or aiming at it — and the row
+  // is only wide enough to be good at one of them, so it swaps instead of
+  // cramming both in. See cursor-row.svelte.
+  let mode = $state<"symbols" | "cursor">("symbols");
 
   function applyHeading(level: number) {
     if (editor.view) {
@@ -152,41 +161,60 @@
       <Icon icon={AiMagicIcon} class="size-5" />
     </button>
 
-    <!-- Scrollable commands + symbols -->
-    <div class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" style="scrollbar-width: none; touch-action: pan-x;">
-      {#each COMMANDS as cmd (cmd.label)}
+    <!-- Symbols ⇄ cursor controls. Shows the mode you'd switch *to*. -->
+    <button
+      class="active:bg-accent active:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
+      style="touch-action: none;"
+      aria-label={mode === "symbols" ? "Cursor controls" : "Symbols"}
+      onmousedown={keepEditorFocus}
+      onpointerup={(e) => {
+        e.preventDefault();
+        mode = mode === "symbols" ? "cursor" : "symbols";
+        editor.view?.focus();
+      }}
+    >
+      <Icon icon={mode === "symbols" ? CursorTextIcon : TextFontIcon} class="size-5" />
+    </button>
+
+    {#if mode === "cursor"}
+      <CursorRow />
+    {:else}
+      <!-- Scrollable commands + symbols -->
+      <div class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" style="scrollbar-width: none; touch-action: pan-x;">
+        {#each COMMANDS as cmd (cmd.label)}
+          <button
+            class="active:bg-accent active:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
+            aria-label={cmd.label}
+            onmousedown={keepEditorFocus}
+            onpointerdown={tapDown}
+            onpointerup={tapUp(cmd.run)}
+          >
+            <Icon icon={cmd.icon} class="size-5" />
+          </button>
+        {/each}
+        <!-- Heading: opens the level picker instead of toggling directly. -->
         <button
-          class="active:bg-accent active:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
-          aria-label={cmd.label}
+          class="active:bg-accent active:text-accent-foreground aria-expanded:bg-accent aria-expanded:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full text-base font-semibold"
+          aria-label="Heading"
+          aria-expanded={headingOpen}
           onmousedown={keepEditorFocus}
-          onpointerdown={tapDown}
-          onpointerup={tapUp(cmd.run)}
+          onpointerup={(e) => { e.preventDefault(); headingOpen = !headingOpen; }}
         >
-          <Icon icon={cmd.icon} class="size-5" />
+          H
         </button>
-      {/each}
-      <!-- Heading: opens the level picker instead of toggling directly. -->
-      <button
-        class="active:bg-accent active:text-accent-foreground aria-expanded:bg-accent aria-expanded:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full text-base font-semibold"
-        aria-label="Heading"
-        aria-expanded={headingOpen}
-        onmousedown={keepEditorFocus}
-        onpointerup={(e) => { e.preventDefault(); headingOpen = !headingOpen; }}
-      >
-        H
-      </button>
-      <div class="bg-border mx-1 h-5 w-px shrink-0"></div>
-      {#each SYMBOLS as sym (sym)}
-        <button
-          class="active:bg-accent active:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full font-mono text-base"
-          onmousedown={keepEditorFocus}
-          onpointerdown={tapDown}
-          onpointerup={tapUp((v) => insertOrWrap(v, sym))}
-        >
-          {sym}
-        </button>
-      {/each}
-    </div>
+        <div class="bg-border mx-1 h-5 w-px shrink-0"></div>
+        {#each SYMBOLS as sym (sym)}
+          <button
+            class="active:bg-accent active:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full font-mono text-base"
+            onmousedown={keepEditorFocus}
+            onpointerdown={tapDown}
+            onpointerup={tapUp((v) => insertOrWrap(v, sym))}
+          >
+            {sym}
+          </button>
+        {/each}
+      </div>
+    {/if}
 
     <!-- Pinned controls -->
     <div class="flex shrink-0 items-center gap-0.5">
