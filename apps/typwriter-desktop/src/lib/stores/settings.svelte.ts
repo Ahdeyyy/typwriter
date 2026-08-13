@@ -103,6 +103,10 @@ export interface PersistedSettings {
     // Preview defaults
     defaultPreviewZoom: number;
     defaultPreviewVisible: boolean;
+    /** Display to project onto in presentation mode, as an OS display id
+     *  (`\\.\DISPLAY2`). `null` means auto: whichever display the main editor
+     *  window isn't on — the right answer for a laptop + HDMI-extend rig. */
+    presentationDisplay: string | null;
 
     // Editor behaviors
     showLineNumbers: boolean;
@@ -163,6 +167,7 @@ const DEFAULTS: PersistedSettings = {
 
     defaultPreviewZoom: 2.0,
     defaultPreviewVisible: true,
+    presentationDisplay: null,
 
     showLineNumbers: false,
     showIndentationMarkers: true,
@@ -252,6 +257,7 @@ class SettingsStore {
 
     defaultPreviewZoom = $state(INITIAL.defaultPreviewZoom);
     defaultPreviewVisible = $state(INITIAL.defaultPreviewVisible);
+    presentationDisplay = $state(INITIAL.presentationDisplay);
 
     showLineNumbers = $state(INITIAL.showLineNumbers);
     showIndentationMarkers = $state(INITIAL.showIndentationMarkers);
@@ -297,6 +303,7 @@ class SettingsStore {
                     autoCheckUpdates: s.auto_check_updates,
                     defaultPreviewZoom: s.default_preview_zoom,
                     defaultPreviewVisible: s.default_preview_visible,
+                    presentationDisplay: s.presentation_display ?? null,
                     showLineNumbers: s.show_line_numbers,
                     showIndentationMarkers: s.show_indentation_markers,
                     spellcheck: s.spellcheck,
@@ -342,6 +349,7 @@ class SettingsStore {
             autoCheckUpdates: this.autoCheckUpdates,
             defaultPreviewZoom: this.defaultPreviewZoom,
             defaultPreviewVisible: this.defaultPreviewVisible,
+            presentationDisplay: this.presentationDisplay,
             showLineNumbers: this.showLineNumbers,
             showIndentationMarkers: this.showIndentationMarkers,
             spellcheck: this.spellcheck,
@@ -378,6 +386,7 @@ class SettingsStore {
         this.autoCheckUpdates = settings.autoCheckUpdates;
         this.defaultPreviewZoom = Math.max(0.25, Math.min(8, settings.defaultPreviewZoom));
         this.defaultPreviewVisible = settings.defaultPreviewVisible;
+        this.presentationDisplay = settings.presentationDisplay;
         this.showLineNumbers = settings.showLineNumbers;
         this.showIndentationMarkers = settings.showIndentationMarkers;
         this.spellcheck = settings.spellcheck;
@@ -445,6 +454,7 @@ class SettingsStore {
             auto_check_updates: current.autoCheckUpdates,
             default_preview_zoom: current.defaultPreviewZoom,
             default_preview_visible: current.defaultPreviewVisible,
+            presentation_display: current.presentationDisplay,
             show_line_numbers: current.showLineNumbers,
             show_indentation_markers: current.showIndentationMarkers,
             spellcheck: current.spellcheck,
@@ -508,6 +518,12 @@ class SettingsStore {
 
     setDefaultPreviewVisible(value: boolean) {
         this.defaultPreviewVisible = value;
+        this.persist();
+    }
+
+    /** Pin the display presentation mode projects onto, or `null` for auto. */
+    setPresentationDisplay(id: string | null) {
+        this.presentationDisplay = id;
         this.persist();
     }
 

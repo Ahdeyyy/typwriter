@@ -6,8 +6,16 @@ import { toast } from "svelte-sonner";
 
 import { preview } from "$lib/stores/preview.svelte";
 import { editor } from "$lib/stores/editor.svelte";
+import { settings } from "$lib/stores/settings.svelte";
 import { workspace } from "$lib/stores/workspace.svelte";
-import { jumpFromClick, setVisiblePage, syncPreview, triggerPreview } from "$lib/ipc/commands";
+import {
+  jumpFromClick,
+  listDisplays,
+  setVisiblePage,
+  syncPreview,
+  triggerPreview,
+} from "$lib/ipc/commands";
+import type { DisplayInfo } from "$lib/types";
 import { emitPreviewSourceJump } from "$lib/ipc/events";
 import { matchesCommand } from "$lib/keybindings";
 import { logError, logPreview } from "$lib/logger";
@@ -46,6 +54,18 @@ const WATCHDOG_WINDOW = 2;
 // Fallback box for a page that has never been decoded and has no decoded
 // sibling to borrow dimensions from.
 const DEFAULT_PAGE_DIMS = { w: 566, h: 800 };
+
+// How long the pointer sits still over a projected slide before it's hidden.
+const POINTER_IDLE_MS = 2000;
+
+/** Name a display the way the picker and the "now presenting" toast should:
+ *  the OS name when there is one, always with the resolution, since on a
+ *  two-screen rig "1920×1080" is what the user recognises as the projector. */
+export function displayLabel(display: DisplayInfo): string {
+  const size = `${display.width}×${display.height}`;
+  const name = display.name?.replace(/^\\\\[.?]\\/, "") ?? null;
+  return name ? `${name} · ${size}` : size;
+}
 
 export class PreviewController {
   // ── Refs / local state ──────────────────────────────────────────────
@@ -733,16 +753,104 @@ export class PreviewController {
 
   togglePresentation() {
     if (!this.isPopout) {
+      // Presentation runs in the popout window — the in-workspace pane can
+      // only ask for it (open the popout, or nudge an already-open one).
       this.onPresentationMode?.();
       return;
     }
-    const entering = !preview.presentationMode;
-    preview
-      .togglePresentationMode()
-      .then(() => {
-        if (entering) toast.info("Press Esc to exit presenter mode");
+    if (preview.presentationMode) {
+      void this.stopPresenting();
+    } else {
+      void this.startPresenting();
+    }
+  }
+
+  /** Project the slide onto the chosen display. Entering can genuinely fail —
+   *  no display detected, a refused window call — so it surfaces rather than
+   *  leaving the UI half-switched. */
+  async startPresenting(): Promise<void> {
+    if (preview.presentationMode) return;
+    try {
+      await preview.togglePresentationMode();
+      const display = preview.presentationDisplay;
+      toast.info(
+        display
+          ? `Presenting on ${displayLabel(display)} — press Esc to exit`
+          : "Press Esc to exit presenter mode",
+      );
+    } catch (err) {
+      logError("preview enter presentation failed:", err);
+      toast.error("Could not start the presentation");
+    }
+  }
+
+  async stopPresenting(): Promise<void> {
+    if (!preview.presentationMode) return;
+    try {
+      await preview.togglePresentationMode();
+    } catch (err) {
+      logError("preview exit presentation failed:", err);
+      toast.error("Could not leave presentation mode");
+    }
+  }
+
+  // ── Display picker ──────────────────────────────────────────────────
+
+  /** Connected displays, for the Present split-button's menu. Refreshed when
+   *  the menu opens rather than kept live: a projector can be plugged in at
+   *  any moment, and there's no display-change event to listen to. */
+  displays = $state<DisplayInfo[]>([]);
+
+  refreshDisplays() {
+    listDisplays()
+      .map((displays) => {
+        this.displays = displays;
       })
-      .catch((err) => logError("preview presentation mode failed:", err));
+      .mapErr((err) => logError("preview: listing displays failed:", err));
+  }
+
+  /** Pin the display to present on, or `null` to go back to auto (whichever
+   *  display the editor window isn't on). Persisted, so the next talk on the
+   *  same rig starts on the right screen. */
+  chooseDisplay(id: string | null) {
+    settings.setPresentationDisplay(id);
+  }
+
+  // ── Pointer auto-hide ───────────────────────────────────────────────
+
+  /** Whether the pointer is currently hidden over the projected slide. A
+   *  cursor parked in the middle of a slide is the classic presentation
+   *  blemish; it comes back the moment the mouse moves. */
+  pointerHidden = $state(false);
+  private pointerTimer: ReturnType<typeof setTimeout> | null = null;
+
+  notePointerActivity() {
+    this.pointerHidden = false;
+    if (this.pointerTimer !== null) clearTimeout(this.pointerTimer);
+    if (!preview.presentationMode) {
+      this.pointerTimer = null;
+      return;
+    }
+    this.pointerTimer = setTimeout(() => {
+      this.pointerTimer = null;
+      // Re-check: presentation may have ended while the timer was pending.
+      this.pointerHidden = preview.presentationMode;
+    }, POINTER_IDLE_MS);
+  }
+
+  /** Arm the auto-hide on entering presentation and cancel it on leaving.
+   *  Driven by an `$effect` in the pane so it tracks `presentationMode`. */
+  pointerAutoHideEffect() {
+    const presenting = preview.presentationMode;
+    untrack(() => {
+      if (presenting) {
+        this.notePointerActivity();
+      } else {
+        if (this.pointerTimer !== null) clearTimeout(this.pointerTimer);
+        this.pointerTimer = null;
+        this.pointerHidden = false;
+      }
+    });
   }
 
   /** Keyboard navigation for paginated view. */
@@ -784,6 +892,10 @@ export class PreviewController {
   }
 
   async handlePageClick(e: MouseEvent, pageIndex: number) {
+    // A projected slide is not an editing surface: clicking it — to focus the
+    // window, or just to point at something — must not drive the editor's
+    // caret, whose cursor-sync would then reach back and move the slide.
+    if (preview.presentationMode) return;
     // The handler sits on the wrapping <Button>, so `e.target` can be the
     // button itself (keyboard activation, border clicks) — reading natural
     // dimensions off it would send NaN to the backend. Locate the <img> and

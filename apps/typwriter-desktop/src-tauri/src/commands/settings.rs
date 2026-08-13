@@ -46,6 +46,11 @@ pub struct AppSettings {
     pub auto_check_updates: bool,
     pub default_preview_zoom: f64,
     pub default_preview_visible: bool,
+    /// Display to project onto in presentation mode, as an OS display id
+    /// (`\\.\DISPLAY2`). `None` means auto — pick whichever display the main
+    /// editor window isn't on. A pinned display that is no longer connected
+    /// falls back to auto rather than retargeting a different screen.
+    pub presentation_display: Option<String>,
     pub show_line_numbers: bool,
     pub show_indentation_markers: bool,
     pub spellcheck: bool,
@@ -103,6 +108,7 @@ impl Default for AppSettings {
             auto_check_updates: true,
             default_preview_zoom: 2.0,
             default_preview_visible: true,
+            presentation_display: None,
             show_line_numbers: false,
             show_indentation_markers: true,
             spellcheck: true,

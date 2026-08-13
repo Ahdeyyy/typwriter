@@ -197,6 +197,24 @@ export function emitShowTutorialRequest() {
     return ResultAsync.fromPromise(emit('app:show-tutorial', undefined), toErrString);
 }
 
+// ─── Presentation mode ───────────────────────────────────────────────────────
+// Presentation runs in the preview popout, but the button that drives it also
+// lives in the main window's preview pane. When the popout is already open the
+// main window can't hand the intent over through `?present=1` — it asks
+// instead. A *toggle* request, so the same button can also end a presentation
+// the main window can't see the keyboard for. Only the popout listens.
+
+export function onPresentationToggleRequest(handler: () => void) {
+    return ResultAsync.fromPromise(
+        listen<void>('preview:present-toggle', () => handler()),
+        toErrString
+    );
+}
+
+export function emitPresentationToggleRequest() {
+    return ResultAsync.fromPromise(emit('preview:present-toggle', undefined), toErrString);
+}
+
 // ─── Cross-window vcs diff window sync ───────────────────────────────────────
 
 export interface VcsDiffSelectionPayload {

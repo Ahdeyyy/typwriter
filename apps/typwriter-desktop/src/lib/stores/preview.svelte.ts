@@ -1,4 +1,6 @@
 import {
+    enterPresentation,
+    exitPresentation,
     getZoom,
     jumpFromCursor,
     setZoom,
@@ -14,7 +16,7 @@ import {
     onPreviewTotalPages,
     type UnlistenFn,
 } from '$lib/ipc/events';
-import type { CompileReason, PreviewHighlightRect } from '$lib/types';
+import type { CompileReason, DisplayInfo, PreviewHighlightRect } from '$lib/types';
 import { logError, logPreview } from '$lib/logger';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
@@ -31,6 +33,11 @@ function isPopoutWindow(): boolean {
 }
 
 const CURSOR_DEBOUNCE = 200;
+/** Ceiling on the render scale presentation mode will ask for. A slide is
+ *  rendered to a bitmap per page, and the preview keeps a decode window around
+ *  the visible page — 4 px/pt already covers a 4K projector for a 16:9 slide,
+ *  and going higher trades sharpness nobody can see for memory. */
+const PRESENTATION_MAX_ZOOM = 4.0;
 // How long the cursor-sync highlight stays on screen before fading out. Must
 // match the `cursor-sync-fade` CSS animation in the preview components.
 const HIGHLIGHT_DURATION = 1600;
@@ -45,6 +52,10 @@ class PreviewStore {
     lastCompileReason = $state<CompileReason>('explicit');
     poppedOut = $state(false);
     presentationMode = $state(false);
+    /** The display the slide is currently projected on, as resolved by Rust.
+     *  Non-null exactly while `presentationMode` is on; its pixel width drives
+     *  the render scale. */
+    presentationDisplay = $state<DisplayInfo | null>(null);
     /** Whether the in-workspace preview pane is currently shown. Window-local;
      *  kept up to date by the workspace page. Used to skip cursor-sync work
      *  when nothing would display the result. */
@@ -74,6 +85,13 @@ class PreviewStore {
         null,
     );
     private _visiblePage = crossWindowState<number>('preview:visiblePage', 0);
+    // Mirror of "a presentation is running", broadcast so the main window's
+    // Present button can show — and cancel — it. Deliberately separate from the
+    // window-local `presentationMode`, which drives the black full-bleed
+    // layout: the main window must keep its normal pane while projecting.
+    private _presenting = crossWindowState<boolean>('preview:presenting', false);
+    get presenting(): boolean { return this._presenting.value; }
+    set presenting(v: boolean) { this._presenting.set(v); }
     get visiblePage(): number { return this._visiblePage.value; }
     set visiblePage(v: number) { this._visiblePage.set(v); }
     get totalPages(): number { return this._totalPages.value; }
@@ -94,6 +112,8 @@ class PreviewStore {
     private _highlightTimer: ReturnType<typeof setTimeout> | null = null;
     private _highlightNonce = 0;
     private _paginatedBeforePresentation = false;
+    private _zoomBeforePresentation: number | null = null;
+    private _presentationScaleApplied = false;
 
     async init(): Promise<void> {
         const gen = ++this._initGen;
@@ -260,6 +280,9 @@ class PreviewStore {
         this.lastCompileRevision = 0;
         this.lastCompileReason = 'explicit';
         this.presentationMode = false;
+        this.presentationDisplay = null;
+        this._zoomBeforePresentation = null;
+        this._presentationScaleApplied = false;
     }
 
     /** Drop cached page state from a previous workspace. Listeners and the
@@ -278,20 +301,83 @@ class PreviewStore {
         this.isCompiling = false;
     }
 
-    // Every window is undecorated with a custom titlebar, so presentation mode
-    // only maximizes — the popout page hides its <Titlebar> off this flag.
+    /** Enter or leave true presentation mode.
+     *
+     *  The window work happens in Rust (`commands/present.rs`) — it is an
+     *  ordered sequence (move to the target display → size → fullscreen →
+     *  always-on-top) whose ordering matters, and only the always-on-top step
+     *  keeps the projected slide above the taskbar once focus moves to another
+     *  application. Everything here is the *view* half: pagination, the render
+     *  scale, and the flag the popout page hides its `<Titlebar>` off.
+     *
+     *  Rejects when the window transition fails, so callers surface it. */
     async togglePresentationMode(): Promise<void> {
-        const win = getCurrentWindow();
         if (this.presentationMode) {
-            await win.unmaximize();
+            const result = await exitPresentation();
+            if (result.isErr()) throw new Error(result.error);
             this.presentationMode = false;
+            this.presenting = false;
+            this.presentationDisplay = null;
             this.paginated = this._paginatedBeforePresentation;
-        } else {
-            await win.maximize();
-            this.presentationMode = true;
-            this._paginatedBeforePresentation = this.paginated;
-            this.paginated = true;
+            this._restoreZoomAfterPresentation();
+            return;
         }
+
+        const result = await enterPresentation(settings.presentationDisplay);
+        if (result.isErr()) throw new Error(result.error);
+        this._paginatedBeforePresentation = this.paginated;
+        this._zoomBeforePresentation = this.zoom;
+        this._presentationScaleApplied = false;
+        this.presentationDisplay = result.value;
+        this.presentationMode = true;
+        this.presenting = true;
+        this.paginated = true;
+    }
+
+    /** Raise the render scale so the projector isn't fed an upscaled slide.
+     *
+     *  Zoom is pixels-per-typst-point, so the page's width in points is
+     *  `renderedWidthPx / zoom` and the scale that exactly fills the display is
+     *  `displayWidthPx / pageWidthPt`. Called once per presentation, from the
+     *  preview pane, as soon as a decoded page gives us a real width — a fresh
+     *  popout has none at the moment it enters presentation.
+     *
+     *  Zoom is a cross-window channel *and* a global backend setting, so the
+     *  main window's preview pane also shows larger pages while presenting;
+     *  `_zoomBeforePresentation` puts it back on exit. */
+    applyPresentationScale(renderedWidthPx: number): void {
+        if (!this.presentationMode || this._presentationScaleApplied) return;
+        const display = this.presentationDisplay;
+        if (!display || renderedWidthPx <= 0 || this.zoom <= 0) return;
+
+        // One shot per presentation, whatever the outcome: the re-render this
+        // triggers feeds a new width back in, and the clamp below means
+        // "needed" can stay unreachable — that must not loop.
+        this._presentationScaleApplied = true;
+
+        const pageWidthPt = renderedWidthPx / this.zoom;
+        const needed = display.width / pageWidthPt;
+        // Under ~10% of upscaling is invisible at projector viewing distance
+        // and not worth re-rendering every page for.
+        if (needed <= this.zoom * 1.1) return;
+
+        const next = Math.min(PRESENTATION_MAX_ZOOM, Math.ceil(needed * 20) / 20);
+        if (next <= this.zoom) return;
+        this.zoom = next;
+        setZoom(next)
+            .andThen(() => triggerPreview('explicit'))
+            .mapErr((err) => logError('preview: presentation render scale failed:', err));
+    }
+
+    private _restoreZoomAfterPresentation(): void {
+        const previous = this._zoomBeforePresentation;
+        this._zoomBeforePresentation = null;
+        this._presentationScaleApplied = false;
+        if (previous === null || previous === this.zoom) return;
+        this.zoom = previous;
+        setZoom(previous)
+            .andThen(() => triggerPreview('explicit'))
+            .mapErr((err) => logError('preview: restoring zoom after presentation failed:', err));
     }
 
     togglePaginated(): void {

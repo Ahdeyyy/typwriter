@@ -151,7 +151,7 @@ Need filler text while you draft? #lorem(20)
             'The editor does more than typeset. Once a document takes shape, you can review it on a second screen, present it, or export it to share.',
         bullets: [
             'Pop the preview out into its own window — handy for a second monitor.',
-            'Enter presentation mode to show the document full-screen.',
+            'Present it full-screen on a projector, and keep working elsewhere.',
             'Export to PDF, PNG, or SVG from the preview toolbar.',
         ],
         tryThis: 'Find the export button in the preview toolbar and save this page as a PDF.',

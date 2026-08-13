@@ -1,14 +1,16 @@
 <script lang="ts">
   import { onDestroy, untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { ZoomInAreaIcon, ZoomOutAreaIcon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon, ArrowLeft01Icon, ArrowRight01Icon, Menu01Icon, File01Icon } from "@hugeicons/core-free-icons";
+  import { ZoomInAreaIcon, ZoomOutAreaIcon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon, ArrowLeft01Icon, ArrowRight01Icon, ArrowDown01Icon, Tick02Icon, Menu01Icon, File01Icon } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
 
   import { preview } from "$lib/stores/preview.svelte";
+  import { settings } from "$lib/stores/settings.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { Button } from "$lib/components/ui/button";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { previewController } from "./preview-controller.svelte";
+  import { displayLabel, previewController } from "./preview-controller.svelte";
   import { buildPreviewUrl } from "$lib/preview-url";
 
   type Props = { onPresentationMode?: () => void };
@@ -21,10 +23,27 @@
   ctrl.setOnPresentationMode(() => onPresentationMode?.());
   onDestroy(() => ctrl.detachFromMount());
 
+  // `presentationMode` is window-local (it drives the black full-bleed layout,
+  // which the main window must not adopt). `presenting` is the cross-window
+  // mirror, so the pane's button can end a presentation running in the popout.
+  const presenting = $derived(preview.presentationMode || preview.presenting);
+
   $effect(() => ctrl.syncPagesEffect());
   $effect(() => ctrl.scrollTargetEffect());
   $effect(() => ctrl.pageCounterEffect());
   $effect(() => ctrl.clampVisiblePageEffect());
+  $effect(() => ctrl.pointerAutoHideEffect());
+
+  // Match the render scale to the projector once a decoded page tells us how
+  // wide the current render actually is. A freshly opened popout enters
+  // presentation before any page has decoded, so this can't happen at the
+  // moment of entering — it waits for the first real width. `applyPresentationScale`
+  // is one-shot per presentation, so the re-render it triggers can't re-arm it.
+  $effect(() => {
+    if (!preview.presentationMode) return;
+    const width = ctrl.dimsFor(preview.pages[ctrl.visiblePage])?.w;
+    if (width) untrack(() => preview.applyPresentationScale(width));
+  });
 
   // Switching between paginated and scroll view swaps the {#if} branch below,
   // which replaces the scroll container with a fresh one at scrollTop=0. Owe
@@ -258,30 +277,84 @@
         <Tooltip.Content>Refresh preview</Tooltip.Content>
       </Tooltip.Root>
 
-      <Tooltip.Root>
-        <Tooltip.Trigger>
-          {#snippet child({ props })}
-            <Button
-              {...props}
-              variant="ghost"
-              size="icon-sm"
-              onclick={() => ctrl.togglePresentation()}
-              disabled={preview.totalPages === 0}
-              class={preview.presentationMode ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground" : ""}
-            >
-              <HugeiconsIcon icon={preview.presentationMode ? Cancel01Icon : PresentationBarChart01Icon} class="size-3.5" />
-            </Button>
-          {/snippet}
-        </Tooltip.Trigger>
-        <Tooltip.Content>{preview.presentationMode ? "Exit presentation mode" : "Presentation mode"}</Tooltip.Content>
-      </Tooltip.Root>
+      <!-- Split control: the button presents on the remembered (or
+           auto-picked) display, the caret chooses which one. -->
+      <div class="flex items-center">
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon-sm"
+                onclick={() => ctrl.togglePresentation()}
+                disabled={preview.totalPages === 0 && !presenting}
+                class={presenting ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground" : ""}
+              >
+                <HugeiconsIcon icon={presenting ? Cancel01Icon : PresentationBarChart01Icon} class="size-3.5" />
+              </Button>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            {presenting ? "Exit presentation mode" : "Present full-screen"}
+          </Tooltip.Content>
+        </Tooltip.Root>
+
+        {#if !presenting}
+          <DropdownMenu.Root onOpenChange={(open) => open && ctrl.refreshDisplays()}>
+            <DropdownMenu.Trigger>
+              {#snippet child({ props })}
+                <Button
+                  {...props}
+                  variant="ghost"
+                  size="icon-sm"
+                  class="w-4"
+                  aria-label="Choose the display to present on"
+                >
+                  <HugeiconsIcon icon={ArrowDown01Icon} class="size-3" />
+                </Button>
+              {/snippet}
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content align="end" class="w-64">
+              <DropdownMenu.GroupHeading>Present on</DropdownMenu.GroupHeading>
+              <DropdownMenu.Item onSelect={() => ctrl.chooseDisplay(null)}>
+                <span class="flex-1">Automatic</span>
+                {#if settings.presentationDisplay === null}
+                  <HugeiconsIcon icon={Tick02Icon} class="size-3.5" />
+                {/if}
+              </DropdownMenu.Item>
+              <DropdownMenu.Separator />
+              {#each ctrl.displays as display (display.id)}
+                <DropdownMenu.Item onSelect={() => ctrl.chooseDisplay(display.id)}>
+                  <span class="flex-1 truncate">
+                    {displayLabel(display)}
+                    {#if display.isMainWindow}
+                      <span class="text-muted-foreground">· editor</span>
+                    {/if}
+                  </span>
+                  {#if settings.presentationDisplay === display.id}
+                    <HugeiconsIcon icon={Tick02Icon} class="size-3.5" />
+                  {/if}
+                </DropdownMenu.Item>
+              {:else}
+                <DropdownMenu.Item disabled>No displays detected</DropdownMenu.Item>
+              {/each}
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        {/if}
+      </div>
     </div>
   </div>
   {/if}
 
   <!-- ── Page list ──────────────────────────────────────────────────────── -->
   {#if preview.presentationMode}
-    <div class="flex flex-1 items-center justify-center overflow-hidden bg-black">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="flex flex-1 items-center justify-center overflow-hidden bg-black"
+      class:cursor-none={ctrl.pointerHidden}
+      onmousemove={() => ctrl.notePointerActivity()}
+    >
       {#if ctrl.committedPages[ctrl.visiblePage]}
         <Button
           variant="ghost"

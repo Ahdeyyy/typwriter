@@ -64,3 +64,14 @@ harper-core = { version = "2.7", features = ["concurrent"] }
 # `grammar/typst_parser/` walks the AST, and this pin is what decouples our
 # grammar checker from harper's own typst support.
 typst-syntax = "0.15.1"
+
+# Presentation mode needs two Win32 calls Tauri doesn't wrap:
+# `SetThreadExecutionState` (hold off display sleep for the length of a talk)
+# and `DwmSetWindowAttribute` (keep Aero Peek from ghosting the projected
+# slide). 0.61 is already in the tree via tao, so this adds no new build.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Dwm",
+  "Win32_System_Power",
+] }

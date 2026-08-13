@@ -290,3 +290,24 @@ export interface GrammarRuleInfo {
     description: string;
     enabled: boolean;
 }
+
+// ─── Presentation mode ────────────────────────────────────────────────────────
+
+/** One connected display, as reported by the `list_displays` command. */
+export interface DisplayInfo {
+    /** Stable-ish OS identifier (`\.\DISPLAY2` on Windows) — what gets
+     *  persisted when the user pins a display for presenting. */
+    id: string;
+    /** Raw monitor name, when the OS supplies one. */
+    name: string | null;
+    /** Origin in the virtual desktop, physical pixels. */
+    x: number;
+    y: number;
+    /** Resolution in physical pixels. */
+    width: number;
+    height: number;
+    scaleFactor: number;
+    isPrimary: boolean;
+    /** The display the main editor window is currently on. */
+    isMainWindow: boolean;
+}

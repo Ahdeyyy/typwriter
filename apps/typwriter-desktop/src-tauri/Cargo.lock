@@ -9440,6 +9440,7 @@ dependencies = [
  "typst-svg",
  "typst-syntax",
  "typstyle-core",
+ "windows-sys 0.61.2",
  "zstd",
 ]
 

@@ -20,6 +20,7 @@
     onPreviewSourceJump,
     onVcsRestoreFileRequest,
     emitVcsRestoreFileResult,
+    emitPresentationToggleRequest,
   } from "$lib/ipc/events";
   import { closeDiffWindow } from "$lib/windows";
   import { logError } from "$lib/logger";
@@ -54,11 +55,21 @@
   });
 
   async function openPreviewPopout(presentAfterOpen = false) {
-    if (preview.poppedOut) return;
-
+    // The live window is the source of truth, not the `poppedOut` flag: a
+    // popout closed outside our listener would otherwise wedge this off.
     const existing = await WebviewWindow.getByLabel(PREVIEW_WINDOW_LABEL);
     if (existing) {
       preview.poppedOut = true;
+      // The popout is already up, so `?present=1` is no longer available —
+      // ask the window that owns the presentation to toggle it. Focusing it
+      // would drag it off the projector, so only do that when we're merely
+      // surfacing the popout.
+      if (presentAfterOpen) {
+        emitPresentationToggleRequest().mapErr((err) =>
+          logError("preview present toggle request failed:", err)
+        );
+        return;
+      }
       try {
         await existing.setFocus();
       } catch (err) {
@@ -66,6 +77,8 @@
       }
       return;
     }
+    // No window under that label — a stale flag from a close we missed.
+    preview.poppedOut = false;
 
     // Seed the popout's page via the URL: its cross-window state only learns
     // the current page asynchronously (ask/reply over the event bus), and the
@@ -100,6 +113,7 @@
     popout
       .onCloseRequested(() => {
         preview.poppedOut = false;
+        preview.presenting = false;
         popoutCloseUnlisten?.();
         popoutCloseUnlisten = null;
       })
@@ -160,6 +174,10 @@
         existing
           .onCloseRequested(() => {
             preview.poppedOut = false;
+            // The window that owned the presentation is going away; clear the
+            // shared flag or this window's Present button stays stuck on
+            // "exit" with nothing left to exit.
+            preview.presenting = false;
             popoutCloseUnlisten?.();
             popoutCloseUnlisten = null;
           })

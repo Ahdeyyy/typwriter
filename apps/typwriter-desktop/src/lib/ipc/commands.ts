@@ -18,7 +18,8 @@ import type {
     WorkspaceDiff,
     GrammarConfig,
     GrammarReport,
-    GrammarRuleInfo
+    GrammarRuleInfo,
+    DisplayInfo
 } from '$lib/types';
 
 const toErrString = (e: unknown): string => String(e);
@@ -199,6 +200,28 @@ export function getZoom() {
 
 export function setVisiblePage(page: number) {
     invoke<void>('set_visible_page', { page }).catch(() => {});
+}
+
+// ─── Presentation mode ────────────────────────────────────────────────────────
+
+/** Every connected display, annotated so the picker can mark the projector
+ *  (`isMainWindow === false`) and the primary screen. */
+export function listDisplays() {
+    return ResultAsync.fromPromise(invoke<DisplayInfo[]>('list_displays'), toErrString);
+}
+
+/** Put the preview popout borderless-fullscreen and always-on-top on `display`
+ *  (auto-picks the display the editor isn't on when omitted). Resolves with the
+ *  display it landed on, whose pixel width sets the slide render scale. */
+export function enterPresentation(display: string | null) {
+    return ResultAsync.fromPromise(
+        invoke<DisplayInfo>('enter_presentation', { display }),
+        toErrString
+    );
+}
+
+export function exitPresentation() {
+    return ResultAsync.fromPromise(invoke<void>('exit_presentation'), toErrString);
 }
 
 // ─── Language server (tinymist) bridge ───
@@ -437,6 +460,7 @@ export interface AppSettings {
     auto_check_updates: boolean;
     default_preview_zoom: number;
     default_preview_visible: boolean;
+    presentation_display: string | null;
     show_line_numbers: boolean;
     show_indentation_markers: boolean;
     spellcheck: boolean;

@@ -36,6 +36,7 @@ use commands::{
     },
     logs::get_log_file_path,
     lsp::{lsp_probe, lsp_send, lsp_start, lsp_stop},
+    present::{enter_presentation, exit_presentation, list_displays},
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     settings::{
         get_app_settings, get_onboarding_completed, list_font_families, list_system_font_families,
@@ -128,6 +129,16 @@ pub fn run() {
         )
         .plugin(tauri_plugin_opener::init())
         .on_window_event(|window, event| {
+            // The presentation window's saved geometry (and its keep-awake
+            // request) die with the window. Left behind, the snapshot would be
+            // reapplied to the *next* popout the first time it exits
+            // presentation, teleporting it to wherever the old one sat.
+            if window.label() == commands::present::PRESENTATION_WINDOW
+                && matches!(event, tauri::WindowEvent::Destroyed)
+            {
+                commands::present::forget_geometry(window.app_handle());
+            }
+
             // Child windows (`preview` popout, `settings`, `diff`) outlive the
             // main window (and keep the process alive), so closing the main
             // window would otherwise leave them orphaned on screen. Tear them
@@ -200,6 +211,7 @@ pub fn run() {
             app.manage(snapshot_policy);
             app.manage(formatter_config);
             app.manage(lsp::LspState::default());
+            app.manage(commands::present::PresentationState::default());
             // Cheap to construct — the dictionary and lint group behind it are
             // built on the first actual check.
             app.manage(commands::grammar::init_engine(&handle));
@@ -251,6 +263,10 @@ pub fn run() {
             set_zoom,
             get_zoom,
             set_visible_page,
+            // presentation mode
+            list_displays,
+            enter_presentation,
+            exit_presentation,
             // bidirectional jump
             jump_from_click,
             jump_from_cursor,
