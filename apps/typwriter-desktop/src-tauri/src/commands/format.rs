@@ -28,6 +28,7 @@ use serde::Serialize;
 use tauri::State;
 use typstyle_core::{Config, Typstyle};
 
+use crate::commands::editor::byte_to_utf16;
 use crate::commands::settings::AppSettings;
 use crate::workspace::WorkspaceState;
 
@@ -141,7 +142,7 @@ fn format_cursor_virtual_with(
             map_cursor_by_affix(&source, &formatted, byte_cursor)
         });
 
-    let new_cursor = byte_to_utf16_offset(&formatted, new_byte_cursor) as u32;
+    let new_cursor = byte_to_utf16(&formatted, new_byte_cursor) as u32;
     debug!(
         "virtual[1/1] ok cursor_utf16={new_cursor} ({:.1}ms)",
         t.elapsed().as_secs_f64() * 1000.0
@@ -314,11 +315,6 @@ fn utf16_to_byte_offset(s: &str, utf16: usize) -> Option<usize> {
     } else {
         None
     }
-}
-
-fn byte_to_utf16_offset(s: &str, byte_offset: usize) -> usize {
-    let clamped = byte_offset.min(s.len());
-    s[..clamped].encode_utf16().count()
 }
 
 fn count_utf16(s: &str) -> usize {
@@ -532,7 +528,7 @@ mod tests {
         let s = "hello";
         for i in 0..=s.len() {
             assert_eq!(utf16_to_byte_offset(s, i), Some(i));
-            assert_eq!(byte_to_utf16_offset(s, i), i);
+            assert_eq!(byte_to_utf16(s, i), i);
         }
     }
 
@@ -547,11 +543,11 @@ mod tests {
         assert_eq!(utf16_to_byte_offset(s, 4), Some(5));
         assert_eq!(utf16_to_byte_offset(s, 5), None);
 
-        assert_eq!(byte_to_utf16_offset(s, 0), 0);
-        assert_eq!(byte_to_utf16_offset(s, 1), 1);
-        assert_eq!(byte_to_utf16_offset(s, 3), 2);
-        assert_eq!(byte_to_utf16_offset(s, 4), 3);
-        assert_eq!(byte_to_utf16_offset(s, 5), 4);
+        assert_eq!(byte_to_utf16(s, 0), 0);
+        assert_eq!(byte_to_utf16(s, 1), 1);
+        assert_eq!(byte_to_utf16(s, 3), 2);
+        assert_eq!(byte_to_utf16(s, 4), 3);
+        assert_eq!(byte_to_utf16(s, 5), 4);
     }
 
     #[test]
@@ -563,8 +559,8 @@ mod tests {
         assert_eq!(utf16_to_byte_offset(s, 3), Some(5)); // after the crab
         assert_eq!(utf16_to_byte_offset(s, 4), Some(6));
 
-        assert_eq!(byte_to_utf16_offset(s, 1), 1);
-        assert_eq!(byte_to_utf16_offset(s, 5), 3);
+        assert_eq!(byte_to_utf16(s, 1), 1);
+        assert_eq!(byte_to_utf16(s, 5), 3);
     }
 
     #[test]
@@ -619,10 +615,10 @@ mod tests {
     }
 
     #[test]
-    fn byte_to_utf16_offset_clamps_past_end() {
+    fn byte_to_utf16_clamps_past_end() {
         let s = "hi";
-        assert_eq!(byte_to_utf16_offset(s, 2), 2);
-        assert_eq!(byte_to_utf16_offset(s, 99), 2); // clamps to the end
+        assert_eq!(byte_to_utf16(s, 2), 2);
+        assert_eq!(byte_to_utf16(s, 99), 2); // clamps to the end
     }
 
     #[test]
@@ -632,7 +628,7 @@ mod tests {
         let units = count_utf16(s);
         // Walk every char boundary; both directions must agree.
         for (byte_idx, _) in s.char_indices() {
-            let u = byte_to_utf16_offset(s, byte_idx);
+            let u = byte_to_utf16(s, byte_idx);
             assert_eq!(
                 utf16_to_byte_offset(s, u),
                 Some(byte_idx),
@@ -832,7 +828,7 @@ mod tests {
     /// utf16 cursor positioned at the byte where `anchor` first appears.
     fn cursor_before(source: &str, anchor: &str) -> u32 {
         let byte = source.find(anchor).expect("anchor present in source");
-        byte_to_utf16_offset(source, byte) as u32
+        byte_to_utf16(source, byte) as u32
     }
 
     /// Assert the universal post-conditions of the command.
@@ -997,7 +993,7 @@ mod tests {
     fn cursor_mid_number_in_code_formats_and_tracks() {
         let source = "#let x   =   1234\nTail text.\n";
         let byte_cur = source.find("34\n").expect("number present");
-        let res = fmt(source, byte_to_utf16_offset(source, byte_cur) as u32);
+        let res = fmt(source, byte_to_utf16(source, byte_cur) as u32);
         assert_eq!(
             res.formatted,
             format_typst_source(source.to_string()).unwrap()
@@ -1313,19 +1309,19 @@ Body paragraph with a SENTINEL anchor and /* inline */ a comment.
     }
 
     #[test]
-    fn byte_to_utf16_offset_cjk() {
+    fn byte_to_utf16_cjk() {
         let s = "a日本b";
-        assert_eq!(byte_to_utf16_offset(s, 0), 0);
-        assert_eq!(byte_to_utf16_offset(s, 1), 1);
-        assert_eq!(byte_to_utf16_offset(s, 4), 2);
-        assert_eq!(byte_to_utf16_offset(s, 7), 3);
-        assert_eq!(byte_to_utf16_offset(s, 8), 4);
+        assert_eq!(byte_to_utf16(s, 0), 0);
+        assert_eq!(byte_to_utf16(s, 1), 1);
+        assert_eq!(byte_to_utf16(s, 4), 2);
+        assert_eq!(byte_to_utf16(s, 7), 3);
+        assert_eq!(byte_to_utf16(s, 8), 4);
     }
 
     #[test]
-    fn byte_to_utf16_offset_zero_is_zero() {
-        assert_eq!(byte_to_utf16_offset("", 0), 0);
-        assert_eq!(byte_to_utf16_offset("anything", 0), 0);
+    fn byte_to_utf16_zero_is_zero() {
+        assert_eq!(byte_to_utf16("", 0), 0);
+        assert_eq!(byte_to_utf16("anything", 0), 0);
     }
 
     #[test]
@@ -1334,7 +1330,7 @@ Body paragraph with a SENTINEL anchor and /* inline */ a comment.
         let s = "Cafe\u{0301}"; // renders as "Café" but is 5 codepoints
         assert_eq!(count_utf16(s), 5);
         for (byte_idx, _) in s.char_indices() {
-            let u = byte_to_utf16_offset(s, byte_idx);
+            let u = byte_to_utf16(s, byte_idx);
             assert_eq!(utf16_to_byte_offset(s, u), Some(byte_idx));
         }
         assert_eq!(utf16_to_byte_offset(s, 5), Some(s.len()));
@@ -1423,7 +1419,7 @@ Body paragraph with a SENTINEL anchor and /* inline */ a comment.
             s.push_str("aé€日🦀");
         }
         for (byte_idx, _) in s.char_indices() {
-            let u = byte_to_utf16_offset(&s, byte_idx);
+            let u = byte_to_utf16(&s, byte_idx);
             assert_eq!(utf16_to_byte_offset(&s, u), Some(byte_idx));
         }
     }
