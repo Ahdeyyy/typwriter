@@ -7,13 +7,13 @@
     Folder01Icon,
     FolderExportIcon,
     Package01Icon,
-    PencilEdit01Icon,
     Delete02Icon,
     ArrowRight01Icon,
     Time04Icon,
     File02Icon,
   } from "@hugeicons/core-free-icons";
   import Icon from "$lib/components/icon.svelte";
+  import appIcon from "$lib/assets/app-icon.png";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import * as Dialog from "$lib/components/ui/dialog";
@@ -117,9 +117,7 @@
 <div class="bg-background flex flex-col" style="height: 100svh; padding-top: env(safe-area-inset-top);">
   <header class="flex shrink-0 items-center justify-between px-5 pt-4 pb-2">
     <div class="flex items-center gap-2.5">
-      <div class="bg-primary text-primary-foreground flex size-9 items-center justify-center rounded-xl shadow-sm">
-        <Icon icon={PencilEdit01Icon} class="size-5" />
-      </div>
+      <img src={appIcon} alt="" class="size-9 shrink-0 rounded-xl shadow-sm" />
       <span class="text-base font-semibold tracking-tight">Typwriter</span>
     </div>
     <Button
