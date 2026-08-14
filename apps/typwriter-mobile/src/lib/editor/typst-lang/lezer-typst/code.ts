@@ -343,7 +343,7 @@ function parseUnary(s: Scanner, ctx: TypstParseContext, embedded: boolean): Elt 
   return parseAtom(s, ctx, embedded)
 }
 
-function parseAtom(s: Scanner, ctx: TypstParseContext, embedded: boolean): Elt | null {
+function parseAtom(s: Scanner, ctx: TypstParseContext, _embedded: boolean): Elt | null {
   skipWhitespaceAndComments(s)
   const ch = s.peek()
   const pos = s.pos
@@ -523,7 +523,6 @@ function parseNumber(s: Scanner): Elt {
   }
 
   // Unit suffix: pt, cm, mm, em, in, deg, rad, fr, %
-  const unitStart = s.pos
   if (s.peek() === Ch.Percent) {
     s.next()
     return new Elt(Type.Numeric, start, s.pos)

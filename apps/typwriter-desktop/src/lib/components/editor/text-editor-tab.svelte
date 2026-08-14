@@ -14,9 +14,6 @@
     history,
     historyKeymap,
     indentWithTab,
-    insertTab,
-    lineComment,
-    lineUncomment,
   } from "@codemirror/commands";
   import {
     autocompletion,
@@ -83,7 +80,6 @@
     getTooltip as getTooltipIpc,
   } from "$lib/ipc/commands";
   import type { SerializedDiagnostic, TooltipResponse } from "$lib/types";
-  import { ayuLight } from "thememirror";
   import { indentationMarkers } from "@replit/codemirror-indentation-markers";
   import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
   import { logError, logPreview } from "$lib/logger";
@@ -289,7 +285,7 @@
 
   function mergedTypstCompletionsForTab(tabId: string): CompletionSource {
     return async (context: CompletionContext) => {
-      const hasWordBeforeCursor = context.matchBefore(/[\w\-]+/);
+      const hasWordBeforeCursor = context.matchBefore(/[\w-]+/);
       if (
         !context.explicit &&
         (!hasWordBeforeCursor ||

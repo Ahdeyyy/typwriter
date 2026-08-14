@@ -1,6 +1,6 @@
 import { Type } from "./types"
 import { Elt, TypstParseContext } from "./parser"
-import { Scanner, Ch, isAlpha, isDigit, isIdentChar, isNewline, isWhitespace, isLineWhitespace } from "./scanner"
+import { Scanner, Ch, isAlpha, isDigit, isWhitespace, isLineWhitespace } from "./scanner"
 import { parseCodeExpr } from "./code"
 import { parseLineComment, parseBlockComment } from "./markup"
 
@@ -125,7 +125,7 @@ export function parseMathContent(s: Scanner, ctx: TypstParseContext): Elt[] {
     // Primes '
     if (ch === Ch.SingleQuote) {
       const start = s.pos
-      while (s.eat(Ch.SingleQuote)) {}
+      while (s.eat(Ch.SingleQuote)) { /* consume the run of primes */ }
       elts.push(new Elt(Type.MathPrimes, start, s.pos))
       continue
     }
