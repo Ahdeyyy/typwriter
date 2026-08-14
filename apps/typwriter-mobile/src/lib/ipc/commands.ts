@@ -100,7 +100,7 @@ export const formatTypstSource = (source: string) =>
 export const formatTypstSourceWithCursor = (source: string, cursor: number) =>
   call<FormatWithCursorResponse>("format_typst_cursor_virtual", { source, cursor });
 
-// ─── PDF export (phase 7) ─────────────────────────────────────────────────────
+// ─── PDF export ───────────────────────────────────────────────────────────────
 
 export const exportPdfToUri = () => call<string>("export_pdf_to_uri");
 export const exportPdfToCacheFile = () => call<string>("export_pdf_to_cache_file");

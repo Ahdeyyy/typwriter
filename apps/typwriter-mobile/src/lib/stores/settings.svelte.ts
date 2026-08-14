@@ -1,5 +1,5 @@
-// Persisted app settings. Frontend-owns persistence via tauri-plugin-store
-// (per the phase-2 decision: no Rust settings commands). Writes are debounced.
+// Persisted app settings. The frontend owns persistence via tauri-plugin-store;
+// there are no Rust settings commands. Writes are debounced.
 
 import { load, type Store } from "@tauri-apps/plugin-store";
 import type { AppSettings } from "$lib/ipc/types";

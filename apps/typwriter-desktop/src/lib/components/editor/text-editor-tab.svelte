@@ -833,7 +833,8 @@
   // Depends on `mountedTabId` as well as the request: when the jump targets a
   // tab whose view isn't built yet (file still loading, mount slower than one
   // frame), the request stays pending and this re-runs once the view mounts —
-  // a single rAF retry used to drop those jumps silently.
+  // retrying on a single rAF is not enough, since the mount can take longer
+  // than one frame.
   $effect(() => {
     const req = editor.cursorJumpRequest;
     mountedTabId;

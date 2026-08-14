@@ -35,9 +35,9 @@
     "(", ")", "[", "]", "{", "}", '"', "<", ">", "@",
   ];
 
-  // Formatting quick commands — same buttons as before, but they now run the
-  // desktop toolbar's toggle semantics (wrap ⇄ unwrap, prefix on ⇄ off)
-  // instead of blind insertion. The commands re-focus via `focused(...)`.
+  // Formatting quick commands — these run toggle semantics (wrap ⇄ unwrap,
+  // prefix on ⇄ off), not blind insertion. The commands re-focus via
+  // `focused(...)`.
   // Heading is handled separately (it opens the level picker).
   const COMMANDS: { icon: IconSvgElement; label: string; run: (v: EditorView) => void }[] = [
     { icon: TextBoldIcon, label: "Bold", run: focused(toggleBold) },

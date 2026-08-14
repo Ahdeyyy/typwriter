@@ -1,6 +1,9 @@
-// Compile state. Phase 3/4 use the `onSaved()` no-op hook; the full compile
-// flow (eager compile when preview is open, generation staleness, page
-// metadata) arrives in phase 6 (06-preview.md).
+// Compile state: page metadata, diagnostics, and staleness for the current
+// document. Compiles are never driven per keystroke (that froze the app on
+// device) — they are triggered by the hooks below, which fire on save, on a
+// main-file change, and on workspace open. `onSaved` only recompiles eagerly
+// while the preview overlay is open; otherwise the document is marked stale
+// and the compile waits until the user opens the preview.
 
 import { ResultAsync } from "neverthrow";
 import type { Diagnostic, PageMeta } from "$lib/ipc/types";

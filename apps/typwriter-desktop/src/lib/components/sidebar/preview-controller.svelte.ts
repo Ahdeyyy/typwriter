@@ -932,13 +932,12 @@ export class PreviewController {
   }
 }
 
-// Per-webview singleton. The Preview component used to `new PreviewController`
-// inside its <script>, which meant unmounting the pane (e.g. when the user
-// pops the preview out into a separate window) destroyed every per-controller
-// buffer — decoded page fingerprints, visible-page index, watchdog state. On
-// remount everything re-decoded from scratch and the pane looked like it
-// "reloaded". Hoisting to a singleton lets state survive across mounts;
-// `detachFromMount()` clears the DOM-bound refs without nuking the buffers.
+// Per-webview singleton. The controller's buffers — decoded page fingerprints,
+// visible-page index, watchdog state — must outlive any single mount, because
+// the pane is unmounted when the user pops the preview out into a separate
+// window. Owning them per-component would re-decode everything on remount and
+// the pane would look like it reloaded. `detachFromMount()` clears the
+// DOM-bound refs without nuking the buffers.
 //
 // One instance per webview is fine — popout windows have their own module
 // graph, so each window gets its own singleton with its own DOM-bound state,
