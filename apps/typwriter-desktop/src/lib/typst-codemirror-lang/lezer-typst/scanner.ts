@@ -92,7 +92,7 @@ export class Scanner {
   /// Consume characters while the predicate returns true.
   /// Returns the number of characters consumed.
   eatWhile(pred: (ch: number) => boolean): number {
-    let start = this.pos
+    const start = this.pos
     while (this.pos < this.text.length && pred(this.text.charCodeAt(this.pos)))
       this.pos++
     return this.pos - start

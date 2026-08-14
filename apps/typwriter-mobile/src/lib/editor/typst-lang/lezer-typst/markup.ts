@@ -2,7 +2,7 @@ import { Type } from "./types"
 import { Elt, TypstParseContext } from "./parser"
 import { Scanner, Ch, isAlpha, isDigit, isIdentStart, isIdentChar, isNewline, isLineWhitespace, isWhitespace } from "./scanner"
 import { parseMathContent } from "./math"
-import { parseCodeExpr, parseCodeBlock } from "./code"
+import { parseCodeExpr } from "./code"
 
 /// Parse top-level markup content. Returns a list of elements that
 /// become children of the Document node.
@@ -73,7 +73,6 @@ export function parseMarkupContent(
 
   // Track whether we're at the start of a line (for headings, lists, etc.)
   let atLineStart = atLineStartInit
-  let lineIndent = 0
 
   while (!s.done) {
     // Check for close delimiter
@@ -108,8 +107,6 @@ export function parseMarkupContent(
       if (ch === Ch.CarriageReturn) s.eat(Ch.Newline)
 
       // Check for paragraph break (blank line)
-      let blankCount = 0
-      const savedPos = s.pos
       let isParbreak = false
       // Skip whitespace-only lines
       while (!s.done) {
@@ -132,11 +129,9 @@ export function parseMarkupContent(
       }
 
       atLineStart = true
-      lineIndent = 0
       // Count indent on new line
       const indentStart = s.pos
       s.eatWhile(isLineWhitespace)
-      lineIndent = s.pos - indentStart
       if (s.pos > indentStart && !isNewline(s.peek()) && !s.done) {
         // The whitespace before content is space
         elts.push(new Elt(Type.Space, indentStart, s.pos))
@@ -293,7 +288,7 @@ export function parseMarkupContent(
       if (s.peek(1) === Ch.Minus) {
         flushText()
         s.next(); s.next()
-        if (s.eat(Ch.Minus)) {} // em dash: ---
+        s.eat(Ch.Minus) // em dash: ---
         elts.push(new Elt(Type.Shorthand, pos, s.pos))
         continue
       }
@@ -359,8 +354,7 @@ function parseHeading(
   containerClose: number = Ch.EOF,
 ): Elt | null {
   const start = s.pos
-  let level = 0
-  while (s.peek() === Ch.Eq) { s.next(); level++ }
+  while (s.peek() === Ch.Eq) s.next()
   // Must be followed by space or newline
   if (!isLineWhitespace(s.peek()) && !isNewline(s.peek()) && !s.done) {
     s.pos = start
@@ -728,14 +722,7 @@ function parseRef(s: Scanner, ctx: TypstParseContext): Elt | null {
 function tryParseLink(s: Scanner): Elt | null {
   // Check for http:// or https://
   const start = s.pos
-  let protocol = ""
-  if (s.eatString("https://")) {
-    protocol = "https://"
-  } else if (s.eatString("http://")) {
-    protocol = "http://"
-  } else {
-    return null
-  }
+  if (!s.eatString("https://") && !s.eatString("http://")) return null
 
   // Consume URL characters (everything except whitespace and certain punctuation at end)
   const urlStart = s.pos

@@ -59,6 +59,10 @@ jobs:
       # Runs svelte-check in all three apps via each one's check-types script.
       - name: typecheck all workspaces
         run: bun run check-types
+      # ESLint in all three apps. Formatting is not linted anywhere in this
+      # repo — there is no prettier config and the sources are hand-formatted.
+      - name: lint all workspaces
+        run: bun run lint
       - name: bun test (desktop)
         working-directory: apps/typwriter-desktop
         run: bun test

@@ -6,8 +6,6 @@
     PanelLeftCloseIcon,
     EyeIcon,
     ViewOffSlashIcon,
-    ArrowExpandIcon,
-    Link01Icon,
     LinkSquare01Icon,
   } from "@hugeicons/core-free-icons";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";

@@ -1,6 +1,6 @@
-import { Parser, type Input, TreeFragment, type PartialParse, Tree, NodeSet, parseMixed, type SyntaxNodeRef } from "@lezer/common"
+import { Parser, type Input, TreeFragment, type PartialParse, Tree, NodeSet, parseMixed } from "@lezer/common"
 import { Type, nodeSet } from "./types"
-import { Scanner, Ch } from "./scanner"
+import { Scanner } from "./scanner"
 import { parseMarkup } from "./markup"
 
 /// Parsing mode: determines how characters are interpreted.

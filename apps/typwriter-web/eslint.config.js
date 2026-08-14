@@ -22,7 +22,11 @@ export default defineConfig(
 		rules: {
 			// typescript-eslint strongly recommend that you do not use the no-undef lint rule on TypeScript projects.
 			// see: https://typescript-eslint.io/troubleshooting/faqs/eslint/#i-get-errors-from-the-no-undef-rule-about-global-variables-not-being-defined-even-though-there-are-no-typescript-errors
-			'no-undef': 'off'
+			'no-undef': 'off',
+			// The shadcn Button renders whatever href it is handed, and this
+			// page's links are external (GitHub releases), where resolve() does
+			// not apply. Kept visible but non-blocking, as in the other apps.
+			'svelte/no-navigation-without-resolve': 'warn'
 		}
 	},
 	{
