@@ -25,6 +25,8 @@ use log::{debug, error, warn};
 use serde::Serialize;
 use typstyle_core::Typstyle;
 
+use crate::commands::editor::byte_to_utf16;
+
 /// Format a Typst source string and return the formatted output.
 #[tauri::command]
 pub fn format_typst_source(source: String) -> Result<String, String> {
@@ -87,7 +89,7 @@ pub fn format_typst_cursor_virtual(
             map_cursor_by_affix(&source, &formatted, byte_cursor)
         });
 
-    let new_cursor = byte_to_utf16_offset(&formatted, new_byte_cursor) as u32;
+    let new_cursor = byte_to_utf16(&formatted, new_byte_cursor) as u32;
     debug!(
         "virtual[1/1] ok cursor_utf16={new_cursor} ({:.1}ms)",
         t.elapsed().as_secs_f64() * 1000.0
@@ -134,11 +136,6 @@ fn utf16_to_byte_offset(s: &str, utf16: usize) -> Option<usize> {
     } else {
         None
     }
-}
-
-fn byte_to_utf16_offset(s: &str, byte_offset: usize) -> usize {
-    let clamped = byte_offset.min(s.len());
-    s[..clamped].encode_utf16().count()
 }
 
 fn count_utf16(s: &str) -> usize {
@@ -329,7 +326,7 @@ mod tests {
         let s = "hello";
         for i in 0..=s.len() {
             assert_eq!(utf16_to_byte_offset(s, i), Some(i));
-            assert_eq!(byte_to_utf16_offset(s, i), i);
+            assert_eq!(byte_to_utf16(s, i), i);
         }
     }
 
@@ -344,11 +341,11 @@ mod tests {
         assert_eq!(utf16_to_byte_offset(s, 4), Some(5));
         assert_eq!(utf16_to_byte_offset(s, 5), None);
 
-        assert_eq!(byte_to_utf16_offset(s, 0), 0);
-        assert_eq!(byte_to_utf16_offset(s, 1), 1);
-        assert_eq!(byte_to_utf16_offset(s, 3), 2);
-        assert_eq!(byte_to_utf16_offset(s, 4), 3);
-        assert_eq!(byte_to_utf16_offset(s, 5), 4);
+        assert_eq!(byte_to_utf16(s, 0), 0);
+        assert_eq!(byte_to_utf16(s, 1), 1);
+        assert_eq!(byte_to_utf16(s, 3), 2);
+        assert_eq!(byte_to_utf16(s, 4), 3);
+        assert_eq!(byte_to_utf16(s, 5), 4);
     }
 
     #[test]
@@ -360,8 +357,8 @@ mod tests {
         assert_eq!(utf16_to_byte_offset(s, 3), Some(5)); // after the crab
         assert_eq!(utf16_to_byte_offset(s, 4), Some(6));
 
-        assert_eq!(byte_to_utf16_offset(s, 1), 1);
-        assert_eq!(byte_to_utf16_offset(s, 5), 3);
+        assert_eq!(byte_to_utf16(s, 1), 1);
+        assert_eq!(byte_to_utf16(s, 5), 3);
     }
 
     #[test]
@@ -412,7 +409,7 @@ mod tests {
 
     fn cursor_before(source: &str, anchor: &str) -> u32 {
         let byte = source.find(anchor).expect("anchor present in source");
-        byte_to_utf16_offset(source, byte) as u32
+        byte_to_utf16(source, byte) as u32
     }
 
     fn assert_invariants(source: &str, res: &FormatWithCursorResponse) {
