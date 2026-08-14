@@ -5,7 +5,7 @@
 import { ResultAsync, okAsync } from "neverthrow";
 import type { EditorView } from "@codemirror/view";
 import * as ipc from "$lib/ipc/commands";
-import { remapPath } from "$lib/paths";
+import { basename, remapPath } from "$lib/paths";
 import { settings } from "./settings.svelte";
 import { compileStore } from "./compile.svelte";
 
@@ -65,8 +65,7 @@ class EditorStore {
   /** Derived display name (last path segment) for the top bar. */
   get fileName(): string | null {
     if (!this.relPath) return null;
-    const parts = this.relPath.split("/");
-    return parts[parts.length - 1] ?? this.relPath;
+    return basename(this.relPath);
   }
 
   /**
@@ -78,10 +77,6 @@ class EditorStore {
     if (this.newTabOpen || !this.relPath) return null;
     const name = this.fileName;
     if (!name) return null;
-    const basename = (p: string) => {
-      const parts = p.split("/");
-      return parts[parts.length - 1] ?? p;
-    };
     const duplicated = this.tabs.filter((t) => basename(t) === name).length > 1;
     if (!duplicated) return name;
     const parts = this.relPath.split("/");

@@ -14,6 +14,7 @@
   import Icon from "$lib/components/icon.svelte";
   import * as Drawer from "$lib/components/ui/drawer";
   import { longpress } from "$lib/actions/longpress";
+  import { basename, parentDir } from "$lib/paths";
   import { app } from "$lib/stores/app.svelte";
   import { editor } from "$lib/stores/editor.svelte";
 
@@ -33,17 +34,6 @@
   $effect(() => {
     if (!open) actionTarget = null;
   });
-
-  function basename(rel: string): string {
-    const parts = rel.split("/");
-    return parts[parts.length - 1] ?? rel;
-  }
-
-  /** Parent folder, shown as the drawer subtitle. */
-  function parentDir(rel: string): string {
-    const i = rel.lastIndexOf("/");
-    return i === -1 ? "/" : rel.slice(0, i);
-  }
 
   function iconFor(name: string): IconSvgElement {
     if (/\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(name)) return Image01Icon;

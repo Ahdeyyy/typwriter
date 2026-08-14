@@ -3,6 +3,20 @@
 // src-tauri/src/workspace.rs — the two must agree, or the frontend's tabs and
 // the persisted metadata drift apart after a rename.
 
+/** Last segment of a workspace-relative path. Returns `rel` unchanged when it
+ *  has no separator. */
+export function basename(rel: string): string {
+  const parts = rel.split("/");
+  return parts[parts.length - 1] ?? rel;
+}
+
+/** Parent folder of `rel`, for display. Returns `"/"` — not `""` — for a path
+ *  at the workspace root, since this is rendered as a subtitle. */
+export function parentDir(rel: string): string {
+  const i = rel.lastIndexOf("/");
+  return i === -1 ? "/" : rel.slice(0, i);
+}
+
 export type PathRemap =
   | { kind: "unaffected" }
   | { kind: "moved"; to: string }

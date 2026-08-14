@@ -23,6 +23,7 @@
   import * as Drawer from "$lib/components/ui/drawer";
   import * as Dialog from "$lib/components/ui/dialog";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
+  import { parentDir } from "$lib/paths";
   import { app } from "$lib/stores/app.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { editor } from "$lib/stores/editor.svelte";
@@ -195,12 +196,6 @@
     if (workspace.tree) walk(workspace.tree);
     return { files, folders };
   });
-
-  /** Parent folder of the action target, shown as a subtitle in the drawer. */
-  function parentDir(relPath: string): string {
-    const i = relPath.lastIndexOf("/");
-    return i === -1 ? "/" : relPath.slice(0, i);
-  }
 
   const dialogTitle = $derived.by(() => {
     switch (dialogMode) {
