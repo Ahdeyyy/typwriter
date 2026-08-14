@@ -22,13 +22,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: "./apps/typwriter-desktop/src-tauri -> target"
+          workspaces: |
+            ./apps/typwriter-desktop/src-tauri -> target
+            ./apps/typwriter-mobile/src-tauri -> target
           key: ci
-      - name: cargo check
+      - name: cargo check (desktop)
         working-directory: apps/typwriter-desktop/src-tauri
         run: cargo check --all-targets
-      - name: cargo test
+      - name: cargo test (desktop)
         working-directory: apps/typwriter-desktop/src-tauri
+        run: cargo test
+      - name: cargo check (mobile)
+        working-directory: apps/typwriter-mobile/src-tauri
+        run: cargo check --all-targets
+      - name: cargo test (mobile)
+        working-directory: apps/typwriter-mobile/src-tauri
         run: cargo test
 
   frontend:
@@ -37,8 +45,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install
-      - name: svelte-check (desktop app)
-        working-directory: apps/typwriter-desktop
-        run: bun run check
+      # Runs svelte-check in all three apps via each one's check-types script.
       - name: typecheck all workspaces
         run: bun run check-types
+      - name: bun test (desktop)
+        working-directory: apps/typwriter-desktop
+        run: bun test
+      - name: bun test (mobile)
+        working-directory: apps/typwriter-mobile
+        run: bun test
