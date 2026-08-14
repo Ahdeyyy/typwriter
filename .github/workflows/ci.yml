@@ -44,6 +44,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      # The hand-written Typst parser is duplicated in both apps and must stay
+      # byte-identical: it is shared by copy, not by package, because a
+      # workspace package would resolve its own @lezer/common and two copies
+      # collide NodeProp ids (highlighting silently renders as plain text).
+      # Every parser fix therefore has to land twice — this fails the build if
+      # only one copy got it.
+      - name: Typst parser copies are identical
+        run: |
+          diff -r \
+            apps/typwriter-desktop/src/lib/typst-codemirror-lang/lezer-typst \
+            apps/typwriter-mobile/src/lib/editor/typst-lang/lezer-typst
       - run: bun install
       # Runs svelte-check in all three apps via each one's check-types script.
       - name: typecheck all workspaces
