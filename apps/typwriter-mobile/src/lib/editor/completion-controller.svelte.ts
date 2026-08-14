@@ -6,8 +6,8 @@
 // position — every binding in scope, or the whole markup snippet list. Ranking
 // it against what the user has typed is this file's job (CodeMirror's
 // `autocompletion()` does the equivalent on desktop); without it the strip
-// shows the first N things typst happened to emit, which is why `#im` used to
-// suggest `align, alt, arguments, …` and never `image`.
+// shows the first N things typst happened to emit, so `#im` would surface
+// `align, alt, arguments, …` and never `image`.
 
 import type { EditorState, Text } from "@codemirror/state";
 import type { EditorView, ViewUpdate } from "@codemirror/view";

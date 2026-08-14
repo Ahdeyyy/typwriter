@@ -1,6 +1,5 @@
 <script lang="ts">
-  // Light / Dark / System segmented control — the settings-pane equivalent of
-  // the dropdown ModeSwitcher that used to sit in the home screen's corner.
+  // Light / Dark / System segmented control.
   //
   // mode-watcher keeps its state per webview, so every change is also broadcast
   // over `app:mode-changed` for the other windows to apply.

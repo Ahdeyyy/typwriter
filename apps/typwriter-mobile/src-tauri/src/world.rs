@@ -211,16 +211,6 @@ impl MobileWorld {
         self.main.read().is_some()
     }
 
-    /// Convert an absolute path on disk to a workspace-local `FileId`.
-    /// Returns `None` if the path is not inside the workspace root.
-    #[allow(dead_code)] // used by the SAF/file-watch paths in phase 8
-    pub fn path_to_id(&self, path: &Path) -> Option<FileId> {
-        let root = self.root.read();
-        let root = root.as_ref()?;
-        let rel = path.strip_prefix(root).ok()?;
-        local_file_id(rel)
-    }
-
     /// Resolve a workspace-relative path (forward slashes) to a `FileId`.
     pub fn rel_to_id(&self, rel: &str) -> Result<FileId, String> {
         local_file_id(Path::new(rel)).ok_or_else(|| format!("invalid path: {rel}"))

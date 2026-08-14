@@ -1,9 +1,9 @@
 // CodeMirror EditorView factory — the deliberately lean mobile extension set.
 // One EditorView for the whole app; content is swapped per file via setState.
 //
-// Excluded vs. desktop (do NOT re-add without updating 04-editor.md):
+// Excluded vs. desktop, each for a reason:
 //   drawSelection (breaks Android native selection handles + magnifier),
-//   autocompletion (replaced by the custom completion strip, phase 5),
+//   autocompletion (replaced by the custom completion strip),
 //   lint/search/fold gutters, hoverTooltip, vscode keymap / Mod-S bindings,
 //   per-keystroke IPC.
 

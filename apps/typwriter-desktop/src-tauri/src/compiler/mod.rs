@@ -294,9 +294,8 @@ pub struct PreviewPipeline {
     /// moment"; `None` means the slot exists but has never been emitted.
     ///
     /// Updated atomically — a single write at the end of (or each exit point
-    /// from) `compile_and_emit`. The mid-flight write the old code did caused
-    /// aborted compiles to leave the frontend pointing at fingerprints that
-    /// had never been rendered.
+    /// from) `compile_and_emit` — so an aborted compile can never leave the
+    /// frontend pointing at a fingerprint that was never rendered.
     last_emitted: Mutex<Vec<Option<PageCacheKey>>>,
     /// Diagnostics from `.typ` files not reachable from the main file
     /// (errors, warnings). Refreshed only on Save/Watcher/Explicit/MainFile

@@ -200,8 +200,8 @@ impl WorkspaceState {
         let t = Instant::now();
         info!("WorkspaceState::set_main_file: path={path:?}");
 
-        // Snapshot the workspace root once — set_main_file is a hot path that
-        // used to take this lock three times.
+        // Snapshot the workspace root once; set_main_file is a hot path and the
+        // lock is needed in three places below.
         let root = self.root.read().clone().ok_or_else(|| {
             let e = "No workspace open";
             error!("WorkspaceState::set_main_file: err=\"{e}\"");

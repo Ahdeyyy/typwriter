@@ -5,7 +5,8 @@
 // the Keymaps settings pane renders it, the editor builds its keymap from it,
 // and the window-level handlers match keystrokes against it. Adding a
 // rebindable shortcut means adding an entry here and calling `keysFor` /
-// `matchesCommand` at the place that used to hard-code the keystroke.
+// `matchesCommand` wherever the shortcut is handled, rather than hard-coding
+// the keystroke there.
 //
 // User overrides live in the settings store (`settings.keybindings`), keyed by
 // command id and holding only the ids the user actually changed — so a command
