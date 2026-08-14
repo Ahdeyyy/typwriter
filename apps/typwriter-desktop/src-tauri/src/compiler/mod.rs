@@ -20,7 +20,7 @@ pub use render::render_page;
 
 use std::{
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, Sender},
         Arc,
     },
@@ -116,6 +116,12 @@ struct CompileStatePayload {
     status: CompileStatus,
     revision: u64,
     reason: CompileReason,
+    /// The pages currently on screen come from an older compile because the
+    /// most recent one produced no document. Carried on every state event
+    /// (including `Started`, since a recompile doesn't un-stale the render
+    /// until it succeeds) so any window can label the preview without
+    /// listening to diagnostics — the popout never initializes that store.
+    stale: bool,
 }
 
 // Export config types
@@ -328,6 +334,10 @@ pub struct PreviewPipeline {
     /// event has already fired) still learns a compile is in flight and shows
     /// the "Compiling" indicator.
     last_compile_state: Mutex<CompileStatePayload>,
+    /// Whether the last compile failed to produce a document, i.e. whether the
+    /// render the frontend is showing is stale. Stamped onto every
+    /// [`CompileStatePayload`].
+    last_compile_failed: AtomicBool,
     /// Version-control state. Used to auto-commit a restore point whenever
     /// a compile succeeds (the user's "good known state").
     vcs: Arc<VcsState>,
@@ -355,7 +365,9 @@ impl PreviewPipeline {
                 status: CompileStatus::Idle,
                 revision: 0,
                 reason: CompileReason::default(),
+                stale: false,
             }),
+            last_compile_failed: AtomicBool::new(false),
             vcs,
         }
     }
@@ -378,6 +390,8 @@ impl PreviewPipeline {
         self.page_cache.lock().clear();
         *self.last_emitted.lock() = Vec::new();
         *self.last_document.lock() = None;
+        // The incoming workspace/main file inherits no staleness from the old one.
+        self.last_compile_failed.store(false, Ordering::Release);
         // Drop cached cross-file diagnostics: they belong to the previous
         // workspace/main-file and must not bleed into the next one. The
         // following compile uses a non-Typing reason and repopulates them.
@@ -602,6 +616,7 @@ impl PreviewPipeline {
             status,
             revision,
             reason,
+            stale: self.last_compile_failed.load(Ordering::Acquire),
         };
         // Remember it so a preview pane that mounts mid-compile can recover the
         // current status via `emit_current_state` (sync_preview).
@@ -611,6 +626,9 @@ impl PreviewPipeline {
         }
     }
 
+    /// Blank the preview outright. Reserved for "there is nothing to render" —
+    /// no main file. A *failed* compile deliberately does not come through
+    /// here; see the `None` arm in [`Self::compile_and_emit`].
     fn clear_preview(&self, old_page_count: usize) {
         let _ = self
             .app_handle
@@ -622,6 +640,8 @@ impl PreviewPipeline {
         }
         *self.last_emitted.lock() = Vec::new();
         *self.last_document.lock() = None;
+        // Nothing is on screen to be stale.
+        self.last_compile_failed.store(false, Ordering::Release);
     }
 
     fn compile_and_emit(&self, revision: u64, reason: CompileReason, request_mark: u64) {
@@ -700,15 +720,27 @@ impl PreviewPipeline {
         let doc = match document {
             Some(doc) => doc,
             None => {
-                let old_count = self.last_emitted.lock().len();
-                self.clear_preview(old_count);
+                // Deliberately keep the last good render on screen instead of
+                // clearing it. Blanking costs more than the staleness: the
+                // frontend's scroll container collapses to zero height, so the
+                // recovering compile re-seeds its page counter from scrollTop 0
+                // and throws the reader back to page 1. Holding `last_emitted`
+                // also lets that compile diff against it and re-emit only the
+                // pages that actually changed (no reflow, no full re-decode),
+                // and holding `last_document` keeps click-to-source and
+                // cursor-sync alive while the document is broken — precisely
+                // when the user is navigating to fix it. The errors themselves
+                // went out on `compile:diagnostics` above, and the `stale` flag
+                // on the next compile-state event labels the pane.
+                self.last_compile_failed.store(true, Ordering::Release);
                 info!(
-                    "compile revision={revision} reason={reason:?} produced no document ({:.1}ms)",
+                    "compile revision={revision} reason={reason:?} produced no document, keeping last render ({:.1}ms)",
                     t.elapsed().as_secs_f64() * 1000.0
                 );
                 return;
             }
         };
+        self.last_compile_failed.store(false, Ordering::Release);
 
         if self.is_stale_request(request_mark) {
             info!("compile revision={revision} reason={reason:?} skipped stale render");

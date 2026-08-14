@@ -50,6 +50,11 @@ class PreviewStore {
     isCompiling = $state(false);
     lastCompileRevision = $state(0);
     lastCompileReason = $state<CompileReason>('explicit');
+    /** The last compile produced no document, so what's on screen (if anything)
+     *  is the previous successful render. Window-local rather than a
+     *  `crossWindowState` channel: both windows listen to `preview:compile-state`
+     *  directly, and `sync_preview` re-publishes it to a late mount. */
+    staleRender = $state(false);
     poppedOut = $state(false);
     presentationMode = $state(false);
     /** The display the slide is currently projected on, as resolved by Rust.
@@ -229,14 +234,15 @@ class PreviewStore {
             }
         }
 
-        const compileStateResult = await onPreviewCompileState(({ status, revision, reason }) => {
+        const compileStateResult = await onPreviewCompileState(({ status, revision, reason, stale }) => {
             // Stage 3d: compile lifecycle marker. Brackets the page events above
             // so you can attribute a burst of total-pages/page-updated/-removed
             // churn to a specific compile (and its `reason`: typing vs save vs …).
-            logPreview('event:compile-state', { status, revision, reason });
+            logPreview('event:compile-state', { status, revision, reason, stale });
             this.isCompiling = status === 'started';
             this.lastCompileRevision = revision;
             this.lastCompileReason = reason;
+            this.staleRender = stale;
         });
         if (compileStateResult.isOk()) {
             if (gen !== this._initGen) {
@@ -277,6 +283,7 @@ class PreviewStore {
         // remounting main window anyway.
         this.pages = [];
         this.isCompiling = false;
+        this.staleRender = false;
         this.lastCompileRevision = 0;
         this.lastCompileReason = 'explicit';
         this.presentationMode = false;
@@ -299,6 +306,12 @@ class PreviewStore {
         this.totalPages = 0;
         this.scrollTarget = null;
         this.isCompiling = false;
+        this.staleRender = false;
+        // A different document starts at its own beginning. `visiblePage` is a
+        // cross-window channel and survives the page buffers being dropped, so
+        // without this the new workspace inherits the old one's page number —
+        // and the popout, which restores to it on mount, lands mid-document.
+        this.visiblePage = 0;
     }
 
     /** Enter or leave true presentation mode.

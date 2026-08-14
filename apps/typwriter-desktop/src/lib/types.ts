@@ -177,6 +177,10 @@ export interface CompileStatePayload {
     status: 'started' | 'idle';
     revision: number;
     reason: CompileReason;
+    /** The pages on screen are from an older compile: the most recent one
+     *  failed to produce a document. The backend keeps the last good render
+     *  rather than blanking the pane, so this is how the UI knows to say so. */
+    stale: boolean;
 }
 
 export interface WorkspaceFilesChangedPayload {

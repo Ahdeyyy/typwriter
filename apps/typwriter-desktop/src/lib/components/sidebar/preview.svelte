@@ -101,6 +101,21 @@
 
 <svelte:window onkeydown={(e) => ctrl.handleKeydown(e)} />
 
+<!-- What to say when there are no pages to show. The failed-compile case only
+     reaches here when no earlier compile ever succeeded — otherwise the
+     backend keeps the last good render up and there are pages. -->
+{#snippet emptyStateText()}
+  {#if !workspace.mainFile}
+    Select a main `.typ` file in the explorer to render a preview.
+  {:else if preview.isCompiling}
+    Compiling…
+  {:else if preview.staleRender}
+    Compile failed — see Diagnostics.
+  {:else}
+    Loading preview…
+  {/if}
+{/snippet}
+
 <!-- Transient cursor-sync highlight over a page. Rectangles are positioned as a
      fraction of the page so they track the image at any zoom / fit scale. The
      {#key} restarts the fade when the same page is re-highlighted. -->
@@ -180,6 +195,24 @@
         <span class="mr-2 text-[11px] uppercase tracking-wide text-muted-foreground animate-pulse">
           Compiling
         </span>
+      {:else if preview.staleRender && preview.totalPages > 0}
+        <!-- A failed compile leaves the previous render up rather than blanking
+             the pane, so say that the pages are behind the source. -->
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <span
+                {...props}
+                class="mr-2 text-[11px] uppercase tracking-wide text-destructive"
+              >
+                Stale
+              </span>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            Compile failed — showing the last successful render
+          </Tooltip.Content>
+        </Tooltip.Root>
       {/if}
 
       {#if preview.paginated && preview.totalPages > 0}
@@ -376,11 +409,7 @@
     <div class="flex flex-1 flex-col items-center overflow-auto py-4 preview-scroll">
       {#if preview.totalPages === 0}
         <div class="m-auto select-none text-xs text-muted-foreground">
-          {#if workspace.mainFile}
-            {preview.isCompiling ? "Compiling…" : "Loading preview…"}
-          {:else}
-            Select a main `.typ` file in the explorer to render a preview.
-          {/if}
+          {@render emptyStateText()}
         </div>
       {:else}
         <div
@@ -430,11 +459,7 @@
         <div
           class="flex h-full select-none items-center justify-center text-xs text-muted-foreground"
         >
-          {#if workspace.mainFile}
-            {preview.isCompiling ? "Compiling…" : "Loading preview…"}
-          {:else}
-            Select a main `.typ` file in the explorer to render a preview.
-          {/if}
+          {@render emptyStateText()}
         </div>
       {:else}
         {#each preview.pages as _, i}
