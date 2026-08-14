@@ -4,7 +4,7 @@ Landing page for Typwriter — a static SvelteKit site whose job is to advertise
 
 ## Stack
 
-- SvelteKit (Svelte 5), TypeScript, Tailwind v4, shadcn-svelte (Lyra style, mauve, 0rem radius), Phosphor icons.
+- SvelteKit (Svelte 5), TypeScript, Tailwind v4, shadcn-svelte (Lyra style, mauve, 0rem radius), Hugeicons (`@hugeicons/svelte`).
 - `bun` for package management; `eslint` + `prettier` + `vitest` configured.
 - Dev server on port 5173 (`bun run dev`).
 
@@ -13,7 +13,7 @@ Landing page for Typwriter — a static SvelteKit site whose job is to advertise
 - `routes/+page.server.ts` — server load: fetches the latest GitHub release to populate download links.
 - `routes/+page.svelte` — the single landing page.
 - `routes/+layout.svelte` + `layout.css` — global shell and styles.
-- `lib/components/` — `FeatureCard.svelte` (Phosphor icon + title + description) and shadcn primitives under `ui/`.
+- `lib/components/` — `FeatureCard.svelte` (Hugeicons icon + title + description) and shadcn primitives under `ui/`.
 - `lib/assets/`, `lib/utils.ts`, `lib/hooks/`, `lib/index.ts` — shared helpers.
 
 ## Svelte MCP tools
