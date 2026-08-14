@@ -208,7 +208,7 @@ export const lightHighlightStyle = HighlightStyle.define([
  * Convenience export — pass directly to `EditorView.extensions`.
  *
  * @example
- * import { light } from "@codemirror/lang-typst/themes/light";
+ * import { light, typst } from "$lib/editor/typst-lang";
  * new EditorView({ extensions: [basicSetup, typst(), light] })
  */
 export const light = [
