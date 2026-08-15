@@ -189,21 +189,24 @@ class CaretVisibility implements PluginValue {
    * The visible slice of the scroller, in client coordinates.
    *
    * While a keyboard is on its way in but not yet measurable, the band is cut
-   * short by the height of the last keyboard we saw. That is what makes the
-   * caret clear the keyboard as it opens instead of after it has landed — and,
-   * because Chrome only pans the visual viewport when the focused caret is
-   * *not* already visible, getting there first is also what stops the pan (and
-   * the misaligned shell it causes) from happening in the first place.
+   * short by the part of it the viewport has yet to account for. That is what
+   * makes the caret clear the keyboard as it opens instead of after it has
+   * landed — and, because Chrome only pans the visual viewport when the focused
+   * caret is *not* already visible, getting there first is also what stops the
+   * pan (and the misaligned shell it causes) from happening in the first place.
    *
-   * Safe against double-counting: `keyboard.visible` and the shell's height are
-   * published in the same pass, so "not visible" also means "not yet shortened".
+   * It is `keyboard.pending`, not `keyboard.lastHeight`, precisely because the
+   * two are not interchangeable mid-animation: the inset grows through values
+   * below the soft-keyboard threshold, which shrink `screen` while `visible` is
+   * still false. Subtracting the whole keyboard as well would cut the band to a
+   * fraction of the screen and shove the caret up to the top of it.
    */
   private safeBand(): { top: number; bottom: number } {
     const box = this.view.scrollDOM.getBoundingClientRect();
     const screen = visibleViewportRect();
     const top = Math.max(box.top, screen.top);
     let bottom = Math.min(box.bottom, screen.bottom);
-    if (this.predicting()) bottom = Math.min(bottom, screen.bottom - keyboard.lastHeight);
+    if (this.predicting()) bottom = Math.min(bottom, screen.bottom - keyboard.pending);
     return { top, bottom };
   }
 

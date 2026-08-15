@@ -141,6 +141,45 @@
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   }
 
+  // ── Tap vs. scroll ────────────────────────────────────────────────────────
+  // This row is wider than the screen and packed edge to edge with buttons:
+  // there is no bare strip of it to grab, so a pan has to be able to start on a
+  // button. `touch-action: none` on the buttons swallowed exactly that, which
+  // is why the row would not scroll at all — every attempt to drag it pressed
+  // whatever was under the finger instead. Only the grip keeps `none`, because
+  // a drag on the grip *is* the gesture.
+  //
+  // The cost is that a drag which becomes a scroll must not also fire the
+  // button it started on, so a press that travels past the slop is disowned:
+  // it stops any hold repeat and its release does nothing.
+  const TAP_SLOP = 8;
+  let downX = 0;
+  let downY = 0;
+  let panned = false;
+
+  function tapDown(e: PointerEvent) {
+    downX = e.clientX;
+    downY = e.clientY;
+    panned = false;
+  }
+
+  // Chrome only sends `pointercancel` once it has claimed the gesture for a
+  // scroll; this catches the drag in the window before that.
+  function tapMove(e: PointerEvent) {
+    if (panned || Math.hypot(e.clientX - downX, e.clientY - downY) <= TAP_SLOP) return;
+    tapCancel();
+  }
+
+  function tapCancel() {
+    panned = true;
+    stopHold();
+  }
+
+  /** Whether the press that is ending was a tap rather than a scroll. */
+  function isTap(e: PointerEvent): boolean {
+    return !panned && Math.hypot(e.clientX - downX, e.clientY - downY) <= TAP_SLOP;
+  }
+
   // Same focus rule as the rest of the toolbar: tapping a button must not blur
   // the editor, or the soft keyboard drops out from under the user.
   function keepEditorFocus(e: MouseEvent) {
@@ -164,39 +203,44 @@
 </script>
 
 {#snippet arrow(icon: IconSvgElement, label: string, dir: Step)}
-  <!-- `touch-action: none` because a tap here is never a gesture: without it the
-       browser waits to see if the press becomes a scroll, and the hold repeat
-       starts late. The pointerup handler runs the single step, so a plain tap
-       and the first step of a hold are the same action. -->
+  <!-- The pointerup handler runs the single step, so a plain tap and the first
+       step of a hold are the same action. The hold itself starts on pointerdown,
+       which is why a drag has to disown it explicitly (see tapMove). -->
   <button
     class="active:bg-accent active:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
-    style="touch-action: none;"
     aria-label={label}
     onmousedown={keepEditorFocus}
-    onpointerdown={() => startHold(dir)}
+    onpointerdown={(e) => {
+      tapDown(e);
+      startHold(dir);
+    }}
+    onpointermove={tapMove}
     onpointerup={(e) => {
+      stopHold();
+      if (!isTap(e)) return; // the press became a scroll
       e.preventDefault();
       // A hold that already repeated has moved far enough; adding the tap's step
       // on release would overshoot by one.
       if (holdCount === 0) run((v) => step(v, dir, extend));
-      stopHold();
     }}
-    onpointercancel={stopHold}
-    onpointerleave={stopHold}
+    onpointercancel={tapCancel}
+    onpointerleave={tapCancel}
   >
     <Icon {icon} class="size-5" />
   </button>
 {/snippet}
 
-<div class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" style="scrollbar-width: none; touch-action: pan-x;">
+<div class="no-scrollbar flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" style="touch-action: pan-x;">
   <!-- Extend toggle: the same controls, building a selection instead of moving. -->
   <button
     class="active:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground flex h-9 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-medium"
-    style="touch-action: none;"
     aria-label="Extend selection"
     aria-pressed={extend}
     onmousedown={keepEditorFocus}
+    onpointerdown={tapDown}
+    onpointermove={tapMove}
     onpointerup={(e) => {
+      if (!isTap(e)) return;
       e.preventDefault();
       toggleExtend();
     }}
@@ -211,7 +255,9 @@
     {@render arrow(a.icon, a.label, a.dir)}
   {/each}
 
-  <!-- The trackpad. Wider than a button so it reads as a surface, not a target. -->
+  <!-- The trackpad. Wider than a button so it reads as a surface, not a target.
+       The one control that keeps `touch-action: none`: a drag here is the
+       gesture, so the row must not pan out from under it. -->
   <button
     class="bg-background/60 active:bg-accent flex h-9 w-14 shrink-0 items-center justify-center rounded-full"
     style="touch-action: none;"
@@ -242,9 +288,11 @@
   {#each [{ label: "Word", run: selectWordAtCursor }, { label: "Line", run: selectCurrentLine }, { label: "All", run: selectWholeDoc }] as s (s.label)}
     <button
       class="active:bg-accent active:text-accent-foreground flex h-9 shrink-0 items-center rounded-full px-3 text-xs font-medium"
-      style="touch-action: none;"
       onmousedown={keepEditorFocus}
+      onpointerdown={tapDown}
+      onpointermove={tapMove}
       onpointerup={(e) => {
+        if (!isTap(e)) return;
         e.preventDefault();
         run(s.run);
       }}

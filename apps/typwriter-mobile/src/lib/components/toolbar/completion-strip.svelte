@@ -60,8 +60,8 @@
      re-anchor its scroll, which reads as an unwanted jump when you tap a symbol
      that clears the suggestions. -->
 <div
-  class="flex h-10 shrink-0 items-stretch gap-1 overflow-x-auto px-3"
-  style="scrollbar-width: none; touch-action: pan-x;"
+  class="no-scrollbar flex h-10 shrink-0 items-stretch gap-1 overflow-x-auto px-3"
+  style="touch-action: pan-x;"
 >
   {#each completions.items as item, i (item.label + i)}
     <button

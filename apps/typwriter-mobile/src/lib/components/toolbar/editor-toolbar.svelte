@@ -180,7 +180,7 @@
       <CursorRow />
     {:else}
       <!-- Scrollable commands + symbols -->
-      <div class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" style="scrollbar-width: none; touch-action: pan-x;">
+      <div class="no-scrollbar flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" style="touch-action: pan-x;">
         {#each COMMANDS as cmd (cmd.label)}
           <button
             class="active:bg-accent active:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full"

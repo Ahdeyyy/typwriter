@@ -70,6 +70,20 @@ class KeyboardVisibility {
    * measurement exists. Kept per session (it survives the keyboard closing).
    */
   lastHeight = 0;
+  /**
+   * How much of the expected keyboard the viewport does *not* yet reflect, in
+   * px — `lastHeight` minus whatever occlusion is currently measurable.
+   *
+   * Prediction has to be expressed as a remainder rather than as the whole
+   * keyboard, because the viewport does not go from "no keyboard" to "keyboard"
+   * in one step: Android reports the inset growing as the keyboard animates,
+   * and every intermediate value below `KEYBOARD_MIN_PX` is already subtracted
+   * from the visible rect while `visible` is still false. Subtracting
+   * `lastHeight` on top of that counts the same band twice — up to a keyboard's
+   * worth of screen — and anything that keeps itself inside the resulting
+   * "visible" area (the caret) gets driven towards the top of the screen.
+   */
+  pending = 0;
 
   private cleanup: (() => void) | null = null;
   private frame = 0;
@@ -128,7 +142,12 @@ class KeyboardVisibility {
       root.style.setProperty("--app-inset-top", `${panned}px`);
       this.visible = covered > KEYBOARD_MIN_PX || shrunk > KEYBOARD_MIN_PX;
       // Whichever mode we're in, exactly one of the two terms is the keyboard.
-      if (this.visible) this.lastHeight = Math.max(covered, shrunk);
+      const measured = Math.max(covered, shrunk);
+      if (this.visible) this.lastHeight = measured;
+      // Both terms are already reflected in the visible rect — `covered` shrinks
+      // `vv.height`, `shrunk` shrinks `layoutH` — so only the difference is
+      // still unaccounted for.
+      this.pending = Math.max(0, this.lastHeight - measured);
 
       for (const fn of this.listeners) fn();
     };
@@ -161,6 +180,7 @@ class KeyboardVisibility {
     cancelAnimationFrame(this.frame);
     this.frame = 0;
     this.visible = false;
+    this.pending = 0;
     this.baseHeight = 0;
     this.baseWidth = 0;
   }
