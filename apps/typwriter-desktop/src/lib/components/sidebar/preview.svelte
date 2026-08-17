@@ -349,29 +349,31 @@
               {/snippet}
             </DropdownMenu.Trigger>
             <DropdownMenu.Content align="end" class="w-64">
-              <DropdownMenu.GroupHeading>Present on</DropdownMenu.GroupHeading>
-              <DropdownMenu.Item onSelect={() => ctrl.chooseDisplay(null)}>
-                <span class="flex-1">Automatic</span>
-                {#if settings.presentationDisplay === null}
-                  <HugeiconsIcon icon={Tick02Icon} class="size-3.5" />
-                {/if}
-              </DropdownMenu.Item>
-              <DropdownMenu.Separator />
-              {#each ctrl.displays as display (display.id)}
-                <DropdownMenu.Item onSelect={() => ctrl.chooseDisplay(display.id)}>
-                  <span class="flex-1 truncate">
-                    {displayLabel(display)}
-                    {#if display.isMainWindow}
-                      <span class="text-muted-foreground">· editor</span>
-                    {/if}
-                  </span>
-                  {#if settings.presentationDisplay === display.id}
+              <DropdownMenu.Group>
+                <DropdownMenu.GroupHeading>Present on</DropdownMenu.GroupHeading>
+                <DropdownMenu.Item onSelect={() => ctrl.chooseDisplay(null)}>
+                  <span class="flex-1">Automatic</span>
+                  {#if settings.presentationDisplay === null}
                     <HugeiconsIcon icon={Tick02Icon} class="size-3.5" />
                   {/if}
                 </DropdownMenu.Item>
-              {:else}
-                <DropdownMenu.Item disabled>No displays detected</DropdownMenu.Item>
-              {/each}
+                <DropdownMenu.Separator />
+                {#each ctrl.displays as display (display.id)}
+                  <DropdownMenu.Item onSelect={() => ctrl.chooseDisplay(display.id)}>
+                    <span class="flex-1 truncate">
+                      {displayLabel(display)}
+                      {#if display.isMainWindow}
+                        <span class="text-muted-foreground">· editor</span>
+                      {/if}
+                    </span>
+                    {#if settings.presentationDisplay === display.id}
+                      <HugeiconsIcon icon={Tick02Icon} class="size-3.5" />
+                    {/if}
+                  </DropdownMenu.Item>
+                {:else}
+                  <DropdownMenu.Item disabled>No displays detected</DropdownMenu.Item>
+                {/each}
+              </DropdownMenu.Group>
             </DropdownMenu.Content>
           </DropdownMenu.Root>
         {/if}
