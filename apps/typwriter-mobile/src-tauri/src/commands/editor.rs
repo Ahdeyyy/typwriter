@@ -130,6 +130,13 @@ pub async fn save_file(
         let _ = std::fs::remove_file(&tmp);
         e.to_string()
     })?;
+    // Fold the bytes we just wrote straight into the cached tree. Without this
+    // the write changes the file's stamp, and the compile that follows would
+    // re-read from disk the content we are already holding. Best-effort: an
+    // unresolvable path simply leaves the slot for `revalidate` to refresh.
+    if let Ok(id) = world.rel_to_id(&rel_path) {
+        world.apply_saved_source(id, &content);
+    }
     info!(
         "save_file: ok {rel_path:?} bytes={} ({:.1}ms)",
         content.len(),
@@ -198,10 +205,24 @@ pub async fn get_completions(
 
 pub(crate) fn byte_to_utf16(text: &str, byte_offset: usize) -> usize {
     let clamped = byte_offset.min(text.len());
+    // Fast path. In all-ASCII text one byte is one UTF-16 code unit, so the
+    // offset is already correct. `is_ascii` is vectorised, where the
+    // `encode_utf16` walk below is a per-character loop -- and Typst sources
+    // are overwhelmingly ASCII, so this is the case that actually runs. Both
+    // branches return the same answer; only the cost differs.
+    if text.as_bytes()[..clamped].is_ascii() {
+        return clamped;
+    }
     text[..clamped].encode_utf16().count()
 }
 
 pub(crate) fn utf16_to_byte(text: &str, utf16_offset: usize) -> usize {
+    // Fast path: see `byte_to_utf16`. Checking only the prefix we would return
+    // is enough -- if every byte up to there is ASCII, no earlier character
+    // could have occupied more than one UTF-16 unit.
+    if utf16_offset <= text.len() && text.as_bytes()[..utf16_offset].is_ascii() {
+        return utf16_offset;
+    }
     let mut utf16_count = 0usize;
     for (byte_idx, ch) in text.char_indices() {
         if utf16_count >= utf16_offset {
@@ -249,5 +270,108 @@ mod tests {
         let s = "abc";
         assert_eq!(byte_to_utf16(s, 999), 3);
         assert_eq!(utf16_to_byte(s, 999), 3);
+    }
+
+    // ─── ASCII fast path ────────────────────────────────────────────────────
+    //
+    // `byte_to_utf16` / `utf16_to_byte` short-circuit when the relevant prefix
+    // is ASCII. That branch must be indistinguishable from the general walk —
+    // an offset that disagrees by one silently corrupts completion anchors,
+    // hover targets and click-to-source jumps. These compare the two directly.
+
+    /// The general algorithm, with no fast path — the oracle.
+    fn reference_byte_to_utf16(text: &str, byte_offset: usize) -> usize {
+        let clamped = byte_offset.min(text.len());
+        text[..clamped].encode_utf16().count()
+    }
+
+    fn reference_utf16_to_byte(text: &str, utf16_offset: usize) -> usize {
+        let mut utf16_count = 0usize;
+        for (byte_idx, ch) in text.char_indices() {
+            if utf16_count >= utf16_offset {
+                return byte_idx;
+            }
+            utf16_count += ch.len_utf16();
+        }
+        text.len()
+    }
+
+    /// Inputs chosen so the fast path fires, fires partially, and never fires.
+    const SAMPLES: &[&str] = &[
+        "",
+        "a",
+        "= Heading
+
+Plain ASCII body text.
+",
+        "aeb",
+        "aéb",
+        "a😀b",
+        "café — naïve
+",
+        "= Überschrift
+
+Deutscher Text mit Umlauten: äöüß
+",
+        "ASCII prefix then 😀 an emoji then more ASCII",
+        "日本語のテキスト",
+        "mixed 😀 ünïcode ASCII tail",
+    ];
+
+    #[test]
+    fn byte_to_utf16_fast_path_matches_the_general_walk() {
+        for text in SAMPLES {
+            for offset in 0..=text.len() + 2 {
+                // Only byte offsets on a character boundary are meaningful.
+                if offset <= text.len() && !text.is_char_boundary(offset) {
+                    continue;
+                }
+                assert_eq!(
+                    byte_to_utf16(text, offset),
+                    reference_byte_to_utf16(text, offset),
+                    "byte_to_utf16 disagreed at offset {offset} in {text:?}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn utf16_to_byte_fast_path_matches_the_general_walk() {
+        for text in SAMPLES {
+            let units = text.encode_utf16().count();
+            for offset in 0..=units + 2 {
+                assert_eq!(
+                    utf16_to_byte(text, offset),
+                    reference_utf16_to_byte(text, offset),
+                    "utf16_to_byte disagreed at offset {offset} in {text:?}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn conversions_round_trip_on_character_boundaries() {
+        for text in SAMPLES {
+            for offset in 0..=text.len() {
+                if !text.is_char_boundary(offset) {
+                    continue;
+                }
+                assert_eq!(
+                    utf16_to_byte(text, byte_to_utf16(text, offset)),
+                    offset,
+                    "round trip failed at byte {offset} in {text:?}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn non_ascii_before_the_offset_defeats_the_fast_path_correctly() {
+        // The regression that a naive fast path would introduce: an offset
+        // *after* a multi-byte character must not be returned unchanged.
+        let text = "é abcdef";
+        // "é" is 2 bytes / 1 unit, so byte 8 is unit 7 — not 8.
+        assert_eq!(byte_to_utf16(text, 8), 7);
+        assert_eq!(utf16_to_byte(text, 7), 8);
     }
 }

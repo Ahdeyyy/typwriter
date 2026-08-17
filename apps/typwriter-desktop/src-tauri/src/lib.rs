@@ -58,7 +58,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .register_uri_scheme_protocol("previewimg", |ctx, request| {
+        .register_asynchronous_uri_scheme_protocol("previewimg", |ctx, request, responder| {
             // URL form on Windows: http://previewimg.localhost/{key}.png
             // URL form on macOS/Linux: previewimg://localhost/{key}.png
             //
@@ -68,7 +68,13 @@ pub fn run() {
             // the same content at different scales — the response is marked
             // `immutable`, so a content-only URL would serve stale bytes after
             // a zoom change.
-            let path = request.uri().path().trim_start_matches('/');
+            //
+            // **Asynchronous** on purpose. `page_bytes` falls through to the
+            // on-disk cache on an in-memory LRU miss, so answering here can
+            // mean a file read; the synchronous form ran that on the main
+            // thread, and scrolling a long document turned into a burst of
+            // main-thread disk reads. Mirrors the mobile app's handler.
+            let path = request.uri().path().trim_start_matches('/').to_string();
             let not_found = || {
                 tauri::http::Response::builder()
                     .status(tauri::http::StatusCode::NOT_FOUND)
@@ -77,39 +83,49 @@ pub fn run() {
                     .expect("static response should build")
             };
 
-            let Some(key) = parse_key(path) else {
-                return not_found();
+            let Some(key) = parse_key(&path) else {
+                responder.respond(not_found());
+                return;
             };
             let Some(pipeline) = ctx.app_handle().try_state::<Arc<PreviewPipeline>>() else {
-                return not_found();
+                responder.respond(not_found());
+                return;
             };
-            // On Windows this runs inside a WebView2 COM callback, which may not
-            // unwind: a panic escaping here aborts the process rather than
-            // failing one image. The frontend's `onerror` path already recovers
-            // from a 404, so degrade to that instead.
-            let fetched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                pipeline.page_bytes(key)
-            }));
-            let Ok(Some(bytes)) = fetched else {
-                if fetched.is_err() {
-                    log::error!("previewimg: page lookup panicked key={path}");
-                }
-                return not_found();
-            };
+            let pipeline = pipeline.inner().clone();
 
-            tauri::http::Response::builder()
-                .status(tauri::http::StatusCode::OK)
-                .header(tauri::http::header::CONTENT_TYPE, "image/png")
-                // Key encodes both content hash and zoom, so bytes are
-                // immutable for the lifetime of the cache entry. The webview
-                // is free to cache aggressively.
-                .header(
-                    tauri::http::header::CACHE_CONTROL,
-                    "public, max-age=31536000, immutable",
-                )
-                .header(tauri::http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                .body(bytes)
-                .expect("png response should build")
+            tauri::async_runtime::spawn_blocking(move || {
+                // A panic here would previously escape into a WebView2 COM
+                // callback and abort the process. It now happens on a worker
+                // thread, but the frontend's `onerror` path still recovers from
+                // a 404, so keep degrading to that rather than taking the
+                // thread down.
+                let fetched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    pipeline.page_bytes(key)
+                }));
+                let Ok(Some(bytes)) = fetched else {
+                    if fetched.is_err() {
+                        log::error!("previewimg: page lookup panicked key={path}");
+                    }
+                    responder.respond(not_found());
+                    return;
+                };
+
+                responder.respond(
+                    tauri::http::Response::builder()
+                        .status(tauri::http::StatusCode::OK)
+                        .header(tauri::http::header::CONTENT_TYPE, "image/png")
+                        // Key encodes both content hash and zoom, so bytes are
+                        // immutable for the lifetime of the cache entry. The
+                        // webview is free to cache aggressively.
+                        .header(
+                            tauri::http::header::CACHE_CONTROL,
+                            "public, max-age=31536000, immutable",
+                        )
+                        .header(tauri::http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                        .body(bytes)
+                        .expect("png response should build"),
+                );
+            });
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())

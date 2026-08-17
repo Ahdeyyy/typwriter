@@ -217,7 +217,7 @@ pub fn load_font_directories(handle: &AppHandle) -> Vec<PathBuf> {
 
 // ─── Commands ───────────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_app_settings(handle: AppHandle) -> AppSettings {
     read_settings(&handle)
 }
@@ -246,7 +246,7 @@ pub fn set_onboarding_completed(handle: AppHandle, completed: bool) {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_app_settings(handle: AppHandle, settings: AppSettings) {
     write_settings(&handle, &settings);
     if let Some(policy) = handle.try_state::<Arc<RwLock<SnapshotPolicy>>>() {
@@ -271,7 +271,7 @@ pub fn formatter_config_from_handle(handle: &AppHandle) -> TypstyleConfig {
     formatter_config_from_settings(&read_settings(handle))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_typst_font_directories(
     handle: AppHandle,
     world: State<'_, Arc<EditorWorld>>,
@@ -313,7 +313,7 @@ pub fn set_typst_font_directories(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_font_families(world: State<'_, Arc<EditorWorld>>) -> Vec<String> {
     world.font_families()
 }

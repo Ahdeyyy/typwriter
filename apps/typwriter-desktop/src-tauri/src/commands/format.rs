@@ -65,7 +65,7 @@ fn snapshot(config: &State<'_, FormatterConfig>) -> Config {
     config.read().clone()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn format_typst_source(
     config: State<'_, FormatterConfig>,
     source: String,
@@ -106,7 +106,7 @@ pub struct FormatWithCursorResponse {
 // Format the unmarked source for the output text, then format a marked copy
 // (block-comment marker spliced at the cursor's word-run start) purely to
 // locate where the cursor lands. See the module docs for the full strategy.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn format_typst_cursor_virtual(
     config: State<'_, FormatterConfig>,
     source: String,
@@ -156,7 +156,7 @@ fn format_cursor_virtual_with(
 /// Format a single .typ file in place. Reads from disk, formats, writes the
 /// result back, and returns the formatted content so the frontend can refresh
 /// any open editor view.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn format_typst_file(
     config: State<'_, FormatterConfig>,
     path: String,
@@ -208,7 +208,7 @@ pub struct FormatWorkspaceReport {
 }
 
 /// Format every .typ file under the current workspace root.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn format_workspace_typ_files(
     workspace: State<'_, Arc<WorkspaceState>>,
     config: State<'_, FormatterConfig>,

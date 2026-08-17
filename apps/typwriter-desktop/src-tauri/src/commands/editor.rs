@@ -198,7 +198,7 @@ fn unix_millis(time: SystemTime) -> Option<i64> {
 /// that the frontend can convert into Tauri asset URLs.
 ///
 /// Reads route through the workspace's [`WorkingTreeFs`].
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_file(
     path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -358,7 +358,7 @@ pub fn read_file(
 /// workspace. That's also why this lives in Rust rather than calling the
 /// opener plugin from the frontend, where the permission scope would have to be
 /// widened to every path on disk.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reveal_file_in_manager(
     path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -373,7 +373,7 @@ pub fn reveal_file_in_manager(
 
 /// Open a workspace file in whatever application the OS associates with it.
 /// Same workspace-root guard as [`reveal_file_in_manager`].
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_file_externally(
     path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -389,10 +389,15 @@ pub fn open_file_externally(
 /// Called on every keystroke.  Writes to the in-memory shadow buffer so the
 /// next compile sees the new content.  Does NOT write to disk — call
 /// `save_file` explicitly for that.
-#[tauri::command]
+///
+/// Runs off the main thread (`async`), which means two writes for the same file
+/// can be in flight simultaneously. `version` is the frontend's monotonic write
+/// counter and orders them: a write older than the last one applied is dropped.
+#[tauri::command(async)]
 pub fn update_file_content(
     path: String,
     content: String,
+    version: u64,
     world: State<'_, Arc<EditorWorld>>,
 ) -> Result<(), String> {
     let t = Instant::now();
@@ -410,7 +415,10 @@ pub fn update_file_content(
         );
         e.to_string()
     })?;
-    world.shadow_write(id, content);
+    if !world.shadow_write(id, content, version) {
+        debug!("update_file_content: dropped stale write version={version} path={path:?}");
+        return Ok(());
+    }
     debug!(
         "update_file_content: ok ({:.1}ms)",
         t.elapsed().as_secs_f64() * 1000.0
@@ -420,7 +428,7 @@ pub fn update_file_content(
 
 /// Persist the current editor content to disk.
 /// Called explicitly by the frontend (e.g. on Ctrl+S).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_file(
     path: String,
     content: String,
@@ -443,6 +451,13 @@ pub fn save_file(
         e.to_string()
     })?;
 
+    // Tell the watcher this write is ours *before* it happens, so the events it
+    // generates are already claimable by the time they arrive. Saving cannot
+    // change the shape of the file tree, and the compile is scheduled below —
+    // letting the watcher react would only throw away the parse tree
+    // `shadow_commit` keeps and force a full workspace re-walk in the frontend.
+    workspace.note_self_write(abs);
+
     // Write through the working-tree accessor for the current workspace root.
     let root = workspace.root.read().clone().unwrap_or_default();
     vcs.working_tree_fs_for(&root)
@@ -455,8 +470,11 @@ pub fn save_file(
             e
         })?;
 
-    // Remove the shadow since disk now matches the editor content.
-    world.shadow_remove(id);
+    // Disk now matches the editor content, so the shadow override is no longer
+    // needed. `shadow_commit` (not `shadow_remove`) keeps the parsed tree: it
+    // already holds these exact bytes, and the `request_compile` below would
+    // otherwise re-read and fully reparse the file we just wrote.
+    world.shadow_commit(id);
 
     if workspace.should_generate_thumbnail_for(abs) {
         workspace.generate_thumbnail();
@@ -491,7 +509,7 @@ pub fn save_file(
 /// Treated as best-effort cleanup: if the path can no longer be resolved to a
 /// FileId (e.g. because the workspace root has changed under us), we just log
 /// and return Ok — the shadow has nothing to do anyway.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn discard_shadow(path: String, world: State<'_, Arc<EditorWorld>>) -> Result<(), String> {
     let t = Instant::now();
     info!("discard_shadow: path={path:?}");
@@ -536,7 +554,7 @@ fn ide_world_ready(world: &Arc<EditorWorld>) -> bool {
 /// `explicit` is `true` when the user explicitly requested completions
 /// (Ctrl+Space) and `false` when triggered automatically after typing a
 /// character.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_completions(
     path: String,
     cursor: usize,
@@ -618,7 +636,7 @@ pub fn get_completions(
 }
 
 /// Return a hover tooltip for the symbol at `cursor` bytes into the source.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_tooltip(
     path: String,
     cursor: usize,
@@ -689,7 +707,7 @@ pub fn get_tooltip(
 /// Return the definition location for the symbol at `cursor` bytes into the
 /// source.  Returns `null` when the definition is in the standard library or
 /// cannot be resolved to a file position.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_definitions(
     path: String,
     cursor: usize,
@@ -745,11 +763,25 @@ pub fn get_definitions(
 /// Convert a UTF-8 byte offset to a UTF-16 code unit offset.
 pub(crate) fn byte_to_utf16(text: &str, byte_offset: usize) -> usize {
     let clamped = byte_offset.min(text.len());
+    // Fast path. In all-ASCII text one byte is one UTF-16 code unit, so the
+    // offset is already correct. `is_ascii` is vectorised, where the
+    // `encode_utf16` walk below is a per-character loop -- and Typst sources
+    // are overwhelmingly ASCII, so this is the case that actually runs. Both
+    // branches return the same answer; only the cost differs.
+    if text.as_bytes()[..clamped].is_ascii() {
+        return clamped;
+    }
     text[..clamped].encode_utf16().count()
 }
 
 /// Convert a UTF-16 code unit offset to a UTF-8 byte offset.
 pub(crate) fn utf16_to_byte(text: &str, utf16_offset: usize) -> usize {
+    // Fast path: see `byte_to_utf16`. Checking only the prefix we would return
+    // is enough -- if every byte up to there is ASCII, no earlier character
+    // could have occupied more than one UTF-16 unit.
+    if utf16_offset <= text.len() && text.as_bytes()[..utf16_offset].is_ascii() {
+        return utf16_offset;
+    }
     let mut utf16_count = 0usize;
     for (byte_idx, ch) in text.char_indices() {
         if utf16_count >= utf16_offset {
@@ -831,5 +863,113 @@ pub(crate) fn serialize_definition(
             })
         }
         typst_ide::Definition::Std(_) => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{byte_to_utf16, utf16_to_byte};
+
+    // ─── ASCII fast path ────────────────────────────────────────────────────
+    //
+    // `byte_to_utf16` / `utf16_to_byte` short-circuit when the relevant prefix
+    // is ASCII. That branch must be indistinguishable from the general walk —
+    // an offset that disagrees by one silently corrupts completion anchors,
+    // hover targets and click-to-source jumps. These compare the two directly.
+
+    /// The general algorithm, with no fast path — the oracle.
+    fn reference_byte_to_utf16(text: &str, byte_offset: usize) -> usize {
+        let clamped = byte_offset.min(text.len());
+        text[..clamped].encode_utf16().count()
+    }
+
+    fn reference_utf16_to_byte(text: &str, utf16_offset: usize) -> usize {
+        let mut utf16_count = 0usize;
+        for (byte_idx, ch) in text.char_indices() {
+            if utf16_count >= utf16_offset {
+                return byte_idx;
+            }
+            utf16_count += ch.len_utf16();
+        }
+        text.len()
+    }
+
+    /// Inputs chosen so the fast path fires, fires partially, and never fires.
+    const SAMPLES: &[&str] = &[
+        "",
+        "a",
+        "= Heading
+
+Plain ASCII body text.
+",
+        "aeb",
+        "aéb",
+        "a😀b",
+        "café — naïve
+",
+        "= Überschrift
+
+Deutscher Text mit Umlauten: äöüß
+",
+        "ASCII prefix then 😀 an emoji then more ASCII",
+        "日本語のテキスト",
+        "mixed 😀 ünïcode ASCII tail",
+    ];
+
+    #[test]
+    fn byte_to_utf16_fast_path_matches_the_general_walk() {
+        for text in SAMPLES {
+            for offset in 0..=text.len() + 2 {
+                // Only byte offsets on a character boundary are meaningful.
+                if offset <= text.len() && !text.is_char_boundary(offset) {
+                    continue;
+                }
+                assert_eq!(
+                    byte_to_utf16(text, offset),
+                    reference_byte_to_utf16(text, offset),
+                    "byte_to_utf16 disagreed at offset {offset} in {text:?}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn utf16_to_byte_fast_path_matches_the_general_walk() {
+        for text in SAMPLES {
+            let units = text.encode_utf16().count();
+            for offset in 0..=units + 2 {
+                assert_eq!(
+                    utf16_to_byte(text, offset),
+                    reference_utf16_to_byte(text, offset),
+                    "utf16_to_byte disagreed at offset {offset} in {text:?}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn conversions_round_trip_on_character_boundaries() {
+        for text in SAMPLES {
+            for offset in 0..=text.len() {
+                if !text.is_char_boundary(offset) {
+                    continue;
+                }
+                assert_eq!(
+                    utf16_to_byte(text, byte_to_utf16(text, offset)),
+                    offset,
+                    "round trip failed at byte {offset} in {text:?}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn non_ascii_before_the_offset_defeats_the_fast_path_correctly() {
+        // The regression that a naive fast path would introduce: an offset
+        // *after* a multi-byte character must not be returned unchanged.
+        let text = "é abcdef";
+        // "é" is 2 bytes / 1 unit, so byte 8 is unit 7 — not 8.
+        assert_eq!(byte_to_utf16(text, 8), 7);
+        assert_eq!(utf16_to_byte(text, 7), 8);
     }
 }

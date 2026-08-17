@@ -17,7 +17,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         OnceLock,
     },
-    time::Duration as StdDuration,
+    time::{Duration as StdDuration, SystemTime},
 };
 use typst::{
     diag::{FileError, FileResult},
@@ -39,6 +39,48 @@ use typst_kit::{
 enum FileSlot {
     Source(Source),
     Bytes(Bytes),
+}
+
+/// What the filesystem looked like when a slot was filled. Compared at the
+/// start of each compile to decide whether the slot is still good — see
+/// [`MobileWorld::revalidate`].
+///
+/// `mtime` is `Option` because not every Android filesystem reports one; when
+/// it is missing the length alone still catches most edits, and an edit that
+/// changes neither length nor mtime is one the editor made through
+/// `apply_saved_source`, which refreshes the slot directly.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct FileStamp {
+    len: u64,
+    mtime: Option<SystemTime>,
+}
+
+impl FileStamp {
+    fn of(path: &Path) -> Option<Self> {
+        let meta = std::fs::metadata(path).ok()?;
+        Some(Self {
+            len: meta.len(),
+            mtime: meta.modified().ok(),
+        })
+    }
+
+    /// Whether a slot stamped `self` can still be trusted against `fresh`.
+    ///
+    /// A missing mtime means "cannot prove unchanged": length on its own is too
+    /// weak (a same-length external edit — `cat` → `dog` — would slip through),
+    /// so we deliberately fail closed and re-read. Disk stays the source of
+    /// truth; the stamp is only ever allowed to *skip* work it can prove is
+    /// unnecessary.
+    fn still_valid_for(&self, fresh: &FileStamp) -> bool {
+        self.mtime.is_some() && self.mtime == fresh.mtime && self.len == fresh.len
+    }
+}
+
+/// A cached file plus the stamp it was read at. Package files carry no stamp:
+/// a package version is immutable, so its slot never needs revalidating.
+struct CachedFile {
+    slot: FileSlot,
+    stamp: Option<FileStamp>,
 }
 
 pub struct MobileWorld {
@@ -65,8 +107,10 @@ pub struct MobileWorld {
     /// goes back up on every re-pick, so settings can tell "still loading" from
     /// "finished, and that was all the folder had".
     font_loads: AtomicUsize,
-    /// File slot cache: FileId -> (Source | Bytes). Cleared by `reset()`.
-    slots: Mutex<HashMap<FileId, FileSlot>>,
+    /// File slot cache: FileId -> (Source | Bytes) plus the stamp it was read
+    /// at. Revalidated (not cleared) at the start of each compile — see
+    /// [`MobileWorld::revalidate`].
+    slots: Mutex<HashMap<FileId, CachedFile>>,
     /// Transient per-call overlay (used by `with_overlay` for completions).
     overlay: RwLock<HashMap<FileId, String>>,
     /// Package resolution: custom data/cache dirs (an app-reachable folder)
@@ -77,8 +121,20 @@ pub struct MobileWorld {
     index_downloader: SystemDownloader,
     package_index: OnceLock<Vec<(PackageSpec, Option<EcoString>)>>,
     /// "Now" (UTC instant), chosen once per compile so a document compiled
-    /// across midnight doesn't straddle two dates. Cleared by `reset()`.
+    /// across midnight doesn't straddle two dates. Cleared by `revalidate()`.
     now: Mutex<Option<chrono::DateTime<chrono::Utc>>>,
+}
+
+/// Absolute path of a **project-rooted** file, or `None` for a package file.
+///
+/// Deliberately does not go through [`MobileWorld::id_to_path`]: that resolves
+/// packages via `SystemPackages::obtain`, which can hit the network. Callers
+/// here only want the cheap join, and treat `None` as "not ours to revalidate".
+fn project_path(root: &Path, id: FileId) -> Option<PathBuf> {
+    match id.root() {
+        VirtualRoot::Project => Some(root.join(id.vpath().get_without_slash())),
+        VirtualRoot::Package(_) => None,
+    }
 }
 
 /// Build a project-local [`FileId`] from a workspace-relative path.
@@ -175,14 +231,22 @@ impl MobileWorld {
     /// or until the timeout elapses (a hung SAF read must never freeze the
     /// compile pipeline forever — after the timeout we compile with whatever
     /// set is installed).
-    pub fn wait_for_fonts(&self, timeout: StdDuration) {
+    ///
+    /// Returns whether the full set actually arrived. `false` means the compile
+    /// is about to run against the embedded-only fonts, which the caller should
+    /// say out loud: from the user's side an unexplained ten-second stall
+    /// followed by the wrong typeface is indistinguishable from a hang.
+    #[must_use]
+    pub fn wait_for_fonts(&self, timeout: StdDuration) -> bool {
         let mut ready = self.fonts_ready.lock();
         if !*ready {
             let _ = self.fonts_cv.wait_for(&mut ready, timeout);
         }
+        *ready
     }
 
-    /// Update the workspace root and flush all caches.
+    /// Update the workspace root and flush all caches. Cached paths are
+    /// resolved against the old root, so none of them survive a root change.
     pub fn set_root(&self, path: PathBuf) {
         *self.root.write() = Some(path);
         *self.main.write() = None;
@@ -235,8 +299,107 @@ impl MobileWorld {
         }
     }
 
-    /// Clear all per-compile caches so the next compile re-reads from disk.
-    pub fn reset(&self) {
+    /// Prepare the world for a compile.
+    ///
+    /// Disk stays the source of truth, but *proving* that a cached slot still
+    /// matches disk is a `stat`, not a re-read. The previous implementation
+    /// cleared every slot, which meant each compile re-read and fully reparsed
+    /// every source file, every imported file, and every package file — so no
+    /// compile was ever incremental and typst's memoization had nothing to
+    /// reuse. This keeps slots that are provably unchanged and refreshes only
+    /// the rest.
+    ///
+    /// A source whose bytes did change is updated with [`Source::replace`]
+    /// rather than reparsed from scratch, preserving the untouched syntax nodes
+    /// (and their span numbers) that comemo keys its memoized work on.
+    ///
+    /// Package files are immutable for a given version, so they are never
+    /// stat'ed and never dropped.
+    pub fn revalidate(&self) {
+        *self.now.lock() = None;
+
+        let Some(root) = self.root.read().clone() else {
+            // No workspace: nothing project-rooted can be valid.
+            self.slots.lock().clear();
+            return;
+        };
+
+        let mut slots = self.slots.lock();
+        slots.retain(|id, cached| {
+            let Some(path) = project_path(&root, *id) else {
+                // Package file — immutable, always keep.
+                return true;
+            };
+            let Some(fresh) = FileStamp::of(&path) else {
+                // Gone or unreadable: drop so the compile surfaces the real
+                // error from `read_file_bytes` instead of stale content.
+                return false;
+            };
+            if cached
+                .stamp
+                .is_some_and(|stamp| stamp.still_valid_for(&fresh))
+            {
+                return true;
+            }
+            match &mut cached.slot {
+                FileSlot::Source(source) => {
+                    // Re-read and reparse incrementally. On a read failure drop
+                    // the slot and let the compile report it.
+                    let Ok(bytes) = std::fs::read(&path) else {
+                        return false;
+                    };
+                    let Ok(text) = String::from_utf8(bytes) else {
+                        return false;
+                    };
+                    source.replace(&text);
+                    cached.stamp = Some(fresh);
+                    true
+                }
+                // Binary assets have no incremental representation; drop and
+                // let `file()` re-read lazily, only if the document still uses it.
+                FileSlot::Bytes(_) => false,
+            }
+        });
+    }
+
+    /// Refresh the cached tree for a file the app itself just wrote.
+    ///
+    /// The editor already holds the exact bytes it saved, so this skips the
+    /// re-read entirely and applies them incrementally. Without it the save
+    /// would change the file's stamp and `revalidate` would re-read from disk —
+    /// correct, but a wasted read of content we were just handed.
+    pub fn apply_saved_source(&self, id: FileId, text: &str) {
+        let Some(root) = self.root.read().clone() else {
+            return;
+        };
+        let Some(path) = project_path(&root, id) else {
+            return;
+        };
+        let stamp = FileStamp::of(&path);
+        let mut slots = self.slots.lock();
+        if let Some(CachedFile {
+            slot: FileSlot::Source(source),
+            stamp: cached_stamp,
+        }) = slots.get_mut(&id)
+        {
+            source.replace(text);
+            *cached_stamp = stamp;
+            return;
+        }
+        // Either nothing cached, or it was cached as a binary asset and is now
+        // being written as text. Both resolve to a fresh source slot.
+        slots.insert(
+            id,
+            CachedFile {
+                slot: FileSlot::Source(Source::new(id, text.to_string())),
+                stamp,
+            },
+        );
+    }
+
+    /// Drop every cached slot. Used when the workspace root changes, where no
+    /// previously cached path can still be meaningful.
+    pub fn clear_cache(&self) {
         self.slots.lock().clear();
         *self.now.lock() = None;
     }
@@ -252,6 +415,13 @@ impl MobileWorld {
         self.overlay.write().remove(&id);
         self.slots.lock().remove(&id);
         out
+    }
+
+    /// Stamp for a project-rooted file, or `None` for a package file (immutable
+    /// for its version, so it is never revalidated).
+    fn stamp_for(&self, id: FileId) -> Option<FileStamp> {
+        let root = self.root.read().clone()?;
+        FileStamp::of(&project_path(&root, id)?)
     }
 
     fn read_file_bytes(&self, id: FileId) -> FileResult<Vec<u8>> {
@@ -283,28 +453,52 @@ impl World for MobileWorld {
     }
 
     fn source(&self, id: FileId) -> FileResult<Source> {
-        if let Some(FileSlot::Source(src)) = self.slots.lock().get(&id) {
+        if let Some(CachedFile {
+            slot: FileSlot::Source(src),
+            ..
+        }) = self.slots.lock().get(&id)
+        {
             return Ok(src.clone());
         }
-        let text = if let Some(content) = self.overlay.read().get(&id) {
-            content.clone()
+        // An overlay is a transient in-memory buffer with no file behind it, so
+        // it gets no stamp — `revalidate` would otherwise compare it against
+        // the on-disk file and drop it. `with_overlay` clears the slot on the
+        // way out either way.
+        let (text, stamp) = if let Some(content) = self.overlay.read().get(&id) {
+            (content.clone(), None)
         } else {
             let bytes = self.read_file_bytes(id)?;
-            String::from_utf8(bytes).map_err(|_| FileError::AccessDenied)?
+            let text = String::from_utf8(bytes).map_err(|_| FileError::AccessDenied)?;
+            (text, self.stamp_for(id))
         };
         let source = Source::new(id, text);
-        self.slots
-            .lock()
-            .insert(id, FileSlot::Source(source.clone()));
+        self.slots.lock().insert(
+            id,
+            CachedFile {
+                slot: FileSlot::Source(source.clone()),
+                stamp,
+            },
+        );
         Ok(source)
     }
 
     fn file(&self, id: FileId) -> FileResult<Bytes> {
-        if let Some(FileSlot::Bytes(bytes)) = self.slots.lock().get(&id) {
+        if let Some(CachedFile {
+            slot: FileSlot::Bytes(bytes),
+            ..
+        }) = self.slots.lock().get(&id)
+        {
             return Ok(bytes.clone());
         }
         let bytes = Bytes::new(self.read_file_bytes(id)?);
-        self.slots.lock().insert(id, FileSlot::Bytes(bytes.clone()));
+        let stamp = self.stamp_for(id);
+        self.slots.lock().insert(
+            id,
+            CachedFile {
+                slot: FileSlot::Bytes(bytes.clone()),
+                stamp,
+            },
+        );
         Ok(bytes)
     }
 
@@ -418,10 +612,307 @@ fn fetch_package_index(downloader: &SystemDownloader) -> Vec<(PackageSpec, Optio
 
 #[cfg(test)]
 mod tests {
-    use super::today_from_secs;
+    use super::{local_file_id, project_path, today_from_secs, FileStamp, MobileWorld};
     use chrono::{TimeZone, Utc};
+    use std::path::{Path, PathBuf};
+    use std::time::SystemTime;
+    use typst::syntax::{FileId, VirtualPath};
+    use typst::World;
 
     const HOUR: i32 = 3600;
+
+    // ─── Slot revalidation ──────────────────────────────────────────────────
+    //
+    // `revalidate` replaced a blanket cache clear. The clear was slow but
+    // trivially correct, so these tests pin the property it guaranteed —
+    // **disk is the source of truth** — alongside the caching it now does.
+    // Every "picked up" test below passes under the old `reset()` too; they
+    // exist so the optimization can't quietly start serving stale content.
+
+    /// A workspace root under the OS temp dir, unique per test.
+    struct TempRoot(PathBuf);
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            let nanos = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .expect("clock after epoch")
+                .as_nanos();
+            let dir = std::env::temp_dir().join(format!("typwriter-world-{tag}-{nanos}"));
+            std::fs::create_dir_all(&dir).expect("create temp root");
+            Self(dir)
+        }
+
+        fn write(&self, rel: &str, content: &str) {
+            let path = self.0.join(rel);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("create parent");
+            }
+            std::fs::write(path, content).expect("write file");
+        }
+
+        fn remove(&self, rel: &str) {
+            std::fs::remove_file(self.0.join(rel)).expect("remove file");
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// A world rooted at `root`. Package dirs are `None` — no test here
+    /// resolves a package, and that keeps the network out of the picture.
+    fn world_at(root: &Path) -> MobileWorld {
+        let world = MobileWorld::new(None, None);
+        world.set_root(root.to_path_buf());
+        world
+    }
+
+    fn id_of(rel: &str) -> FileId {
+        local_file_id(Path::new(rel)).expect("valid virtual path")
+    }
+
+    /// Make a file's mtime differ from whatever it was, so a same-length edit
+    /// is still detectable. Filesystem mtime granularity varies (ext4 is
+    /// nanoseconds, FAT is two seconds), and tests must not depend on it.
+    fn write_with_new_mtime(root: &TempRoot, rel: &str, content: &str) {
+        root.write(rel, content);
+        let path = root.0.join(rel);
+        let bumped = SystemTime::now() + std::time::Duration::from_secs(10);
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .expect("open for mtime bump");
+        // `set_modified` is best-effort; where it is unsupported the content
+        // length change below is what the test relies on.
+        let _ = file.set_modified(bumped);
+    }
+
+    #[test]
+    fn unchanged_file_keeps_its_cached_tree_across_revalidate() {
+        // The point of the change: a compile must not re-read files it can
+        // prove are unchanged. Asserted by deleting the file *after*
+        // revalidate — a retained slot still answers, a cleared one cannot.
+        let root = TempRoot::new("keep");
+        root.write("main.typ", "= Title\n\nBody text.\n");
+        let world = world_at(&root.0);
+        let id = id_of("main.typ");
+
+        assert!(world.source(id).is_ok());
+        world.revalidate();
+        root.remove("main.typ");
+
+        let source = world
+            .source(id)
+            .expect("slot must survive revalidate when the file was unchanged");
+        assert_eq!(source.text(), "= Title\n\nBody text.\n");
+    }
+
+    #[test]
+    fn external_edit_is_picked_up_on_revalidate() {
+        // The property the old blanket reset() guaranteed. This is the test
+        // that must never be allowed to fail.
+        let root = TempRoot::new("external");
+        root.write("main.typ", "= Original\n");
+        let world = world_at(&root.0);
+        let id = id_of("main.typ");
+
+        assert_eq!(world.source(id).unwrap().text(), "= Original\n");
+
+        write_with_new_mtime(&root, "main.typ", "= Rewritten by another app\n");
+        world.revalidate();
+
+        assert_eq!(
+            world.source(id).unwrap().text(),
+            "= Rewritten by another app\n",
+            "disk must remain the source of truth",
+        );
+    }
+
+    #[test]
+    fn same_length_external_edit_is_picked_up() {
+        // Length alone cannot detect this one, so it exercises the mtime half
+        // of the stamp.
+        let root = TempRoot::new("samelen");
+        root.write("main.typ", "= cat\n");
+        let world = world_at(&root.0);
+        let id = id_of("main.typ");
+
+        assert_eq!(world.source(id).unwrap().text(), "= cat\n");
+
+        write_with_new_mtime(&root, "main.typ", "= dog\n");
+        world.revalidate();
+
+        assert_eq!(world.source(id).unwrap().text(), "= dog\n");
+    }
+
+    #[test]
+    fn deleted_file_drops_its_slot() {
+        let root = TempRoot::new("deleted");
+        root.write("main.typ", "= Here\n");
+        let world = world_at(&root.0);
+        let id = id_of("main.typ");
+
+        assert!(world.source(id).is_ok());
+        root.remove("main.typ");
+        world.revalidate();
+
+        assert!(
+            world.source(id).is_err(),
+            "a deleted file must surface as an error, not stale cached content",
+        );
+    }
+
+    #[test]
+    fn binary_assets_are_revalidated_too() {
+        // Images go through `file()`, not `source()`, and have no incremental
+        // representation — the slot is dropped and re-read.
+        let root = TempRoot::new("bytes");
+        root.write("logo.svg", "<svg>one</svg>");
+        let world = world_at(&root.0);
+        let id = id_of("logo.svg");
+
+        assert_eq!(&*world.file(id).unwrap(), b"<svg>one</svg>");
+
+        write_with_new_mtime(&root, "logo.svg", "<svg>two-longer</svg>");
+        world.revalidate();
+
+        assert_eq!(&*world.file(id).unwrap(), b"<svg>two-longer</svg>");
+    }
+
+    #[test]
+    fn saved_content_is_folded_in_without_a_reread() {
+        // `apply_saved_source` is the app's own write path. After it, a
+        // revalidate must leave the freshly stamped slot alone.
+        let root = TempRoot::new("saved");
+        root.write("main.typ", "= Before\n");
+        let world = world_at(&root.0);
+        let id = id_of("main.typ");
+
+        assert_eq!(world.source(id).unwrap().text(), "= Before\n");
+
+        // Simulates save_file: bytes hit disk, then the cache is told.
+        write_with_new_mtime(&root, "main.typ", "= After the save\n");
+        world.apply_saved_source(id, "= After the save\n");
+        world.revalidate();
+
+        assert_eq!(world.source(id).unwrap().text(), "= After the save\n");
+    }
+
+    #[test]
+    fn saved_content_for_an_uncached_file_is_still_installed() {
+        let root = TempRoot::new("saved-cold");
+        root.write("new.typ", "= Fresh\n");
+        let world = world_at(&root.0);
+        let id = id_of("new.typ");
+
+        world.apply_saved_source(id, "= Fresh\n");
+
+        assert_eq!(world.source(id).unwrap().text(), "= Fresh\n");
+    }
+
+    #[test]
+    fn revalidate_is_scoped_to_the_file_that_changed() {
+        let root = TempRoot::new("scoped");
+        root.write("main.typ", "= Main\n");
+        root.write("chapter.typ", "= Chapter\n");
+        let world = world_at(&root.0);
+        let (main, chapter) = (id_of("main.typ"), id_of("chapter.typ"));
+
+        assert!(world.source(main).is_ok());
+        assert!(world.source(chapter).is_ok());
+
+        write_with_new_mtime(&root, "chapter.typ", "= Chapter, revised\n");
+        world.revalidate();
+        // Untouched file keeps its slot: deleting it now must not matter.
+        root.remove("main.typ");
+
+        assert_eq!(world.source(main).unwrap().text(), "= Main\n");
+        assert_eq!(world.source(chapter).unwrap().text(), "= Chapter, revised\n");
+    }
+
+    #[test]
+    fn clearing_the_cache_forces_a_reread() {
+        let root = TempRoot::new("clear");
+        root.write("main.typ", "= One\n");
+        let world = world_at(&root.0);
+        let id = id_of("main.typ");
+
+        assert!(world.source(id).is_ok());
+        world.clear_cache();
+        root.remove("main.typ");
+
+        assert!(world.source(id).is_err());
+    }
+
+    #[test]
+    fn changing_the_root_drops_every_slot() {
+        // Cached paths resolve against the old root, so none may survive.
+        let old = TempRoot::new("root-old");
+        let new = TempRoot::new("root-new");
+        old.write("main.typ", "= Old workspace\n");
+        new.write("main.typ", "= New workspace\n");
+
+        let world = world_at(&old.0);
+        let id = id_of("main.typ");
+        assert_eq!(world.source(id).unwrap().text(), "= Old workspace\n");
+
+        world.set_root(new.0.clone());
+
+        assert_eq!(world.source(id).unwrap().text(), "= New workspace\n");
+    }
+
+    #[test]
+    fn stamp_without_mtime_is_never_considered_valid() {
+        // Fail-closed: if the filesystem won't tell us when a file changed, we
+        // re-read rather than trust the length.
+        let no_mtime = FileStamp {
+            len: 42,
+            mtime: None,
+        };
+        assert!(!no_mtime.still_valid_for(&no_mtime));
+
+        let now = SystemTime::now();
+        let with_mtime = FileStamp {
+            len: 42,
+            mtime: Some(now),
+        };
+        assert!(with_mtime.still_valid_for(&with_mtime));
+        assert!(!with_mtime.still_valid_for(&FileStamp {
+            len: 43,
+            mtime: Some(now),
+        }));
+    }
+
+    #[test]
+    fn package_files_are_not_project_paths() {
+        // Package slots are never stat'ed or dropped: a package version is
+        // immutable, and resolving its path can hit the network.
+        use ecow::EcoString;
+        use typst::syntax::package::{PackageSpec, PackageVersion};
+        use typst::syntax::{RootedPath, VirtualRoot};
+
+        let spec = PackageSpec {
+            namespace: EcoString::from("preview"),
+            name: EcoString::from("cetz"),
+            version: PackageVersion {
+                major: 0,
+                minor: 3,
+                patch: 1,
+            },
+        };
+        let package_id = RootedPath::new(
+            VirtualRoot::Package(spec),
+            VirtualPath::new("lib.typ").unwrap(),
+        )
+        .intern();
+
+        let root = Path::new("/workspace");
+        assert!(project_path(root, package_id).is_none());
+        assert!(project_path(root, id_of("main.typ")).is_some());
+    }
 
     fn ymd(dt: typst::foundations::Datetime) -> (i32, u8, u8) {
         (dt.year().unwrap(), dt.month().unwrap(), dt.day().unwrap())

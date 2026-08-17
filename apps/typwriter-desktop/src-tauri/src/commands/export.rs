@@ -11,7 +11,7 @@ use crate::compiler::{
     HtmlExportConfig, PdfExportConfig, PngExportConfig, PreviewPipeline, SvgExportConfig,
 };
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn export_pdf(
     config: PdfExportConfig,
     pipeline: State<'_, Arc<PreviewPipeline>>,
@@ -35,7 +35,7 @@ pub fn export_pdf(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn export_png(
     config: PngExportConfig,
     pipeline: State<'_, Arc<PreviewPipeline>>,
@@ -59,7 +59,7 @@ pub fn export_png(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn export_svg(
     config: SvgExportConfig,
     pipeline: State<'_, Arc<PreviewPipeline>>,
@@ -83,7 +83,7 @@ pub fn export_svg(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn export_html(
     config: HtmlExportConfig,
     pipeline: State<'_, Arc<PreviewPipeline>>,

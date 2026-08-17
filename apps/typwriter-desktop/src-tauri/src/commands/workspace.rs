@@ -6,7 +6,7 @@ use tauri::State;
 
 use crate::workspace::{DroppedFile, FileTreeEntry, RecentWorkspaceEntry, WorkspaceState};
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_folder(
     path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -27,7 +27,7 @@ pub fn open_folder(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_main_file(
     path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -51,7 +51,7 @@ pub fn set_main_file(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_file_tree(
     workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Result<Vec<FileTreeEntry>, String> {
@@ -72,7 +72,7 @@ pub fn get_file_tree(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_file(path: String, workspace: State<'_, Arc<WorkspaceState>>) -> Result<(), String> {
     let t = Instant::now();
     info!("create_file: path={path:?}");
@@ -90,7 +90,7 @@ pub fn create_file(path: String, workspace: State<'_, Arc<WorkspaceState>>) -> R
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_folder(
     path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -111,7 +111,7 @@ pub fn create_folder(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_file(path: String, workspace: State<'_, Arc<WorkspaceState>>) -> Result<(), String> {
     let t = Instant::now();
     info!("delete_file: path={path:?}");
@@ -131,7 +131,7 @@ pub fn delete_file(path: String, workspace: State<'_, Arc<WorkspaceState>>) -> R
 
 /// Delete a directory.  The frontend is responsible for showing a confirmation
 /// dialog before calling this command.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_folder(
     path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -152,7 +152,7 @@ pub fn delete_folder(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rename_file(
     src: String,
     dst: String,
@@ -174,7 +174,7 @@ pub fn rename_file(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn move_file(
     src: String,
     dst: String,
@@ -196,7 +196,7 @@ pub fn move_file(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn move_folder(
     src: String,
     dst: String,
@@ -218,7 +218,7 @@ pub fn move_folder(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_files(
     sources: Vec<String>,
     dest_dir: String,
@@ -267,7 +267,7 @@ struct DroppedBatchHeader {
 /// pass at resolving name collisions across everything dropped.
 ///
 /// Returns the workspace-relative path of every file written.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_dropped(
     request: tauri::ipc::Request<'_>,
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -317,7 +317,7 @@ pub fn import_dropped(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_recent_workspaces(
     workspace: State<'_, Arc<WorkspaceState>>,
     include_thumbnails: Option<bool>,
@@ -329,19 +329,19 @@ pub fn get_recent_workspaces(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_recent_workspace(path: String, workspace: State<'_, Arc<WorkspaceState>>) {
     info!("remove_recent_workspace: path={path:?}");
     workspace.remove_recent_workspace(&path);
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clear_recent_workspaces(workspace: State<'_, Arc<WorkspaceState>>) {
     info!("clear_recent_workspaces: called");
     workspace.clear_recent_workspaces();
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_workspace_tabs(
     tabs: Vec<String>,
     active_tab_id: Option<String>,
@@ -352,7 +352,7 @@ pub fn save_workspace_tabs(
     workspace.save_workspace_tabs(tabs, active_tab_id, unsaved, cursor);
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_workspace_tabs(
     root: String,
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -368,7 +368,7 @@ pub fn get_workspace_tabs(
 /// Create a new workspace folder at `parent_path/name`, initialise a
 /// `.typwriter/` metadata directory inside it, and return the absolute path to
 /// the new workspace root.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_workspace(parent_path: String, name: String) -> Result<String, String> {
     let t = Instant::now();
     info!("create_workspace: parent={parent_path:?} name={name:?}");

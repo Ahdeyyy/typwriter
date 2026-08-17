@@ -41,7 +41,7 @@ pub struct OnboardingFile {
 /// go through `save_file`, which resolves paths against the world root). Each
 /// entry starts pristine on disk; in-session edits live in the editor world's
 /// shadow buffers, not on disk.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn prepare_onboarding_workspace(
     files: Vec<OnboardingFile>,
     app: AppHandle,

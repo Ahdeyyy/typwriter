@@ -8,7 +8,7 @@
     highlightActiveLine,
     type Tooltip,
   } from "@codemirror/view";
-  import { EditorState } from "@codemirror/state";
+  import { EditorState, type Extension } from "@codemirror/state";
   import {
     defaultKeymap,
     history,
@@ -45,6 +45,10 @@
     type Diagnostic as CMDiagnostic,
   } from "@codemirror/lint";
   import { inlineDiagnostics } from "$lib/codemirror/inline-diagnostics";
+  import {
+    diagnosticsMatch,
+    type DiagnosticMark,
+  } from "$lib/codemirror/diagnostics-compare";
   import { imageDrop } from "$lib/codemirror/image-drop";
   import {
     grammarLint,
@@ -905,71 +909,75 @@
     });
   });
 
-  // ── Font / size → reconfigure all views when settings change
-  $effect(() => {
-    settings.editorFontFamily;
-    settings.editorFontSize;
-    const ext = fontExtension();
-    for (const view of tabViews.values()) {
-      view.dispatch({ effects: fontCompartment.reconfigure(ext) });
-    }
-  });
+  // ── Settings → CodeMirror compartments
+  //
+  // One table instead of seven near-identical effects. `track` names the
+  // settings the compartment depends on and is the *only* place reads are
+  // tracked; `build` and the dispatch loop run untracked, because reconfiguring
+  // a view reads editor state that would otherwise become a dependency and
+  // re-fire this on every keystroke.
+  //
+  // Adding a setting-driven compartment means adding a row here.
+  const settingCompartments: {
+    compartment: Compartment;
+    track: () => void;
+    build: (tabId: string) => Extension;
+  }[] = [
+    {
+      compartment: fontCompartment,
+      track: () => {
+        settings.editorFontFamily;
+        settings.editorFontSize;
+      },
+      build: () => fontExtension(),
+    },
+    {
+      compartment: lineNumbersCompartment,
+      track: () => void settings.showLineNumbers,
+      build: () => lineNumbersExt(),
+    },
+    {
+      compartment: indentMarkersCompartment,
+      track: () => void settings.showIndentationMarkers,
+      build: () => indentMarkersExt(),
+    },
+    {
+      compartment: lineWrapCompartment,
+      track: () => void settings.wordWrap,
+      build: () => lineWrapExt(),
+    },
+    {
+      compartment: tabSizeCompartment,
+      track: () => void settings.tabWidth,
+      build: () => tabSizeExt(),
+    },
+    {
+      compartment: spellcheckCompartment,
+      track: () => void settings.spellcheck,
+      build: (tabId) => {
+        const tab = editor.tabs.find((t) => t.id === tabId);
+        return spellcheckExt(!!tab && tab.relPath.endsWith(".typ"));
+      },
+    },
+    {
+      // Rebinding in the settings window broadcasts on `settings:changed`, so
+      // this fires there too and the editor picks up new keys without a restart.
+      compartment: keybindingsCompartment,
+      track: () => void settings.keybindings,
+      build: (tabId) => configurableKeymap(tabId),
+    },
+  ];
 
-  // ── Editor behavior toggles → reconfigure relevant compartments
-  $effect(() => {
-    settings.showLineNumbers;
-    const ext = lineNumbersExt();
-    for (const view of tabViews.values()) {
-      view.dispatch({ effects: lineNumbersCompartment.reconfigure(ext) });
-    }
-  });
-
-  $effect(() => {
-    settings.showIndentationMarkers;
-    const ext = indentMarkersExt();
-    for (const view of tabViews.values()) {
-      view.dispatch({ effects: indentMarkersCompartment.reconfigure(ext) });
-    }
-  });
-
-  $effect(() => {
-    settings.wordWrap;
-    const ext = lineWrapExt();
-    for (const view of tabViews.values()) {
-      view.dispatch({ effects: lineWrapCompartment.reconfigure(ext) });
-    }
-  });
-
-  $effect(() => {
-    settings.spellcheck;
-    for (const [tabId, view] of tabViews) {
-      const tab = editor.tabs.find((t) => t.id === tabId);
-      const isTypst = !!tab && tab.relPath.endsWith(".typ");
-      view.dispatch({ effects: spellcheckCompartment.reconfigure(spellcheckExt(isTypst)) });
-    }
-  });
-
-  $effect(() => {
-    settings.tabWidth;
-    const ext = tabSizeExt();
-    for (const view of tabViews.values()) {
-      view.dispatch({ effects: tabSizeCompartment.reconfigure(ext) });
-    }
-  });
-
-  // ── Shortcut settings → rebuild the configurable keymap in every open tab.
-  // Rebinding in the settings window broadcasts on `settings:changed`, so this
-  // fires there too and the editor picks up the new keys without a restart.
-  $effect(() => {
-    settings.keybindings;
-    untrack(() => {
-      for (const [tabId, view] of tabViews) {
-        view.dispatch({
-          effects: keybindingsCompartment.reconfigure(configurableKeymap(tabId)),
-        });
-      }
+  for (const { compartment, track, build } of settingCompartments) {
+    $effect(() => {
+      track();
+      untrack(() => {
+        for (const [tabId, view] of tabViews) {
+          view.dispatch({ effects: compartment.reconfigure(build(tabId)) });
+        }
+      });
     });
-  });
+  }
 
   // ── Diagnostics → CodeMirror lint markers
   //
@@ -1001,18 +1009,11 @@
     state: EditorState,
     marks: CMDiagnostic[],
   ): boolean {
-    const existing: CMDiagnostic[] = [];
+    const existing: DiagnosticMark[] = [];
     forEachDiagnostic(state, (d, from, to) =>
       existing.push({ from, to, severity: d.severity, message: d.message }),
     );
-    if (existing.length !== marks.length) return false;
-    const key = (d: CMDiagnostic) =>
-      `${d.from}:${d.to}:${d.severity}:${d.message}`;
-    const sortedMarks = marks.map(key).sort();
-    return existing
-      .map(key)
-      .sort()
-      .every((k, i) => k === sortedMarks[i]);
+    return diagnosticsMatch(existing, marks);
   }
 
   $effect(() => {

@@ -144,9 +144,19 @@ export function openFileExternally(path: string) {
     return ResultAsync.fromPromise(invoke<void>('open_file_externally', { path }), toErrString);
 }
 
+/** Monotonic ordering token for shadow writes.
+ *
+ *  `update_file_content` runs off the main thread on the Rust side, so writes
+ *  no longer complete in the order they were sent. Every call carries the next
+ *  value of this counter and the backend drops anything older than what it has
+ *  already applied. It must never reset for the lifetime of the window — a
+ *  per-file counter that restarts (as the editor store's scheduling versions
+ *  do) would make the backend reject legitimate writes. */
+let shadowWriteSeq = 0;
+
 export function updateFileContent(path: string, content: string) {
     return ResultAsync.fromPromise(
-        invoke<void>('update_file_content', { path, content }),
+        invoke<void>('update_file_content', { path, content, version: ++shadowWriteSeq }),
         toErrString
     );
 }

@@ -24,6 +24,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::{
     compiler::{CompileReason, PreviewPipeline},
+    workspace::self_writes::SelfWriteLog,
     world::EditorWorld,
 };
 
@@ -46,6 +47,7 @@ pub fn start_watcher(
     world: Arc<EditorWorld>,
     pipeline: Arc<PreviewPipeline>,
     app_handle: AppHandle,
+    self_writes: Arc<SelfWriteLog>,
 ) -> notify::Result<RecommendedWatcher> {
     let t = Instant::now();
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
@@ -60,7 +62,7 @@ pub fn start_watcher(
     );
 
     thread::spawn(move || {
-        dispatch_loop(root, rx, world, pipeline, app_handle);
+        dispatch_loop(root, rx, world, pipeline, app_handle, self_writes);
     });
 
     Ok(watcher)
@@ -72,6 +74,7 @@ fn dispatch_loop(
     world: Arc<EditorWorld>,
     pipeline: Arc<PreviewPipeline>,
     app_handle: AppHandle,
+    self_writes: Arc<SelfWriteLog>,
 ) {
     let debounce = Duration::from_millis(100);
 
@@ -100,6 +103,14 @@ fn dispatch_loop(
             .collect();
         paths.sort();
         paths.dedup();
+
+        // Drop events for files the editor itself just wrote. A save cannot
+        // change the shape of the tree, the world cache already holds exactly
+        // those bytes (see `EditorWorld::shadow_commit`), and `save_file`
+        // scheduled its own compile — so passing these through would only
+        // discard a good parse tree and make the frontend re-walk the whole
+        // workspace. External edits to other files in the same batch survive.
+        paths.retain(|path| !self_writes.is_recent(path));
 
         if paths.is_empty() {
             continue;

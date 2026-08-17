@@ -8,7 +8,7 @@ use tauri::State;
 
 use crate::vcs::{RestorePoint, VcsState, WorkspaceDiff};
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vcs_create_restore_point(
     message: String,
     vcs: State<'_, Arc<VcsState>>,
@@ -26,12 +26,12 @@ pub fn vcs_create_restore_point(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vcs_current_id(vcs: State<'_, Arc<VcsState>>) -> Result<Option<String>, String> {
     vcs.current_id()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vcs_list_history(
     limit: Option<usize>,
     vcs: State<'_, Arc<VcsState>>,
@@ -49,7 +49,7 @@ pub fn vcs_list_history(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vcs_diff_vs_current(
     commit_id: String,
     vcs: State<'_, Arc<VcsState>>,
@@ -67,7 +67,7 @@ pub fn vcs_diff_vs_current(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vcs_diff_between(
     from_id: String,
     to_id: String,
@@ -86,7 +86,7 @@ pub fn vcs_diff_between(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vcs_restore_workspace(
     commit_id: String,
     vcs: State<'_, Arc<VcsState>>,
@@ -104,7 +104,7 @@ pub fn vcs_restore_workspace(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vcs_restore_file(
     commit_id: String,
     path: String,

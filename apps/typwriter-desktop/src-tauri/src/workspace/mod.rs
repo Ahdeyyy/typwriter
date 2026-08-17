@@ -4,6 +4,7 @@
 
 mod error;
 mod path;
+mod self_writes;
 mod store;
 mod watcher;
 
@@ -74,6 +75,9 @@ pub struct WorkspaceState {
     /// Local-only version history. Bound to the current workspace via
     /// `VcsState::attach` whenever a folder is opened.
     pub vcs: Arc<VcsState>,
+    /// Writes the editor performed itself, so the watcher can ignore the
+    /// filesystem events they generate. Shared with the watcher thread.
+    self_writes: Arc<self_writes::SelfWriteLog>,
     pub app_handle: AppHandle,
 }
 
@@ -93,8 +97,15 @@ impl WorkspaceState {
             world,
             pipeline,
             vcs,
+            self_writes: Arc::new(self_writes::SelfWriteLog::new()),
             app_handle,
         }
+    }
+
+    /// Record that the editor just wrote `path`, so the watcher ignores the
+    /// events that write produces. See [`self_writes`].
+    pub fn note_self_write(&self, path: &Path) {
+        self.self_writes.note(path);
     }
 
     // ─── Workspace open ────────────────────────────────────────────────────
@@ -142,6 +153,7 @@ impl WorkspaceState {
             self.world.clone(),
             self.pipeline.clone(),
             self.app_handle.clone(),
+            self.self_writes.clone(),
         )
         .map_err(|e| {
             error!("WorkspaceState::open_folder: watcher start failed err=\"{e}\" path={path:?}");
