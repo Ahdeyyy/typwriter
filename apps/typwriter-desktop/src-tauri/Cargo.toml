@@ -5,6 +5,9 @@ description = "A typsetting app built on top of typst, with a desktop interface 
 authors = ["ade"]
 edition = "2021"
 
+[profile.dev]
+debug = "line-tables-only"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
