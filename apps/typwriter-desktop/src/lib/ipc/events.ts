@@ -165,6 +165,31 @@ export function emitGrammarConfigChanged(config: GrammarConfig) {
     return ResultAsync.fromPromise(emit('grammar:config-changed', config), toErrString);
 }
 
+// ─── Cross-window snippet sync ───────────────────────────────────────────────
+//
+// Snippets are authored in the settings window but consumed by the completion
+// list in the main one, and each window keeps its own SnippetStore. Neither
+// scope reaches the other window on its own: the app-wide set lives in the
+// settings store, and the project file sits in `.typwriter/`, which the
+// workspace watcher deliberately ignores. Without a replay, a snippet you just
+// saved would not exist in the editor until the next restart.
+//
+// The payload names the scope that changed so a receiver only re-reads that
+// one. Receivers reload and never re-emit, so there is no ping-pong.
+
+export type SnippetScopeChanged = 'app' | 'project';
+
+export function onSnippetsChanged(handler: (scope: SnippetScopeChanged) => void) {
+    return ResultAsync.fromPromise(
+        listen<SnippetScopeChanged>('snippets:changed', (event) => handler(event.payload)),
+        toErrString
+    );
+}
+
+export function emitSnippetsChanged(scope: SnippetScopeChanged) {
+    return ResultAsync.fromPromise(emit('snippets:changed', scope), toErrString);
+}
+
 // ─── Cross-window light/dark mode sync ───────────────────────────────────────
 //
 // The mode lives in mode-watcher's own per-window state, so a change made from

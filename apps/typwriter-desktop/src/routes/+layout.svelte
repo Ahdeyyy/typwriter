@@ -16,6 +16,7 @@
     onShowTutorialRequest,
   } from "$lib/ipc/events";
   import { grammar } from "$lib/stores/grammar.svelte";
+  import { snippets } from "$lib/stores/snippets.svelte";
   import { page } from "$lib/stores/page.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { editor } from "$lib/stores/editor.svelte";
@@ -153,6 +154,13 @@
     onGrammarConfigChanged((config) => {
       grammar.applyExternal(config);
     }).mapErr((err) => logError("grammar sync listener failed:", err));
+
+    // Snippets are authored in the settings window and consumed by the editor's
+    // completion list in the main one, so every window replays the others'
+    // edits. Neither scope arrives on its own: the app-wide set lives in the
+    // settings store, and the project file sits in `.typwriter/`, which the
+    // workspace watcher ignores.
+    void snippets.initSync();
 
     // Light/dark lives in mode-watcher, not the settings store, so it needs its
     // own replay. Apply locally only — re-emitting would ping-pong.

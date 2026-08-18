@@ -8,6 +8,12 @@
 // and the global set can disagree with the built-ins. Both writable scopes are
 // editable in-app; nobody has to hand-edit JSON, though the project file stays
 // plain JSON so it can be reviewed and committed like any other project asset.
+//
+// Every window keeps its own instance of this store, and the two that matter
+// are different windows: snippets are authored in the settings window and
+// consumed by the completion list in the main one. So each write broadcasts
+// `snippets:changed` and each store reloads the named scope on hearing it —
+// see `initSync`.
 
 import {
     BUILTIN_SNIPPETS,
@@ -15,23 +21,26 @@ import {
     removeSnippet,
     resolveSnippets,
     serializeSnippets,
+    SNIPPETS_REL_PATH,
     upsertSnippet,
     type ResolvedSnippet,
     type Snippet,
     type SnippetScope,
 } from '$lib/snippets';
 import {
-    createFile,
+    getProjectSnippets,
     getUserSnippets,
-    readFile,
-    saveFile,
+    setProjectSnippets,
     setUserSnippets,
 } from '$lib/ipc/commands';
+import {
+    emitSnippetsChanged,
+    onSnippetsChanged,
+    type SnippetScopeChanged,
+    type UnlistenFn,
+} from '$lib/ipc/events';
 import { logError } from '$lib/logger';
 import { workspace } from '$lib/stores/workspace.svelte';
-
-/** Workspace-relative path of the project snippet file. */
-export const SNIPPETS_REL_PATH = '.typwriter/snippets.json';
 
 /** Scopes a user can actually write to. */
 export type WritableScope = Exclude<SnippetScope, 'builtin'>;
@@ -46,6 +55,7 @@ class SnippetStore {
     errors = $state<string[]>([]);
 
     private appLoaded = false;
+    private syncUnlisten: UnlistenFn | null = null;
 
     /** The layered set the completion source consumes. */
     all = $derived<ResolvedSnippet[]>(
@@ -62,6 +72,37 @@ class SnippetStore {
     }
 
     // ── Loading ───────────────────────────────────────────────────────────────
+
+    /**
+     * Start replaying other windows' snippet edits into this store.
+     *
+     * Called once per window from the root layout. Receivers reload from
+     * storage rather than applying the payload, so the two scopes' files stay
+     * the single source of truth, and they never re-emit, so there is no
+     * ping-pong.
+     */
+    async initSync(): Promise<void> {
+        if (this.syncUnlisten) return;
+        const result = await onSnippetsChanged((scope) => {
+            void this.reloadScope(scope);
+        });
+        result.match(
+            (unlisten) => {
+                this.syncUnlisten = unlisten;
+            },
+            (err) => logError('snippets: sync listener failed:', err)
+        );
+    }
+
+    private async reloadScope(scope: SnippetScopeChanged): Promise<void> {
+        if (scope === 'app') {
+            // `loadApp` is a one-shot; this is a deliberate re-read.
+            this.appLoaded = false;
+            await this.loadApp();
+            return;
+        }
+        await this.refreshProject();
+    }
 
     /** Load the app-wide set. Idempotent; safe to call from several places. */
     async loadApp(): Promise<void> {
@@ -86,28 +127,34 @@ class SnippetStore {
      * Reload the project set.
      *
      * A missing file is the normal case, not an error: most projects will only
-     * ever use the built-ins.
+     * ever use the built-ins. Rust resolves the path against the open
+     * workspace, so this works from any window — including the settings
+     * window, which has no workspace of its own.
      */
-    async refresh(): Promise<void> {
-        await this.loadApp();
+    async refreshProject(): Promise<void> {
+        const result = await getProjectSnippets();
+        if (result.isErr()) {
+            logError('snippets: reading the project set failed:', result.error);
+            return;
+        }
 
-        if (!workspace.rootPath) {
+        const contents = result.value;
+        if (contents === null) {
             this.projectSnippets = [];
             this.errors = [];
             return;
         }
 
-        const result = await readFile(workspace.toAbs(SNIPPETS_REL_PATH));
-        if (result.isErr() || result.value.type !== 'text') {
-            this.projectSnippets = [];
-            this.errors = [];
-            return;
-        }
-
-        const { snippets, errors } = parseUserSnippets(result.value.content);
+        const { snippets, errors } = parseUserSnippets(contents);
         this.projectSnippets = snippets;
         this.errors = errors;
         for (const error of errors) logError(`snippets: ${error}`);
+    }
+
+    /** Reload both scopes. What the file tree and the palette command call. */
+    async refresh(): Promise<void> {
+        await this.loadApp();
+        await this.refreshProject();
     }
 
     // ── Writing ───────────────────────────────────────────────────────────────
@@ -146,7 +193,10 @@ class SnippetStore {
 
     private async persistApp(): Promise<void> {
         const result = await setUserSnippets(this.appSnippets);
-        result.mapErr((err) => logError('snippets: saving app-wide set failed:', err));
+        result.match(
+            () => void emitSnippetsChanged('app'),
+            (err) => logError('snippets: saving app-wide set failed:', err)
+        );
     }
 
     /**
@@ -156,22 +206,11 @@ class SnippetStore {
      * is durable rather than silently reverting on the next load.
      */
     private async persistProject(): Promise<void> {
-        if (!workspace.rootPath) return;
-        const abs = workspace.toAbs(SNIPPETS_REL_PATH);
-
-        // `create_file` also makes the parent directory. Harmless if the file
-        // already exists; the write below is what carries the content.
-        const existing = await readFile(abs);
-        if (existing.isErr()) {
-            const created = await createFile(abs);
-            if (created.isErr()) {
-                logError('snippets: could not create snippets.json:', created.error);
-                return;
-            }
-        }
-
-        const written = await saveFile(abs, serializeSnippets(this.projectSnippets));
-        written.mapErr((err) => logError('snippets: writing snippets.json failed:', err));
+        const result = await setProjectSnippets(serializeSnippets(this.projectSnippets));
+        result.match(
+            () => void emitSnippetsChanged('project'),
+            (err) => logError('snippets: writing snippets.json failed:', err)
+        );
     }
 
     /** Path of the project file, creating it if needed, for opening in a tab. */

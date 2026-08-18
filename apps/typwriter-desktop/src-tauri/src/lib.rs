@@ -52,9 +52,10 @@ use commands::{
     },
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
-        delete_folder, get_file_tree, get_recent_workspaces, get_workspace_tabs, import_dropped,
-        import_files, move_file, move_folder, open_folder, remove_recent_workspace, rename_file,
-        save_workspace_tabs, set_main_file,
+        delete_folder, get_file_tree, get_project_snippets, get_recent_workspaces,
+        get_workspace_tabs, import_dropped, import_files, move_file, move_folder, open_folder,
+        remove_recent_workspace, rename_file, save_workspace_tabs, set_main_file,
+        set_project_snippets,
     },
 };
 
@@ -335,6 +336,8 @@ pub fn run() {
             set_export_presets,
             get_user_snippets,
             set_user_snippets,
+            get_project_snippets,
+            set_project_snippets,
             get_onboarding_completed,
             set_onboarding_completed,
             list_font_families,

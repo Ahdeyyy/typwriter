@@ -19,6 +19,8 @@
   import SettingGroup from "../setting-group.svelte";
   import SettingMatch from "../setting-match.svelte";
   import { snippets, type WritableScope } from "$lib/stores/snippets.svelte";
+  import { workspace } from "$lib/stores/workspace.svelte";
+  import { basename } from "$lib/paths";
   import {
     BUILTIN_SNIPPETS,
     validateSnippet,
@@ -42,6 +44,32 @@
   $effect(() => {
     void snippets.loadApp();
   });
+
+  // The project set lives in the *workspace*, which this window does not own:
+  // `workspace.rootPath` is replicated here from the main window and arrives a
+  // beat after mount. Read it inside the effect so the list loads as soon as it
+  // does, and again if the user opens a different project while this window
+  // stays up. Rust resolves the file against the open workspace, so the read
+  // itself needs nothing from us.
+  $effect(() => {
+    const root = workspace.rootPath;
+    if (!root) return;
+    void snippets.refreshProject();
+  });
+
+  // Closing the workspace strands the project pane on a scope that can no
+  // longer be written; fall back rather than leaving a dead form on screen.
+  $effect(() => {
+    if (!snippets.hasProject && scope === "project") {
+      scope = "app";
+      editing = null;
+    }
+  });
+
+  /** Folder name of the open workspace, for labelling the project scope. */
+  const projectName = $derived(
+    workspace.rootPath ? basename(workspace.rootPath) : null,
+  );
 
   const list = $derived(snippets.snippetsIn(scope));
 
@@ -159,16 +187,15 @@
           editing = null;
         }}
       >
-        This project
+        {projectName ?? "This project"}
       </Button>
 
       <span class="text-muted-foreground ml-2 flex-1 text-xs">
         {#if scope === "app"}
           Available in every project.
-        {:else if snippets.hasProject}
-          Saved to <code>.typwriter/snippets.json</code>, so they travel with the project.
         {:else}
-          Open a workspace to add project snippets.
+          Only in this project. Saved to <code>.typwriter/snippets.json</code>, so they
+          travel with it.
         {/if}
       </span>
 

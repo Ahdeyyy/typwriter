@@ -136,7 +136,14 @@ class WorkspaceStore {
     // — that's a deliberate idiom here, not a missed deep clone. Children are
     // intentionally shared between the old and new array.
     tree = $state.raw<FileNode[]>([]);
-    rootPath = $state<string | null>(null);
+    // Cross-window: the settings and diff windows are separate webviews with
+    // their own store instances, and both need to know which project is open —
+    // settings so it can offer the project scope for snippets, the rest so
+    // `toAbs`/`toRel` resolve. Only `_init`/`_leave` in the main window ever
+    // write it; the other windows pick it up through the snapshot handshake.
+    private _rootPath = crossWindowState<string | null>('workspace:rootPath', null);
+    get rootPath(): string | null { return this._rootPath.value; }
+    set rootPath(v: string | null) { this._rootPath.set(v); }
     private _mainFile = crossWindowState<string | null>('workspace:mainFile', null);
     get mainFile(): string | null { return this._mainFile.value; }
     set mainFile(v: string | null) { this._mainFile.set(v); }

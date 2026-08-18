@@ -276,7 +276,7 @@ pub fn get_workspace_tabs(
 
 // ─── .typwriter folder & thumbnail ───────────────────────────────────────────
 
-const TYPWRITER_DIR: &str = ".typwriter";
+pub(super) const TYPWRITER_DIR: &str = ".typwriter";
 const THUMBNAIL_FILE: &str = "thumbnail.png";
 
 /// Ensure the `.typwriter` metadata directory exists inside `root`.

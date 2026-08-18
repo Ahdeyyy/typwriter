@@ -40,6 +40,9 @@ pub struct RecentWorkspaceEntry {
     pub thumbnail: Option<String>,
 }
 
+/// File name of the per-project snippet set inside `.typwriter/`.
+const SNIPPETS_FILE: &str = "snippets.json";
+
 // ─── File tree ────────────────────────────────────────────────────────────────
 
 #[derive(Serialize, Clone, Debug)]
@@ -402,6 +405,72 @@ impl WorkspaceState {
         Option<usize>,
     )> {
         store::get_workspace_tabs(&self.app_handle, &PathBuf::from(root))
+    }
+
+    // ─── Project snippets ──────────────────────────────────────────────────
+    //
+    // The project snippet set lives in the workspace at
+    // `.typwriter/snippets.json` so it travels with the document and can be
+    // reviewed and committed like any other project asset.
+    //
+    // It is read and written here rather than through the generic file
+    // commands for two reasons. The settings window — where snippets are
+    // authored — has no workspace of its own to resolve a path against; the
+    // root only ever lives on this side. And routing a snippet save through
+    // `save_file` would drag a FileId lookup, a VCS restore point and a
+    // recompile behind an edit that changes nothing about the document.
+
+    /// Absolute path of the project snippet file, or `None` with no workspace.
+    fn project_snippets_path(&self) -> Option<PathBuf> {
+        self.root
+            .read()
+            .as_ref()
+            .map(|root| root.join(store::TYPWRITER_DIR).join(SNIPPETS_FILE))
+    }
+
+    /// Raw contents of the project snippet file.
+    ///
+    /// `None` covers both "no workspace open" and "no snippet file", which are
+    /// the same thing to the caller: there are no project snippets. Most
+    /// projects never grow the file at all, so a missing one is the normal
+    /// case rather than an error. Parsing stays on the frontend, which already
+    /// owns the forgiving parser and reports per-entry problems to the user.
+    pub fn project_snippets(&self) -> Option<String> {
+        let path = self.project_snippets_path()?;
+        let fs = self.working_fs().ok()?;
+        if !fs.exists(&path) {
+            return None;
+        }
+        match fs.read_file(&path) {
+            Ok(bytes) => match String::from_utf8(bytes) {
+                Ok(contents) => Some(contents),
+                Err(err) => {
+                    warn!("WorkspaceState::project_snippets: not UTF-8 path={path:?} err=\"{err}\"");
+                    None
+                }
+            },
+            Err(err) => {
+                warn!("WorkspaceState::project_snippets: read failed path={path:?} err=\"{err}\"");
+                None
+            }
+        }
+    }
+
+    /// Replace the project snippet file, creating `.typwriter/` if needed.
+    ///
+    /// Written even when the set is empty, so deleting the last project
+    /// snippet is durable rather than reverting on the next load.
+    pub fn set_project_snippets(&self, contents: &str) -> Result<(), String> {
+        let path = self
+            .project_snippets_path()
+            .ok_or("No workspace open — project snippets need a workspace to live in")?;
+        let fs = self.working_fs()?;
+        if let Some(parent) = path.parent() {
+            fs.create_dir_all(parent)?;
+        }
+        fs.write_file(&path, contents.as_bytes())?;
+        info!("WorkspaceState::set_project_snippets: wrote {path:?}");
+        Ok(())
     }
 
     // ─── File-system helpers ───────────────────────────────────────────────

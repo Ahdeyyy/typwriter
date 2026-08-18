@@ -403,3 +403,47 @@ pub fn create_workspace(parent_path: String, name: String) -> Result<String, Str
     );
     Ok(path_str)
 }
+
+// ─── Project snippets ────────────────────────────────────────────────────────
+//
+// The per-project snippet set, stored in the workspace at
+// `.typwriter/snippets.json`. Its app-wide sibling lives in the settings store
+// (`get_user_snippets` / `set_user_snippets`); this pair is the project scope.
+//
+// Both are read and written as raw JSON text: the schema, and the deliberately
+// forgiving parser that reports one bad entry without losing the rest, live in
+// the frontend's `$lib/snippets.ts`.
+
+#[tauri::command(async)]
+pub fn get_project_snippets(workspace: State<'_, Arc<WorkspaceState>>) -> Option<String> {
+    let contents = workspace.project_snippets();
+    info!(
+        "get_project_snippets: {}",
+        match &contents {
+            Some(text) => format!("{} bytes", text.len()),
+            None => "none".to_string(),
+        }
+    );
+    contents
+}
+
+#[tauri::command(async)]
+pub fn set_project_snippets(
+    contents: String,
+    workspace: State<'_, Arc<WorkspaceState>>,
+) -> Result<(), String> {
+    let t = Instant::now();
+    info!("set_project_snippets: bytes={}", contents.len());
+    let result = workspace.set_project_snippets(&contents);
+    match &result {
+        Ok(_) => info!(
+            "set_project_snippets: ok ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        ),
+        Err(e) => error!(
+            "set_project_snippets: err=\"{e}\" ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        ),
+    }
+    result
+}

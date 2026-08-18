@@ -184,6 +184,26 @@ export function setUserSnippets(snippets: unknown) {
     );
 }
 
+/** Project snippets, read as the raw text of `.typwriter/snippets.json`.
+ *  `null` covers both "no workspace open" and "no snippet file" — to a caller
+ *  they mean the same thing, and the file is absent in most projects.
+ *
+ *  Raw text rather than parsed JSON because the file is meant to be
+ *  hand-editable, and `$lib/snippets.ts` owns the forgiving parse that reports
+ *  a malformed entry instead of dropping the whole set. */
+export function getProjectSnippets() {
+    return ResultAsync.fromPromise(invoke<string | null>('get_project_snippets'), toErrString);
+}
+
+/** Replace `.typwriter/snippets.json`, creating the directory if needed.
+ *  Rejects when no workspace is open. */
+export function setProjectSnippets(contents: string) {
+    return ResultAsync.fromPromise(
+        invoke<void>('set_project_snippets', { contents }),
+        toErrString
+    );
+}
+
 export function readFile(path: string) {
     return ResultAsync.fromPromise(invoke<FileContentResponse>('read_file', { path }), toErrString);
 }

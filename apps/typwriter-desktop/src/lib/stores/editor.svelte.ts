@@ -9,6 +9,8 @@ import {
     triggerPreview,
     updateFileContent,
 } from '$lib/ipc/commands';
+import { emitSnippetsChanged } from '$lib/ipc/events';
+import { SNIPPETS_REL_PATH } from '$lib/snippets';
 import type { CompileReason, FileMeta } from '$lib/types';
 import { workspace } from './workspace.svelte';
 import { settings } from './settings.svelte';
@@ -459,6 +461,19 @@ class EditorStore {
             const message = `Failed to save ${tab.name}: ${saveResult.error}`;
             toast.error(message);
             throw new Error(message);
+        }
+
+        // Hand-editing `.typwriter/snippets.json` is a supported way to author
+        // project snippets, but nothing else would notice: the workspace
+        // watcher ignores `.typwriter/`, and this save never goes through the
+        // snippet store. Announce it instead of reloading directly — the
+        // broadcast reaches this window's own store *and* the settings window's
+        // list, and it keeps `editor → snippets → workspace → editor` off the
+        // import graph.
+        if (tab.relPath === SNIPPETS_REL_PATH) {
+            emitSnippetsChanged('project').mapErr((err) =>
+                logError('snippets: announcing a tab save failed:', err)
+            );
         }
 
         // Don't clear the dirty flag if the user typed during the save —

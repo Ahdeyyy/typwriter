@@ -14,6 +14,16 @@
 // and because it can therefore be hand-edited, parsing is deliberately
 // forgiving: one malformed entry reports itself and the rest still load.
 
+/**
+ * Workspace-relative path of the project snippet file.
+ *
+ * Lives here rather than on the store so anything that merely needs to
+ * *recognise* the file — the editor, when the user saves it in a tab — can do
+ * so without importing a store and pulling `editor → snippets → workspace →
+ * editor` into a cycle.
+ */
+export const SNIPPETS_REL_PATH = '.typwriter/snippets.json';
+
 export interface Snippet {
     /** Typed to summon the snippet, and its identity for overriding. */
     name: string;
