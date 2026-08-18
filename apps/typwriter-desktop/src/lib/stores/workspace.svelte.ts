@@ -17,6 +17,7 @@ import {
 import { onWorkspaceFilesChanged, type UnlistenFn } from '$lib/ipc/events';
 import type { FileTreeEntry } from '$lib/types';
 import { logError } from '$lib/logger';
+import { bibliography } from '$lib/stores/bibliography.svelte';
 import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
 import { editor } from './editor.svelte';
 import { preview } from './preview.svelte';
@@ -249,6 +250,7 @@ class WorkspaceStore {
         await editor.reset();
         preview.clear();
         this._clearPersistTabsTimer();
+        bibliography.clear();
         this.tree = [];
         this.rootPath = null;
         this.mainFile = null;
@@ -261,6 +263,10 @@ class WorkspaceStore {
         return getFileTree().map((entries) => {
             const expandedPaths = collectExpandedPaths(this.tree);
             this.tree = entries.map((entry) => entryToNode(entry, expandedPaths));
+            // A `.bib` may have been added, removed or edited outside the app.
+            // Fire-and-forget: citation completions are an enhancement, and
+            // nothing here should wait on reading them.
+            void bibliography.refresh();
         });
     }
 

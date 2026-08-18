@@ -4,6 +4,7 @@ import { EditorState } from '@codemirror/state';
 
 import { createLabelIndex, referenceCompletionSource } from './reference-completion';
 import { extractLabels } from '$lib/references';
+import { parseBibtex } from '$lib/bibliography';
 
 /** Build a real CompletionContext so the source is exercised as CodeMirror
  *  will call it, rather than against a hand-made stand-in. */
@@ -22,7 +23,11 @@ describe('createLabelIndex', () => {
                 { path: 'b.typ', text: '= B <two>\n' },
             ],
         });
-        expect(index().map((l) => l.name).sort()).toEqual(['one', 'two']);
+        expect(
+            index()
+                .map((l) => l.name)
+                .sort()
+        ).toEqual(['one', 'two']);
     });
 
     it('re-uses cached labels when the text is unchanged', () => {
@@ -120,5 +125,54 @@ describe('referenceCompletionSource', () => {
         const re = result.validFor as RegExp;
         expect(re.test('@fig-one')).toBe(true);
         expect(re.test('@fig one')).toBe(false);
+    });
+});
+
+describe('referenceCompletionSource: citations', () => {
+    const BIB = '@book{knuth1984, author={Knuth, Donald}, year={1984}, title={The TeXbook}}\n';
+    const bib = () => parseBibtex(BIB, 'refs.bib');
+
+    it('offers citation keys alongside labels', () => {
+        // Typst resolves `@key` against both, so they belong in one list.
+        const source = referenceCompletionSource(labelsFrom({ 'a.typ': '= A <lab>\n' }), bib);
+        const result = source(contextAt('See @'))!;
+        expect(result.options.map((o) => o.label).sort()).toEqual(['knuth1984', 'lab']);
+    });
+
+    it('describes a citation with author, year and title', () => {
+        const source = referenceCompletionSource(() => [], bib);
+        const result = source(contextAt('See @'))!;
+        expect(result.options[0].detail).toBe('Knuth 1984 — The TeXbook');
+    });
+
+    it('works with citations only', () => {
+        const source = referenceCompletionSource(() => [], bib);
+        expect(source(contextAt('See @'))?.options).toHaveLength(1);
+    });
+
+    it('lets a label win a name collision with a citation key', () => {
+        // Only one option may carry a given name; the document's own label is
+        // the likelier target and keeps its "where it came from" detail.
+        const source = referenceCompletionSource(
+            labelsFrom({ 'a.typ': '= A <knuth1984>\n' }),
+            bib
+        );
+        const result = source(contextAt('See @'))!;
+        expect(result.options).toHaveLength(1);
+        expect(result.options[0].detail).toBe('a.typ');
+    });
+
+    it('deduplicates a key defined in two bib files', () => {
+        const twice = () => [
+            ...parseBibtex('@book{same, title={A}}', 'one.bib'),
+            ...parseBibtex('@book{same, title={B}}', 'two.bib'),
+        ];
+        const source = referenceCompletionSource(() => [], twice);
+        expect(source(contextAt('See @'))?.options).toHaveLength(1);
+    });
+
+    it('defaults to no citations when none are supplied', () => {
+        const source = referenceCompletionSource(labelsFrom({ 'a.typ': '= A <lab>\n' }));
+        expect(source(contextAt('See @'))?.options.map((o) => o.label)).toEqual(['lab']);
     });
 });

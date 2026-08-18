@@ -50,6 +50,7 @@
     referenceCompletionSource,
   } from "$lib/codemirror/reference-completion";
   import { refPrefixAt } from "$lib/references";
+  import { bibliography } from "$lib/stores/bibliography.svelte";
   import {
     diagnosticsMatch,
     type DiagnosticMark,
@@ -107,7 +108,13 @@
         .filter((tab) => tab.viewMode === "text" && tab.relPath.endsWith(".typ"))
         .map((tab) => ({ path: tab.relPath, text: tab.content })),
   });
-  const referenceCompletions = referenceCompletionSource(projectLabels);
+  // Citation keys join the same list: Typst resolves `@key` against labels and
+  // bibliography entries alike, so a citation is not separate syntax the user
+  // has to remember.
+  const referenceCompletions = referenceCompletionSource(
+    projectLabels,
+    () => bibliography.entries,
+  );
   let mountedTabId = $state<string | null>(null);
 
   const themeCompartment = new Compartment();
