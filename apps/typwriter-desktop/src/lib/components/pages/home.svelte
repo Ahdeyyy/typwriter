@@ -271,14 +271,21 @@
                          </div>
                        </button>
 
-                       <button
-                         class="absolute right-1.5 top-1.5 flex h-6 w-6 rounded-lg items-center justify-center bg-background text-muted-foreground opacity-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 group-hover:opacity-100 "
-                         onclick={(e) => handleRemoveRecent(e, entry.path)}
-                         title="Remove from recents"
-                         aria-label="Remove {entry.name} from recents"
-                       >
-                         <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
-                       </button>
+                       <Tooltip.Root>
+                         <Tooltip.Trigger>
+                           {#snippet child({ props })}
+                             <button
+                               {...props}
+                               class="absolute right-1.5 top-1.5 flex h-6 w-6 rounded-lg items-center justify-center bg-background text-muted-foreground opacity-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 group-hover:opacity-100 "
+                               onclick={(e) => handleRemoveRecent(e, entry.path)}
+                               aria-label="Remove {entry.name} from recents"
+                             >
+                               <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
+                             </button>
+                           {/snippet}
+                         </Tooltip.Trigger>
+                         <Tooltip.Content>Remove from recents</Tooltip.Content>
+                       </Tooltip.Root>
                      </li>
         {/each}
       </ul>

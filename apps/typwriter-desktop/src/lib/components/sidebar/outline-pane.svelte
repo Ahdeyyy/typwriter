@@ -6,6 +6,7 @@
   import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { editor } from "$lib/stores/editor.svelte";
   import { activeOutlineIndex, extractOutline } from "$lib/outline";
   import { fuzzyRank, fuzzySegments } from "$lib/fuzzy";
@@ -109,24 +110,31 @@
     <ScrollArea class="min-h-0 flex-1">
       <div class="px-1 pb-2">
         {#each rows as { heading, match } (heading.from)}
-          <button
-            type="button"
-            class="hover:bg-sidebar-accent flex w-full items-baseline gap-1.5 rounded px-1.5
-                   py-1 text-left text-xs
-                   {heading.index === current ? 'bg-sidebar-accent font-medium' : ''}"
-            style="padding-left: {4 + (heading.level - 1) * 10}px"
-            onclick={() => jump(heading.from)}
-            title={heading.title}
-          >
-            <span class="text-muted-foreground shrink-0 text-[9px] tabular-nums">
-              H{heading.level}
-            </span>
-            <span class="truncate">
-              {#each fuzzySegments(heading.title, match.positions) as segment, segmentIndex (segmentIndex)}
-                <span class={segment.hit ? "font-semibold underline" : ""}>{segment.text}</span>
-              {/each}
-            </span>
-          </button>
+          <Tooltip.Root delayDuration={600} disableHoverableContent>
+            <Tooltip.Trigger>
+              {#snippet child({ props })}
+                <button
+                  {...props}
+                  type="button"
+                  class="hover:bg-sidebar-accent flex w-full items-baseline gap-1.5 rounded px-1.5
+                         py-1 text-left text-xs
+                         {heading.index === current ? 'bg-sidebar-accent font-medium' : ''}"
+                  style="padding-left: {4 + (heading.level - 1) * 10}px"
+                  onclick={() => jump(heading.from)}
+                >
+                  <span class="text-muted-foreground shrink-0 text-[9px] tabular-nums">
+                    H{heading.level}
+                  </span>
+                  <span class="truncate">
+                    {#each fuzzySegments(heading.title, match.positions) as segment, segmentIndex (segmentIndex)}
+                      <span class={segment.hit ? "font-semibold underline" : ""}>{segment.text}</span>
+                    {/each}
+                  </span>
+                </button>
+              {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Content side="right">{heading.title}</Tooltip.Content>
+          </Tooltip.Root>
         {/each}
 
         {#if rows.length === 0}

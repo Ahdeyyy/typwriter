@@ -15,6 +15,7 @@
   } from "@hugeicons/core-free-icons";
   import { Input } from "$lib/components/ui/input/index.js";
   import Button from "$lib/components/ui/button/button.svelte";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import SettingGroup from "../setting-group.svelte";
   import SettingMatch from "../setting-match.svelte";
   import { snippets, type WritableScope } from "$lib/stores/snippets.svelte";
@@ -265,23 +266,41 @@
               {/if}
             </button>
 
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              title={`Copy to ${scope === "app" ? "this project" : "app-wide"}`}
-              disabled={scope === "app" && !snippets.hasProject}
-              onclick={() => copyToOtherScope(snippet)}
-            >
-              <HugeiconsIcon icon={Copy01Icon} class="size-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              title="Delete"
-              onclick={() => remove(snippet)}
-            >
-              <HugeiconsIcon icon={Delete01Icon} class="size-3.5" />
-            </Button>
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <Button
+                    {...props}
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Copy to ${scope === "app" ? "this project" : "app-wide"}`}
+                    disabled={scope === "app" && !snippets.hasProject}
+                    onclick={() => copyToOtherScope(snippet)}
+                  >
+                    <HugeiconsIcon icon={Copy01Icon} class="size-3.5" />
+                  </Button>
+                {/snippet}
+              </Tooltip.Trigger>
+              <Tooltip.Content>
+                Copy to {scope === "app" ? "this project" : "app-wide"}
+              </Tooltip.Content>
+            </Tooltip.Root>
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <Button
+                    {...props}
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Delete snippet"
+                    onclick={() => remove(snippet)}
+                  >
+                    <HugeiconsIcon icon={Delete01Icon} class="size-3.5" />
+                  </Button>
+                {/snippet}
+              </Tooltip.Trigger>
+              <Tooltip.Content>Delete</Tooltip.Content>
+            </Tooltip.Root>
           </div>
         {/each}
       </div>

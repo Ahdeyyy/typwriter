@@ -299,20 +299,27 @@
                 {entry.before_bytes.toLocaleString()} → {entry.after_bytes.toLocaleString()} b
               </span>
               {#if !vcs.secondaryId}
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  class="ml-auto"
-                  onclick={() => onrestoreFile(entry.path)}
-                  disabled={restoringPath !== null}
-                  title="Restore just this file"
-                >
-                  <HugeiconsIcon
-                    icon={ArrowReloadHorizontalIcon}
-                    class="mr-1 size-3 {restoringPath === entry.path ? 'animate-spin' : ''}"
-                  />
-                  Restore file
-                </Button>
+                <Tooltip.Root>
+                  <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                      <Button
+                        {...props}
+                        variant="ghost"
+                        size="xs"
+                        class="ml-auto"
+                        onclick={() => onrestoreFile(entry.path)}
+                        disabled={restoringPath !== null}
+                      >
+                        <HugeiconsIcon
+                          icon={ArrowReloadHorizontalIcon}
+                          class="mr-1 size-3 {restoringPath === entry.path ? 'animate-spin' : ''}"
+                        />
+                        Restore file
+                      </Button>
+                    {/snippet}
+                  </Tooltip.Trigger>
+                  <Tooltip.Content>Restore just this file</Tooltip.Content>
+                </Tooltip.Root>
               {/if}
             </header>
             <DiffViewer {entry} {layout} />

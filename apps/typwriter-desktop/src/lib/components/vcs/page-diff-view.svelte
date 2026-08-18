@@ -33,6 +33,7 @@
 
   import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { buildPreviewUrl } from "$lib/preview-url";
   import { vcs } from "$lib/stores/vcs.svelte";
   import type { PageChangeKind, PageDiffEntry } from "$lib/types";
@@ -209,79 +210,88 @@
                  outside the render budget: the dialog renders on demand from
                  the documents the backend still holds, so the budget only
                  ever cost this page its *preview*, not its detail view. -->
-            <button
-              type="button"
-              class="group relative flex cursor-zoom-in flex-col gap-1 text-left focus-visible:outline-none"
-              onclick={() => openZoom(position)}
-              title={reveal
-                ? `${pageLabel(entry)} — hover for the old render, click to open full size`
-                : `${pageLabel(entry)} — ${kindLabel[entry.kind]}, click to open full size`}
-            >
-              <div
-                class={[
-                  "relative w-full overflow-hidden rounded-sm bg-white ring-2",
-                  "group-focus-visible:ring-ring group-focus-visible:ring-offset-2",
-                  "group-focus-visible:ring-offset-background",
-                  ringClass[entry.kind],
-                  entry.kind === "unchanged" && "opacity-55 group-hover:opacity-100",
-                  entry.kind === "removed" && "opacity-70",
-                ]}
-              >
-                {#if rest}
-                  <!-- In flow, so this image is what gives the frame its
-                       height and therefore its true page proportions. -->
-                  <img
-                    src={buildPreviewUrl(rest)}
-                    alt="{pageLabel(entry)} ({kindLabel[entry.kind]})"
-                    class="block h-auto w-full"
-                    loading="lazy"
-                    draggable="false"
-                  />
-                {:else}
-                  <!-- Nothing to measure, so fall back to a portrait box.
-                       Still clickable — the full-size view doesn't depend on
-                       a thumbnail having been made. -->
-                  <div
-                    class="flex aspect-[1/1.414] items-center justify-center bg-muted px-2 text-center text-[10px] text-muted-foreground"
+            <Tooltip.Root delayDuration={500} disableHoverableContent>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <button
+                    {...props}
+                    type="button"
+                    class="group relative flex cursor-zoom-in flex-col gap-1 text-left focus-visible:outline-none"
+                    onclick={() => openZoom(position)}
                   >
-                    click to render
-                  </div>
-                {/if}
+                    <div
+                      class={[
+                        "relative w-full overflow-hidden rounded-sm bg-white ring-2",
+                        "group-focus-visible:ring-ring group-focus-visible:ring-offset-2",
+                        "group-focus-visible:ring-offset-background",
+                        ringClass[entry.kind],
+                        entry.kind === "unchanged" && "opacity-55 group-hover:opacity-100",
+                        entry.kind === "removed" && "opacity-70",
+                      ]}
+                    >
+                      {#if rest}
+                        <!-- In flow, so this image is what gives the frame its
+                             height and therefore its true page proportions. -->
+                        <img
+                          src={buildPreviewUrl(rest)}
+                          alt="{pageLabel(entry)} ({kindLabel[entry.kind]})"
+                          class="block h-auto w-full"
+                          loading="lazy"
+                          draggable="false"
+                        />
+                      {:else}
+                        <!-- Nothing to measure, so fall back to a portrait box.
+                             Still clickable — the full-size view doesn't depend on
+                             a thumbnail having been made. -->
+                        <div
+                          class="flex aspect-[1/1.414] items-center justify-center bg-muted px-2 text-center text-[10px] text-muted-foreground"
+                        >
+                          click to render
+                        </div>
+                      {/if}
 
-                {#if reveal}
-                  <!-- The old render, crossfaded in on hover / focus. A peek,
-                       not a comparison — the dialog does that properly. -->
-                  <img
-                    src={buildPreviewUrl(reveal)}
-                    alt="{pageLabel(entry)} before the change"
-                    class="absolute inset-0 size-full object-contain opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
-                    loading="lazy"
-                    draggable="false"
-                  />
-                  <span
-                    class="absolute bottom-1 left-1 rounded-sm bg-black/70 px-1 text-[9px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-                  >
-                    before
-                  </span>
-                {/if}
-              </div>
+                      {#if reveal}
+                        <!-- The old render, crossfaded in on hover / focus. A peek,
+                             not a comparison — the dialog does that properly. -->
+                        <img
+                          src={buildPreviewUrl(reveal)}
+                          alt="{pageLabel(entry)} before the change"
+                          class="absolute inset-0 size-full object-contain opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+                          loading="lazy"
+                          draggable="false"
+                        />
+                        <span
+                          class="absolute bottom-1 left-1 rounded-sm bg-black/70 px-1 text-[9px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                        >
+                          before
+                        </span>
+                      {/if}
+                    </div>
 
-              <div class="flex items-center gap-1 text-[10px]">
-                <span class="tabular-nums text-muted-foreground">{pageLabel(entry)}</span>
-                {#if entry.kind !== "unchanged"}
-                  <span class="rounded-sm px-1 leading-4 {chipClass[entry.kind]}">
-                    {kindLabel[entry.kind]}
-                  </span>
-                {/if}
-                {#if entry.kind === "unchanged" && entry.before_index !== entry.after_index}
-                  <!-- Same content, different page number: the give-away that
-                       something upstream grew or shrank. -->
-                  <span class="tabular-nums text-muted-foreground/60">
-                    moved from {(entry.before_index ?? 0) + 1}
-                  </span>
-                {/if}
-              </div>
-            </button>
+                    <div class="flex items-center gap-1 text-[10px]">
+                      <span class="tabular-nums text-muted-foreground">{pageLabel(entry)}</span>
+                      {#if entry.kind !== "unchanged"}
+                        <span class="rounded-sm px-1 leading-4 {chipClass[entry.kind]}">
+                          {kindLabel[entry.kind]}
+                        </span>
+                      {/if}
+                      {#if entry.kind === "unchanged" && entry.before_index !== entry.after_index}
+                        <!-- Same content, different page number: the give-away that
+                             something upstream grew or shrank. -->
+                        <span class="tabular-nums text-muted-foreground/60">
+                          moved from {(entry.before_index ?? 0) + 1}
+                        </span>
+                      {/if}
+                    </div>
+                  </button>
+                {/snippet}
+              </Tooltip.Trigger>
+              <Tooltip.Content side="bottom">
+                {pageLabel(entry)} — {reveal
+                  ? "hover for the old render, click to open full size"
+                  : `${kindLabel[entry.kind]}, click to open full size`}
+              </Tooltip.Content>
+            </Tooltip.Root>
           {/each}
         </div>
       {/if}

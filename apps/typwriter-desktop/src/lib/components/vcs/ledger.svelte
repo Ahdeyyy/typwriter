@@ -118,15 +118,22 @@
         >
           B {shortId(vcs.secondaryId)}
         </span>
-        <button
-          type="button"
-          class={inlineBtn}
-          onclick={() => vcs.clearSecondary()}
-          title="Clear compare anchor"
-          aria-label="Clear compare anchor"
-        >
-          <HugeiconsIcon icon={Cancel01Icon} class="size-2.5" />
-        </button>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <button
+                {...props}
+                type="button"
+                class={inlineBtn}
+                onclick={() => vcs.clearSecondary()}
+                aria-label="Clear compare anchor"
+              >
+                <HugeiconsIcon icon={Cancel01Icon} class="size-2.5" />
+              </button>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content>Clear compare anchor</Tooltip.Content>
+        </Tooltip.Root>
       {:else}
         <span class="text-muted-foreground">current</span>
       {/if}
@@ -170,6 +177,7 @@
             {@const sel = selectionStateOf(entry.id)}
             {@const swatch = vcs.colorForCommit(entry.id)}
             {@const isCurrent = vcs.currentId === entry.id}
+            {@const hint = `${entry.message} · ${triggerLabel[entry.trigger]} · ${entry.changed_files.length} file${entry.changed_files.length === 1 ? "" : "s"}`}
             <div
               class={[
                 "group relative flex h-7 w-full items-center gap-1.5 pl-2.5 pr-1.5",
@@ -187,37 +195,44 @@
                 ></span>
               {/if}
 
-              <button
-                type="button"
-                class="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                onclick={(ev) => selectEntry(ev, entry)}
-                title={`${entry.message} · ${triggerLabel[entry.trigger]} · ${entry.changed_files.length} file${entry.changed_files.length === 1 ? "" : "s"}`}
-              >
-                <span
-                  class="size-1.5 shrink-0 rounded-full"
-                  style:background-color={isCurrent ? "var(--primary)" : swatch}
-                  aria-hidden="true"
-                ></span>
-                <HugeiconsIcon
-                  icon={triggerIcon[entry.trigger]}
-                  class="size-3 shrink-0 text-muted-foreground/60"
-                />
-                <span class="truncate text-xs leading-none {isCurrent ? 'font-medium' : ''}">
-                  {entry.message}
-                </span>
-                <span class="shrink-0 text-[9px] tabular-nums text-muted-foreground/50">
-                  {entry.changed_files.length}f
-                </span>
-                {#if sel !== "none"}
-                  <span
-                    class="shrink-0 rounded-sm px-1 text-[9px] font-semibold leading-4"
-                    style:background-color="color-mix(in srgb, {swatch} 20%, transparent)"
-                    style:color={swatch}
-                  >
-                    {sel === "primary" ? "A" : "B"}
-                  </span>
-                {/if}
-              </button>
+              <Tooltip.Root delayDuration={600} disableHoverableContent>
+                <Tooltip.Trigger>
+                  {#snippet child({ props })}
+                    <button
+                      {...props}
+                      type="button"
+                      class="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                      onclick={(ev) => selectEntry(ev, entry)}
+                    >
+                      <span
+                        class="size-1.5 shrink-0 rounded-full"
+                        style:background-color={isCurrent ? "var(--primary)" : swatch}
+                        aria-hidden="true"
+                      ></span>
+                      <HugeiconsIcon
+                        icon={triggerIcon[entry.trigger]}
+                        class="size-3 shrink-0 text-muted-foreground/60"
+                      />
+                      <span class="truncate text-xs leading-none {isCurrent ? 'font-medium' : ''}">
+                        {entry.message}
+                      </span>
+                      <span class="shrink-0 text-[9px] tabular-nums text-muted-foreground/50">
+                        {entry.changed_files.length}f
+                      </span>
+                      {#if sel !== "none"}
+                        <span
+                          class="shrink-0 rounded-sm px-1 text-[9px] font-semibold leading-4"
+                          style:background-color="color-mix(in srgb, {swatch} 20%, transparent)"
+                          style:color={swatch}
+                        >
+                          {sel === "primary" ? "A" : "B"}
+                        </span>
+                      {/if}
+                    </button>
+                  {/snippet}
+                </Tooltip.Trigger>
+                <Tooltip.Content>{hint}</Tooltip.Content>
+              </Tooltip.Root>
 
               <!-- Time ↔ actions swap on hover -->
               <span
@@ -228,42 +243,70 @@
               <div
                 class="hidden shrink-0 items-center gap-px group-hover:flex group-focus-within:flex"
               >
-                <button
-                  type="button"
-                  class={inlineBtn}
-                  onclick={() => viewDiffFor(entry, onopenDiff)}
-                  title="View diff vs current"
-                  aria-label="View diff vs current"
-                >
-                  <HugeiconsIcon icon={GitCompareIcon} class="size-3" />
-                </button>
-                <button
-                  type="button"
-                  class={inlineBtn}
-                  onclick={() => viewDiffFor(entry, onopenDiff, "pages")}
-                  title="See which pages changed"
-                  aria-label="See which pages changed"
-                >
-                  <HugeiconsIcon icon={Layers01Icon} class="size-3" />
-                </button>
-                <button
-                  type="button"
-                  class={inlineBtn}
-                  onclick={() => useAsCompare(entry)}
-                  title="Use as compare anchor"
-                  aria-label="Use as compare anchor"
-                >
-                  <HugeiconsIcon icon={Target02Icon} class="size-3" />
-                </button>
-                <button
-                  type="button"
-                  class="{inlineBtn} hover:text-destructive!"
-                  onclick={() => restoreWithConfirm(entry)}
-                  title="Restore here…"
-                  aria-label="Restore here"
-                >
-                  <HugeiconsIcon icon={ArrowReloadHorizontalIcon} class="size-3" />
-                </button>
+                <Tooltip.Root>
+                  <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                      <button
+                        {...props}
+                        type="button"
+                        class={inlineBtn}
+                        onclick={() => viewDiffFor(entry, onopenDiff)}
+                        aria-label="View diff vs current"
+                      >
+                        <HugeiconsIcon icon={GitCompareIcon} class="size-3" />
+                      </button>
+                    {/snippet}
+                  </Tooltip.Trigger>
+                  <Tooltip.Content>View diff vs current</Tooltip.Content>
+                </Tooltip.Root>
+                <Tooltip.Root>
+                  <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                      <button
+                        {...props}
+                        type="button"
+                        class={inlineBtn}
+                        onclick={() => viewDiffFor(entry, onopenDiff, "pages")}
+                        aria-label="See which pages changed"
+                      >
+                        <HugeiconsIcon icon={Layers01Icon} class="size-3" />
+                      </button>
+                    {/snippet}
+                  </Tooltip.Trigger>
+                  <Tooltip.Content>See which pages changed</Tooltip.Content>
+                </Tooltip.Root>
+                <Tooltip.Root>
+                  <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                      <button
+                        {...props}
+                        type="button"
+                        class={inlineBtn}
+                        onclick={() => useAsCompare(entry)}
+                        aria-label="Use as compare anchor"
+                      >
+                        <HugeiconsIcon icon={Target02Icon} class="size-3" />
+                      </button>
+                    {/snippet}
+                  </Tooltip.Trigger>
+                  <Tooltip.Content>Use as compare anchor</Tooltip.Content>
+                </Tooltip.Root>
+                <Tooltip.Root>
+                  <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                      <button
+                        {...props}
+                        type="button"
+                        class="{inlineBtn} hover:text-destructive!"
+                        onclick={() => restoreWithConfirm(entry)}
+                        aria-label="Restore here"
+                      >
+                        <HugeiconsIcon icon={ArrowReloadHorizontalIcon} class="size-3" />
+                      </button>
+                    {/snippet}
+                  </Tooltip.Trigger>
+                  <Tooltip.Content>Restore here…</Tooltip.Content>
+                </Tooltip.Root>
               </div>
             </div>
           {/each}

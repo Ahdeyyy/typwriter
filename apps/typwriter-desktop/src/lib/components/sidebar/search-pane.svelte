@@ -14,6 +14,7 @@
   } from "@hugeicons/core-free-icons";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { searchWorkspace, replaceInWorkspace } from "$lib/ipc/commands";
   import { workspace } from "$lib/stores/workspace.svelte";
@@ -150,17 +151,25 @@
 
   <div class="space-y-1.5 px-2 pb-2">
     <div class="flex items-center gap-1">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        title={showReplace ? "Hide replace" : "Show replace"}
-        onclick={() => (showReplace = !showReplace)}
-      >
-        <HugeiconsIcon
-          icon={showReplace ? ArrowDown01Icon : ArrowRight01Icon}
-          class="size-3.5"
-        />
-      </Button>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="icon-sm"
+              aria-label={showReplace ? "Hide replace" : "Show replace"}
+              onclick={() => (showReplace = !showReplace)}
+            >
+              <HugeiconsIcon
+                icon={showReplace ? ArrowDown01Icon : ArrowRight01Icon}
+                class="size-3.5"
+              />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content>{showReplace ? "Hide replace" : "Show replace"}</Tooltip.Content>
+      </Tooltip.Root>
       <Input
         bind:value={query}
         placeholder="Search the project…"
@@ -190,30 +199,54 @@
     {/if}
 
     <div class="flex items-center gap-1 pl-7">
-      <Button
-        variant={caseSensitive ? "default" : "ghost"}
-        size="icon-sm"
-        title="Match case"
-        onclick={() => (caseSensitive = !caseSensitive)}
-      >
-        <span class="text-[10px] font-semibold">Aa</span>
-      </Button>
-      <Button
-        variant={wholeWord ? "default" : "ghost"}
-        size="icon-sm"
-        title="Whole word"
-        onclick={() => (wholeWord = !wholeWord)}
-      >
-        <span class="text-[10px] font-semibold underline">ab</span>
-      </Button>
-      <Button
-        variant={regex ? "default" : "ghost"}
-        size="icon-sm"
-        title="Regular expression"
-        onclick={() => (regex = !regex)}
-      >
-        <span class="text-[10px] font-semibold">.*</span>
-      </Button>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant={caseSensitive ? "default" : "ghost"}
+              size="icon-sm"
+              aria-label="Match case"
+              onclick={() => (caseSensitive = !caseSensitive)}
+            >
+              <span class="text-[10px] font-semibold">Aa</span>
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content>Match case</Tooltip.Content>
+      </Tooltip.Root>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant={wholeWord ? "default" : "ghost"}
+              size="icon-sm"
+              aria-label="Whole word"
+              onclick={() => (wholeWord = !wholeWord)}
+            >
+              <span class="text-[10px] font-semibold underline">ab</span>
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content>Whole word</Tooltip.Content>
+      </Tooltip.Root>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant={regex ? "default" : "ghost"}
+              size="icon-sm"
+              aria-label="Regular expression"
+              onclick={() => (regex = !regex)}
+            >
+              <span class="text-[10px] font-semibold">.*</span>
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content>Regular expression</Tooltip.Content>
+      </Tooltip.Root>
 
       <span class="text-muted-foreground ml-auto text-[10px] tabular-nums">
         {#if searching}
