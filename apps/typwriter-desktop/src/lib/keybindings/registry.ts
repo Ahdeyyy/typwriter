@@ -88,6 +88,20 @@ export const KEY_COMMANDS: KeyCommandDef[] = [
         scope: 'global',
         defaults: ['Mod-Shift-b'],
     },
+    {
+        id: 'global.quickOpen',
+        label: 'Go to file',
+        description: 'Open the palette on the workspace file list.',
+        scope: 'global',
+        defaults: ['Mod-p'],
+    },
+    {
+        id: 'global.commandPalette',
+        label: 'Open the command palette',
+        description: 'Search every command by name.',
+        scope: 'global',
+        defaults: ['Mod-Shift-p'],
+    },
 
     // ── Editor ──────────────────────────────────────────────────────────
     {

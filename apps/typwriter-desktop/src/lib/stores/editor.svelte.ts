@@ -55,6 +55,11 @@ class EditorStore {
     );
 
     cursorJumpRequest = $state<{ tabId: string; offset: number } | null>(null);
+
+    /** Caret offset in the active tab, mirrored from `cursorProvider` on every
+     *  caret move so panes can react to it. Display only — anything that needs
+     *  an exact, current offset should still read the view. */
+    cursorOffset = $state(0);
     contentSyncRequest = $state<{
         tabId: string;
         content: string;
@@ -703,6 +708,10 @@ class EditorStore {
      *  the user last typed. */
     noteCursorMoved(tabId: string): void {
         if (tabId !== this.activeTabId) return;
+        // Mirror the caret into reactive state for the outline panel, which
+        // highlights the section the cursor is in. `cursorProvider` is a plain
+        // function, so panes can't derive from it.
+        this.cursorOffset = this.cursorProvider?.(tabId) ?? 0;
         workspace.schedulePersistTabs();
     }
 

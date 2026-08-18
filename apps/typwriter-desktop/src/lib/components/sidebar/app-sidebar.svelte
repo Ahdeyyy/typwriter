@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
     Folder01Icon,
@@ -9,6 +9,7 @@
     ArrowDown01Icon,
     Settings01Icon,
     GitCommitIcon,
+    LeftToRightListBulletIcon,
   } from "@hugeicons/core-free-icons";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -17,6 +18,7 @@
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { grammar } from "$lib/stores/grammar.svelte";
   import { page } from "$lib/stores/page.svelte";
+  import { ui, type SidebarSection } from "$lib/stores/ui.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { getRecentWorkspaces } from "$lib/ipc/commands";
   import { toast } from "svelte-sonner";
@@ -24,6 +26,7 @@
   import FileTree from "$lib/components/sidebar/filetree.svelte";
   import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
   import GrammarPane from "$lib/components/editor/grammar-pane.svelte";
+  import OutlinePane from "$lib/components/sidebar/outline-pane.svelte";
   import HistoryPane from "$lib/components/vcs/ledger.svelte";
   import { vcs } from "$lib/stores/vcs.svelte";
   import { openDiffWindow, openSettingsWindow } from "$lib/windows";
@@ -54,12 +57,22 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
     return canvas.toDataURL('image/png');
 }
 
-  type Section = "files" | "diagnostics" | "grammar" | "history";
-
   let iconImage: HTMLImageElement | undefined = $state(undefined);
 
   const sidebarCtx = Sidebar.useSidebar();
-  let activeSection = $state<Section>("files");
+
+  // The active section lives in the ui store, not here: the command palette
+  // ("Show outline", "Go to heading") has to be able to reveal a section from
+  // outside the sidebar.
+  const activeSection = $derived(ui.sidebarSection);
+
+  // `sectionRequest` is bumped by anything outside the sidebar that asks for a
+  // section. Reading it here is what makes this effect re-run; opening the
+  // sidebar is untracked so it never feeds back into its own dependencies.
+  $effect(() => {
+    ui.sectionRequest;
+    untrack(() => sidebarCtx.setOpen(true));
+  });
   let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
   let returningHome = $state(false);
 
@@ -91,11 +104,11 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
     );
   });
 
-  function toggleSection(section: Section) {
+  function toggleSection(section: SidebarSection) {
     if (sidebarCtx.open && activeSection === section) {
       sidebarCtx.setOpen(false);
     } else {
-      activeSection = section;
+      ui.sidebarSection = section;
       sidebarCtx.setOpen(true);
     }
   }
@@ -185,6 +198,8 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
   <Sidebar.Content class="group-data-[collapsible=icon]:hidden">
     {#if activeSection === "files"}
       <FileTree />
+    {:else if activeSection === "outline"}
+      <OutlinePane onclose={() => sidebarCtx.setOpen(false)} />
     {:else if activeSection === "diagnostics"}
       <DiagnosticsPane onclose={() => sidebarCtx.setOpen(false)} />
     {:else if activeSection === "grammar"}
@@ -216,6 +231,23 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="top">Files</Tooltip.Content>
+      </Tooltip.Root>
+
+      <!-- Outline toggle -->
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              class="relative size-8 shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground {sidebarCtx.open && activeSection === 'outline' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/70'}"
+              onclick={() => toggleSection("outline")}
+            >
+              <HugeiconsIcon icon={LeftToRightListBulletIcon} class="size-4" />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content side="top">Outline</Tooltip.Content>
       </Tooltip.Root>
 
       <!-- Diagnostics toggle -->

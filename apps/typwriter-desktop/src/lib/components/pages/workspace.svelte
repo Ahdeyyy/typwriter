@@ -8,6 +8,7 @@
   import Preview from "$lib/components/sidebar/preview.svelte";
   import EditorPane from "$lib/components/editor/editor-pane.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
+  import CommandPalette from "$lib/components/palette/command-palette.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { grammar } from "$lib/stores/grammar.svelte";
   import { editor } from "$lib/stores/editor.svelte";
@@ -24,6 +25,10 @@
   } from "$lib/ipc/events";
   import { closeDiffWindow } from "$lib/windows";
   import { logError } from "$lib/logger";
+  import { ui } from "$lib/stores/ui.svelte";
+  import { matchesCommand } from "$lib/keybindings";
+  import { page } from "$lib/stores/page.svelte";
+  import { toast } from "svelte-sonner";
 
   const PREVIEW_WINDOW_LABEL = "preview";
 
@@ -127,6 +132,40 @@
     openPreviewPopout(true);
   }
 
+  // ── Command palette ───────────────────────────────────────────────────────
+
+  async function returnHome() {
+    const result = await workspace.leave();
+    result.match(
+      () => page.navigate("home"),
+      (err) => {
+        logError("Failed to return home:", err);
+        toast.error(`Failed to return home: ${err}`);
+      },
+    );
+  }
+
+  // `toggleSidebar` is missing on purpose: the palette supplies it from
+  // `useSidebar()`, which only resolves inside the provider below.
+  const paletteContext = {
+    togglePreview: () => (previewVisible = !previewVisible),
+    popoutPreview: () => void openPreviewPopout(),
+    startPresentation: openPresentationMode,
+    returnHome: () => void returnHome(),
+  };
+
+  function onWindowKeydown(event: KeyboardEvent) {
+    // Both default to a `Mod-p` chord, which the WebView would otherwise hand
+    // to its print dialog.
+    if (matchesCommand(event, "global.commandPalette")) {
+      event.preventDefault();
+      ui.togglePalette("commands");
+    } else if (matchesCommand(event, "global.quickOpen")) {
+      event.preventDefault();
+      ui.togglePalette("files");
+    }
+  }
+
   onMount(() => {
     diagnostics.init();
     // The grammar store is loaded and kept in sync in +layout.svelte (every
@@ -206,6 +245,8 @@
   });
 </script>
 
+<svelte:window onkeydown={onWindowKeydown} />
+
 <Sidebar.Provider class="has-titlebar h-full w-full min-h-0 flex-col overflow-hidden">
   <Titlebar
     variant="workspace"
@@ -237,4 +278,6 @@
       </Resizable.PaneGroup>
     </main>
   </div>
+
+  <CommandPalette ctx={paletteContext} />
 </Sidebar.Provider>
