@@ -225,7 +225,18 @@
 
     const lspExt = lspClient.pluginFor(tab.absPath);
     if (lspExt) {
-      return [lspExt, semanticTokenHighlighter];
+      return [
+        lspExt,
+        semanticTokenHighlighter,
+        // Snippets are ours, not tinymist's — without this they'd vanish the
+        // moment the language server connected. `serverCompletion()` publishes
+        // its source through language data (not an `override`), so registering
+        // ours the same way merges the two lists rather than replacing the
+        // server's.
+        EditorState.languageData.of(() => [
+          { autocomplete: snippetCompletions },
+        ]),
+      ];
     }
 
     return [
