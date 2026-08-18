@@ -142,6 +142,19 @@ export function setExportPresets(presets: unknown) {
     );
 }
 
+/** App-wide snippets. Opaque JSON on the Rust side — the shape and its
+ *  validation live in `$lib/snippets.ts`. */
+export function getUserSnippets() {
+    return ResultAsync.fromPromise(invoke<unknown>('get_user_snippets'), toErrString);
+}
+
+export function setUserSnippets(snippets: unknown) {
+    return ResultAsync.fromPromise(
+        invoke<void>('set_user_snippets', { snippets }),
+        toErrString
+    );
+}
+
 export function readFile(path: string) {
     return ResultAsync.fromPromise(invoke<FileContentResponse>('read_file', { path }), toErrString);
 }

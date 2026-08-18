@@ -32,11 +32,22 @@ async function focusExisting(label: string): Promise<WebviewWindow | null> {
     return existing;
 }
 
-export async function openSettingsWindow(): Promise<void> {
+/**
+ * Open (or focus) the settings window.
+ *
+ * `group` seeds which pane it lands on, via the URL — the same mechanism the
+ * preview and diff windows use for their initial state. An already-open window
+ * is only focused: re-navigating it would discard whatever the user was in the
+ * middle of editing there.
+ */
+export async function openSettingsWindow(group?: string): Promise<void> {
     if (await focusExisting(SETTINGS_WINDOW_LABEL)) return;
 
+    const params = new URLSearchParams({ window: 'settings' });
+    if (group) params.set('group', group);
+
     const win = new WebviewWindow(SETTINGS_WINDOW_LABEL, {
-        url: '/?window=settings',
+        url: `/?${params}`,
         title: 'Settings - Typwriter',
         width: 880,
         height: 720,

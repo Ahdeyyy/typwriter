@@ -25,6 +25,7 @@
   const previewInitialPage = isPreviewWindow ? searchParams.get("page") : null;
 
   const isSettingsWindow = windowRole === "settings";
+  const settingsInitialGroup = isSettingsWindow ? searchParams.get("group") : null;
   const isDiffWindow = windowRole === "diff";
   const diffInitialPrimary = isDiffWindow ? searchParams.get("primary") : null;
   const diffInitialSecondary = isDiffWindow ? searchParams.get("secondary") : null;
@@ -58,7 +59,7 @@
     {#if isPreviewWindow}
       <PreviewWindow {autoPresent} initialPage={previewInitialPage} />
     {:else if isSettingsWindow}
-      <SettingsWindow />
+      <SettingsWindow initialGroup={settingsInitialGroup} />
     {:else if isDiffWindow}
       <DiffWindow initialPrimary={diffInitialPrimary} initialSecondary={diffInitialSecondary} />
     {:else}

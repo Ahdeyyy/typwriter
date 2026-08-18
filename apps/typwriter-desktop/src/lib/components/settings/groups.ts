@@ -14,6 +14,7 @@ import {
   TextFontIcon,
   TextCheckIcon,
   KeyboardIcon,
+  CodeIcon,
   Settings01Icon,
 } from "@hugeicons/core-free-icons";
 
@@ -25,6 +26,7 @@ import History from "./groups/history.svelte";
 import Preview from "./groups/preview.svelte";
 import Typst from "./groups/typst.svelte";
 import Grammar from "./groups/grammar.svelte";
+import Snippets from "./groups/snippets.svelte";
 import Keymaps from "./groups/keymaps.svelte";
 import General from "./groups/general.svelte";
 
@@ -37,6 +39,7 @@ export type SettingsGroupId =
   | "preview"
   | "typst"
   | "grammar"
+  | "snippets"
   | "keymaps"
   | "general";
 
@@ -66,6 +69,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   { id: "preview", label: "Preview", icon: EyeIcon, component: Preview },
   { id: "typst", label: "Typst", icon: TextFontIcon, component: Typst },
   { id: "grammar", label: "Grammar", icon: TextCheckIcon, component: Grammar },
+  { id: "snippets", label: "Snippets", icon: CodeIcon, component: Snippets },
   { id: "keymaps", label: "Keymaps", icon: KeyboardIcon, component: Keymaps },
   { id: "general", label: "General", icon: Settings01Icon, component: General },
 ];

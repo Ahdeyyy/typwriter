@@ -39,6 +39,12 @@ const KEY_GRAMMAR: &str = "settings.grammar";
 /// round-trips the whole `AppSettings` struct. Sharing that struct would let a
 /// settings save clobber a preset saved moments earlier in the other window.
 const KEY_EXPORT_PRESETS: &str = "settings.export_presets";
+/// App-wide snippets — the ones that follow the user across every project.
+/// Project snippets live in the workspace's own `.typwriter/snippets.json`
+/// instead, so they travel with the document. Same reasoning as the key above
+/// for staying out of `AppSettings`: these are edited from the settings window
+/// *and* replaceable from the editor, so they need an independent write path.
+const KEY_SNIPPETS: &str = "settings.snippets";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -243,6 +249,30 @@ pub fn set_export_presets(handle: AppHandle, presets: JsonValue) -> Result<(), S
         .save()
         .map_err(|err| format!("failed to save export presets: {err}"))?;
     info!("settings: export presets saved");
+    Ok(())
+}
+
+/// Read the app-wide snippets. Opaque JSON, validated by the frontend
+/// (`src/lib/snippets.ts`) — see [`get_export_presets`] for the reasoning.
+#[tauri::command(async)]
+pub fn get_user_snippets(handle: AppHandle) -> JsonValue {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        warn!("settings: could not open {STORE_FILE}");
+        return json!([]);
+    };
+    store.get(KEY_SNIPPETS).unwrap_or_else(|| json!([]))
+}
+
+#[tauri::command(async)]
+pub fn set_user_snippets(handle: AppHandle, snippets: JsonValue) -> Result<(), String> {
+    let store = handle
+        .store(STORE_FILE)
+        .map_err(|err| format!("could not open {STORE_FILE}: {err}"))?;
+    store.set(KEY_SNIPPETS, snippets);
+    store
+        .save()
+        .map_err(|err| format!("failed to save snippets: {err}"))?;
+    info!("settings: app-wide snippets saved");
     Ok(())
 }
 

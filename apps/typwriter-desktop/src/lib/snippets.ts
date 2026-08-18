@@ -5,10 +5,14 @@
 // typst-ide completions are converted into, so the two feel identical once
 // inserted.
 //
-// User snippets live in `.typwriter/snippets.json` inside the workspace, so
-// they travel with the project rather than with the machine. Parsing is
-// deliberately forgiving: one malformed entry reports itself and the rest still
-// load, because a JSON typo should not silently remove every snippet.
+// Snippets come from three layers, most specific winning: the built-ins below,
+// an app-wide set that follows the user, and a per-project set in the
+// workspace's `.typwriter/snippets.json` so it travels with the document.
+//
+// Both writable layers are editable in-app. The project file stays plain JSON
+// anyway, so it can be reviewed and committed like any other project asset —
+// and because it can therefore be hand-edited, parsing is deliberately
+// forgiving: one malformed entry reports itself and the rest still load.
 
 export interface Snippet {
     /** Typed to summon the snippet, and its identity for overriding. */
@@ -158,33 +162,111 @@ export function parseUserSnippets(json: string): SnippetParseResult {
 }
 
 /**
- * Combine the built-in set with the user's.
+ * Where a snippet came from, in increasing order of precedence.
  *
- * A user snippet with the same name replaces the built-in one, which is how a
- * user disagrees with a default without having to edit the app.
+ * `builtin` ships with the app, `app` follows the user across every project,
+ * and `project` lives in the workspace and travels with it. Shown in the editor
+ * so it is obvious why a name resolves the way it does.
  */
-export function mergeSnippets(
+export type SnippetScope = 'builtin' | 'app' | 'project';
+
+export interface ResolvedSnippet extends Snippet {
+    scope: SnippetScope;
+    /** Set when this entry shadows one from a lower scope. */
+    overrides?: SnippetScope;
+}
+
+/**
+ * Layer the three sources into the active set.
+ *
+ * More specific wins: a project snippet beats an app-wide one, which beats a
+ * built-in. That ordering is what makes a name overridable at all — it is how
+ * someone disagrees with a default without editing the app, and how one project
+ * can disagree with their own global set.
+ */
+export function resolveSnippets(
     builtin: readonly Snippet[],
-    user: readonly Snippet[]
-): Snippet[] {
-    const byName = new Map<string, Snippet>();
-    for (const snippet of builtin) byName.set(snippet.name, snippet);
-    for (const snippet of user) byName.set(snippet.name, snippet);
+    app: readonly Snippet[],
+    project: readonly Snippet[]
+): ResolvedSnippet[] {
+    const byName = new Map<string, ResolvedSnippet>();
+
+    const layer = (snippets: readonly Snippet[], scope: SnippetScope) => {
+        for (const snippet of snippets) {
+            const shadowed = byName.get(snippet.name);
+            byName.set(snippet.name, {
+                ...snippet,
+                scope,
+                // Only record a shadow when the scope actually differs;
+                // a duplicate within one layer is not an override.
+                overrides:
+                    shadowed && shadowed.scope !== scope ? shadowed.scope : shadowed?.overrides,
+            });
+        }
+    };
+
+    layer(builtin, 'builtin');
+    layer(app, 'app');
+    layer(project, 'project');
+
     return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** A starter file to write when the user has no `snippets.json` yet. */
-export function exampleSnippetFile(): string {
+/** Serialise snippets for storage — the array form, stably ordered. */
+export function serializeSnippets(snippets: readonly Snippet[]): string {
+    const ordered = [...snippets].sort((a, b) => a.name.localeCompare(b.name));
     return JSON.stringify(
-        [
-            {
-                name: 'todo',
-                label: 'todo',
-                description: 'Inline TODO marker',
-                body: '#text(fill: red)[TODO: ${}]',
-            },
-        ],
+        ordered.map((snippet) => ({
+            name: snippet.name,
+            label: snippet.label,
+            ...(snippet.description ? { description: snippet.description } : {}),
+            body: snippet.body,
+        })),
         null,
         2
     );
 }
+
+/**
+ * Validate a snippet the user is authoring.
+ *
+ * Returns a field-keyed map of problems so the editor can mark the offending
+ * input rather than showing one opaque message.
+ */
+export function validateSnippet(
+    draft: { name: string; body: string },
+    existingNames: readonly string[] = []
+): Partial<Record<'name' | 'body', string>> {
+    const problems: Partial<Record<'name' | 'body', string>> = {};
+    const name = draft.name.trim();
+
+    if (!name) {
+        problems.name = 'Give the snippet a name to type.';
+    } else if (/\s/.test(name)) {
+        // The completion matches on the typed word, which cannot contain a space.
+        problems.name = 'Names cannot contain spaces.';
+    } else if (existingNames.some((existing) => existing === name)) {
+        problems.name = 'A snippet with this name already exists in this scope.';
+    }
+
+    if (!draft.body.trim()) problems.body = 'Give the snippet a body to insert.';
+
+    return problems;
+}
+
+/** Insert or replace `snippet` by name, keeping the list sorted. */
+export function upsertSnippet(
+    snippets: readonly Snippet[],
+    snippet: Snippet,
+    /** Name being replaced, when the editor renamed it. */
+    replacing?: string
+): Snippet[] {
+    const drop = new Set([snippet.name, ...(replacing ? [replacing] : [])]);
+    const kept = snippets.filter((existing) => !drop.has(existing.name));
+    return [...kept, snippet].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function removeSnippet(snippets: readonly Snippet[], name: string): Snippet[] {
+    return snippets.filter((snippet) => snippet.name !== name);
+}
+

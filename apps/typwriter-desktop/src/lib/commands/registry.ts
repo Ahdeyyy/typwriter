@@ -153,14 +153,21 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
             keywords: ['template', 'boilerplate', 'scaffold'],
             enabled: () => !!workspace.rootPath,
             run: async () => {
-                // Creates the file with an example if it does not exist yet —
-                // an empty buffer would leave the format to be guessed.
-                const relPath = await snippets.ensureUserFile();
+                // Writes the current project set first, so opening the file
+                // never lands on a missing path or stale content.
+                const relPath = await snippets.ensureProjectFile();
                 if (!relPath) return;
                 workspace
                     .openFile(relPath)
                     .mapErr((err) => logError('palette open snippets failed:', err));
             },
+        },
+        {
+            id: 'app.manageSnippets',
+            title: 'Manage snippets…',
+            group: 'Application',
+            keywords: ['template', 'boilerplate', 'scaffold', 'edit snippets'],
+            run: () => void openSettingsWindow('snippets'),
         },
         {
             id: 'file.reloadSnippets',
