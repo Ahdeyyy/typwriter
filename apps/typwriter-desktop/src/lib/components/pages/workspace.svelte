@@ -134,7 +134,13 @@
 
   // ── Command palette ───────────────────────────────────────────────────────
 
+  // Shared by the titlebar button and the palette, so it guards re-entry:
+  // `leave()` is async and a second call mid-flight tears down twice.
+  let returningHome = $state(false);
+
   async function returnHome() {
+    if (returningHome) return;
+    returningHome = true;
     const result = await workspace.leave();
     result.match(
       () => page.navigate("home"),
@@ -143,6 +149,7 @@
         toast.error(`Failed to return home: ${err}`);
       },
     );
+    returningHome = false;
   }
 
   // `toggleSidebar` is missing on purpose: the palette supplies it from
@@ -256,6 +263,7 @@
     previewPoppedOut={preview.poppedOut}
     onTogglePreview={() => (previewVisible = !previewVisible)}
     onPopoutPreview={openPreviewPopout}
+    onReturnHome={() => void returnHome()}
   />
 
   <div class="flex min-h-0 w-full flex-1">

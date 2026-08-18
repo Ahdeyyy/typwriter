@@ -5,7 +5,6 @@
     Folder01Icon,
     Alert01Icon,
     TextCheckIcon,
-    Home01Icon,
     ArrowDown01Icon,
     Settings01Icon,
     GitCommitIcon,
@@ -18,7 +17,6 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { grammar } from "$lib/stores/grammar.svelte";
-  import { page } from "$lib/stores/page.svelte";
   import { ui, type SidebarSection } from "$lib/stores/ui.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { getRecentWorkspaces } from "$lib/ipc/commands";
@@ -76,7 +74,6 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
     untrack(() => sidebarCtx.setOpen(true));
   });
   let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
-  let returningHome = $state(false);
 
   const diagCount = $derived(diagnostics.errors.length + diagnostics.warnings.length);
   const hasErrors = $derived(diagnostics.errors.length > 0);
@@ -122,20 +119,6 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
       logError("Failed to open workspace:", err);
       toast.error(`Failed to open workspace: ${err}`);
     });
-  }
-
-  async function handleReturnHome() {
-    if (returningHome) return;
-    returningHome = true;
-    const result = await workspace.leave();
-    result.match(
-      () => page.navigate("home"),
-      (err) => {
-        logError("Failed to return home:", err);
-        toast.error(`Failed to return home: ${err}`);
-      }
-    );
-    returningHome = false;
   }
 </script>
 
@@ -216,7 +199,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
     {/if}
   </Sidebar.Content>
 
-  <!-- ─── Footer: section toggles + home + settings (horizontal) ──────────── -->
+  <!-- ─── Footer: section toggles + settings (horizontal) ─────────────────── -->
   <Sidebar.Footer class="border-t border-sidebar-border">
     <div class="flex items-center group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-center gap-0.5 p-1">
 
@@ -345,23 +328,6 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="top">History</Tooltip.Content>
-      </Tooltip.Root>
-
-      <!-- Home -->
-      <Tooltip.Root>
-        <Tooltip.Trigger>
-          {#snippet child({ props })}
-            <Button
-              {...props}
-              variant="ghost"
-              class="size-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              onclick={handleReturnHome}
-            >
-              <HugeiconsIcon icon={Home01Icon} class="size-4" />
-            </Button>
-          {/snippet}
-        </Tooltip.Trigger>
-        <Tooltip.Content side="top">Home</Tooltip.Content>
       </Tooltip.Root>
 
       <!-- Settings -->

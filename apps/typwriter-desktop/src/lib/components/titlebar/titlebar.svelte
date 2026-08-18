@@ -4,6 +4,7 @@
   import {
     PanelLeftOpenIcon,
     PanelLeftCloseIcon,
+    Home01Icon,
     EyeIcon,
     ViewOffSlashIcon,
     LinkSquare01Icon,
@@ -22,6 +23,7 @@
     previewPoppedOut?: boolean;
     onTogglePreview?: () => void;
     onPopoutPreview?: () => void;
+    onReturnHome?: () => void;
   };
 
   let {
@@ -32,6 +34,7 @@
     previewPoppedOut = false,
     onTogglePreview,
     onPopoutPreview,
+    onReturnHome,
   }: Props = $props();
 
   const sidebarCtx = untrack(() => variant) === "workspace" ? Sidebar.useSidebar() : null;
@@ -71,6 +74,28 @@
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="bottom">Toggle sidebar</Tooltip.Content>
+      </Tooltip.Root>
+    {/if}
+
+    <!-- Home lives here rather than in the sidebar footer: that strip is a
+         section switcher, and leaving the workspace isn't a section. -->
+    {#if variant === "workspace" && onReturnHome}
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="icon"
+              aria-label="Return home"
+              onclick={() => onReturnHome?.()}
+              class="text-foreground/60 hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground"
+            >
+              <HugeiconsIcon icon={Home01Icon} class="size-4" />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content side="bottom">Home</Tooltip.Content>
       </Tooltip.Root>
     {/if}
   </div>
