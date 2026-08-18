@@ -12,6 +12,7 @@ pub mod lsp;
 pub mod packages;
 pub mod present;
 pub mod preview;
+pub mod search;
 pub mod settings;
 pub mod vcs;
 pub mod workspace;

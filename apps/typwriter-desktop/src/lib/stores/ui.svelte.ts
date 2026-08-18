@@ -5,7 +5,13 @@
 // command palette and "go to heading" both need to *reveal* a section from
 // outside the sidebar, so the selection lives here instead.
 
-export type SidebarSection = 'files' | 'outline' | 'diagnostics' | 'grammar' | 'history';
+export type SidebarSection =
+    | 'files'
+    | 'search'
+    | 'outline'
+    | 'diagnostics'
+    | 'grammar'
+    | 'history';
 
 /** Which list the palette is showing. The user switches with a prefix
  *  character, the way VS Code does. */

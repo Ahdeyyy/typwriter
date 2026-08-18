@@ -43,6 +43,43 @@ export type JumpResponse =
 /** Filesystem metadata for a file the editor can't render. Every field is
  *  optional — a stat can fail, and not every filesystem records a birth time.
  *  Timestamps are milliseconds since the Unix epoch. */
+/** A project-wide search hit. Offsets and columns are UTF-16 code units,
+ *  CodeMirror's coordinate space. */
+export interface SearchHit {
+    path: string;
+    /** 1-based. */
+    line: number;
+    /** The whole line, for display. */
+    preview: string;
+    matchStart: number;
+    matchEnd: number;
+    /** Absolute offset in the file, for jumping. */
+    offset: number;
+}
+
+export interface SearchResults {
+    hits: SearchHit[];
+    filesSearched: number;
+    /** True when the hit cap cut the list short. */
+    truncated: boolean;
+}
+
+export interface SearchQuery {
+    query: string;
+    caseSensitive: boolean;
+    wholeWord: boolean;
+    regex: boolean;
+    /** Empty means every text file. */
+    extensions: string[];
+}
+
+export interface ReplaceOutcome {
+    filesChanged: number;
+    replacements: number;
+    /** Restore point taken before writing. */
+    restorePoint: string | null;
+}
+
 /** One package from the Typst Universe index, versions folded together. */
 export interface PackageEntry {
     namespace: string;

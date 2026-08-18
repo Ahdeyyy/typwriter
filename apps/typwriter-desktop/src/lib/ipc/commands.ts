@@ -20,7 +20,10 @@ import type {
     GrammarReport,
     GrammarRuleInfo,
     DisplayInfo,
-    PackageEntry
+    PackageEntry,
+    SearchQuery,
+    SearchResults,
+    ReplaceOutcome
 } from '$lib/types';
 
 const toErrString = (e: unknown): string => String(e);
@@ -139,6 +142,23 @@ export function getExportPresets() {
 export function setExportPresets(presets: unknown) {
     return ResultAsync.fromPromise(
         invoke<void>('set_export_presets', { presets }),
+        toErrString
+    );
+}
+
+/** Search every text file in the workspace. */
+export function searchWorkspace(query: SearchQuery) {
+    return ResultAsync.fromPromise(
+        invoke<SearchResults>('search_workspace', { query }),
+        toErrString
+    );
+}
+
+/** Replace across the workspace. Rust takes a restore point first, so the
+ *  whole edit can be undone from the history pane. */
+export function replaceInWorkspace(query: SearchQuery, replacement: string) {
+    return ResultAsync.fromPromise(
+        invoke<ReplaceOutcome>('replace_in_workspace', { query, replacement }),
         toErrString
     );
 }

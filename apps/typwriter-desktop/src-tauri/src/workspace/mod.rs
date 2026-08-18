@@ -2,6 +2,7 @@
 // live FS watcher. All file-system operations funnel through here so the
 // EditorWorld caches stay consistent.
 
+pub mod text_files;
 mod error;
 mod path;
 mod self_writes;

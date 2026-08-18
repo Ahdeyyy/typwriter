@@ -38,6 +38,9 @@ tauri-plugin-log = "2"
 tauri-plugin-store = "2"
 notify = "7"
 rayon = "1"
+# Project-wide search. Already in the tree via typst; declared directly
+# because `commands/search.rs` uses it.
+regex = "1"
 base64 = "0.22"
 lru = "0.12"
 parking_lot = "0.12"

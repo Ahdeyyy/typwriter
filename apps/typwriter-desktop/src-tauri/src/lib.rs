@@ -39,6 +39,7 @@ use commands::{
     packages::list_packages,
     present::{enter_presentation, exit_presentation, list_displays},
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
+    search::{replace_in_workspace, search_workspace},
     settings::{
         get_app_settings, get_export_presets, get_onboarding_completed, get_user_snippets,
         list_font_families, list_system_font_families, set_app_settings, set_export_presets,
@@ -298,6 +299,8 @@ pub fn run() {
             // logs
             get_log_file_path,
             list_packages,
+            search_workspace,
+            replace_in_workspace,
             // language server (tinymist) bridge
             lsp_start,
             lsp_send,

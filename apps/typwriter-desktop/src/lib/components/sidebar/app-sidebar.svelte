@@ -10,6 +10,7 @@
     Settings01Icon,
     GitCommitIcon,
     LeftToRightListBulletIcon,
+    Search01Icon,
   } from "@hugeicons/core-free-icons";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -27,6 +28,7 @@
   import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
   import GrammarPane from "$lib/components/editor/grammar-pane.svelte";
   import OutlinePane from "$lib/components/sidebar/outline-pane.svelte";
+  import SearchPane from "$lib/components/sidebar/search-pane.svelte";
   import HistoryPane from "$lib/components/vcs/ledger.svelte";
   import { vcs } from "$lib/stores/vcs.svelte";
   import { openDiffWindow, openSettingsWindow } from "$lib/windows";
@@ -198,6 +200,8 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
   <Sidebar.Content class="group-data-[collapsible=icon]:hidden">
     {#if activeSection === "files"}
       <FileTree />
+    {:else if activeSection === "search"}
+      <SearchPane onclose={() => sidebarCtx.setOpen(false)} />
     {:else if activeSection === "outline"}
       <OutlinePane onclose={() => sidebarCtx.setOpen(false)} />
     {:else if activeSection === "diagnostics"}
@@ -231,6 +235,23 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="top">Files</Tooltip.Content>
+      </Tooltip.Root>
+
+      <!-- Search toggle -->
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              class="relative size-8 shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground {sidebarCtx.open && activeSection === 'search' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/70'}"
+              onclick={() => toggleSection("search")}
+            >
+              <HugeiconsIcon icon={Search01Icon} class="size-4" />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content side="top">Search</Tooltip.Content>
       </Tooltip.Root>
 
       <!-- Outline toggle -->

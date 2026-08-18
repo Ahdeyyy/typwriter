@@ -334,6 +334,13 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
             run: () => ui.showSection('files'),
         },
         {
+            id: 'view.search',
+            title: 'Search across the project',
+            group: 'View',
+            keywords: ['find in files', 'grep', 'replace everywhere', 'rename'],
+            run: () => ui.showSection('search'),
+        },
+        {
             id: 'view.outline',
             title: 'Show outline',
             group: 'View',
