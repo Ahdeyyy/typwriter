@@ -29,6 +29,7 @@
   const isDiffWindow = windowRole === "diff";
   const diffInitialPrimary = isDiffWindow ? searchParams.get("primary") : null;
   const diffInitialSecondary = isDiffWindow ? searchParams.get("secondary") : null;
+  const diffInitialView = searchParams.get("view") === "pages" ? "pages" : "files";
 
   const title = $derived.by(() => {
     if (isPreviewWindow) {
@@ -61,7 +62,11 @@
     {:else if isSettingsWindow}
       <SettingsWindow initialGroup={settingsInitialGroup} />
     {:else if isDiffWindow}
-      <DiffWindow initialPrimary={diffInitialPrimary} initialSecondary={diffInitialSecondary} />
+      <DiffWindow
+        initialPrimary={diffInitialPrimary}
+        initialSecondary={diffInitialSecondary}
+        initialView={diffInitialView}
+      />
     {:else}
       <page.current.component />
     {/if}

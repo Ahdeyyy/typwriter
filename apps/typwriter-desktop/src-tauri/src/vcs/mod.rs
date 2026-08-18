@@ -42,6 +42,9 @@ pub use diff::{FileDiff, FileDiffStatus, WorkspaceDiff};
 pub use history::RestorePoint;
 pub use retention::RetentionPolicy;
 
+/// Workspace-relative path → blob hash, as recorded in a snapshot manifest.
+pub type SnapshotFiles = std::collections::BTreeMap<String, String>;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -240,6 +243,24 @@ impl VcsState {
         let root = self.workspace_root().ok_or("No workspace open")?;
         let fs = LocalWorkingTreeFs;
         history::list_history(&root, &fs, limit)
+    }
+
+    /// The file map of a snapshot: workspace-relative (forward-slash) path →
+    /// blob hash. Deliberately *without* the blob bytes: a historical compile
+    /// only reads the handful of files the document actually imports, so
+    /// materializing the whole tree up front would be wasted work on any
+    /// workspace with sizeable assets. Pair it with [`Self::read_object`].
+    pub fn snapshot_files(&self, commit_id: &str) -> Result<SnapshotFiles, String> {
+        let root = self.workspace_root().ok_or("No workspace open")?;
+        let fs = LocalWorkingTreeFs;
+        Ok(store::find_snapshot_by_id(&fs, &root, commit_id)?.files)
+    }
+
+    /// Read one content-addressed blob out of the object store.
+    pub fn read_object(&self, hash: &str) -> Result<Vec<u8>, String> {
+        let root = self.workspace_root().ok_or("No workspace open")?;
+        let fs = LocalWorkingTreeFs;
+        store::read_blob(&fs, &root, hash)
     }
 
     /// Diff a snapshot against the current working tree.

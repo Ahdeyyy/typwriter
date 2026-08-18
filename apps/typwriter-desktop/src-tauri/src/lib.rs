@@ -10,7 +10,7 @@ mod world;
 
 use std::sync::Arc;
 
-use compiler::{parse_key, PreviewPipeline};
+use compiler::{parse_key, PageDiffEngine, PreviewPipeline};
 use parking_lot::RwLock;
 use tauri::Manager;
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
@@ -47,7 +47,8 @@ use commands::{
     },
     vcs::{
         vcs_create_restore_point, vcs_current_id, vcs_diff_between, vcs_diff_vs_current,
-        vcs_list_history, vcs_restore_file, vcs_restore_workspace,
+        vcs_list_history, vcs_page_diff_cancel, vcs_page_diff_render_page,
+        vcs_page_diff_request, vcs_restore_file, vcs_restore_workspace,
     },
     workspace::{
         clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
@@ -95,6 +96,15 @@ pub fn run() {
                 return;
             };
             let pipeline = pipeline.inner().clone();
+            // Page-diff thumbnails ride the same scheme but live in their own
+            // LRU, so a big comparison can't evict the pages the live preview
+            // is showing. Keys are `(content hash, zoom bucket)` in both
+            // caches — a key present in both is the same bytes by
+            // construction, so the order of the fallback doesn't matter.
+            let page_diff = ctx
+                .app_handle()
+                .try_state::<Arc<PageDiffEngine>>()
+                .map(|state| state.inner().clone());
 
             tauri::async_runtime::spawn_blocking(move || {
                 // A panic here would previously escape into a WebView2 COM
@@ -103,7 +113,9 @@ pub fn run() {
                 // a 404, so keep degrading to that rather than taking the
                 // thread down.
                 let fetched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    pipeline.page_bytes(key)
+                    pipeline
+                        .page_bytes(key)
+                        .or_else(|| page_diff.as_ref().and_then(|e| e.page_bytes(key)))
                 }));
                 let Ok(Some(bytes)) = fetched else {
                     if fetched.is_err() {
@@ -208,6 +220,15 @@ pub fn run() {
                 vcs.clone(),
                 handle.clone(),
             ));
+            // Historical compiles run on their own worker so a page
+            // comparison never contends with (or blocks) the live preview.
+            let page_diff = Arc::new(PageDiffEngine::new(
+                world.clone(),
+                vcs.clone(),
+                pipeline.clone(),
+                handle.clone(),
+            ));
+            page_diff.start_worker();
 
             // Snapshot policy mirrors the user's persisted prefs. Seeded
             // here so save/compile workers see the right values on the very
@@ -225,6 +246,7 @@ pub fn run() {
 
             app.manage(world.clone());
             app.manage(pipeline);
+            app.manage(page_diff);
             app.manage(workspace);
             app.manage(vcs);
             app.manage(snapshot_policy);
@@ -336,6 +358,9 @@ pub fn run() {
             vcs_diff_between,
             vcs_restore_workspace,
             vcs_restore_file,
+            vcs_page_diff_request,
+            vcs_page_diff_cancel,
+            vcs_page_diff_render_page,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|err| {

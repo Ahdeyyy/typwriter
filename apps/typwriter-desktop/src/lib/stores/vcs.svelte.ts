@@ -3,6 +3,10 @@
 //   - the currently selected point (for diff-vs-current view)
 //   - the optional second selection (for diff-between-two view)
 //   - the active diff payload + its loading state
+//   - the page-level diff (which *pages* changed), which is asynchronous:
+//     the backend has to compile the restore point to answer, so the store
+//     tracks the outstanding request id and ignores results that arrive for
+//     a selection the user has already moved past
 //
 // Convention follows the rest of the app: class-instance singleton so $state
 // stays reactive across imports; IPC methods return ResultAsync so callers
@@ -10,7 +14,7 @@
 
 import { ResultAsync } from 'neverthrow';
 
-import type { RestorePoint, WorkspaceDiff, FileDiff } from '$lib/types';
+import type { RestorePoint, WorkspaceDiff, FileDiff, PageDiffPayload } from '$lib/types';
 import {
     triggerPreview,
     vcsCreateRestorePoint,
@@ -18,6 +22,8 @@ import {
     vcsDiffBetween,
     vcsDiffVsCurrent,
     vcsListHistory,
+    vcsPageDiffCancel,
+    vcsPageDiffRequest,
     vcsRestoreFile,
     vcsRestoreWorkspace
 } from '$lib/ipc/commands';
@@ -50,6 +56,19 @@ class VcsStore {
 
     /** Loading flag for the diff payload. */
     diffLoading = $state(false);
+
+    // ─── Page-level diff ─────────────────────────────────────────────────
+    //
+    // Requested explicitly (it costs a full compile of the restore point),
+    // so it is *not* recomputed by `reloadDiff` — the Pages view asks for it
+    // when the user opens it. Results arrive over events; `pageDiffRequestId`
+    // is what makes a superseded result droppable.
+
+    pageDiff = $state<PageDiffPayload | null>(null);
+    pageDiffLoading = $state(false);
+    pageDiffError = $state<string | null>(null);
+    /** Id of the comparison we're still waiting for; `null` when idle. */
+    pageDiffRequestId = $state<number | null>(null);
 
     /** Per-commit branch index derived from the parent_id graph. A commit
      *  inherits its parent's branch if it is the *oldest* child of that
@@ -176,10 +195,20 @@ class VcsStore {
     }
 
     private reloadDiff(): ResultAsync<void, string> {
+        // The page diff belongs to the *previous* selection and costs a
+        // compile to recompute, so drop it rather than silently showing the
+        // wrong pages. The Pages view re-requests when it needs one.
+        //
+        // With a selection still in play we only reset our own state: a
+        // request may be moments away and must not race a cancel (see
+        // `discardPageDiff`). With the selection cleared nothing more is
+        // coming, so that is the moment to make the backend let go.
         if (this.primaryId == null) {
+            this.releasePageDiff();
             this.diff = null;
             return ResultAsync.fromSafePromise(Promise.resolve());
         }
+        this.discardPageDiff();
         this.diffLoading = true;
         const cmd = this.secondaryId
             ? vcsDiffBetween(this.primaryId, this.secondaryId)
@@ -194,6 +223,80 @@ class VcsStore {
                 logError('vcs: diff failed:', err);
                 return err;
             });
+    }
+
+    // ─── Page-level diff ─────────────────────────────────────────────────
+
+    /** Ask the backend which pages changed for the current selection. Safe to
+     *  call repeatedly — a new request supersedes the one in flight, and the
+     *  worker drops the abandoned one at its next phase boundary. */
+    requestPageDiff(): ResultAsync<void, string> {
+        if (this.primaryId == null) {
+            this.discardPageDiff();
+            return ResultAsync.fromSafePromise(Promise.resolve());
+        }
+        this.pageDiff = null;
+        this.pageDiffError = null;
+        this.pageDiffLoading = true;
+        return vcsPageDiffRequest(this.primaryId, this.secondaryId)
+            .map((requestId) => {
+                this.pageDiffRequestId = requestId;
+            })
+            .mapErr((err) => {
+                this.pageDiffLoading = false;
+                this.pageDiffRequestId = null;
+                this.pageDiffError = err;
+                logError('vcs: requestPageDiff failed:', err);
+                return err;
+            });
+    }
+
+    /** Apply a result from the worker, ignoring anything we no longer want. */
+    applyPageDiff(payload: PageDiffPayload): void {
+        if (payload.request_id !== this.pageDiffRequestId) return;
+        this.pageDiff = payload;
+        this.pageDiffError = null;
+        this.pageDiffLoading = false;
+        this.pageDiffRequestId = null;
+    }
+
+    /** Record a worker-side failure for the request we're waiting on. */
+    applyPageDiffError(requestId: number, message: string): void {
+        if (requestId !== this.pageDiffRequestId) return;
+        this.pageDiff = null;
+        this.pageDiffError = message;
+        this.pageDiffLoading = false;
+        this.pageDiffRequestId = null;
+    }
+
+    /** Forget the page diff on this side only.
+     *
+     *  Deliberately does *not* tell the backend to stop. `vcs_page_diff_cancel`
+     *  and `vcs_page_diff_request` are both async commands with no relative
+     *  ordering, so cancelling here — on the way to requesting a comparison for
+     *  the new selection — could land *after* that request and kill it. A new
+     *  request already supersedes the old one backend-side, which is the real
+     *  cancellation; use [`releasePageDiff`] for the terminal case where
+     *  nothing further will be asked for. */
+    discardPageDiff(): void {
+        this.pageDiff = null;
+        this.pageDiffError = null;
+        this.pageDiffLoading = false;
+        this.pageDiffRequestId = null;
+    }
+
+    /** Forget the page diff *and* tell the backend to stand down: stop any
+     *  compile still running and drop the laid-out documents it was holding
+     *  for full-size page renders. Only safe where no request follows —
+     *  clearing the selection, or tearing the window down. */
+    releasePageDiff(): void {
+        const hadWork = this.pageDiffRequestId !== null || this.pageDiff !== null;
+        this.discardPageDiff();
+        if (hadWork) {
+            vcsPageDiffCancel().mapErr((err) =>
+                logError('vcs: pageDiffCancel failed:', err)
+            );
+        }
     }
 
     // ─── Restore ─────────────────────────────────────────────────────────
@@ -271,6 +374,7 @@ class VcsStore {
     }
 
     destroy(): void {
+        this.releasePageDiff();
         this.history = [];
         this.primaryId = null;
         this.secondaryId = null;

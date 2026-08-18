@@ -8,7 +8,9 @@ mod cache;
 mod compile;
 mod diff;
 mod disk_cache;
+mod page_diff;
 mod render;
+mod snapshot_world;
 
 pub use cache::{key_to_path, parse_key, zoom_to_bucket, PageCacheKey};
 pub use compile::{
@@ -16,6 +18,7 @@ pub use compile::{
     SerializedDiagnostic, WorkspaceDiagCache,
 };
 pub use diff::fingerprint_pages;
+pub use page_diff::{PageDiffEngine, PageDiffSide};
 pub use render::render_page;
 
 use std::{

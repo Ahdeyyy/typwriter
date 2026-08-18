@@ -22,7 +22,10 @@ import type {
     PageRemovedPayload,
     CompileStatePayload,
     GrammarConfig,
-    WorkspaceFilesChangedPayload
+    WorkspaceFilesChangedPayload,
+    PageDiffPayload,
+    PageDiffStartedPayload,
+    PageDiffErrorPayload
 } from '$lib/types';
 
 export type { UnlistenFn };
@@ -220,6 +223,9 @@ export function emitPresentationToggleRequest() {
 export interface VcsDiffSelectionPayload {
     primaryId: string | null;
     secondaryId: string | null;
+    /** Which tab to show. Absent on payloads from older callers — the window
+     *  keeps whatever tab it is on in that case. */
+    view?: 'files' | 'pages';
 }
 
 /** Main window → diff window: retarget an already-open diff window. */
@@ -273,4 +279,34 @@ export function onVcsRestoreFileResult(handler: (payload: VcsRestoreFileResultPa
 
 export function emitVcsRestoreFileResult(payload: VcsRestoreFileResultPayload) {
     return ResultAsync.fromPromise(emit('vcs:restore-file-result', payload), toErrString);
+}
+
+// ─── Page-level diff (backend worker → whichever window asked) ────────────────
+//
+// Emitted by the page-diff worker rather than returned from the command,
+// because computing one means compiling a historical version of the document.
+// Every payload carries the `request_id` the command handed back, so a window
+// that has since retargeted can drop results it no longer wants.
+
+export function onVcsPageDiffStarted(handler: (payload: PageDiffStartedPayload) => void) {
+    return ResultAsync.fromPromise(
+        listen<PageDiffStartedPayload>('vcs:page-diff-started', (event) =>
+            handler(event.payload)
+        ),
+        toErrString
+    );
+}
+
+export function onVcsPageDiff(handler: (payload: PageDiffPayload) => void) {
+    return ResultAsync.fromPromise(
+        listen<PageDiffPayload>('vcs:page-diff', (event) => handler(event.payload)),
+        toErrString
+    );
+}
+
+export function onVcsPageDiffError(handler: (payload: PageDiffErrorPayload) => void) {
+    return ResultAsync.fromPromise(
+        listen<PageDiffErrorPayload>('vcs:page-diff-error', (event) => handler(event.payload)),
+        toErrString
+    );
 }

@@ -21,7 +21,7 @@ use std::{
 use base64::Engine;
 use notify::RecommendedWatcher;
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::{
     compiler::{render_page, CompileReason, PreviewPipeline},
@@ -136,6 +136,14 @@ impl WorkspaceState {
         self.world.set_root(path.clone());
         self.pipeline.invalidate_cache();
         self.pipeline.attach_disk_cache(&path);
+        // Page-diff thumbnails were rendered from the *previous* workspace's
+        // object store; nothing about them survives the move.
+        if let Some(engine) = self
+            .app_handle
+            .try_state::<std::sync::Arc<crate::compiler::PageDiffEngine>>()
+        {
+            engine.invalidate();
+        }
 
         // Kick the (lazy) font search off now so the system scan overlaps the
         // rest of the open path — watcher start, cache attach, frontend

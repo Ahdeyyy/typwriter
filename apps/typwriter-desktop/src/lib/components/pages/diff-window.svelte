@@ -3,7 +3,15 @@
 
   Standalone version-diff window (label "diff", routed via `?window=diff`).
   Renders the selected diff (either "point vs current" or "point A vs point B")
-  as a list of per-file @pierre/diffs FileDiff instances.
+  two ways, behind a Files / Pages toggle:
+
+    * **Files** — a list of per-file @pierre/diffs FileDiff instances. Source
+      truth: what text moved.
+    * **Pages** — the rendered-page comparison. Answers "which pages of the
+      finished document changed", which the source diff can't: a one-word edit
+      can reflow forty pages, and a large refactor can change none. It costs a
+      compile of the restore point, so it is requested on demand (first time
+      the tab is opened, or via its refresh button) rather than eagerly.
 
   This window owns its own store instances, so it computes the diff itself over
   IPC: the selection is seeded from URL params on boot and retargeted through
@@ -13,11 +21,13 @@
   the restore live in the main window's stores.
 -->
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
     ArrowReloadHorizontalIcon,
+    File01Icon,
     GitCompareIcon,
+    Layers01Icon,
     Layout01Icon,
     LayoutTwoColumnIcon,
   } from "@hugeicons/core-free-icons";
@@ -31,17 +41,45 @@
   import { vcs } from "$lib/stores/vcs.svelte";
   import {
     onVcsDiffSelection,
+    onVcsPageDiff,
+    onVcsPageDiffError,
     onVcsRestoreFileResult,
     emitVcsRestoreFileRequest,
     type UnlistenFn,
   } from "$lib/ipc/events";
   import { logError } from "$lib/logger";
   import DiffViewer from "$lib/components/vcs/diff-viewer.svelte";
+  import PageDiffView from "$lib/components/vcs/page-diff-view.svelte";
 
-  type Props = { initialPrimary?: string | null; initialSecondary?: string | null };
-  let { initialPrimary = null, initialSecondary = null }: Props = $props();
+  type DiffView = "files" | "pages";
+  type Props = {
+    initialPrimary?: string | null;
+    initialSecondary?: string | null;
+    initialView?: DiffView;
+  };
+  let { initialPrimary = null, initialSecondary = null, initialView = "files" }: Props =
+    $props();
 
   let layout = $state<"split" | "unified">("split");
+  // Seeded once from the URL param, then owned by the toggle. `untrack` says
+  // so explicitly: the prop is a boot value, and a later change to it (which
+  // can't happen — the window is created with its params) must not stomp on
+  // whatever tab the user has since chosen.
+  let view = $state<DiffView>(untrack(() => initialView));
+
+  /** Switch tabs, computing the page diff the first time Pages is opened for
+   *  the current selection. Not automatic on selection change: it costs a
+   *  full compile, and the user may only ever want the file diff. */
+  function showPages() {
+    view = "pages";
+    if (!vcs.pageDiff && !vcs.pageDiffLoading && !vcs.pageDiffError) {
+      requestPageDiff();
+    }
+  }
+
+  function requestPageDiff() {
+    vcs.requestPageDiff().mapErr((err) => toast.error(`Pages: ${err}`));
+  }
 
   /** Path of the file whose delegated restore is in flight — disables its
    *  button until the main window reports back. */
@@ -79,15 +117,41 @@
     vcs
       .refresh()
       .andThen(() => vcs.setSelection(initialPrimary, initialSecondary))
+      .map(() => {
+        // `setSelection` clears any stale page diff, so the request has to
+        // come after it — otherwise we'd cancel the one we just made.
+        if (view === "pages") requestPageDiff();
+      })
       .mapErr((err) => toast.error(`Diff: ${err}`));
 
-    onVcsDiffSelection(({ primaryId, secondaryId }) => {
-      vcs.setSelection(primaryId, secondaryId).mapErr((err) => toast.error(`Diff: ${err}`));
+    onVcsDiffSelection(({ primaryId, secondaryId, view: requestedView }) => {
+      if (requestedView) view = requestedView;
+      vcs
+        .setSelection(primaryId, secondaryId)
+        .map(() => {
+          // Retargeting invalidated the old page diff. Recompute only if the
+          // user is actually looking at it — otherwise wait for the tab.
+          if (view === "pages" && primaryId) requestPageDiff();
+        })
+        .mapErr((err) => toast.error(`Diff: ${err}`));
       // The selection may reference a point created since boot.
       vcs.refresh().mapErr((err) => logError("diff window history refresh failed:", err));
     })
       .map((unlisten) => unlistens.push(unlisten))
       .mapErr((err) => logError("diff selection listener failed:", err));
+
+    // The page diff is computed by a backend worker (it has to compile the
+    // restore point), so its result arrives as an event rather than a command
+    // return. The store drops anything tagged with a superseded request id.
+    onVcsPageDiff((payload) => vcs.applyPageDiff(payload))
+      .map((unlisten) => unlistens.push(unlisten))
+      .mapErr((err) => logError("page diff listener failed:", err));
+
+    onVcsPageDiffError(({ request_id, message }) =>
+      vcs.applyPageDiffError(request_id, message)
+    )
+      .map((unlisten) => unlistens.push(unlisten))
+      .mapErr((err) => logError("page diff error listener failed:", err));
 
     onVcsRestoreFileResult(({ path, error }) => {
       restoringPath = null;
@@ -124,14 +188,47 @@
     <div class="min-w-0 flex-1">
       <div class="truncate text-sm font-medium">{heading}</div>
       <div class="text-[10px] text-muted-foreground">
-        {vcs.diff?.files.length ?? 0} file{(vcs.diff?.files.length ?? 0) === 1 ? "" : "s"} changed
+        {#if view === "pages" && vcs.pageDiff}
+          {vcs.pageDiff.changed + vcs.pageDiff.added + vcs.pageDiff.removed} page{vcs.pageDiff
+            .changed +
+            vcs.pageDiff.added +
+            vcs.pageDiff.removed ===
+          1
+            ? ""
+            : "s"} changed
+        {:else}
+          {vcs.diff?.files.length ?? 0} file{(vcs.diff?.files.length ?? 0) === 1 ? "" : "s"} changed
+        {/if}
       </div>
+    </div>
+
+    <!-- Files / Pages toggle. Same two-button pattern as the layout switch
+         below; `aria-pressed` carries the state. -->
+    <div class="flex items-center rounded border border-border bg-background">
+      <Button
+        variant={view === "files" ? "secondary" : "ghost"}
+        size="xs"
+        aria-pressed={view === "files"}
+        onclick={() => (view = "files")}
+      >
+        <HugeiconsIcon icon={File01Icon} class="size-3" />
+        Files
+      </Button>
+      <Button
+        variant={view === "pages" ? "secondary" : "ghost"}
+        size="xs"
+        aria-pressed={view === "pages"}
+        onclick={showPages}
+      >
+        <HugeiconsIcon icon={Layers01Icon} class="size-3" />
+        Pages
+      </Button>
     </div>
 
     <!-- Split / unified toggle. A real <ToggleGroup> would be overkill for two
          mutually-exclusive states; two buttons with `aria-pressed` is cleaner
          and avoids pulling in an extra shadcn component. -->
-    <div class="flex items-center rounded border border-border bg-background">
+    <div class="flex items-center rounded border border-border bg-background" class:hidden={view !== "files"}>
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
@@ -168,6 +265,11 @@
   </div>
 
   <!-- Body ───────────────────────────────────────────────────────── -->
+  {#if view === "pages"}
+    <div class="min-h-0 flex-1">
+      <PageDiffView onrefresh={requestPageDiff} />
+    </div>
+  {:else}
   <ScrollArea.Root class="flex-1 min-h-0">
     {#if vcs.diffLoading}
       <p class="py-12 text-center text-sm text-muted-foreground">Computing diff…</p>
@@ -219,6 +321,7 @@
       </div>
     {/if}
   </ScrollArea.Root>
+  {/if}
 </div>
 </Tooltip.Provider>
 

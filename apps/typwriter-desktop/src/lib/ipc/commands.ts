@@ -16,6 +16,7 @@ import type {
     SvgExportConfig,
     RestorePoint,
     WorkspaceDiff,
+    PageDiffSide,
     GrammarConfig,
     GrammarReport,
     GrammarRuleInfo,
@@ -467,6 +468,43 @@ export function vcsRestoreWorkspace(commitId: string) {
 export function vcsRestoreFile(commitId: string, path: string) {
     return ResultAsync.fromPromise(
         invoke<void>('vcs_restore_file', { commitId, path }),
+        toErrString
+    );
+}
+
+/** Queue a page-level comparison and return its request id.
+ *
+ *  This one has to compile the restore point before it can answer, so it does
+ *  not return the diff: the result lands on `vcs:page-diff` (or
+ *  `vcs:page-diff-error`) tagged with the id returned here. Pass `toId` to
+ *  compare two restore points; omit it to compare against the document the
+ *  preview is currently showing. */
+export function vcsPageDiffRequest(fromId: string, toId?: string | null) {
+    return ResultAsync.fromPromise(
+        invoke<number>('vcs_page_diff_request', { fromId, toId: toId ?? null }),
+        toErrString
+    );
+}
+
+/** Abandon the page comparison: stops the worker and lets the backend drop
+ *  the laid-out documents it was holding for full-size renders. Call it when
+ *  you stop *looking* at a comparison — asking for a different one supersedes
+ *  the old request on its own. */
+export function vcsPageDiffCancel() {
+    return ResultAsync.fromPromise(invoke<void>('vcs_page_diff_cancel'), toErrString);
+}
+
+/** Render one page of the last comparison at `scale` (device pixels per typst
+ *  point) and return its `previewimg://` path component, ready for
+ *  `buildPreviewUrl`. The contact-sheet thumbnails are 72 dpi; this is how a
+ *  page gets opened at a resolution you can actually read.
+ *
+ *  Cheap — the backend still has the document laid out, so it is one
+ *  rasterization rather than a recompile — but it does fail once the
+ *  comparison has been released, which means "recompute it first". */
+export function vcsPageDiffRenderPage(side: PageDiffSide, pageIndex: number, scale: number) {
+    return ResultAsync.fromPromise(
+        invoke<string>('vcs_page_diff_render_page', { side, pageIndex, scale }),
         toErrString
     );
 }

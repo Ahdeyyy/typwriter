@@ -20,6 +20,9 @@ import { logError } from '$lib/logger';
 export const SETTINGS_WINDOW_LABEL = 'settings';
 export const DIFF_WINDOW_LABEL = 'diff';
 
+/** Which tab the version-diff window shows. */
+export type DiffWindowView = 'files' | 'pages';
+
 async function focusExisting(label: string): Promise<WebviewWindow | null> {
     const existing = await WebviewWindow.getByLabel(label);
     if (!existing) return null;
@@ -63,17 +66,20 @@ export async function openSettingsWindow(group?: string): Promise<void> {
 
 /** Open (or retarget) the version-diff window for the given selection.
  *  `primaryId` is the anchor restore point; `secondaryId`, when set, makes it
- *  a two-point diff instead of "point vs current". */
+ *  a two-point diff instead of "point vs current". `view` picks which tab it
+ *  lands on — `'pages'` goes straight to the rendered-page comparison, which
+ *  is what the ledger's "compare pages" action wants. */
 export async function openDiffWindow(
     primaryId: string | null,
-    secondaryId: string | null
+    secondaryId: string | null,
+    view: DiffWindowView = 'files'
 ): Promise<void> {
     if (!primaryId) return;
 
     const existing = await focusExisting(DIFF_WINDOW_LABEL);
     if (existing) {
         // Already open: retarget it over the event bus instead of recreating.
-        emitVcsDiffSelection({ primaryId, secondaryId }).mapErr((err) =>
+        emitVcsDiffSelection({ primaryId, secondaryId, view }).mapErr((err) =>
             logError('diff window retarget failed:', err)
         );
         return;
@@ -81,7 +87,7 @@ export async function openDiffWindow(
 
     // Seed the selection via the URL — the new window's stores boot empty and
     // must know what to diff before their first render.
-    const params = new URLSearchParams({ window: 'diff', primary: primaryId });
+    const params = new URLSearchParams({ window: 'diff', primary: primaryId, view });
     if (secondaryId) params.set('secondary', secondaryId);
 
     const win = new WebviewWindow(DIFF_WINDOW_LABEL, {

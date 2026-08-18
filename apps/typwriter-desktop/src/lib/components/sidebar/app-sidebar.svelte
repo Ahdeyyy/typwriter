@@ -194,7 +194,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
     {:else if activeSection === "history"}
       <HistoryPane
         onclose={() => sidebarCtx.setOpen(false)}
-        onopenDiff={() => openDiffWindow(vcs.primaryId, vcs.secondaryId)}
+        onopenDiff={(view) => openDiffWindow(vcs.primaryId, vcs.secondaryId, view)}
       />
     {/if}
   </Sidebar.Content>

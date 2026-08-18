@@ -275,6 +275,56 @@ export interface WorkspaceDiff {
     files: FileDiff[];
 }
 
+// ─── Page-level diff ──────────────────────────────────────────────────────────
+//
+// "Which pages changed since this restore point." Computed by compiling the
+// snapshot and aligning its page fingerprints against the current document's,
+// so it arrives asynchronously over `vcs:page-diff` rather than as a command
+// return value — see `vcsPageDiffRequest`.
+
+export type PageChangeKind = 'unchanged' | 'changed' | 'added' | 'removed';
+
+/** Which of the two compared documents a full-size page render comes from. */
+export type PageDiffSide = 'before' | 'after';
+
+export interface PageDiffEntry {
+    kind: PageChangeKind;
+    /** 0-based page index in the older document; `null` for added pages. */
+    before_index: number | null;
+    /** 0-based page index in the newer document; `null` for removed pages. */
+    after_index: number | null;
+    /** `previewimg://` path component for the thumbnail, or `null` when the
+     *  page doesn't exist on that side or fell outside the render budget. */
+    before_key: string | null;
+    after_key: string | null;
+}
+
+export interface PageDiffPayload {
+    request_id: number;
+    from_id: string;
+    /** `null` when the comparison target is the current working document. */
+    to_id: string | null;
+    before_pages: number;
+    after_pages: number;
+    changed: number;
+    added: number;
+    removed: number;
+    unchanged: number;
+    entries: PageDiffEntry[];
+    /** Some entries carry no thumbnails: the render budget ran out. */
+    truncated: boolean;
+    elapsed_ms: number;
+}
+
+export interface PageDiffStartedPayload {
+    request_id: number;
+}
+
+export interface PageDiffErrorPayload {
+    request_id: number;
+    message: string;
+}
+
 // ─── Grammar checking ─────────────────────────────────────────────────────────
 
 export type GrammarDialect =

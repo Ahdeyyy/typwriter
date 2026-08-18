@@ -6,6 +6,7 @@ use std::{sync::Arc, time::Instant};
 use log::{error, info};
 use tauri::State;
 
+use crate::compiler::{PageDiffEngine, PageDiffSide};
 use crate::vcs::{RestorePoint, VcsState, WorkspaceDiff};
 
 #[tauri::command(async)]
@@ -119,6 +120,66 @@ pub fn vcs_restore_file(
             t.elapsed().as_secs_f64() * 1000.0
         ),
         Err(e) => error!("vcs_restore_file: err=\"{e}\""),
+    }
+    result
+}
+
+// ─── Page-level diff ────────────────────────────────────────────────────────
+//
+// Unlike the file diffs above, this one has to *compile* the restore point
+// before it can say anything, so it can't be a request/response command: a
+// long document would block the caller for seconds and there would be no way
+// to call it off when the user clicks a different point. The command enqueues
+// and returns the request id immediately; the result arrives on `vcs:page-diff`
+// (or `vcs:page-diff-error`) tagged with that id.
+
+/// Queue a page-level comparison. `to_id` of `None` compares the restore point
+/// against the document the preview is currently showing.
+#[tauri::command(async)]
+pub fn vcs_page_diff_request(
+    from_id: String,
+    to_id: Option<String>,
+    engine: State<'_, Arc<PageDiffEngine>>,
+) -> u64 {
+    let request_id = engine.request(from_id, to_id);
+    info!("vcs_page_diff_request: queued request={request_id}");
+    request_id
+}
+
+/// Abandon the comparison: stop the worker at its next phase boundary and
+/// drop the laid-out documents it was holding for full-size renders. Called
+/// when the frontend stops looking at a comparison, not merely when it wants
+/// a different one — a superseding `vcs_page_diff_request` handles that on
+/// its own and must keep the documents alive.
+#[tauri::command(async)]
+pub fn vcs_page_diff_cancel(engine: State<'_, Arc<PageDiffEngine>>) {
+    engine.release();
+    info!("vcs_page_diff_cancel: released");
+}
+
+/// Rasterize one page of the last comparison at `scale` (px per typst point,
+/// clamped server-side) and return its `previewimg://` path component.
+///
+/// The contact sheet is 72 dpi — readable as a shape, not as text — so opening
+/// a page full size needs a genuinely sharper render. It is cheap because the
+/// engine still holds both laid-out documents: one rasterization, no compile.
+/// Fails once those documents have been released, which is the frontend's cue
+/// to recompute the comparison.
+#[tauri::command(async)]
+pub fn vcs_page_diff_render_page(
+    side: PageDiffSide,
+    page_index: usize,
+    scale: f32,
+    engine: State<'_, Arc<PageDiffEngine>>,
+) -> Result<String, String> {
+    let t = Instant::now();
+    let result = engine.render_page_at(side, page_index, scale);
+    match &result {
+        Ok(key) => info!(
+            "vcs_page_diff_render_page: ok side={side:?} page={page_index} key={key} ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        ),
+        Err(e) => error!("vcs_page_diff_render_page: err=\"{e}\""),
     }
     result
 }

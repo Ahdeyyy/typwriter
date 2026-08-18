@@ -17,6 +17,7 @@
     Cancel01Icon,
     GitCommitIcon,
     GitCompareIcon,
+    Layers01Icon,
     PlusSignIcon,
     Target02Icon,
   } from "@hugeicons/core-free-icons";
@@ -40,10 +41,12 @@
     viewDiffFor,
   } from "./shared";
   import CreatePointDialog from "./create-point-dialog.svelte";
+  import type { DiffWindowView } from "$lib/windows";
 
   interface Props {
     onclose?: () => void;
-    onopenDiff?: () => void;
+    /** Opens the standalone diff window on the given tab. */
+    onopenDiff?: (view: DiffWindowView) => void;
   }
   let { onclose, onopenDiff }: Props = $props();
 
@@ -127,10 +130,16 @@
       {:else}
         <span class="text-muted-foreground">current</span>
       {/if}
-      <Button variant="outline" size="xs" class="ml-auto" onclick={() => onopenDiff?.()}>
-        <HugeiconsIcon icon={GitCompareIcon} class="size-2.5" />
-        Diff
-      </Button>
+      <div class="ml-auto flex items-center gap-1">
+        <Button variant="outline" size="xs" onclick={() => onopenDiff?.("files")}>
+          <HugeiconsIcon icon={GitCompareIcon} class="size-2.5" />
+          Diff
+        </Button>
+        <Button variant="outline" size="xs" onclick={() => onopenDiff?.("pages")}>
+          <HugeiconsIcon icon={Layers01Icon} class="size-2.5" />
+          Pages
+        </Button>
+      </div>
     </div>
   {/if}
 
@@ -227,6 +236,15 @@
                   aria-label="View diff vs current"
                 >
                   <HugeiconsIcon icon={GitCompareIcon} class="size-3" />
+                </button>
+                <button
+                  type="button"
+                  class={inlineBtn}
+                  onclick={() => viewDiffFor(entry, onopenDiff, "pages")}
+                  title="See which pages changed"
+                  aria-label="See which pages changed"
+                >
+                  <HugeiconsIcon icon={Layers01Icon} class="size-3" />
                 </button>
                 <button
                   type="button"
