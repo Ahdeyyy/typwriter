@@ -72,7 +72,7 @@
                 {/if}
                 <span class="min-w-0 flex-1 font-mono text-xs break-words">{diag.message}</span>
               </div>
-              {#each diag.hints as hint}
+              {#each diag.hints as hint, hintIndex (hintIndex)}
                 <p class="text-muted-foreground pl-6 text-xs">{hint}</p>
               {/each}
               {#if diag.filePath && diag.range}

@@ -262,7 +262,7 @@
               {#if row.kind === "file"}
                 <HugeiconsIcon icon={File01Icon} class="size-4 shrink-0 opacity-50" />
                 <span class="truncate">
-                  {#each fuzzySegments(row.name, row.match.positions) as segment}
+                  {#each fuzzySegments(row.name, row.match.positions) as segment, segmentIndex (segmentIndex)}
                     <span class={segment.hit ? "font-semibold underline" : ""}
                       >{segment.text}</span
                     >
@@ -278,7 +278,7 @@
                   H{row.item.level}
                 </span>
                 <span class="truncate" style="padding-left: {(row.item.level - 1) * 12}px">
-                  {#each fuzzySegments(row.item.title, row.match.positions) as segment}
+                  {#each fuzzySegments(row.item.title, row.match.positions) as segment, segmentIndex (segmentIndex)}
                     <span class={segment.hit ? "font-semibold underline" : ""}
                       >{segment.text}</span
                     >
@@ -290,7 +290,7 @@
               {:else}
                 <HugeiconsIcon icon={Search01Icon} class="size-4 shrink-0 opacity-0" />
                 <span class="truncate">
-                  {#each fuzzySegments(row.command.title, row.match.positions) as segment}
+                  {#each fuzzySegments(row.command.title, row.match.positions) as segment, segmentIndex (segmentIndex)}
                     <span class={segment.hit ? "font-semibold underline" : ""}
                       >{segment.text}</span
                     >

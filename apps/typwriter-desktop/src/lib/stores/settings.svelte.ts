@@ -114,6 +114,8 @@ export interface PersistedSettings {
     spellcheck: boolean;
     tabWidth: number;
     wordWrap: boolean;
+    focusMode: boolean;
+    typewriterScrolling: boolean;
 
     /** Use the tinymist language server (when installed) for completion, hover,
      *  and diagnostics. UI-only — not round-tripped through the Rust settings. */
@@ -174,6 +176,8 @@ const DEFAULTS: PersistedSettings = {
     spellcheck: true,
     tabWidth: 2,
     wordWrap: true,
+    focusMode: false,
+    typewriterScrolling: false,
     useLsp: true,
 
     autoSaveEnabled: true,
@@ -275,6 +279,8 @@ class SettingsStore {
     spellcheck = $state(INITIAL.spellcheck);
     tabWidth = $state(INITIAL.tabWidth);
     wordWrap = $state(INITIAL.wordWrap);
+    focusMode = $state(INITIAL.focusMode);
+    typewriterScrolling = $state(INITIAL.typewriterScrolling);
     useLsp = $state(INITIAL.useLsp);
 
     autoSaveEnabled = $state(INITIAL.autoSaveEnabled);
@@ -320,6 +326,8 @@ class SettingsStore {
                     spellcheck: s.spellcheck,
                     tabWidth: s.tab_width,
                     wordWrap: s.word_wrap,
+                    focusMode: s.focus_mode,
+                    typewriterScrolling: s.typewriter_scrolling,
                     // UI-only: Rust has no say — always reseed from the local value.
                     useLsp: INITIAL.useLsp,
                     autoSaveEnabled: s.auto_save_enabled,
@@ -366,6 +374,8 @@ class SettingsStore {
             spellcheck: this.spellcheck,
             tabWidth: this.tabWidth,
             wordWrap: this.wordWrap,
+            focusMode: this.focusMode,
+            typewriterScrolling: this.typewriterScrolling,
             useLsp: this.useLsp,
             autoSaveEnabled: this.autoSaveEnabled,
             autoSaveDelayMs: this.autoSaveDelayMs,
@@ -403,6 +413,8 @@ class SettingsStore {
         this.spellcheck = settings.spellcheck;
         this.tabWidth = clampTabWidth(settings.tabWidth);
         this.wordWrap = settings.wordWrap;
+        this.focusMode = settings.focusMode;
+        this.typewriterScrolling = settings.typewriterScrolling;
         this.useLsp = settings.useLsp;
         this.autoSaveEnabled = settings.autoSaveEnabled;
         this.autoSaveDelayMs = clampAutoSaveDelayMs(settings.autoSaveDelayMs);
@@ -468,6 +480,8 @@ class SettingsStore {
             spellcheck: current.spellcheck,
             tab_width: current.tabWidth,
             word_wrap: current.wordWrap,
+            focus_mode: current.focusMode,
+            typewriter_scrolling: current.typewriterScrolling,
             auto_save_enabled: current.autoSaveEnabled,
             auto_save_delay_ms: current.autoSaveDelayMs,
             format_before_save: current.formatBeforeSave,
@@ -557,6 +571,16 @@ class SettingsStore {
 
     setWordWrap(value: boolean) {
         this.wordWrap = value;
+        this.persist();
+    }
+
+    setFocusMode(value: boolean) {
+        this.focusMode = value;
+        this.persist();
+    }
+
+    setTypewriterScrolling(value: boolean) {
+        this.typewriterScrolling = value;
         this.persist();
     }
 
@@ -690,6 +714,8 @@ class SettingsStore {
         this.spellcheck = DEFAULTS.spellcheck;
         this.tabWidth = DEFAULTS.tabWidth;
         this.wordWrap = DEFAULTS.wordWrap;
+        this.focusMode = DEFAULTS.focusMode;
+        this.typewriterScrolling = DEFAULTS.typewriterScrolling;
         this.useLsp = DEFAULTS.useLsp;
         this.autoSaveEnabled = DEFAULTS.autoSaveEnabled;
         this.autoSaveDelayMs = DEFAULTS.autoSaveDelayMs;

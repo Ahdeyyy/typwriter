@@ -33,6 +33,12 @@ const KEY_ONBOARDING_COMPLETED: &str = "settings.onboarding_completed";
 /// reason as the key above — it's a nested structure with rule maps and word
 /// lists, and `set_app_settings` round-trips the whole struct.
 const KEY_GRAMMAR: &str = "settings.grammar";
+/// Named export configurations. Kept out of `AppSettings` for the same reason
+/// as the keys above, and one more specific to these: presets are edited from
+/// the export dialog in the *main* window, while the settings window
+/// round-trips the whole `AppSettings` struct. Sharing that struct would let a
+/// settings save clobber a preset saved moments earlier in the other window.
+const KEY_EXPORT_PRESETS: &str = "settings.export_presets";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -56,6 +62,10 @@ pub struct AppSettings {
     pub spellcheck: bool,
     pub tab_width: u8,
     pub word_wrap: bool,
+    /// Dim every paragraph except the one the caret is in.
+    pub focus_mode: bool,
+    /// Keep the caret line vertically centred as the user types.
+    pub typewriter_scrolling: bool,
 
     // Auto-save
     pub auto_save_enabled: bool,
@@ -114,6 +124,8 @@ impl Default for AppSettings {
             spellcheck: true,
             tab_width: 2,
             word_wrap: true,
+            focus_mode: false,
+            typewriter_scrolling: false,
 
             auto_save_enabled: true,
             auto_save_delay_ms: 1500,
@@ -204,6 +216,34 @@ pub fn write_grammar_config(handle: &AppHandle, config: &GrammarConfig) {
     if let Err(err) = store.save() {
         warn!("settings: failed to save grammar config: {err}");
     }
+}
+
+/// Read the persisted export presets.
+///
+/// Stored and returned as opaque JSON: the shape belongs to the frontend
+/// (`src/lib/export-presets.ts`), which validates and repairs it on load. Rust
+/// giving these a struct would mean two definitions to keep in step for data it
+/// never inspects.
+#[tauri::command(async)]
+pub fn get_export_presets(handle: AppHandle) -> JsonValue {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        warn!("settings: could not open {STORE_FILE}");
+        return json!([]);
+    };
+    store.get(KEY_EXPORT_PRESETS).unwrap_or_else(|| json!([]))
+}
+
+#[tauri::command(async)]
+pub fn set_export_presets(handle: AppHandle, presets: JsonValue) -> Result<(), String> {
+    let store = handle
+        .store(STORE_FILE)
+        .map_err(|err| format!("could not open {STORE_FILE}: {err}"))?;
+    store.set(KEY_EXPORT_PRESETS, presets);
+    store
+        .save()
+        .map_err(|err| format!("failed to save export presets: {err}"))?;
+    info!("settings: export presets saved");
+    Ok(())
 }
 
 /// Load font directories from disk on startup.

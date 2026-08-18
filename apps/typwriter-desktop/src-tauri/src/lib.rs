@@ -39,8 +39,9 @@ use commands::{
     present::{enter_presentation, exit_presentation, list_displays},
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     settings::{
-        get_app_settings, get_onboarding_completed, list_font_families, list_system_font_families,
-        set_app_settings, set_onboarding_completed, set_typst_font_directories,
+        get_app_settings, get_export_presets, get_onboarding_completed, list_font_families,
+        list_system_font_families, set_app_settings, set_export_presets, set_onboarding_completed,
+        set_typst_font_directories,
     },
     vcs::{
         vcs_create_restore_point, vcs_current_id, vcs_diff_between, vcs_diff_vs_current,
@@ -303,6 +304,8 @@ pub fn run() {
             // settings
             get_app_settings,
             set_app_settings,
+            get_export_presets,
+            set_export_presets,
             get_onboarding_completed,
             set_onboarding_completed,
             list_font_families,

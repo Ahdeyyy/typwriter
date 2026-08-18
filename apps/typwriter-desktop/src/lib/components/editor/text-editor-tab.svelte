@@ -52,6 +52,9 @@
   import { refPrefixAt } from "$lib/references";
   import { bibliography } from "$lib/stores/bibliography.svelte";
   import { ui } from "$lib/stores/ui.svelte";
+  import { focusMode, typewriterScrolling } from "$lib/codemirror/focus-mode";
+  import { snippetCompletionSource } from "$lib/codemirror/snippet-completion";
+  import { snippets } from "$lib/stores/snippets.svelte";
   import {
     diagnosticsMatch,
     type DiagnosticMark,
@@ -116,6 +119,7 @@
     projectLabels,
     () => bibliography.entries,
   );
+  const snippetCompletions = snippetCompletionSource(() => snippets.all);
   let mountedTabId = $state<string | null>(null);
 
   const themeCompartment = new Compartment();
@@ -125,6 +129,7 @@
   const lineWrapCompartment = new Compartment();
   const spellcheckCompartment = new Compartment();
   const tabSizeCompartment = new Compartment();
+  const focusCompartment = new Compartment();
   // Lezer syntax highlighting (swapped off per-file once tinymist paints tokens).
   const highlightCompartment = new Compartment();
   // User-configurable shortcuts — reconfigured when the keymap settings change.
@@ -176,6 +181,15 @@
     return EditorState.tabSize.of(settings.tabWidth);
   }
 
+  // Two independent settings, one compartment: they are always reconfigured
+  // together and neither has state the other would disturb.
+  function focusExt() {
+    return [
+      settings.focusMode ? focusMode() : [],
+      settings.typewriterScrolling ? typewriterScrolling() : [],
+    ];
+  }
+
   function isDarkMode() {
     return mode.current === "dark" || systemPrefersMode.current === "dark";
   }
@@ -216,7 +230,11 @@
 
     return [
       autocompletion({
-        override: [referenceCompletions, mergedTypstCompletionsForTab(tabId)],
+        override: [
+          referenceCompletions,
+          snippetCompletions,
+          mergedTypstCompletionsForTab(tabId),
+        ],
       }),
       hoverTooltip(
         async (_view, pos) => {
@@ -507,6 +525,7 @@
       lineWrapCompartment.of(lineWrapExt()),
       spellcheckCompartment.of(spellcheckExt(isTypst)),
       tabSizeCompartment.of(tabSizeExt()),
+      focusCompartment.of(focusExt()),
       highlightActiveLine(),
       history(),
       drawSelection(),
@@ -995,6 +1014,14 @@
       compartment: tabSizeCompartment,
       track: () => void settings.tabWidth,
       build: () => tabSizeExt(),
+    },
+    {
+      compartment: focusCompartment,
+      track: () => {
+        settings.focusMode;
+        settings.typewriterScrolling;
+      },
+      build: () => focusExt(),
     },
     {
       compartment: spellcheckCompartment,

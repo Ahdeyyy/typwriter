@@ -129,6 +129,19 @@ export function getLogFilePath() {
 
 // ─── Editor ───────────────────────────────────────────────────────────────────
 
+/** Named export configurations. Opaque JSON on the Rust side — the shape lives
+ *  in `$lib/export-presets.ts`, which validates whatever comes back. */
+export function getExportPresets() {
+    return ResultAsync.fromPromise(invoke<unknown>('get_export_presets'), toErrString);
+}
+
+export function setExportPresets(presets: unknown) {
+    return ResultAsync.fromPromise(
+        invoke<void>('set_export_presets', { presets }),
+        toErrString
+    );
+}
+
 export function readFile(path: string) {
     return ResultAsync.fromPromise(invoke<FileContentResponse>('read_file', { path }), toErrString);
 }
@@ -476,6 +489,8 @@ export interface AppSettings {
     spellcheck: boolean;
     tab_width: number;
     word_wrap: boolean;
+    focus_mode: boolean;
+    typewriter_scrolling: boolean;
     auto_save_enabled: boolean;
     auto_save_delay_ms: number;
     format_before_save: boolean;

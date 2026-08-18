@@ -16,6 +16,6 @@
 </script>
 
 <!-- Unkeyed: segments are positional, and the same run of text can repeat. -->
-{#each segments as segment}{#if segment.hit}<mark
+{#each segments as segment, i (i)}{#if segment.hit}<mark
       class="rounded-[2px] bg-primary/25 px-px text-inherit">{segment.text}</mark
     >{:else}{segment.text}{/if}{/each}

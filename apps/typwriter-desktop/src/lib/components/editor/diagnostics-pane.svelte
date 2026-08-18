@@ -89,7 +89,10 @@
       <p class="py-8 text-center text-sm text-muted-foreground select-none">No problems detected.</p>
     {:else}
       <div class="py-1">
-        {#each grouped as [filePath, { errors, warnings }]}
+        <!-- `grouped` comes from a Map, so the path is unique. The diagnostic
+             and hint lists below are keyed by index instead: Typst can emit
+             two identical diagnostics, and a duplicate key blanks the window. -->
+        {#each grouped as [filePath, { errors, warnings }] (filePath)}
           <div class="flex items-center gap-2 px-3 py-1 sticky top-0 bg-background/95 backdrop-blur-sm z-10 min-w-0">
             <Tooltip.Root>
               <Tooltip.Trigger class="truncate text-xs font-medium text-foreground shrink-0 max-w-[40%]">{basename(filePath)}</Tooltip.Trigger>
@@ -102,7 +105,7 @@
             <span class="ml-auto shrink-0 tabular-nums text-xs text-muted-foreground">{errors.length + warnings.length}</span>
           </div>
 
-          {#each errors as diag}
+          {#each errors as diag, diagIndex (diagIndex)}
             <button
               class="group flex w-full items-start gap-2 rounded-none px-6 py-1.5 text-left text-sm font-normal hover:bg-muted hover:text-foreground {diag.range ? 'cursor-pointer' : 'cursor-default'}"
               onclick={() => void jumpToDiagnostic(diag)}
@@ -117,14 +120,14 @@
                     </span>
                   {/if}
                 </div>
-                {#each diag.hints as hint}
+                {#each diag.hints as hint, hintIndex (hintIndex)}
                   <p class="text-xs italic text-muted-foreground group-hover:text-accent-foreground/80">Hint: {hint}</p>
                 {/each}
               </div>
             </button>
           {/each}
 
-          {#each warnings as diag}
+          {#each warnings as diag, diagIndex (diagIndex)}
             <button
               class="group flex w-full items-start gap-2 rounded-none px-6 py-1.5 text-left text-sm font-normal hover:bg-muted hover:text-foreground {diag.range ? 'cursor-pointer' : 'cursor-default'}"
               onclick={() => void jumpToDiagnostic(diag)}
@@ -139,7 +142,7 @@
                     </span>
                   {/if}
                 </div>
-                {#each diag.hints as hint}
+                {#each diag.hints as hint, hintIndex (hintIndex)}
                   <p class="text-xs italic text-muted-foreground group-hover:text-accent-foreground/80">Hint: {hint}</p>
                 {/each}
               </div>

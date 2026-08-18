@@ -146,7 +146,7 @@
       {/snippet}
     </DropdownMenu.Trigger>
     <DropdownMenu.Content align="start" class="tb-heading-menu">
-      {#each HEADING_LABELS as label, level}
+      {#each HEADING_LABELS as label, level (level)}
         <DropdownMenu.Item
           onSelect={() => dispatch(setHeadingLevel(level))}
           class={editorFormat.headingLevel === level ? "tb-heading-item-active" : ""}
@@ -159,19 +159,19 @@
 
   <span class="separator" aria-hidden="true"></span>
 
-  {#each marks as action}
+  {#each marks as action (action.label)}
     {@render toolButton(action)}
   {/each}
 
   <span class="separator" aria-hidden="true"></span>
 
-  {#each lists as action}
+  {#each lists as action (action.label)}
     {@render toolButton(action)}
   {/each}
 
   <span class="separator" aria-hidden="true"></span>
 
-  {#each inserts as action}
+  {#each inserts as action (action.label)}
     {@render toolButton(action)}
   {/each}
 </div>

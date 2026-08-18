@@ -150,6 +150,31 @@
     </SettingRow>
 
     <SettingRow
+      label
+      title="Focus mode"
+      description="Dim every paragraph except the one the cursor is in."
+      keywords={["zen", "distraction free", "concentrate", "dim"]}
+    >
+      {#snippet control()}
+        <Switch checked={settings.focusMode} onCheckedChange={(v) => settings.setFocusMode(v)} />
+      {/snippet}
+    </SettingRow>
+
+    <SettingRow
+      label
+      title="Typewriter scrolling"
+      description="Keep the line you are editing vertically centred."
+      keywords={["centre", "center", "caret", "scroll"]}
+    >
+      {#snippet control()}
+        <Switch
+          checked={settings.typewriterScrolling}
+          onCheckedChange={(v) => settings.setTypewriterScrolling(v)}
+        />
+      {/snippet}
+    </SettingRow>
+
+    <SettingRow
       title="Tab width"
       description="Number of spaces a tab character represents."
       keywords={["indent", "indentation", "tab size"]}

@@ -179,7 +179,7 @@
                     class="flex items-center gap-1 rounded border border-border bg-muted py-0.5 pl-1 pr-0.5"
                   >
                     <!-- Unkeyed: a chord can legitimately repeat a token. -->
-                    {#each chordTokens(chord, platform.isMac) as token, i}
+                    {#each chordTokens(chord, platform.isMac) as token, i (i)}
                       {#if i > 0 && !platform.isMac}
                         <span class="text-[10px] text-muted-foreground">+</span>
                       {/if}
@@ -256,7 +256,7 @@
       >
         <span class="text-sm text-muted-foreground">{binding.description}</span>
         <span class="flex shrink-0 items-center gap-1">
-          {#each chordTokens(binding.keys, platform.isMac) as token, i}
+          {#each chordTokens(binding.keys, platform.isMac) as token, i (i)}
             {#if i > 0 && !platform.isMac}
               <span class="text-[10px] text-muted-foreground">+</span>
             {/if}

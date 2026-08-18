@@ -14,6 +14,14 @@
     exportSvgWithPicker,
   } from "$lib/services/export-service";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { exportPresets } from "$lib/stores/export-presets.svelte";
+  import {
+    configMatches,
+    findPreset,
+    toConfig,
+    type ExportConfig,
+    type ExportPreset,
+  } from "$lib/export-presets";
 
   // ── Props ────────────────────────────────────────────────────────────────
 
@@ -86,6 +94,74 @@
   const selectedStandardLabel = $derived(
     PDF_STANDARDS.find((s) => s.value === pdfStandard)?.label ?? pdfStandard,
   );
+
+  // ── Presets ───────────────────────────────────────────────────────────────
+
+  let presetName = $state("");
+
+  /** The dialog's current settings, as a saveable configuration. */
+  const currentConfig = $derived<ExportConfig>({
+    format,
+    pageRangeMode,
+    pageRangeCustom,
+    pdfTitle,
+    pdfAuthor,
+    pdfStandard,
+    pdfIncludeDate,
+    pdfPretty,
+    htmlPretty,
+    pngScale,
+    filePrefix,
+  });
+
+  const activePreset = $derived(
+    exportPresets.activeName
+      ? findPreset(exportPresets.presets, exportPresets.activeName)
+      : undefined,
+  );
+
+  /** Shown so the user knows whether what they see is still the saved preset. */
+  const presetDirty = $derived(
+    !!activePreset && !configMatches(currentConfig, activePreset),
+  );
+
+  // Load once, the first time the dialog is opened, rather than at app start:
+  // most sessions never export.
+  $effect(() => {
+    if (open && !exportPresets.loaded) void exportPresets.load();
+  });
+
+  function applyPreset(preset: ExportPreset) {
+    const config = toConfig(preset);
+    format = config.format;
+    pageRangeMode = config.pageRangeMode;
+    pageRangeCustom = config.pageRangeCustom;
+    pdfTitle = config.pdfTitle;
+    pdfAuthor = config.pdfAuthor;
+    pdfStandard = config.pdfStandard;
+    pdfIncludeDate = config.pdfIncludeDate;
+    pdfPretty = config.pdfPretty;
+    htmlPretty = config.htmlPretty;
+    pngScale = config.pngScale;
+    filePrefix = config.filePrefix;
+    exportPresets.activeName = preset.name;
+    presetName = preset.name;
+  }
+
+  async function saveCurrentAsPreset() {
+    const name = presetName.trim();
+    if (!name) return;
+    await exportPresets.save({ name, ...currentConfig });
+    toast.success(`Saved export preset “${name}”`);
+  }
+
+  async function deleteActivePreset() {
+    if (!activePreset) return;
+    const name = activePreset.name;
+    await exportPresets.remove(name);
+    presetName = "";
+    toast.success(`Deleted export preset “${name}”`);
+  }
 
   // ── Export handler ───────────────────────────────────────────────────────
 
@@ -179,9 +255,52 @@
     </Dialog.Header>
 
     <div class="space-y-4 py-2">
+      <!-- ── Presets ────────────────────────────────────────────────── -->
+      <div class="space-y-2">
+        <div class="flex items-baseline justify-between">
+          <p class="text-sm font-medium text-foreground">Preset</p>
+          {#if presetDirty}
+            <span class="text-[10px] text-muted-foreground">modified</span>
+          {/if}
+        </div>
+
+        {#if exportPresets.presets.length > 0}
+          <div class="flex flex-wrap gap-1.5">
+            {#each exportPresets.presets as preset (preset.name)}
+              <Button
+                variant={activePreset?.name === preset.name ? "default" : "outline"}
+                size="sm"
+                onclick={() => applyPreset(preset)}
+              >
+                {preset.name}
+              </Button>
+            {/each}
+          </div>
+        {/if}
+
+        <div class="flex gap-1.5">
+          <Input
+            bind:value={presetName}
+            placeholder="Name these settings…"
+            class="h-8 flex-1 text-sm"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!presetName.trim()}
+            onclick={saveCurrentAsPreset}
+          >
+            Save
+          </Button>
+          {#if activePreset}
+            <Button variant="ghost" size="sm" onclick={deleteActivePreset}>Delete</Button>
+          {/if}
+        </div>
+      </div>
+
       <!-- ── Format selector ─────────────────────────────────────────── -->
       <div class="flex gap-1 rounded-lg border border-border p-1">
-        {#each [["pdf", "PDF"], ["png", "PNG"], ["svg", "SVG"], ["html", "HTML"]] as [value, label]}
+        {#each [["pdf", "PDF"], ["png", "PNG"], ["svg", "SVG"], ["html", "HTML"]] as [value, label] (value)}
           <Button
             variant={format === value ? "default" : "ghost"}
             size="sm"
@@ -241,7 +360,7 @@
                   class="z-50 min-w-[var(--bits-select-trigger-width)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
                   sideOffset={4}
                 >
-                  {#each PDF_STANDARDS as std}
+                  {#each PDF_STANDARDS as std (std.value)}
                     <Select.Item
                       value={std.value}
                       label={std.label}
@@ -335,7 +454,7 @@
           <div class="space-y-1.5">
             <p class="text-sm font-medium text-foreground">Resolution</p>
             <div class="flex gap-1.5">
-              {#each DPI_PRESETS as preset}
+              {#each DPI_PRESETS as preset (preset.scale)}
                 <Button
                   variant={pngScale === preset.scale ? "default" : "outline"}
                   size="sm"

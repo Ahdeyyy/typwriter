@@ -124,7 +124,7 @@
     {@const hl = preview.highlight}
     {#key hl.nonce}
       <div class="pointer-events-none absolute inset-0 z-10">
-        {#each hl.rects as r}
+        {#each hl.rects as r, i (i)}
           <div
             class="cursor-sync-highlight absolute"
             style="left:{(r.x / hl.pageWidth) * 100}%; top:{(r.y / hl.pageHeight) * 100}%; width:{(r.width / hl.pageWidth) * 100}%; height:{(r.height / hl.pageHeight) * 100}%;"
@@ -464,7 +464,10 @@
           {@render emptyStateText()}
         </div>
       {:else}
-        {#each preview.pages as _, i}
+        <!-- Keyed by index, not by page key: keys repeat when two pages render
+             identically, and reusing the tile in place is what we want anyway
+             when a page is inserted mid-document. -->
+        {#each preview.pages as _, i (i)}
           <!-- `max-w-full` clamps the page box to the pane. The <img> shrinks
                itself (a replaced element's percentage max-width collapses its
                min-content), but a skeleton's fixed px width does not, so

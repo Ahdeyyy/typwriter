@@ -19,6 +19,7 @@ import { preview } from '$lib/stores/preview.svelte';
 import { settings } from '$lib/stores/settings.svelte';
 import { workspace } from '$lib/stores/workspace.svelte';
 import { ui } from '$lib/stores/ui.svelte';
+import { snippets } from '$lib/stores/snippets.svelte';
 import { openSettingsWindow } from '$lib/windows';
 import { logError } from '$lib/logger';
 import {
@@ -144,6 +145,30 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
                     .setMainFileAction(path)
                     .mapErr((err) => logError('palette set main file failed:', err));
             },
+        },
+        {
+            id: 'file.editSnippets',
+            title: 'Edit project snippets…',
+            group: 'File',
+            keywords: ['template', 'boilerplate', 'scaffold'],
+            enabled: () => !!workspace.rootPath,
+            run: async () => {
+                // Creates the file with an example if it does not exist yet —
+                // an empty buffer would leave the format to be guessed.
+                const relPath = await snippets.ensureUserFile();
+                if (!relPath) return;
+                workspace
+                    .openFile(relPath)
+                    .mapErr((err) => logError('palette open snippets failed:', err));
+            },
+        },
+        {
+            id: 'file.reloadSnippets',
+            title: 'Reload project snippets',
+            group: 'File',
+            keywords: ['template', 'refresh'],
+            enabled: () => !!workspace.rootPath,
+            run: () => void snippets.refresh(),
         },
         {
             id: 'file.reloadFromDisk',
@@ -335,6 +360,20 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
             group: 'View',
             keywords: ['vcs', 'snapshots', 'restore'],
             run: () => ui.showSection('history'),
+        },
+        {
+            id: 'view.focusMode',
+            title: 'Toggle focus mode',
+            group: 'View',
+            keywords: ['zen', 'distraction free', 'dim', 'concentrate'],
+            run: () => settings.setFocusMode(!settings.focusMode),
+        },
+        {
+            id: 'view.typewriter',
+            title: 'Toggle typewriter scrolling',
+            group: 'View',
+            keywords: ['centre', 'center', 'caret', 'scroll'],
+            run: () => settings.setTypewriterScrolling(!settings.typewriterScrolling),
         },
         {
             id: 'view.wordWrap',

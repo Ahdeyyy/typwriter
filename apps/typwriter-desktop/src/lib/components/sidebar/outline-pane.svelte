@@ -122,7 +122,7 @@
               H{heading.level}
             </span>
             <span class="truncate">
-              {#each fuzzySegments(heading.title, match.positions) as segment}
+              {#each fuzzySegments(heading.title, match.positions) as segment, segmentIndex (segmentIndex)}
                 <span class={segment.hit ? "font-semibold underline" : ""}>{segment.text}</span>
               {/each}
             </span>
