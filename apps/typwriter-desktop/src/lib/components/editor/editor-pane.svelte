@@ -7,6 +7,7 @@
   import FileInfoTab from "$lib/components/editor/file-info-tab.svelte";
   import SearchPanel from "$lib/components/editor/search-panel.svelte";
   import TypstToolbar from "$lib/components/editor/typst-toolbar.svelte";
+  import StatusBar from "$lib/components/editor/status-bar.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { logError } from "$lib/logger";
 
@@ -69,4 +70,6 @@
       </div>
     {/if}
   </div>
+
+  <StatusBar />
 </div>

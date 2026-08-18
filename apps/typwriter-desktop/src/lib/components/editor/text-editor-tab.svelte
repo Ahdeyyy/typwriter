@@ -522,6 +522,11 @@
         const tab = editor.tabs.find((t) => t.id === tabId);
         if (!tab || tab.viewMode !== "text") return;
         const cursor = update.state.selection.main.head;
+        // Mirror the range for the panes that display it (outline marker,
+        // status-bar counts). Unconditional — unlike the persist below, which
+        // only wants pure caret moves.
+        const range = update.state.selection.main;
+        editor.noteSelection(tabId, range.from, range.to);
         // Stage 1 (jump source): the editor selection moved. This is what
         // ultimately drives the preview's cursor-follow scroll. `docChanged`
         // distinguishes a keystroke (typing) from a pure caret move (click /

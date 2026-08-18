@@ -56,10 +56,17 @@ class EditorStore {
 
     cursorJumpRequest = $state<{ tabId: string; offset: number } | null>(null);
 
-    /** Caret offset in the active tab, mirrored from `cursorProvider` on every
-     *  caret move so panes can react to it. Display only — anything that needs
-     *  an exact, current offset should still read the view. */
-    cursorOffset = $state(0);
+    /** Live selection in the active tab, mirrored out of CodeMirror so panes
+     *  can derive from it — the outline highlights the section the caret is in,
+     *  the status bar counts the selected words. Display only; anything needing
+     *  an exact, current offset should still read the view.
+     *
+     *  Collapsed selections have `from === to`. */
+    selection = $state<{ from: number; to: number }>({ from: 0, to: 0 });
+
+    get cursorOffset(): number {
+        return this.selection.to;
+    }
     contentSyncRequest = $state<{
         tabId: string;
         content: string;
@@ -706,12 +713,20 @@ class EditorStore {
      *  schedule a persist via `handleTabContentChange`, so this only covers the
      *  pure-caret case — without it the stored offset would lag behind wherever
      *  the user last typed. */
+    /** Mirror a CodeMirror selection into reactive state.
+     *
+     *  Separate from `noteCursorMoved`, which exists to schedule a persist and
+     *  deliberately only runs for pure caret moves. Panes need the selection on
+     *  *every* change, or the outline marker stops tracking the caret as soon
+     *  as the user starts typing. */
+    noteSelection(tabId: string, from: number, to: number): void {
+        if (tabId !== this.activeTabId) return;
+        if (this.selection.from === from && this.selection.to === to) return;
+        this.selection = { from, to };
+    }
+
     noteCursorMoved(tabId: string): void {
         if (tabId !== this.activeTabId) return;
-        // Mirror the caret into reactive state for the outline panel, which
-        // highlights the section the cursor is in. `cursorProvider` is a plain
-        // function, so panes can't derive from it.
-        this.cursorOffset = this.cursorProvider?.(tabId) ?? 0;
         workspace.schedulePersistTabs();
     }
 
