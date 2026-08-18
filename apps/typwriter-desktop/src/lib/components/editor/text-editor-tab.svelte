@@ -46,6 +46,11 @@
   } from "@codemirror/lint";
   import { inlineDiagnostics } from "$lib/codemirror/inline-diagnostics";
   import {
+    createLabelIndex,
+    referenceCompletionSource,
+  } from "$lib/codemirror/reference-completion";
+  import { refPrefixAt } from "$lib/references";
+  import {
     diagnosticsMatch,
     type DiagnosticMark,
   } from "$lib/codemirror/diagnostics-compare";
@@ -91,6 +96,18 @@
 
   let editorHost = $state<HTMLDivElement | null>(null);
   const tabViews = new Map<string, EditorView>();
+
+  // Labels come from the open buffers rather than from a project-wide scan:
+  // they are already in memory and current, so reference completion costs no
+  // IPC. The trade-off is that a label in a file nobody has opened is not
+  // offered — acceptable, since referencing one means you were just there.
+  const projectLabels = createLabelIndex({
+    buffers: () =>
+      editor.tabs
+        .filter((tab) => tab.viewMode === "text" && tab.relPath.endsWith(".typ"))
+        .map((tab) => ({ path: tab.relPath, text: tab.content })),
+  });
+  const referenceCompletions = referenceCompletionSource(projectLabels);
   let mountedTabId = $state<string | null>(null);
 
   const themeCompartment = new Compartment();
@@ -190,7 +207,9 @@
     }
 
     return [
-      autocompletion({ override: [mergedTypstCompletionsForTab(tabId)] }),
+      autocompletion({
+        override: [referenceCompletions, mergedTypstCompletionsForTab(tabId)],
+      }),
       hoverTooltip(
         async (_view, pos) => {
           const t = editor.tabs.find((tab) => tab.id === tabId);
@@ -300,6 +319,11 @@
 
       const tab = editor.tabs.find((t) => t.id === tabId);
       if (!tab || tab.viewMode !== "text") return null;
+
+      // Inside an `@…`, the reference source owns the list. Two sources
+      // answering the same position with different `from` offsets produces a
+      // list CodeMirror cannot filter coherently.
+      if (refPrefixAt(context.state.doc.toString(), context.pos)) return null;
 
       const [languageResults, backendResult] = await Promise.all([
         getLanguageCompletionResults(context),

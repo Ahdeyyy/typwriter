@@ -9,6 +9,7 @@
 // sidebar panel and the palette's `@` mode.
 
 import { parser } from '$lib/typst-codemirror-lang/lezer-typst';
+import { lineAt, lineStarts } from '$lib/text-position';
 
 export interface OutlineItem {
     /** 1-6, from the number of `=` in the heading marker. */
@@ -19,27 +20,6 @@ export interface OutlineItem {
     to: number;
     /** 1-based line number, for display. */
     line: number;
-}
-
-/** Offsets of the start of each line, for turning an offset into a line number. */
-function lineStarts(text: string): number[] {
-    const starts = [0];
-    for (let i = 0; i < text.length; i++) {
-        if (text[i] === '\n') starts.push(i + 1);
-    }
-    return starts;
-}
-
-/** Binary search for the 1-based line containing `offset`. */
-function lineAt(starts: readonly number[], offset: number): number {
-    let low = 0;
-    let high = starts.length - 1;
-    while (low < high) {
-        const mid = (low + high + 1) >> 1;
-        if (starts[mid] <= offset) low = mid;
-        else high = mid - 1;
-    }
-    return low + 1;
 }
 
 /**
