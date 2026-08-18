@@ -27,6 +27,7 @@ class UiStore {
 
     /** The Typst symbol picker overlay. */
     symbolPickerOpen = $state(false);
+    packageBrowserOpen = $state(false);
 
     paletteOpen = $state(false);
     paletteMode = $state<PaletteMode>('files');

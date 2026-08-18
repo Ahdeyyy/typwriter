@@ -19,7 +19,8 @@ import type {
     GrammarConfig,
     GrammarReport,
     GrammarRuleInfo,
-    DisplayInfo
+    DisplayInfo,
+    PackageEntry
 } from '$lib/types';
 
 const toErrString = (e: unknown): string => String(e);
@@ -140,6 +141,13 @@ export function setExportPresets(presets: unknown) {
         invoke<void>('set_export_presets', { presets }),
         toErrString
     );
+}
+
+/** Packages in the Typst Universe index, one entry per package with its
+ *  versions folded together. Empty when the index could not be fetched —
+ *  offline is an empty list, not an error. */
+export function listPackages() {
+    return ResultAsync.fromPromise(invoke<PackageEntry[]>('list_packages'), toErrString);
 }
 
 /** App-wide snippets. Opaque JSON on the Rust side — the shape and its

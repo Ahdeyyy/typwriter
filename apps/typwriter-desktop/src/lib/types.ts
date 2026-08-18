@@ -43,6 +43,17 @@ export type JumpResponse =
 /** Filesystem metadata for a file the editor can't render. Every field is
  *  optional — a stat can fail, and not every filesystem records a birth time.
  *  Timestamps are milliseconds since the Unix epoch. */
+/** One package from the Typst Universe index, versions folded together. */
+export interface PackageEntry {
+    namespace: string;
+    name: string;
+    /** Newest version. */
+    version: string;
+    /** Every listed version, newest first. */
+    versions: string[];
+    description: string | null;
+}
+
 export interface FileMeta {
     size: number | null;
     modified: number | null;

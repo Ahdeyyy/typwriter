@@ -163,13 +163,6 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
             },
         },
         {
-            id: 'app.manageSnippets',
-            title: 'Manage snippets…',
-            group: 'Application',
-            keywords: ['template', 'boilerplate', 'scaffold', 'edit snippets'],
-            run: () => void openSettingsWindow('snippets'),
-        },
-        {
             id: 'file.reloadSnippets',
             title: 'Reload project snippets',
             group: 'File',
@@ -437,6 +430,23 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
         },
 
         // ── Application ─────────────────────────────────────────────────────
+        {
+            id: 'app.browsePackages',
+            title: 'Browse Typst packages…',
+            group: 'Application',
+            keywords: ['universe', 'registry', 'import', 'library', 'preview'],
+            enabled: hasTypstBuffer,
+            run: () => {
+                ui.packageBrowserOpen = true;
+            },
+        },
+        {
+            id: 'app.manageSnippets',
+            title: 'Manage snippets…',
+            group: 'Application',
+            keywords: ['template', 'boilerplate', 'scaffold', 'edit snippets'],
+            run: () => void openSettingsWindow('snippets'),
+        },
         {
             id: 'app.settings',
             title: 'Open settings',

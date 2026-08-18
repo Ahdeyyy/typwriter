@@ -36,6 +36,7 @@ use commands::{
     },
     logs::get_log_file_path,
     lsp::{lsp_probe, lsp_send, lsp_start, lsp_stop},
+    packages::list_packages,
     present::{enter_presentation, exit_presentation, list_displays},
     preview::{get_zoom, set_visible_page, set_zoom, sync_preview, trigger_preview},
     settings::{
@@ -296,6 +297,7 @@ pub fn run() {
             set_grammar_file_enabled,
             // logs
             get_log_file_path,
+            list_packages,
             // language server (tinymist) bridge
             lsp_start,
             lsp_send,

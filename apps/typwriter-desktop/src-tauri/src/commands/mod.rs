@@ -9,6 +9,7 @@ pub mod format;
 pub mod grammar;
 pub mod logs;
 pub mod lsp;
+pub mod packages;
 pub mod present;
 pub mod preview;
 pub mod settings;
