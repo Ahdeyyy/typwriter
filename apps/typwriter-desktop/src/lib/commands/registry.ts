@@ -256,6 +256,17 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
             run: inEditor(insertImage),
         },
         {
+            id: 'format.symbol',
+            title: 'Insert symbol…',
+            group: 'Format',
+            keywords: ['math', 'greek', 'arrow', 'operator', 'unicode', 'character'],
+            shortcut: 'typst.insertSymbol',
+            enabled: hasTypstBuffer,
+            run: () => {
+                ui.symbolPickerOpen = true;
+            },
+        },
+        {
             id: 'format.table',
             title: 'Insert table',
             group: 'Format',

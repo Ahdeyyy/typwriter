@@ -8,6 +8,7 @@
   import SearchPanel from "$lib/components/editor/search-panel.svelte";
   import TypstToolbar from "$lib/components/editor/typst-toolbar.svelte";
   import StatusBar from "$lib/components/editor/status-bar.svelte";
+  import SymbolPicker from "$lib/components/editor/symbol-picker.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { logError } from "$lib/logger";
 
@@ -72,4 +73,5 @@
   </div>
 
   <StatusBar />
+  <SymbolPicker />
 </div>

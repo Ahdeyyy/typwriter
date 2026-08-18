@@ -51,6 +51,7 @@
   } from "$lib/codemirror/reference-completion";
   import { refPrefixAt } from "$lib/references";
   import { bibliography } from "$lib/stores/bibliography.svelte";
+  import { ui } from "$lib/stores/ui.svelte";
   import {
     diagnosticsMatch,
     type DiagnosticMark,
@@ -467,7 +468,15 @@
         editorSearch.closePanel();
         return true;
       },
-      ...(isTypst ? typstFormatCommands : {}),
+      ...(isTypst
+        ? {
+            ...typstFormatCommands,
+            "typst.insertSymbol": () => {
+              ui.symbolPickerOpen = true;
+              return true;
+            },
+          }
+        : {}),
     };
 
     const bindings = Object.entries(commands).flatMap(([id, run]) =>

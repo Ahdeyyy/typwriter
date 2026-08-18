@@ -25,6 +25,9 @@ class UiStore {
      */
     sectionRequest = $state(0);
 
+    /** The Typst symbol picker overlay. */
+    symbolPickerOpen = $state(false);
+
     paletteOpen = $state(false);
     paletteMode = $state<PaletteMode>('files');
 

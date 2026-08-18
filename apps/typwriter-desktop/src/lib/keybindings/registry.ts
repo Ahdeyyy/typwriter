@@ -149,6 +149,13 @@ export const KEY_COMMANDS: KeyCommandDef[] = [
         defaults: ['Mod-i'],
     },
     {
+        id: 'typst.insertSymbol',
+        label: 'Insert a symbol',
+        description: 'Open the searchable Typst symbol picker.',
+        scope: 'typst',
+        defaults: ['Mod-Shift-i'],
+    },
+    {
         id: 'typst.toggleRawInline',
         label: 'Toggle inline code',
         scope: 'typst',
