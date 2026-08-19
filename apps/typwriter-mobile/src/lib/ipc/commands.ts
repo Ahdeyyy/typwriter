@@ -33,6 +33,10 @@ export const createWorkspace = (name: string) =>
 export const deleteWorkspace = (name: string) => call<null>("delete_workspace", { name });
 export const openWorkspace = (name: string) => call<WorkspaceInfo>("open_workspace", { name });
 export const getFileTree = () => call<FileNode>("get_file_tree");
+/** Re-read the workspace from disk, dropping every cached file slot, and
+ *  return the fresh tree. Used when the app returns to the foreground, where
+ *  the poll watcher may have been frozen by the OS. */
+export const rescanWorkspace = () => call<FileNode>("rescan_workspace");
 export const setMainFile = (relPath: string) => call<null>("set_main_file", { relPath });
 export const setLastFile = (relPath: string | null) => call<null>("set_last_file", { relPath });
 export const setOpenTabs = (

@@ -15,7 +15,7 @@ import {
     triggerPreview,
 } from '$lib/ipc/commands';
 import { onWorkspaceFilesChanged, type UnlistenFn } from '$lib/ipc/events';
-import type { FileTreeEntry } from '$lib/types';
+import type { FileTreeEntry, WorkspaceFileChange } from '$lib/types';
 import { logError } from '$lib/logger';
 import { bibliography } from '$lib/stores/bibliography.svelte';
 import { snippets } from '$lib/stores/snippets.svelte';
@@ -205,8 +205,8 @@ class WorkspaceStore {
         this.mainFile = null;
         this.activeFilePath = null;
 
-        const listenResult = await onWorkspaceFilesChanged(() => {
-            this._scheduleTreeRefresh();
+        const listenResult = await onWorkspaceFilesChanged((payload) => {
+            void this._applyExternalChanges(payload.changes);
         });
         if (listenResult.isOk()) {
             this._filesChangedUnlisten = listenResult.value;
@@ -509,6 +509,70 @@ class WorkspaceStore {
             this._persistTabsTimer = null;
             this.persistTabs();
         }, 300);
+    }
+
+    /** Handle one batch from the filesystem watcher: something outside the
+     *  editor created, changed, renamed, or deleted files in the workspace.
+     *
+     *  The tree refresh stays debounced — a checkout or an `npm install` arrives
+     *  as a long series of batches, and re-walking the workspace for each would
+     *  make the sidebar thrash — but the open tabs are reconciled immediately: a
+     *  buffer showing text that is no longer on disk is the bug this exists to
+     *  fix, and those reads are per affected file rather than per workspace.
+     *
+     *  The backend follows the *main file* through the same batch itself (see
+     *  `WorkspaceState::reconcile_main_file`), so what happens here is only the
+     *  local mirror of it. */
+    private async _applyExternalChanges(changes: WorkspaceFileChange[]): Promise<void> {
+        this._scheduleTreeRefresh();
+
+        for (const change of changes) {
+            if (change.kind === 'renamed' && change.to) {
+                this._followExternalRename(
+                    this.toRel(change.path),
+                    this.toRel(change.to),
+                    change.isDir
+                );
+            } else if (change.kind === 'removed') {
+                this._forgetExternallyRemoved(this.toRel(change.path));
+            }
+        }
+
+        await editor.applyExternalChanges(changes);
+
+        // The editor may have closed the tab the sidebar was highlighting, or
+        // carried it to a new path; either way the active tab is the truth.
+        this.activeFilePath = editor.activeTab?.relPath ?? null;
+    }
+
+    private _followExternalRename(src: string, dst: string, isDir: boolean): void {
+        this.activeFilePath = this.activeFilePath
+            ? (rewritePath(this.activeFilePath, src, dst, isDir) ?? this.activeFilePath)
+            : null;
+        this.mainFile = this.mainFile
+            ? (rewritePath(this.mainFile, src, dst, isDir) ?? this.mainFile)
+            : null;
+    }
+
+    /** A removed path takes everything beneath it, so descendants are matched by
+     *  prefix. For a file that costs nothing: a file path can never be a prefix
+     *  of another path. */
+    private _forgetExternallyRemoved(rel: string): void {
+        const removed = normalize(rel).replace(/\/$/, '');
+        const covers = (path: string | null): boolean =>
+            path !== null && (path === removed || path.startsWith(`${removed}/`));
+
+        if (covers(this.activeFilePath)) {
+            this.activeFilePath = null;
+        }
+        if (covers(this.mainFile)) {
+            this.mainFile = null;
+            // The backend has already cleared its own pointer and dropped the
+            // cached document; this repaints the pane to match.
+            triggerPreview('main_file').mapErr((err) => {
+                logError('preview trigger after external main file delete failed:', err);
+            });
+        }
     }
 
     private _scheduleTreeRefresh(): void {

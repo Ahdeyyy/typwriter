@@ -23,6 +23,7 @@ These are the ones that cost real debugging time. Violating any of them breaks t
 - **Never scroll to the caret during a range selection or an active touch gesture.** It's a feedback loop that drags the cursor away from the user's finger. See `src/lib/editor/caret-visibility.ts`.
 - **Modal body locks must always be released.** A stranded `pointer-events: none` on `<body>` kills every tap in the app. All locking goes through `src/lib/body-lock.ts`.
 - **Storage is split.** `std::fs` only reaches the app's managed directory; SAF-picked external folders and the app-wide fonts folder go through `tauri-plugin-android-fs`. There are no runtime storage permissions to request.
+- **External changes reload a clean buffer, flag a dirty one.** Never silently discard unsaved text: autosave makes "dirty" a few seconds wide, and losing what the user typed inside it is worse than showing a stale file with a warning. Reloads dispatch a *minimal* change (`lib/editor/minimal-change.ts`) — a whole-document swap collapses the caret to the top of the file.
 - **Rename/move/delete return `{tree, from, to}`.** Tabs, the active buffer, the Rust main `FileId`, and persisted metadata are all keyed by path and must be remapped together.
 - **Completions are ranked client-side.** `typst-ide` never filters by prefix, so rank *then* truncate — otherwise `#im` suggests `align, alt, arguments…` and never `image`.
 
@@ -35,6 +36,7 @@ These are the ones that cost real debugging time. Violating any of them breaks t
 - `compiler.rs` / `renderer.rs` — compile and lazy on-demand page rendering, served over `previewimg://` keyed by content fingerprint.
 - `workspace.rs` — **all file IO funnels through here**, so an alternative storage backend (SAF-picked external folders) swaps in at one seam. Also owns path-traversal guards and the rename/move path remapping.
 - `fonts.rs` — embedded + system fonts, plus the SAF app-wide fonts folder (`pick_fonts_dir` / `clear_fonts_dir`).
+- `watcher.rs` — external-change detection for the open workspace. **Polling, not inotify**: shared storage is a FUSE mount and writes reaching the lower filesystem another way (MTP, `adb push`, MediaProvider) can land without raising an event, and missing a change silently is the one failure this cannot have. A poll cannot pair the halves of a move, so an external rename arrives as a removal plus a creation. Every command that writes claims its paths on `WatcherState::self_writes` — by *state*, not a time window — or autosave polls back as an external change.
 - `commands/` — `app`, `workspace`, `editor`, `compile`, `cursor`, `click`, `export`, `format`.
 
 ### Frontend (`src/`)

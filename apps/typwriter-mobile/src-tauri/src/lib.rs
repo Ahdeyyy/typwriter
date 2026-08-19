@@ -6,6 +6,7 @@ mod commands;
 mod compiler;
 mod fonts;
 mod renderer;
+mod watcher;
 mod workspace;
 mod world;
 
@@ -15,6 +16,7 @@ use tauri::Manager;
 
 use compiler::CompileState;
 use renderer::{parse_preview_key, Renderer};
+use watcher::WatcherState;
 use workspace::WorkspaceState;
 use world::MobileWorld;
 
@@ -105,6 +107,9 @@ pub fn run() {
             app.manage(Arc::new(CompileState::default()));
             app.manage(Arc::new(Renderer::new()));
             app.manage(Arc::new(WorkspaceState::default()));
+            // Starts watching once a workspace is opened; there is
+            // nothing to watch before that.
+            app.manage(Arc::new(WatcherState::default()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -114,6 +119,7 @@ pub fn run() {
             commands::workspace::delete_workspace,
             commands::workspace::open_workspace,
             commands::workspace::get_file_tree,
+            commands::workspace::rescan_workspace,
             commands::workspace::set_main_file,
             commands::workspace::set_last_file,
             commands::workspace::set_open_tabs,

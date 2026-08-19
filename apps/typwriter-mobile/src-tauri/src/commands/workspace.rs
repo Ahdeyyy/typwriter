@@ -17,6 +17,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::{
     compiler::CompileState,
+    watcher::WatcherState,
     workspace::{
         build_tree, detect_main_file, read_meta, remap_meta, resolve_in_root, update_meta,
         workspaces_root, EntryChange, FileNode, MetaRemap, WorkspaceInfo, WorkspaceMeta,
@@ -199,6 +200,7 @@ pub async fn open_workspace(
     workspace: State<'_, Arc<WorkspaceState>>,
     world: State<'_, Arc<MobileWorld>>,
     compile: State<'_, Arc<CompileState>>,
+    watcher: State<'_, Arc<WatcherState>>,
 ) -> Result<WorkspaceInfo, String> {
     let t = Instant::now();
     let dir = root_dir(&app).join(&name);
@@ -216,6 +218,9 @@ pub async fn open_workspace(
 
     *workspace.root.write() = Some(dir.clone());
     world.set_root(dir.clone());
+    // Follow the new root. This also tears down the previous workspace's
+    // watcher, whose paths mean nothing here.
+    watcher.start(dir.clone(), app.clone());
     // Drop the previous workspace's compiled document so the preview (and PDF
     // export) can never serve the old workspace's pages after a switch.
     *compile.document.lock() = None;
@@ -267,6 +272,27 @@ pub async fn open_workspace(
 
 #[tauri::command]
 pub async fn get_file_tree(workspace: State<'_, Arc<WorkspaceState>>) -> Result<FileNode, String> {
+    tree_of(&workspace)
+}
+
+/// Re-read the workspace from disk and drop every cached file slot, then hand
+/// back the fresh tree.
+///
+/// The frontend calls this when the app returns to the foreground. Android is
+/// free to freeze a backgrounded process, so the poll watcher may simply not
+/// have run while the user was in their file manager — and when it resumes it
+/// diffs against the snapshot it took before the freeze, which can miss a
+/// change that was made and then undone. Asking outright on resume is cheap and
+/// removes the whole question.
+#[tauri::command]
+pub async fn rescan_workspace(
+    workspace: State<'_, Arc<WorkspaceState>>,
+    world: State<'_, Arc<MobileWorld>>,
+) -> Result<FileNode, String> {
+    // Stamps are compared against disk on every compile anyway, but a slot
+    // whose file was replaced with one of the same length and mtime would
+    // survive that check; a resume is a cheap moment to be certain.
+    world.clear_cache();
     tree_of(&workspace)
 }
 
@@ -367,6 +393,7 @@ pub async fn set_open_tabs(
 pub async fn create_file(
     rel_path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
+    watcher: State<'_, Arc<WatcherState>>,
 ) -> Result<FileNode, String> {
     let root = current_root(&workspace)?;
     let abs = resolve_in_root(&root, &rel_path)?;
@@ -377,6 +404,7 @@ pub async fn create_file(
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     std::fs::write(&abs, b"").map_err(|e| e.to_string())?;
+    watcher.self_writes.note_write(&abs);
     info!("create_file: {rel_path:?}");
     tree_of(&workspace)
 }
@@ -385,6 +413,7 @@ pub async fn create_file(
 pub async fn create_folder(
     rel_path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
+    watcher: State<'_, Arc<WatcherState>>,
 ) -> Result<FileNode, String> {
     let root = current_root(&workspace)?;
     let abs = resolve_in_root(&root, &rel_path)?;
@@ -392,6 +421,7 @@ pub async fn create_folder(
         return Err(format!("Already exists: {rel_path}"));
     }
     std::fs::create_dir_all(&abs).map_err(|e| e.to_string())?;
+    watcher.self_writes.note_write(&abs);
     info!("create_folder: {rel_path:?}");
     tree_of(&workspace)
 }
@@ -403,6 +433,7 @@ pub async fn rename_entry(
     workspace: State<'_, Arc<WorkspaceState>>,
     world: State<'_, Arc<MobileWorld>>,
     compile: State<'_, Arc<CompileState>>,
+    watcher: State<'_, Arc<WatcherState>>,
 ) -> Result<EntryChange, String> {
     if new_name.contains(['/', '\\']) {
         return Err("Name cannot contain path separators".into());
@@ -416,7 +447,9 @@ pub async fn rename_entry(
     if dest.exists() {
         return Err(format!("Already exists: {new_name}"));
     }
+    let moved = collect_tree(&abs);
     std::fs::rename(&abs, &dest).map_err(|e| e.to_string())?;
+    claim_move(&watcher, &abs, &dest, &moved);
     // The entry keeps its parent, so only the last segment changes.
     let parent_rel = match rel_path.rfind('/') {
         Some(i) => &rel_path[..i],
@@ -433,6 +466,7 @@ pub async fn move_entry(
     workspace: State<'_, Arc<WorkspaceState>>,
     world: State<'_, Arc<MobileWorld>>,
     compile: State<'_, Arc<CompileState>>,
+    watcher: State<'_, Arc<WatcherState>>,
 ) -> Result<EntryChange, String> {
     let root = current_root(&workspace)?;
     let abs = resolve_in_root(&root, &rel_path)?;
@@ -456,7 +490,9 @@ pub async fn move_entry(
     if abs.is_dir() && dest.starts_with(&abs) {
         return Err("Cannot move a folder into itself".into());
     }
+    let moved = collect_tree(&abs);
     std::fs::rename(&abs, &dest).map_err(|e| e.to_string())?;
+    claim_move(&watcher, &abs, &dest, &moved);
     // The entry keeps its name, so only the parent changes.
     let to = join_rel(&new_parent_rel, last_segment(&rel_path));
     finish_entry_change(&root, &workspace, &world, &compile, rel_path, Some(to))
@@ -468,6 +504,7 @@ pub async fn delete_entry(
     workspace: State<'_, Arc<WorkspaceState>>,
     world: State<'_, Arc<MobileWorld>>,
     compile: State<'_, Arc<CompileState>>,
+    watcher: State<'_, Arc<WatcherState>>,
 ) -> Result<EntryChange, String> {
     let root = current_root(&workspace)?;
     let abs = resolve_in_root(&root, &rel_path)?;
@@ -477,8 +514,53 @@ pub async fn delete_entry(
     if !abs.exists() {
         return Err(format!("Not found: {rel_path}"));
     }
+    let removed = collect_tree(&abs);
     delete_path(&abs)?;
+    watcher.self_writes.note_removal(&abs);
+    for path in &removed {
+        watcher.self_writes.note_removal(path);
+    }
     finish_entry_change(&root, &workspace, &world, &compile, rel_path, None)
+}
+
+/// Every file under `root`, plus `root` itself when it is a file. Collected
+/// *before* a move or delete, while the paths still resolve.
+///
+/// A folder operation is one call to the app and a whole subtree of events to
+/// the watcher, so each of those paths has to be claimed individually or the
+/// poll that notices them reports the app's own work back to it.
+fn collect_tree(root: &Path) -> Vec<PathBuf> {
+    if root.is_file() {
+        return vec![root.to_path_buf()];
+    }
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path.clone());
+            }
+            out.push(path);
+        }
+    }
+    out
+}
+
+/// Claim both ends of a move: the source paths are gone, the destination ones
+/// are new. A poll reports a move as exactly that pair.
+fn claim_move(watcher: &WatcherState, src: &Path, dest: &Path, moved: &[PathBuf]) {
+    watcher.self_writes.note_removal(src);
+    watcher.self_writes.note_write(dest);
+    for path in moved {
+        watcher.self_writes.note_removal(path);
+        if let Ok(tail) = path.strip_prefix(src) {
+            watcher.self_writes.note_write(&dest.join(tail));
+        }
+    }
 }
 
 fn delete_path(abs: &Path) -> Result<(), String> {

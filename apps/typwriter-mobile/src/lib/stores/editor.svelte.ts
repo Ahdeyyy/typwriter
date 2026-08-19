@@ -5,7 +5,9 @@
 import { ResultAsync, okAsync } from "neverthrow";
 import type { EditorView } from "@codemirror/view";
 import * as ipc from "$lib/ipc/commands";
+import type { WorkspaceFileChange } from "$lib/ipc/types";
 import { basename, remapPath } from "$lib/paths";
+import { minimalChange } from "$lib/editor/minimal-change";
 import { settings } from "./settings.svelte";
 import { compileStore } from "./compile.svelte";
 
@@ -20,6 +22,10 @@ class EditorStore {
   imageDataUrl = $state<string | null>(null);
   dirty = $state(false);
   saving = $state(false);
+  /** The active file was rewritten on disk while this buffer had unsaved edits.
+   *  The buffer is untouched — the user picks between it and disk (see
+   *  `reloadActiveFromDisk` / `keepMyChanges`). Cleared by any load or save. */
+  externallyChanged = $state(false);
   loading = $state(false);
 
   /** Open editor tabs (workspace-relative file paths), Obsidian-style. */
@@ -96,6 +102,7 @@ class EditorStore {
             this.fileKind = "text";
             this.loadedText = content.content;
             this.dirty = false;
+            this.externallyChanged = false;
             // The buffer this caret was recorded against is now the one the
             // host will seed; anything else means the user navigated away
             // mid-restore, so the caret no longer applies.
@@ -306,6 +313,103 @@ class EditorStore {
     this.persistTabsNow();
   }
 
+  // ─── External (on-disk) changes ───────────────────────────────────────────
+
+  /**
+   * Reconcile the open tabs with files that changed on disk without the app
+   * doing it — a laptop writing over USB, a file manager, a sync client.
+   *
+   * Only the *active* buffer can be stale, because it is the only one this app
+   * holds text for; the rest are just paths, and the tree refresh alongside this
+   * already covers them. So the work here is narrow: reload the active file when
+   * it changed underneath us, and let go of it when it is gone.
+   *
+   * A **clean** buffer reloads silently — there is nothing to lose, and text on
+   * screen that no longer exists on disk is the bug this fixes. A **dirty** one
+   * is left alone and flagged instead: autosave means dirty is a window of a few
+   * seconds, and silently discarding what the user typed inside it would be far
+   * worse than showing a slightly old file with a warning on it.
+   */
+  applyExternalChanges(changes: WorkspaceFileChange[]) {
+    const active = this.newTabOpen ? null : this.relPath;
+
+    for (const change of changes) {
+      if (change.kind === "removed") {
+        // `applyEntryChange` already drops the tabs a deleted path took with it,
+        // moves the active buffer somewhere sensible and cancels its pending
+        // writes — exactly what an external delete needs too. It matches by
+        // whole path segments, so a deleted folder takes its children.
+        const hitsUs =
+          this.tabs.some((tab) => remapPath(tab, change.relPath, null).kind === "gone") ||
+          (active !== null && remapPath(active, change.relPath, null).kind === "gone");
+        if (hitsUs) {
+          this.applyEntryChange(change.relPath, null);
+        }
+        continue;
+      }
+      if (change.isDir || change.relPath !== active) {
+        // Nothing to reload: a folder has no buffer, and an inactive tab holds
+        // no text to go stale.
+        continue;
+      }
+      if (this.dirty) {
+        this.externallyChanged = true;
+        continue;
+      }
+      void this.reloadActiveFromDisk();
+    }
+  }
+
+  /** Re-read the active file, replacing the buffer. Discards unsaved edits, so
+   *  it is only reached automatically for a clean buffer — a dirty one goes
+   *  through `externallyChanged` and waits for the user. */
+  reloadActiveFromDisk(): ResultAsync<void, string> {
+    const relPath = this.newTabOpen ? null : this.relPath;
+    if (!relPath) return okAsync(undefined);
+    this.discardPendingWrites();
+    this.externallyChanged = false;
+    return ipc.readFile(relPath).map((content) => {
+      // The user may have navigated away across the read.
+      if (!this.isActiveTab(relPath)) return;
+      if (content.type === "text") {
+        this.fileKind = "text";
+        this.applyTextFromDisk(content.content);
+      } else if (content.type === "image") {
+        this.fileKind = "image";
+        this.imageDataUrl = content.data;
+      } else {
+        this.fileKind = "unsupported";
+      }
+      compileStore.onSaved();
+    });
+  }
+
+  /** Push text read from disk into the live editor without marking it dirty.
+   *
+   *  Dispatched as the *minimal* change rather than a whole-document swap:
+   *  everything inside a deleted range collapses to its edge, so replacing the
+   *  document wholesale would throw the reader to the top of the file. Narrowed
+   *  to the span that actually differs, CodeMirror maps the caret through it and
+   *  they keep their place. `loadedText` is kept in step for the case where the
+   *  host remounts and re-seeds from it. */
+  private applyTextFromDisk(text: string) {
+    this.loadedText = text;
+    this.dirty = false;
+    const view = this.view;
+    if (!view) return;
+    const change = minimalChange(view.state.doc.toString(), text);
+    if (!change) return;
+    this.programmatic(() => {
+      view.dispatch({ changes: change, scrollIntoView: true });
+    });
+  }
+
+  /** Keep the unsaved buffer and stop warning about it. The next save
+   *  overwrites what is on disk. */
+  keepMyChanges() {
+    this.externallyChanged = false;
+  }
+
   /**
    * Give up on writing the active buffer when `relPath` is about to be deleted,
    * and resolve once nothing is still being written.
@@ -345,6 +449,7 @@ class EditorStore {
     this.loadedText = "";
     this.imageDataUrl = null;
     this.dirty = false;
+    this.externallyChanged = false;
   }
 
   /**
@@ -464,6 +569,9 @@ class EditorStore {
         this.dirty = false;
         this.saving = false;
         this.inflight = null;
+        // The save resolved the divergence the only other way it can be
+        // resolved: our buffer is now what is on disk.
+        this.externallyChanged = false;
         compileStore.onSaved();
       })
       .mapErr((e) => {

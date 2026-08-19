@@ -1,6 +1,6 @@
 <script lang="ts">
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { Cancel01Icon } from "@hugeicons/core-free-icons";
+  import { Alert01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
   import { editor } from "$lib/stores/editor.svelte";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
@@ -19,6 +19,7 @@
       {@const isActive = editor.activeTabId === tab.id}
       {@const isDragging = ctrl.dragTabId === tab.id}
       {@const isDropTarget = ctrl.dropTargetId === tab.id}
+      {@const diverged = tab.externalContent !== null || tab.externallyRemoved}
       <ContextMenu.Root>
         <ContextMenu.Trigger>
           <Tooltip.Root>
@@ -38,7 +39,11 @@
             onclick={() => void ctrl.activateTab(tab)}
             onauxclick={(e: MouseEvent) => void ctrl.handleAuxClick(e, tab)}
           >
-            {#if tab.hasUnsavedChanges}
+            {#if diverged}
+              <span class="diverged-mark">
+                <HugeiconsIcon icon={Alert01Icon} class="size-3" />
+              </span>
+            {:else if tab.hasUnsavedChanges}
               <span class="unsaved-dot"></span>
             {/if}
 
@@ -62,11 +67,32 @@
           </button>
               {/snippet}
             </Tooltip.Trigger>
-            <Tooltip.Content>{tab.relPath}</Tooltip.Content>
+            <Tooltip.Content>
+              {#if tab.externallyRemoved}
+                {tab.relPath} — deleted outside the editor; save to write it back
+              {:else if tab.externalContent !== null}
+                {tab.relPath} — changed on disk since you started editing
+              {:else}
+                {tab.relPath}
+              {/if}
+            </Tooltip.Content>
           </Tooltip.Root>
         </ContextMenu.Trigger>
 
         <ContextMenu.Content>
+          {#if diverged}
+            <!-- Only ever shown for a tab whose unsaved buffer has diverged from
+                 disk: a clean tab reloads itself, so there is nothing to ask. -->
+            {#if !tab.externallyRemoved}
+              <ContextMenu.Item onclick={() => void editor.reloadTabFromDisk(tab.id)}>
+                Reload from Disk
+              </ContextMenu.Item>
+            {/if}
+            <ContextMenu.Item onclick={() => editor.keepTabChanges(tab.id)}>
+              Keep My Changes
+            </ContextMenu.Item>
+            <ContextMenu.Separator />
+          {/if}
           <ContextMenu.Item onclick={() => void ctrl.closeTab(tab)}>
             Close
           </ContextMenu.Item>
@@ -183,6 +209,15 @@
     height: 6px;
     border-radius: 50%;
     background-color: var(--primary);
+  }
+
+  /* Takes the unsaved dot's slot rather than sitting beside it: a diverged tab
+     is always also unsaved, and two markers on a 28px tab is noise. */
+  .diverged-mark {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    color: var(--destructive);
   }
 
   .close-btn {

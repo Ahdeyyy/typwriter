@@ -11,7 +11,12 @@ import {
 } from '$lib/ipc/commands';
 import { emitSnippetsChanged } from '$lib/ipc/events';
 import { SNIPPETS_REL_PATH } from '$lib/snippets';
-import type { CompileReason, FileMeta } from '$lib/types';
+import type {
+    CompileReason,
+    FileContentResponse,
+    FileMeta,
+    WorkspaceFileChange
+} from '$lib/types';
 import { workspace } from './workspace.svelte';
 import { settings } from './settings.svelte';
 import { grammar } from './grammar.svelte';
@@ -23,6 +28,20 @@ export type ViewMode = 'text' | 'image' | 'unsupported';
 
 function imageAssetSrc(path: string): string {
     return convertFileSrc(normalize(path));
+}
+
+/** How a `read_file` response wants to be rendered. The backend's classification
+ *  is the only authority on this (see `_loadTabContent`); naming the mapping is
+ *  what lets an external change notice a file that changed *type*. */
+function viewModeFor(res: FileContentResponse): ViewMode {
+    switch (res.type) {
+        case 'text':
+            return 'text';
+        case 'image':
+            return 'image';
+        case 'unsupported':
+            return 'unsupported';
+    }
 }
 
 export interface TabInfo {
@@ -40,6 +59,15 @@ export interface TabInfo {
     fileMeta: FileMeta | null;
     hasUnsavedChanges: boolean;
     isLoading: boolean;
+    /** Something outside the editor rewrote this file while the tab held
+     *  unsaved edits, so the two have diverged. The buffer is left alone — the
+     *  user decides — and the tab bar marks it until they do. Never set for a
+     *  clean tab: those adopt the new bytes silently. */
+    externalContent: string | null;
+    /** Something outside the editor deleted this file while the tab held
+     *  unsaved edits. The buffer is kept so saving puts the file back; a clean
+     *  tab is simply closed. */
+    externallyRemoved: boolean;
 }
 
 // Small enough to feel instant (~half a frame at 60Hz), large enough to
@@ -220,6 +248,8 @@ class EditorStore {
             fileMeta: null,
             hasUnsavedChanges: false,
             isLoading: true,
+            externalContent: null,
+            externallyRemoved: false,
         };
     }
 
@@ -554,6 +584,232 @@ class EditorStore {
                 version: ++this._contentSyncVersion,
             };
         }
+    }
+
+    // ─── External (on-disk) changes ──────────────────────────────────────────
+
+    /** Reconcile the open tabs with a batch of changes the filesystem watcher
+     *  saw — an external editor's save, a `git checkout`, a file manager's
+     *  rename, an asset pipeline writing into the workspace.
+     *
+     *  The rule is that unsaved work is neither destroyed nor silently kept: a
+     *  **clean** tab adopts the new bytes without ceremony (there is nothing to
+     *  lose, and stale text on screen is the actual bug), while a **dirty** one
+     *  is flagged and the user is offered the reload. The same split governs
+     *  deletions — a clean tab closes, a dirty one stays so saving puts the
+     *  file back.
+     *
+     *  Changes the app caused itself never reach here: the Rust side claims
+     *  every path it writes before touching disk (see `workspace/self_writes`).
+     */
+    async applyExternalChanges(changes: WorkspaceFileChange[]): Promise<void> {
+        for (const change of changes) {
+            const rel = normalize(workspace.toRel(change.path));
+            switch (change.kind) {
+                case 'renamed': {
+                    // `to` is always present for a rename; guard anyway rather
+                    // than corrupt a tab's path with `undefined`.
+                    if (!change.to) break;
+                    const to = normalize(workspace.toRel(change.to));
+                    if (change.isDir) {
+                        this.updateTabsUnderPath(rel, to);
+                    } else {
+                        this.updateTabPath(rel, to);
+                    }
+                    break;
+                }
+                case 'removed':
+                    await this._applyExternalRemoval(rel);
+                    break;
+                case 'created':
+                case 'modified':
+                    await this._applyExternalWrite(rel);
+                    break;
+            }
+        }
+    }
+
+    /** Drop the tabs a deleted path took with it. A removed directory is
+     *  reported as the directory alone, so descendants are matched by prefix —
+     *  and a removed *file* can never be a prefix of another path, which is why
+     *  one pass covers both. */
+    private async _applyExternalRemoval(rel: string): Promise<void> {
+        const prefix = `${rel}/`;
+        const affected = this.tabs.filter(
+            (tab) => tab.relPath === rel || tab.relPath.startsWith(prefix)
+        );
+        for (const tab of affected) {
+            if (tab.isEditable && tab.hasUnsavedChanges) {
+                // One prompt per divergence: re-reporting the same removal must
+                // not stack another toast on a tab already marked.
+                const alreadyFlagged = tab.externallyRemoved;
+                tab.externallyRemoved = true;
+                tab.externalContent = null;
+                if (!alreadyFlagged) {
+                    toast.warning(`${tab.name} was deleted outside the editor`, {
+                        description: 'Your unsaved changes are still here — save to write it back.'
+                    });
+                }
+                continue;
+            }
+            await this.closeTab(tab.id, { flush: false });
+        }
+    }
+
+    /** Bring the tab at `rel` — if there is one — back in line with disk. */
+    private async _applyExternalWrite(rel: string): Promise<void> {
+        const tab = this.tabs.find((t) => t.relPath === rel);
+        // A tab still loading is about to read the file anyway, and racing it
+        // would only let the older of the two reads win.
+        if (!tab || tab.isLoading) {
+            return;
+        }
+
+        const response = await readFile(tab.absPath);
+        // The tab may have been closed or renamed across the read.
+        const live = this.tabs.find((t) => t.id === tab.id);
+        if (!live) {
+            return;
+        }
+        if (response.isErr()) {
+            // Written and removed again before we got to it. The removal branch
+            // is the honest description of where the file now stands.
+            await this._applyExternalRemoval(live.relPath);
+            return;
+        }
+
+        const res = response.value;
+        // A file can change *type* out from under a tab — an image replaced by
+        // a text file, a `.typ` swapped for something binary. The viewer has to
+        // follow, so re-open rather than keep rendering it the old way.
+        if (viewModeFor(res) !== live.viewMode) {
+            if (live.isEditable && live.hasUnsavedChanges) {
+                // The file the user is editing is gone as *text*, even though
+                // something now occupies its path. Marking it removed is the
+                // honest state, and it keeps the buffer saveable.
+                const alreadyFlagged = live.externallyRemoved;
+                live.externallyRemoved = true;
+                live.externalContent = null;
+                if (!alreadyFlagged) {
+                    toast.warning(`${live.name} was replaced outside the editor`, {
+                        description: 'Reopen the tab to see the new file.'
+                    });
+                }
+                return;
+            }
+            await this._loadTabContent(live.id);
+            return;
+        }
+
+        switch (res.type) {
+            case 'image':
+                // Same URL, new bytes: the webview would serve the cached image,
+                // so the src has to change for the element to re-fetch.
+                live.imageSrc = `${imageAssetSrc(res.path)}?v=${Date.now()}`;
+                return;
+            case 'unsupported':
+                // Nothing to render, but the info card's size and timestamps
+                // describe the file that was just rewritten.
+                live.fileMeta = res.meta;
+                return;
+            case 'text':
+                break;
+        }
+
+        const content = res.content;
+        if (content === live.content) {
+            // Identical bytes — a write that changed nothing, or one of ours on
+            // a path the self-write log didn't recognise. Either way the tab and
+            // disk agree, so clear any standing divergence.
+            live.externalContent = null;
+            live.externallyRemoved = false;
+            return;
+        }
+
+        if (live.hasUnsavedChanges) {
+            const alreadyFlagged = live.externalContent !== null;
+            live.externalContent = content;
+            live.externallyRemoved = false;
+            // One prompt per divergence: a tool that rewrites the file in a loop
+            // must not bury the screen in toasts. Re-flagging silently keeps the
+            // stored copy current, so "Reload" always applies the newest bytes.
+            if (!alreadyFlagged) {
+                toast.warning(`${live.name} changed on disk`, {
+                    description: 'This tab has unsaved changes.',
+                    duration: 10_000,
+                    action: {
+                        label: 'Reload',
+                        onClick: () => {
+                            void this.reloadTabFromDisk(live.id);
+                        }
+                    }
+                });
+            }
+            return;
+        }
+
+        this._adoptDiskContent(live, content);
+    }
+
+    /** Replace a clean tab's buffer with what is now on disk. */
+    private _adoptDiskContent(tab: TabInfo, content: string): void {
+        this._clearTimers(tab.id);
+        // The Rust shadow (if any) still holds the pre-change text — the watcher
+        // deliberately leaves an open buffer's shadow alone. Dropping it here is
+        // what makes disk the authority again for the compile it queued.
+        discardShadow(tab.absPath).mapErr((err) =>
+            logError('discardShadow after external change failed:', err)
+        );
+        tab.content = content;
+        tab.hasUnsavedChanges = false;
+        tab.externalContent = null;
+        tab.externallyRemoved = false;
+        // The sync channel diffs against the live document and applies a
+        // minimal changeset, so CodeMirror maps the caret through the edit
+        // instead of dropping it at the top of the file.
+        this.contentSyncRequest = {
+            tabId: tab.id,
+            content,
+            version: ++this._contentSyncVersion
+        };
+        void grammar.checkNow(tab.relPath, content);
+    }
+
+    /** Discard a tab's unsaved edits in favour of what is on disk. Backs the
+     *  "Reload" action on the divergence toast and the tab's own affordance. */
+    async reloadTabFromDisk(tabId: string): Promise<void> {
+        const tab = this.tabs.find((t) => t.id === tabId);
+        if (!tab) {
+            return;
+        }
+        const response = await readFile(tab.absPath);
+        const live = this.tabs.find((t) => t.id === tabId);
+        if (!live) {
+            return;
+        }
+        if (response.isErr()) {
+            toast.error(`Could not read ${live.name}: ${response.error}`);
+            return;
+        }
+        if (response.value.type !== 'text') {
+            await this._loadTabContent(live.id);
+            return;
+        }
+        this._adoptDiskContent(live, response.value.content);
+        triggerPreview('watcher').mapErr((err) =>
+            logError('preview trigger after reload from disk failed:', err)
+        );
+    }
+
+    /** Forget a tab's divergence without touching its buffer: the user chose to
+     *  keep what they have. Saving from here overwrites the file. */
+    keepTabChanges(tabId: string): void {
+        const tab = this.tabs.find((t) => t.id === tabId);
+        if (!tab) {
+            return;
+        }
+        tab.externalContent = null;
+        tab.externallyRemoved = false;
     }
 
     async reset(): Promise<void> {

@@ -3,8 +3,15 @@
 // patches the tree client-side.
 
 import { ResultAsync, okAsync } from "neverthrow";
-import type { EntryChange, FileNode, WorkspaceInfo, WorkspaceMeta } from "$lib/ipc/types";
+import type {
+  EntryChange,
+  FileNode,
+  WorkspaceFileChange,
+  WorkspaceInfo,
+  WorkspaceMeta,
+} from "$lib/ipc/types";
 import * as ipc from "$lib/ipc/commands";
+import { onWorkspaceFilesChanged, type UnlistenFn } from "$lib/ipc/events";
 import { remapPath } from "$lib/paths";
 import { app } from "./app.svelte";
 import { editor } from "./editor.svelte";
@@ -17,6 +24,9 @@ class WorkspaceStore {
   root = $state<string | null>(null);
   tree = $state<FileNode | null>(null);
   mainFile = $state<string | null>(null);
+
+  private filesChangedUnlisten: UnlistenFn | null = null;
+  private rescanBound = false;
 
   refreshList(): ResultAsync<void, string> {
     return ipc.listWorkspaces().map((list) => {
@@ -51,6 +61,8 @@ class WorkspaceStore {
       editor.seedTabs(initialTabs, active, cursor);
       // The preview must never show a previous workspace's pages.
       compileStore.onWorkspaceOpened(!!info.mainFile);
+      void this.listenForExternalChanges();
+      this.watchForeground();
       return info;
     });
   }
@@ -87,6 +99,75 @@ class WorkspaceStore {
   close() {
     settings.setLastWorkspace(null);
     app.goHome();
+  }
+
+  // ─── External (on-disk) changes ─────────────────────────────────────────
+
+  /** Subscribe to the backend watcher. Idempotent: re-opening a workspace keeps
+   *  the one listener, since the event carries no workspace of its own and the
+   *  backend only ever watches the current root. */
+  private async listenForExternalChanges(): Promise<void> {
+    if (this.filesChangedUnlisten) return;
+    const result = await onWorkspaceFilesChanged((payload) => {
+      this.applyExternalChanges(payload.changes);
+    });
+    if (result.isOk()) {
+      this.filesChangedUnlisten = result.value;
+    } else {
+      console.error("onWorkspaceFilesChanged listener failed:", result.error);
+    }
+  }
+
+  private applyExternalChanges(changes: WorkspaceFileChange[]) {
+    if (!changes.length) return;
+    // The backend keeps polling the last root it was given, including after the
+    // user has gone home — where there is no tree on screen, no open buffer, and
+    // possibly no workspace any more (they may have just deleted it). Opening
+    // one rebuilds all of this from scratch, so there is nothing to reconcile.
+    if (!this.root || app.screen !== "editor") return;
+    void this.refreshTree();
+
+    // A main file deleted out from under us would otherwise leave every compile
+    // failing on a document that no longer exists.
+    for (const change of changes) {
+      if (change.kind !== "removed" || !this.mainFile) continue;
+      if (remapPath(this.mainFile, change.relPath, null).kind === "gone") {
+        this.mainFile = null;
+        compileStore.clear();
+      }
+    }
+
+    editor.applyExternalChanges(changes);
+    // Disk is what the compiler reads, so anything that changed there makes the
+    // current render stale — whether or not a buffer was involved.
+    compileStore.onSaved();
+  }
+
+  /** Re-read the tree whenever the app comes back to the foreground.
+   *
+   *  Android is free to freeze a backgrounded process, so the poll watcher may
+   *  simply not have been running while the user was in their file manager —
+   *  and the snapshot it resumes from is the one it took before the freeze.
+   *  Coming back is also exactly when a user expects to see what they just did
+   *  elsewhere, so asking outright is worth one round-trip. */
+  private watchForeground() {
+    if (this.rescanBound || typeof document === "undefined") return;
+    this.rescanBound = true;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      if (!this.root || app.screen !== "editor") return;
+      void ipc.rescanWorkspace().map((tree) => {
+        this.replaceTree(tree);
+        compileStore.onSaved();
+        // A file the user edited elsewhere is the whole reason for this path;
+        // a clean buffer should show it rather than the text from before.
+        if (!editor.dirty) void editor.reloadActiveFromDisk();
+      });
+    });
+  }
+
+  refreshTree(): ResultAsync<void, string> {
+    return ipc.getFileTree().map((tree) => this.replaceTree(tree));
   }
 
   setMain(relPath: string): ResultAsync<void, string> {

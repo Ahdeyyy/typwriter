@@ -231,8 +231,24 @@ export interface CompileStatePayload {
     stale: boolean;
 }
 
+/** What happened to a path on disk between two quiet moments — mirrors
+ *  `ChangeKind` in src-tauri/src/workspace/watcher.rs. */
+export type WorkspaceChangeKind = 'created' | 'modified' | 'removed' | 'renamed';
+
+export interface WorkspaceFileChange {
+    /** Absolute path. For a rename this is where the entry *was*. */
+    path: string;
+    kind: WorkspaceChangeKind;
+    /** Where a renamed entry landed. Absent for every other kind. */
+    to?: string;
+    /** Whether the entry is a directory. Always false for `removed`, where
+     *  there is nothing left to ask — a removed path is treated as covering
+     *  everything beneath it either way. */
+    isDir: boolean;
+}
+
 export interface WorkspaceFilesChangedPayload {
-    paths: string[];
+    changes: WorkspaceFileChange[];
 }
 
 // ─── Versioning / Restore points ──────────────────────────────────────────────

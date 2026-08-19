@@ -11,7 +11,10 @@ use tauri::State;
 use typst::syntax::Source;
 use typst_layout::PagedDocument;
 
-use crate::{compiler::CompileState, workspace::resolve_in_root, world::MobileWorld};
+use crate::{
+    compiler::CompileState, watcher::WatcherState, workspace::resolve_in_root,
+    world::MobileWorld,
+};
 
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -113,6 +116,7 @@ pub async fn save_file(
     rel_path: String,
     content: String,
     world: State<'_, Arc<MobileWorld>>,
+    watcher: State<'_, Arc<WatcherState>>,
 ) -> Result<(), String> {
     let t = Instant::now();
     let root = workspace_root(&world)?;
@@ -137,6 +141,13 @@ pub async fn save_file(
     if let Ok(id) = world.rel_to_id(&rel_path) {
         world.apply_saved_source(id, &content);
     }
+    // Claimed after the rename lands, so the stamp describes the finished file.
+    // Without this every autosave polls back as an external change and the
+    // buffer the user is typing into gets reconciled against its own bytes.
+    watcher.self_writes.note_write(&abs);
+    // The temp file exists for microseconds, but a poll that lands inside that
+    // window would report it as a stray file appearing and vanishing.
+    watcher.self_writes.note_removal(&tmp);
     info!(
         "save_file: ok {rel_path:?} bytes={} ({:.1}ms)",
         content.len(),

@@ -106,8 +106,16 @@ impl WorkspaceState {
         }
     }
 
-    /// Record that the editor just wrote `path`, so the watcher ignores the
-    /// events that write produces. See [`self_writes`].
+    /// Record that the editor is about to write `path`, so the watcher ignores
+    /// the events that write produces. See [`self_writes`].
+    ///
+    /// Every mutation in this module claims its paths *before* touching disk:
+    /// the events can arrive while the operation is still running, and a claim
+    /// filed afterwards would lose the race. Missing a claim doesn't corrupt
+    /// anything — the frontend has already applied the change and re-reading is
+    /// idempotent — but it does cost a needless workspace re-walk, and for a
+    /// file with unsaved edits it would raise a "changed on disk" prompt for a
+    /// change the user just made in the app.
     pub fn note_self_write(&self, path: &Path) {
         self.self_writes.note(path);
     }
@@ -271,6 +279,53 @@ impl WorkspaceState {
         *self.main_file.write() = None;
         self.world.clear_main();
         self.pipeline.invalidate_cache();
+    }
+
+    /// Follow the main file through changes made *outside* the editor.
+    ///
+    /// The in-app file operations each maintain this pointer themselves
+    /// (`rename_file` remaps it, `delete_file` clears it); nothing did so for a
+    /// rename or delete performed by another program, which left the compiler
+    /// resolving a path that no longer exists — every later compile failing
+    /// "file not found" for a document sitting right there under its new name.
+    ///
+    /// This is the backend's own bookkeeping, deliberately not routed through
+    /// the frontend: the world has to stay consistent whether or not a window
+    /// is listening, and the queued watcher compile runs either way.
+    pub(crate) fn reconcile_main_file(&self, changes: &[watcher::FileChange]) {
+        for change in changes {
+            // Re-read per change: an earlier one in the same batch may have
+            // moved or cleared it.
+            let Some(main) = self.main_file.read().clone() else {
+                return;
+            };
+            match change.kind {
+                watcher::ChangeKind::Renamed => {
+                    let Some(to) = change.to.as_deref() else {
+                        continue;
+                    };
+                    let src = Path::new(change.path.as_str());
+                    let dst = Path::new(to);
+                    if let Err(e) = self.update_main_file_path(src, dst, change.is_dir) {
+                        warn!(
+                            "WorkspaceState::reconcile_main_file: could not follow                              {src:?} -> {dst:?} err=\"{e}\""
+                        );
+                    }
+                }
+                watcher::ChangeKind::Removed => {
+                    // Component-wise, so deleting `notes` never clears a main
+                    // file called `notes-old.typ`. A removed directory takes
+                    // everything under it, which is exactly `starts_with`.
+                    if main.starts_with(Path::new(change.path.as_str())) {
+                        info!(
+                            "WorkspaceState::reconcile_main_file: main file removed externally                              ({main:?}) — clearing"
+                        );
+                        self.clear_main_file();
+                    }
+                }
+                watcher::ChangeKind::Created | watcher::ChangeKind::Modified => {}
+            }
+        }
     }
 
     // ─── Zoom / scale ──────────────────────────────────────────────────────
@@ -541,6 +596,7 @@ impl WorkspaceState {
         let abs = self.resolve(path)?;
         let fs = self.working_fs()?;
         info!("WorkspaceState::create_file: abs={abs:?}");
+        self.note_self_write(&abs);
         if let Some(parent) = abs.parent() {
             fs.create_dir_all(parent).map_err(|e| {
                 error!(
@@ -566,6 +622,7 @@ impl WorkspaceState {
         let t = Instant::now();
         let abs = self.resolve(path)?;
         info!("WorkspaceState::create_folder: abs={abs:?}");
+        self.note_self_write(&abs);
         self.working_fs()?.create_dir_all(&abs).map_err(|e| {
             error!("WorkspaceState::create_folder: failed abs={abs:?} err=\"{e}\"");
             e
@@ -585,6 +642,7 @@ impl WorkspaceState {
         let t = Instant::now();
         let abs = self.resolve(path)?;
         info!("WorkspaceState::delete_file: abs={abs:?}");
+        self.note_self_write(&abs);
         self.working_fs()?.remove_file(&abs).map_err(|e| {
             error!("WorkspaceState::delete_file: failed abs={abs:?} err=\"{e}\"");
             e
@@ -617,6 +675,8 @@ impl WorkspaceState {
         let dst_abs = self.resolve(dst)?;
         let fs = self.working_fs()?;
         info!("WorkspaceState::rename_file: src={src_abs:?} dst={dst_abs:?}");
+        self.note_self_write(&src_abs);
+        self.note_self_write(&dst_abs);
         if let Some(parent) = dst_abs.parent() {
             fs.create_dir_all(parent).map_err(|e| {
                 error!("WorkspaceState::rename_file: create_dir_all failed dst_parent={parent:?} err=\"{e}\"");
@@ -663,7 +723,9 @@ impl WorkspaceState {
             "WorkspaceState::delete_folder: invalidating {} cached file(s)",
             files.len()
         );
+        self.note_self_write(&abs);
         for file_path in files {
+            self.note_self_write(&file_path);
             if let Some(id) = self.world.path_to_id(&file_path) {
                 self.world.shadow_remove(id);
                 self.world.invalidate_file(id);
@@ -737,6 +799,7 @@ impl WorkspaceState {
                 error!("WorkspaceState::import_files: err=\"{e}\"");
                 return Err(e);
             }
+            self.note_self_write(&dst_path);
             let bytes = std::fs::read(src_path.as_path()).map_err(|e| {
                 error!("WorkspaceState::import_files: read failed src={src_path:?} err=\"{e}\"");
                 e.to_string()
@@ -853,6 +916,7 @@ impl WorkspaceState {
             // Route through `resolve` so a crafted entry path can't escape the
             // workspace root, even though the segments were validated above.
             let abs = self.resolve(&ws_rel)?;
+            self.note_self_write(&abs);
             if let Some(parent) = abs.parent() {
                 fs.create_dir_all(parent).map_err(|e| {
                     error!("WorkspaceState::import_dropped: create_dir_all failed parent={parent:?} err=\"{e}\"");
@@ -890,6 +954,18 @@ impl WorkspaceState {
         let dst_abs = self.resolve(dst)?;
         let fs = self.working_fs()?;
         info!("WorkspaceState::move_folder: src={src_abs:?} dst={dst_abs:?}");
+        // Claimed before the move, while the source listing still resolves.
+        // Both endpoints of every file inside are claimed: the watcher sees the
+        // move as a rename per path, and either end left unclaimed would put
+        // the whole folder back through the frontend.
+        self.note_self_write(&src_abs);
+        self.note_self_write(&dst_abs);
+        for path in collect_files_recursive(fs.as_ref(), &src_abs) {
+            if let Ok(tail) = path.strip_prefix(&src_abs) {
+                self.note_self_write(&dst_abs.join(tail));
+            }
+            self.note_self_write(&path);
+        }
         if let Some(parent) = dst_abs.parent() {
             fs.create_dir_all(parent).map_err(|e| {
                 error!("WorkspaceState::move_folder: create_dir_all failed dst_parent={parent:?} err=\"{e}\"");
