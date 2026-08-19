@@ -40,6 +40,17 @@
   // app compiles with, the server still works — its answers just may not match
   // what gets rendered — so this is a warning, never a block on the toggle.
   const typstMismatch = $derived(lspClient.typstMismatch);
+  // Same language level (matching major.minor) but a different patch release of
+  // Typst. Harmless for the server's answers — but without saying so, the only
+  // Typst version on this pane would be tinymist's, which is *not* the one that
+  // renders your documents. See the Typst pane for the authoritative value.
+  const typstPatchDrift = $derived(
+    tinymistInstalled &&
+      lspClient.typstCompatible === true &&
+      lspClient.installedTypstVersion !== null &&
+      lspClient.bundledTypstVersion !== null &&
+      lspClient.installedTypstVersion !== lspClient.bundledTypstVersion,
+  );
   const tinymistDotClass = $derived(
     lspClient.isInstalled === null
       ? "bg-muted-foreground/40"
@@ -54,8 +65,10 @@
     if (!lspClient.isInstalled) return "tinymist not found on PATH — install it to enable this";
     const name = lspClient.installedVersion ? `tinymist ${lspClient.installedVersion}` : "tinymist";
     // Older builds don't report the Typst they target; show what we have.
+    // "targets" matters: this is the Typst tinymist embeds, never the one the
+    // app compiles with.
     return lspClient.installedTypstVersion
-      ? `${name} · Typst ${lspClient.installedTypstVersion}`
+      ? `${name} · targets Typst ${lspClient.installedTypstVersion}`
       : `${name} found`;
   });
 </script>
@@ -198,12 +211,14 @@
         class={tinymistInstalled ? "" : "cursor-not-allowed"}
         title="Typst language server"
         description="Use tinymist for completion, hover, and diagnostics when it's installed."
-        keywords={["lsp", "tinymist", "autocomplete", "intellisense"]}
+        keywords={["lsp", "tinymist", "autocomplete", "intellisense", "typst version"]}
       >
         <!-- Availability indicator: green once the tinymist CLI is found on
-             PATH, amber when it's found but targets a different Typst than the
-             app bundles, red when it isn't found at all (the switch is then
-             disabled — enabling it could not do anything). -->
+             PATH, amber when it's found but speaks a different Typst language
+             level (major.minor) than the app compiles with, red when it isn't
+             found at all (the switch is then disabled — enabling it could not
+             do anything). Every Typst version shown here is attributed, so
+             tinymist's can't be read as the app's. -->
         <p class="mt-1 flex items-center gap-1.5 text-xs">
           <span class="size-2 shrink-0 rounded-full {tinymistDotClass}" aria-hidden="true"></span>
           <span class={tinymistInstalled ? "text-muted-foreground" : "text-destructive"}>
@@ -221,6 +236,12 @@
             Re-check
           </button>
         </p>
+        {#if typstPatchDrift}
+          <p class="mt-1 text-xs text-muted-foreground">
+            This app compiles with Typst {lspClient.bundledTypstVersion} — same language level, so
+            tinymist's answers still apply.
+          </p>
+        {/if}
         {#if typstMismatch}
           <p
             class="mt-1.5 flex items-start gap-1.5 text-xs text-yellow-700 dark:text-yellow-400"
