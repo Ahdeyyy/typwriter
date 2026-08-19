@@ -23,7 +23,7 @@
     emitVcsRestoreFileResult,
     emitPresentationToggleRequest,
   } from "$lib/ipc/events";
-  import { closeDiffWindow } from "$lib/windows";
+  import { childWindowChrome, closeDiffWindow } from "$lib/windows";
   import { logError } from "$lib/logger";
   import { ui } from "$lib/stores/ui.svelte";
   import { matchesCommand } from "$lib/keybindings";
@@ -101,8 +101,7 @@
       height: 900,
       minWidth: 360,
       minHeight: 480,
-      decorations: false,
-      resizable: true,
+      ...childWindowChrome(),
     });
 
     popout.once("tauri://created", () => {

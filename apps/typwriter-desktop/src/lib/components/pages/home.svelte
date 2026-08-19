@@ -48,6 +48,9 @@
   onMount(() => {
     loadRecent();
     maybeAutoShowOnboarding();
+    // The workspace ships as its own chunk now, so warm it while the user is
+    // still reading this screen — opening a project should not wait on a fetch.
+    page.preload("workspace");
   });
 
   // ── Workspace operations ────────────────────────────────────────────────────

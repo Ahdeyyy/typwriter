@@ -20,7 +20,6 @@
   import { page } from "$lib/stores/page.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { editor } from "$lib/stores/editor.svelte";
-  import { editorSearch } from "$lib/stores/editor-search.svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { logError } from "$lib/logger";
   import { hasExternalFiles } from "$lib/services/drop-import";
@@ -98,8 +97,14 @@
     const flush = () => {
       // Force CodeMirror to commit any in-progress IME composition (an IME
       // composes a word before it lands in the document) so the latest
-      // keystrokes are mirrored into the store before we persist.
-      editorSearch.getActiveView()?.contentDOM.blur();
+      // keystrokes are mirrored into the store before we persist. Found
+      // through the DOM rather than the editor-search store: that store pulls
+      // in @codemirror/search, and this layout runs in every window — the
+      // settings and diff windows shouldn't parse CodeMirror to close cleanly.
+      const focused = document.activeElement;
+      if (focused instanceof HTMLElement && focused.closest(".cm-content")) {
+        focused.blur();
+      }
       // Snapshot the (now durable) unsaved buffers, then save dirty tabs to
       // disk. persistTabs is synchronous up to the IPC call; flushAllTabs is
       // best-effort — if the OS suspends mid-flush, the durable snapshot from

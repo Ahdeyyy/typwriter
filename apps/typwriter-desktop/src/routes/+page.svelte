@@ -1,10 +1,10 @@
 <script lang="ts">
+  import type { Component } from "svelte";
   import { page } from "@/stores/page.svelte";
   import { workspace } from "@/stores/workspace.svelte";
-  import PreviewWindow from "$lib/components/pages/preview-window.svelte";
-  import SettingsWindow from "$lib/components/pages/settings.svelte";
-  import DiffWindow from "$lib/components/pages/diff-window.svelte";
   import Button from "$lib/components/ui/button/button.svelte";
+  import { armRevealFallback, revealCurrentWindow } from "$lib/windows";
+  import { logError } from "$lib/logger";
 
   import { Window } from "@tauri-apps/api/window";
   import { watch } from "runed";
@@ -30,6 +30,42 @@
   const diffInitialPrimary = isDiffWindow ? searchParams.get("primary") : null;
   const diffInitialSecondary = isDiffWindow ? searchParams.get("secondary") : null;
   const diffInitialView = searchParams.get("view") === "pages" ? "pages" : "files";
+
+  // ── Standalone windows load their own chunk ───────────────────────────────
+  //
+  // Importing these statically put every screen in the app into one graph, so
+  // opening Settings meant parsing the workspace, the editor, CodeMirror and
+  // every language mode first. Each window now fetches only what it renders;
+  // the main window's pages split the same way, in the page store.
+  const roleLoaders: Record<string, () => Promise<{ default: Component }>> = {
+    preview: () => import("$lib/components/pages/preview-window.svelte"),
+    settings: () => import("$lib/components/pages/settings.svelte"),
+    diff: () => import("$lib/components/pages/diff-window.svelte"),
+  };
+  const roleLoader = windowRole ? roleLoaders[windowRole] : undefined;
+
+  let RoleView = $state<Component | null>(null);
+
+  if (roleLoader) {
+    // Child windows are created hidden (see $lib/windows.ts); this fallback is
+    // what keeps a failed load from stranding one off screen forever.
+    armRevealFallback();
+    roleLoader()
+      .then((mod) => {
+        RoleView = mod.default;
+      })
+      .catch((err) => {
+        logError(`loading the ${windowRole} window failed:`, err);
+        revealCurrentWindow();
+      });
+  }
+
+  // Reveal once the role component has rendered. `$effect` runs after the DOM
+  // update for the state change that mounted it, which is the earliest point
+  // there is anything to show.
+  $effect(() => {
+    if (RoleView) revealCurrentWindow();
+  });
 
   const title = $derived.by(() => {
     if (isPreviewWindow) {
@@ -57,18 +93,22 @@
 
 <section class="h-full w-full">
   <svelte:boundary>
-    {#if isPreviewWindow}
-      <PreviewWindow {autoPresent} initialPage={previewInitialPage} />
-    {:else if isSettingsWindow}
-      <SettingsWindow initialGroup={settingsInitialGroup} />
-    {:else if isDiffWindow}
-      <DiffWindow
-        initialPrimary={diffInitialPrimary}
-        initialSecondary={diffInitialSecondary}
-        initialView={diffInitialView}
-      />
+    {#if roleLoader}
+      {#if RoleView}
+        {#if isPreviewWindow}
+          <RoleView {autoPresent} initialPage={previewInitialPage} />
+        {:else if isSettingsWindow}
+          <RoleView initialGroup={settingsInitialGroup} />
+        {:else if isDiffWindow}
+          <RoleView
+            initialPrimary={diffInitialPrimary}
+            initialSecondary={diffInitialSecondary}
+            initialView={diffInitialView}
+          />
+        {/if}
+      {/if}
     {:else}
-      <page.current.component />
+      <page.component />
     {/if}
 
     <!-- Without this the boundary swallows render errors and leaves a blank
