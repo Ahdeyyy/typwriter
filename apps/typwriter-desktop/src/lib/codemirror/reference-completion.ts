@@ -83,7 +83,7 @@ function citationOptions(entries: readonly BibEntry[]): RefOption[] {
     for (const entry of entries) {
         if (seen.has(entry.key)) continue;
         seen.add(entry.key);
-        options.push({ label: entry.key, type: 'keyword', detail: describeEntry(entry) });
+        options.push({ label: entry.key, type: 'citation', detail: describeEntry(entry) });
     }
     return options;
 }

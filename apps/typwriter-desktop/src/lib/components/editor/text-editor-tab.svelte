@@ -298,21 +298,50 @@
     return out;
   }
 
+  /**
+   * Map a backend completion kind onto a CodeMirror completion `type`, which is
+   * what picks the icon (see `themes/completion-icons.ts`).
+   *
+   * The backend sends `format!("{:?}", CompletionKind)`, so the variant name
+   * arrives verbatim — and `Symbol(…)` carries the symbol itself, which is why
+   * this matches on the variant *prefix* rather than searching the whole string
+   * (`Symbol("func")` would otherwise come back as a function).
+   */
   function mapBackendCompletionKind(kind: string): Completion["type"] {
-    const normalizedKind = kind.toLowerCase();
-    if (normalizedKind.includes("func")) return "function";
-    if (normalizedKind.includes("type")) return "type";
-    if (normalizedKind.includes("param") || normalizedKind.includes("field"))
+    const variant = kind.split("(")[0].trim().toLowerCase();
+    switch (variant) {
+      case "syntax":
+        return "syntax";
+      case "func":
+        return "function";
+      case "type":
+        return "type";
+      case "param":
+        return "property";
+      case "constant":
+        return "constant";
+      case "path":
+        return "path";
+      case "package":
+        return "package";
+      case "label":
+        return "label";
+      case "font":
+        return "font";
+      case "symbol":
+        return "symbol";
+    }
+    // Anything else (a future variant, or a kind coming from elsewhere) still
+    // gets a sensible icon from a loose match.
+    if (variant.includes("func")) return "function";
+    if (variant.includes("type")) return "type";
+    if (variant.includes("param") || variant.includes("field"))
       return "property";
-    if (normalizedKind.includes("var")) return "variable";
-    if (
-      normalizedKind.includes("module") ||
-      normalizedKind.includes("namespace")
-    )
+    if (variant.includes("var")) return "variable";
+    if (variant.includes("module") || variant.includes("namespace"))
       return "namespace";
-    if (normalizedKind.includes("constant")) return "constant";
-    if (normalizedKind.includes("keyword")) return "keyword";
-    if (normalizedKind.includes("string")) return "text";
+    if (variant.includes("constant")) return "constant";
+    if (variant.includes("keyword")) return "keyword";
     return "text";
   }
 

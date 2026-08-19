@@ -13,6 +13,7 @@ import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { semanticTokenRules } from "./semantic-tokens-theme";
+import { completionIconRules } from "./completion-icons";
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 
@@ -127,6 +128,8 @@ export const lightTheme = EditorView.theme(
             color: `${ML.fgComment} !important`,
             textDecoration: "none !important",
         },
+        // Autocomplete icons (see completion-icons.ts).
+        ...completionIconRules(ML),
         // tinymist semantic-token colours (see semantic-tokens-theme.ts).
         ...semanticTokenRules(ML),
     },
