@@ -10,12 +10,14 @@
   import { settings, BUNDLED_EDITOR_FONTS } from "$lib/stores/settings.svelte";
   import { systemFonts, withoutBundled, type FontGroup } from "$lib/stores/system-fonts.svelte";
   import { platform } from "$lib/stores/platform.svelte";
-  import { lspClient } from "$lib/lsp/client.svelte";
+  // The probe store, not the LSP client: the client owns the CodeMirror
+  // lsp-client machinery, and this window has no editor to attach it to.
+  import { lspProbeState } from "$lib/lsp/probe.svelte";
 
   // tinymist may be installed (or removed) while the app runs, so re-probe every
   // time this pane opens rather than trusting a launch-time answer.
   onMount(() => {
-    if (!platform.isMobile) void lspClient.probeInstalled();
+    if (!platform.isMobile) void lspProbeState.probeInstalled();
     // The OS font scan takes a moment; start it with the pane, not on click.
     void systemFonts.load();
   });
@@ -35,40 +37,40 @@
     },
   ]);
 
-  const tinymistInstalled = $derived(lspClient.isInstalled === true);
+  const tinymistInstalled = $derived(lspProbeState.isInstalled === true);
   // tinymist embeds its own Typst compiler. When that differs from the one the
   // app compiles with, the server still works — its answers just may not match
   // what gets rendered — so this is a warning, never a block on the toggle.
-  const typstMismatch = $derived(lspClient.typstMismatch);
+  const typstMismatch = $derived(lspProbeState.typstMismatch);
   // Same language level (matching major.minor) but a different patch release of
   // Typst. Harmless for the server's answers — but without saying so, the only
   // Typst version on this pane would be tinymist's, which is *not* the one that
   // renders your documents. See the Typst pane for the authoritative value.
   const typstPatchDrift = $derived(
     tinymistInstalled &&
-      lspClient.typstCompatible === true &&
-      lspClient.installedTypstVersion !== null &&
-      lspClient.bundledTypstVersion !== null &&
-      lspClient.installedTypstVersion !== lspClient.bundledTypstVersion,
+      lspProbeState.typstCompatible === true &&
+      lspProbeState.installedTypstVersion !== null &&
+      lspProbeState.bundledTypstVersion !== null &&
+      lspProbeState.installedTypstVersion !== lspProbeState.bundledTypstVersion,
   );
   const tinymistDotClass = $derived(
-    lspClient.isInstalled === null
+    lspProbeState.isInstalled === null
       ? "bg-muted-foreground/40"
-      : !lspClient.isInstalled
+      : !lspProbeState.isInstalled
         ? "bg-destructive"
         : typstMismatch
           ? "bg-yellow-500"
           : "bg-green-500",
   );
   const tinymistStatusLabel = $derived.by(() => {
-    if (lspClient.isInstalled === null) return "Checking for tinymist…";
-    if (!lspClient.isInstalled) return "tinymist not found on PATH — install it to enable this";
-    const name = lspClient.installedVersion ? `tinymist ${lspClient.installedVersion}` : "tinymist";
+    if (lspProbeState.isInstalled === null) return "Checking for tinymist…";
+    if (!lspProbeState.isInstalled) return "tinymist not found on PATH — install it to enable this";
+    const name = lspProbeState.installedVersion ? `tinymist ${lspProbeState.installedVersion}` : "tinymist";
     // Older builds don't report the Typst they target; show what we have.
     // "targets" matters: this is the Typst tinymist embeds, never the one the
     // app compiles with.
-    return lspClient.installedTypstVersion
-      ? `${name} · targets Typst ${lspClient.installedTypstVersion}`
+    return lspProbeState.installedTypstVersion
+      ? `${name} · targets Typst ${lspProbeState.installedTypstVersion}`
       : `${name} found`;
   });
 </script>
@@ -227,10 +229,10 @@
           <button
             type="button"
             class="text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
-            disabled={lspClient.probing}
+            disabled={lspProbeState.probing}
             onclick={(e) => {
               e.preventDefault();
-              void lspClient.probeInstalled();
+              void lspProbeState.probeInstalled();
             }}
           >
             Re-check
@@ -238,7 +240,7 @@
         </p>
         {#if typstPatchDrift}
           <p class="mt-1 text-xs text-muted-foreground">
-            This app compiles with Typst {lspClient.bundledTypstVersion} — same language level, so
+            This app compiles with Typst {lspProbeState.bundledTypstVersion} — same language level, so
             tinymist's answers still apply.
           </p>
         {/if}
@@ -253,7 +255,7 @@
               aria-hidden="true"
             />
             <span>
-              This app compiles with Typst {lspClient.bundledTypstVersion}. Update tinymist to a
+              This app compiles with Typst {lspProbeState.bundledTypstVersion}. Update tinymist to a
               build that targets it — until then completion, hover, and diagnostics may not match
               what actually renders.
             </span>

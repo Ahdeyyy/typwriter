@@ -19,13 +19,14 @@ import type { Extension } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
-import { lspProbe, lspStart, lspStop } from '$lib/ipc/commands';
+import { lspStart, lspStop } from '$lib/ipc/commands';
 import { workspace } from '$lib/stores/workspace.svelte';
 import { diagnostics } from '$lib/stores/diagnostics.svelte';
 import { platform } from '$lib/stores/platform.svelte';
 import { logError, logInfo } from '$lib/logger';
 import type { SerializedDiagnostic } from '$lib/types';
 
+import { lspProbeState } from './probe.svelte';
 import { createTauriLspTransport, type TauriLspTransport } from './transport';
 
 const INIT_TIMEOUT_MS = 10_000;
@@ -117,25 +118,36 @@ class LspClientStore {
      *  handshake — never a half-connected client. */
     isActive = $state(false);
 
-    /** Whether the `tinymist` CLI is installed. `null` until the first probe
-     *  resolves — the settings indicator shows "checking" for that window. */
-    isInstalled = $state<boolean | null>(null);
-    /** tinymist's own release version, when the probe could read it. */
-    installedVersion = $state<string | null>(null);
-    /** The Typst version tinymist embeds — it compiles with its own copy, not
-     *  ours, so its answers can diverge from what the app actually renders. */
-    installedTypstVersion = $state<string | null>(null);
-    /** The Typst version this app compiles with. */
-    bundledTypstVersion = $state<string | null>(null);
-    /** `false` when tinymist's Typst differs from ours; `null` while unknown
-     *  (not probed yet, or tinymist reported no Typst version). */
-    typstCompatible = $state<boolean | null>(null);
-    /** True while a probe is in flight (drives the indicator's refresh spinner). */
-    probing = $state(false);
+    // Probe results live in `probe.svelte.ts` so the settings window can read
+    // them without importing this module's CodeMirror dependencies. Mirrored
+    // here as accessors: everything in the editor already reads them off the
+    // client, and the split is an implementation detail.
+    get isInstalled(): boolean | null {
+        return lspProbeState.isInstalled;
+    }
+    get installedVersion(): string | null {
+        return lspProbeState.installedVersion;
+    }
+    get installedTypstVersion(): string | null {
+        return lspProbeState.installedTypstVersion;
+    }
+    get bundledTypstVersion(): string | null {
+        return lspProbeState.bundledTypstVersion;
+    }
+    get typstCompatible(): boolean | null {
+        return lspProbeState.typstCompatible;
+    }
+    get probing(): boolean {
+        return lspProbeState.probing;
+    }
+    get typstMismatch(): boolean {
+        return lspProbeState.typstMismatch;
+    }
 
-    /** tinymist is installed but built against a different Typst than ours, so
-     *  completions/hovers/diagnostics may not match what the app compiles. */
-    readonly typstMismatch = $derived(this.isInstalled === true && this.typstCompatible === false);
+    /** Ask the backend whether the tinymist CLI is on `PATH`. */
+    probeInstalled(): Promise<void> {
+        return lspProbeState.probeInstalled();
+    }
 
     private client: LSPClient | null = null;
     private transport: TauriLspTransport | null = null;
@@ -158,42 +170,6 @@ class LspClientStore {
 
     private enqueue(f: () => Promise<void>): void {
         this.chain = this.chain.then(f).catch(() => {});
-    }
-
-    /** Forget everything the last probe told us about tinymist's build. */
-    private clearVersions(): void {
-        this.installedVersion = null;
-        this.installedTypstVersion = null;
-        this.typstCompatible = null;
-    }
-
-    /** Ask the backend whether the tinymist CLI is on `PATH`. Cheap (one
-     *  `--version` run) and safe to call whenever the settings page opens; the
-     *  user may install tinymist without restarting the app. */
-    async probeInstalled(): Promise<void> {
-        if (this.probing) return;
-        this.probing = true;
-        const result = await lspProbe();
-        this.probing = false;
-        result.match(
-            ({ available, version, typstVersion, bundledTypstVersion, typstCompatible }) => {
-                this.isInstalled = available;
-                this.installedVersion = version;
-                this.installedTypstVersion = typstVersion;
-                this.bundledTypstVersion = bundledTypstVersion;
-                this.typstCompatible = typstCompatible;
-                if (available && typstCompatible === false) {
-                    logInfo(
-                        `tinymist targets Typst ${typstVersion} but this app bundles Typst ${bundledTypstVersion}; language-server results may not match`,
-                    );
-                }
-            },
-            (err) => {
-                logError('tinymist probe failed:', err);
-                this.isInstalled = false;
-                this.clearVersions();
-            },
-        );
     }
 
     /** Re-run on every change of the `useLsp` setting or the workspace root.
@@ -220,8 +196,8 @@ class LspClientStore {
             logInfo('tinymist not found; using built-in language features');
             // A failed spawn is the authoritative "not installed" answer — keep
             // the settings indicator in step without re-probing.
-            this.isInstalled = false;
-            this.clearVersions();
+            lspProbeState.isInstalled = false;
+            lspProbeState.clearVersions();
             return;
         }
         if (started.isErr()) {
@@ -341,7 +317,7 @@ class LspClientStore {
         this.rootUri = rootUri;
         this.closedUnlisten = closedUnlisten;
         this.isActive = true;
-        this.isInstalled = true;
+        lspProbeState.isInstalled = true;
         diagnostics.setLspActive(true);
         logInfo('tinymist language server connected');
         // Learn which Typst this tinymist targets even if the user never opens
