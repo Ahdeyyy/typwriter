@@ -78,6 +78,13 @@ describe('referenceCompletionSource', () => {
         expect(result?.options.map((o) => o.label).sort()).toEqual(['fig-one', 'intro']);
     });
 
+    it('places references after Typst completions and snippets', () => {
+        const result = source(contextAt('See @'))!;
+        for (const option of result.options) {
+            expect(option.section).toMatchObject({ name: 'References', rank: 2 });
+        }
+    });
+
     it('anchors from the marker so accepting yields one @name', () => {
         // `from` covers the `@`, and every `apply` re-supplies it — otherwise
         // accepting `intro` on top of `@intr` would produce `@@intro`.

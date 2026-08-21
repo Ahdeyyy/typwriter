@@ -133,12 +133,10 @@ describe('snippetCompletionSource', () => {
         expect(result.options.find((o) => o.label === 'figure')?.detail).toBe('Figure block');
     });
 
-    it('boosts snippets above same-named language suggestions', () => {
-        // Typing "figure" and accepting should scaffold a figure, not insert
-        // the bare identifier typst-ide offers under the same label.
+    it('places snippets after Typst completions', () => {
         const result = source(contextAt('fi'))!;
         for (const option of result.options) {
-            expect(option.boost).toBeGreaterThan(0);
+            expect(option.section).toMatchObject({ name: 'Snippets', rank: 1 });
         }
     });
 

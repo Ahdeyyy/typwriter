@@ -8,6 +8,7 @@ import type { CompletionContext, CompletionResult } from '@codemirror/autocomple
 
 import { describeEntry, type BibEntry } from '$lib/bibliography';
 import { extractLabels, refPrefixAt, type LabelDef } from '$lib/references';
+import { referenceCompletionSection } from './completion-sections';
 
 export interface LabelSource {
     /** Buffers to harvest labels from: usually every open `.typ` tab. */
@@ -122,7 +123,11 @@ export function referenceCompletionSource(
             // `from` is the `@` itself, so accepting replaces the marker too
             // and the result is exactly one `@name`.
             from: hit.from,
-            options: options.map((option) => ({ ...option, apply: `@${option.label}` })),
+            options: options.map((option) => ({
+                ...option,
+                apply: `@${option.label}`,
+                section: referenceCompletionSection,
+            })),
             // Let CodeMirror re-filter as the user types instead of asking us
             // again for every character.
             validFor: /^@[\p{L}\p{N}_:.-]*$/u,

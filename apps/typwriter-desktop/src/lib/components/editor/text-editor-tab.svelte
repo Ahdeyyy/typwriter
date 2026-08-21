@@ -54,16 +54,14 @@
   import { ui } from "$lib/stores/ui.svelte";
   import { focusMode, typewriterScrolling } from "$lib/codemirror/focus-mode";
   import { snippetCompletionSource } from "$lib/codemirror/snippet-completion";
+  import { typstCompletionSection } from "$lib/codemirror/completion-sections";
   import { snippets } from "$lib/stores/snippets.svelte";
   import {
     diagnosticsMatch,
     type DiagnosticMark,
   } from "$lib/codemirror/diagnostics-compare";
   import { imageDrop } from "$lib/codemirror/image-drop";
-  import {
-    grammarLint,
-    setGrammarLints,
-  } from "$lib/codemirror/grammar-lint";
+  import { grammarLint, setGrammarLints } from "$lib/codemirror/grammar-lint";
   import { search } from "@codemirror/search";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
   import { editorFormat } from "$lib/stores/editor-format.svelte";
@@ -98,7 +96,6 @@
   import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
   import { logError, logPreview } from "$lib/logger";
 
-
   let editorHost = $state<HTMLDivElement | null>(null);
   const tabViews = new Map<string, EditorView>();
 
@@ -109,7 +106,9 @@
   const projectLabels = createLabelIndex({
     buffers: () =>
       editor.tabs
-        .filter((tab) => tab.viewMode === "text" && tab.relPath.endsWith(".typ"))
+        .filter(
+          (tab) => tab.viewMode === "text" && tab.relPath.endsWith(".typ"),
+        )
         .map((tab) => ({ path: tab.relPath, text: tab.content })),
   });
   // Citation keys join the same list: Typst resolves `@key` against labels and
@@ -138,7 +137,9 @@
   const lspCompartment = new Compartment();
 
   function quoteFamily(family: string): string {
-    return family.includes(" ") && !family.includes('"') ? `"${family}"` : family;
+    return family.includes(" ") && !family.includes('"')
+      ? `"${family}"`
+      : family;
   }
 
   function fontExtension() {
@@ -235,6 +236,7 @@
         // server's.
         EditorState.languageData.of(() => [
           { autocomplete: snippetCompletions },
+          { autocomplete: referenceCompletions },
         ]),
       ];
     }
@@ -242,9 +244,9 @@
     return [
       autocompletion({
         override: [
+          mergedTypstCompletionsForTab(tabId),
           referenceCompletions,
           snippetCompletions,
-          mergedTypstCompletionsForTab(tabId),
         ],
       }),
       hoverTooltip(
@@ -253,7 +255,8 @@
           if (!t || t.viewMode !== "text") return null;
 
           const tooltipResult = await getTooltipIpc(t.absPath, pos);
-          if (tooltipResult.isErr() || tooltipResult.value === null) return null;
+          if (tooltipResult.isErr() || tooltipResult.value === null)
+            return null;
 
           const data = tooltipResult.value;
           return {
@@ -367,7 +370,16 @@
     const results: CompletionResult[] = [];
     for (const source of completionSources) {
       const result = await source(context);
-      if (result) results.push(result);
+
+      if (result) {
+        results.push({
+          ...result,
+          options: result.options.map((option) => ({
+            ...option,
+            section: typstCompletionSection,
+          })),
+        });
+      }
     }
     return results;
   }
@@ -393,7 +405,7 @@
 
       const [languageResults, backendResult] = await Promise.all([
         getLanguageCompletionResults(context),
-        getCompletions(tab.absPath, context.pos, context.explicit ),
+        getCompletions(tab.absPath, context.pos, context.explicit),
       ]);
 
       const languageOptions = languageResults.flatMap(
@@ -403,23 +415,25 @@
       // Keep the raw apply string for the dedup key: typst-ide's `${…}`
       // placeholders are turned into a CodeMirror snippet (a function apply), so
       // the option itself no longer carries a stable string to key on.
-      const backendOptions: { option: Completion; key: string }[] = backendPayload
-        ? backendPayload.completions.map((item) => {
-            const rawApply = item.apply ?? item.label;
-            const type = mapBackendCompletionKind(item.kind);
-            return {
-              option: {
-                label: item.label,
-                type,
-                apply: rawApply.includes("${")
-                  ? snippet(typstApplyToSnippet(rawApply))
-                  : rawApply,
-                detail: item.detail ?? undefined,
-              },
-              key: `${item.label}::${rawApply}::${type ?? ""}`,
-            };
-          })
-        : [];
+      const backendOptions: { option: Completion; key: string }[] =
+        backendPayload
+          ? backendPayload.completions.map((item) => {
+              const rawApply = item.apply ?? item.label;
+              const type = mapBackendCompletionKind(item.kind);
+              return {
+                option: {
+                  label: item.label,
+                  type,
+                  apply: rawApply.includes("${")
+                    ? snippet(typstApplyToSnippet(rawApply))
+                    : rawApply,
+                  detail: item.detail ?? undefined,
+                  section: typstCompletionSection,
+                },
+                key: `${item.label}::${rawApply}::${type ?? ""}`,
+              };
+            })
+          : [];
 
       const seenKeys = new Set<string>();
       const mergedOptions: Completion[] = [];

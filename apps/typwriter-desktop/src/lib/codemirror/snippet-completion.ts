@@ -9,6 +9,7 @@ import { snippet as cmSnippet, type CompletionContext, type CompletionResult } f
 
 import { refPrefixAt } from '$lib/references';
 import type { Snippet } from '$lib/snippets';
+import { snippetCompletionSection } from './completion-sections';
 
 /** Characters that can precede the caret and still be a snippet name. */
 const NAME_CHARS = /[\p{L}\p{N}_-]/u;
@@ -85,10 +86,7 @@ export function snippetCompletionSource(snippetsOf: () => readonly Snippet[]) {
                 label: entry.label,
                 type: 'snippet',
                 detail: entry.description,
-                // `boost` lifts snippets above same-named language suggestions:
-                // typing "figure" and pressing Enter should scaffold a figure,
-                // not insert the bare identifier.
-                boost: 1,
+                section: snippetCompletionSection,
                 apply: cmSnippet(entry.body),
             })),
             validFor: /^[\p{L}\p{N}_-]*$/u,
