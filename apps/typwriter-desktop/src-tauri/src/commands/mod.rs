@@ -2,6 +2,7 @@
 // one place.
 
 pub mod app;
+pub mod bibliography;
 pub mod click;
 pub mod editor;
 pub mod export;

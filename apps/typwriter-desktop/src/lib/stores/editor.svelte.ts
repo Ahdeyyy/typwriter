@@ -18,6 +18,7 @@ import type {
     WorkspaceFileChange
 } from '$lib/types';
 import { workspace } from './workspace.svelte';
+import { bibliography } from './bibliography.svelte';
 import { settings } from './settings.svelte';
 import { grammar } from './grammar.svelte';
 import { normalize, basename } from '$lib/paths';
@@ -491,6 +492,14 @@ class EditorStore {
             const message = `Failed to save ${tab.name}: ${saveResult.error}`;
             toast.error(message);
             throw new Error(message);
+        }
+
+        // A saved bibliography changes citation completions, but nothing else
+        // would notice: self-writes are suppressed for the watcher, and the
+        // file tree does not refresh on every save. Re-parse directly — the
+        // store caps its work and refreshes are rare.
+        if (/\.(bib|ya?ml)$/i.test(tab.relPath)) {
+            void bibliography.refresh();
         }
 
         // Hand-editing `.typwriter/snippets.json` is a supported way to author

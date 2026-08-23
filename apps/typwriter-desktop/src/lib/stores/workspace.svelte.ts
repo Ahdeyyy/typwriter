@@ -18,6 +18,7 @@ import { onWorkspaceFilesChanged, type UnlistenFn } from '$lib/ipc/events';
 import type { FileTreeEntry, WorkspaceFileChange } from '$lib/types';
 import { logError } from '$lib/logger';
 import { bibliography } from '$lib/stores/bibliography.svelte';
+import { documentScope } from '$lib/stores/document-scope.svelte';
 import { snippets } from '$lib/stores/snippets.svelte';
 import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
 import { editor } from './editor.svelte';
@@ -259,6 +260,7 @@ class WorkspaceStore {
         preview.clear();
         this._clearPersistTabsTimer();
         bibliography.clear();
+        documentScope.clear();
         snippets.reset();
         this.tree = [];
         this.rootPath = null;
@@ -272,10 +274,12 @@ class WorkspaceStore {
         return getFileTree().map((entries) => {
             const expandedPaths = collectExpandedPaths(this.tree);
             this.tree = entries.map((entry) => entryToNode(entry, expandedPaths));
-            // A `.bib` or `snippets.json` may have been added, removed or
-            // edited outside the app. Fire-and-forget: both are completion
-            // enhancements, and nothing here should wait on reading them.
+            // A `.bib`/`.yml`, a `.typ` or `snippets.json` may have been
+            // added, removed or edited outside the app. Fire-and-forget: all
+            // are completion enhancements, and nothing here should wait on
+            // reading them.
             void bibliography.refresh();
+            void documentScope.refresh();
             void snippets.refresh();
         });
     }
@@ -297,6 +301,9 @@ class WorkspaceStore {
             .andThen(() => triggerPreview('main_file'))
             .map(() => {
                 this.mainFile = normalize(path);
+                // Scope is derived from the main file; the file facts are
+                // already cached, so this costs no IPC.
+                documentScope.recompute();
             });
     }
 

@@ -20,6 +20,7 @@ use world::EditorWorld;
 
 use commands::{
     app::{get_typst_version, is_fonts_loaded, prepare_onboarding_workspace},
+    bibliography::parse_bibliography,
     click::{jump_from_click, jump_from_cursor},
     editor::{
         discard_shadow, get_completions, get_definitions, get_tooltip, open_file_externally,
@@ -297,6 +298,7 @@ pub fn run() {
             get_completions,
             get_tooltip,
             get_definitions,
+            parse_bibliography,
             reveal_file_in_manager,
             open_file_externally,
             // preview control

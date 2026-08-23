@@ -8,6 +8,7 @@ import {
     labelName,
     refName,
     refPrefixAt,
+    citePrefixAt,
 } from './references';
 
 const names = (items: { name: string }[]) => items.map((i) => i.name);
@@ -194,5 +195,41 @@ describe('refPrefixAt', () => {
     it('does not run past whitespace to an earlier marker', () => {
         // "@one two" with the caret after "two" is not a reference in progress.
         expect(refPrefixAt('@one two', 8)).toBeNull();
+    });
+});
+
+describe('citePrefixAt', () => {
+    it('fires on a bare opening call', () => {
+        expect(citePrefixAt('#cite(', 6)).toEqual({ from: 6, prefix: '', bracketed: false });
+    });
+
+    it('fires after the label key', () => {
+        expect(citePrefixAt('#cite(label: ', 13)).toEqual({
+            from: 13,
+            prefix: '',
+            bracketed: false,
+        });
+    });
+
+    it('fires inside a started marker and reports it bracketed', () => {
+        expect(citePrefixAt('#cite(<fig', 10)).toEqual({
+            from: 7,
+            prefix: 'fig',
+            bracketed: true,
+        });
+    });
+
+    it('fires after a bare typed name only once the marker exists', () => {
+        // `#cite(fig` is not yet a label; nothing to complete into cleanly.
+        expect(citePrefixAt('#cite(fig', 9)).toBeNull();
+    });
+
+    it('does not fire for other arguments', () => {
+        expect(citePrefixAt('#cite(supplement: [x], ', 23)).toBeNull();
+        expect(citePrefixAt('#ref(<x', 7)).toBeNull();
+    });
+
+    it('stops once the marker is closed', () => {
+        expect(citePrefixAt('#cite(<knuth>', 13)).toBeNull();
     });
 });

@@ -104,6 +104,16 @@ export type FileContentResponse =
     | { type: 'image'; path: string; mime: string }
     | { type: 'unsupported'; meta: FileMeta };
 
+/** One citation target from a parsed bibliography file (Rust
+ *  `commands/bibliography.rs` → `BibEntryDto`). */
+export interface BibEntryDto {
+    key: string;
+    entryType: string;
+    title: string | null;
+    author: string | null;
+    year: string | null;
+}
+
 // ─── Click / Jump ─────────────────────────────────────────────────────────────
 
 /** A rectangle on a preview page, in typst points with the origin at the page's

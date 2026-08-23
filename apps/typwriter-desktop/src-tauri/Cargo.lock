@@ -9411,6 +9411,7 @@ dependencies = [
  "chrono",
  "ecow 0.2.6",
  "harper-core",
+ "hayagriva",
  "log",
  "lru 0.12.5",
  "notify",

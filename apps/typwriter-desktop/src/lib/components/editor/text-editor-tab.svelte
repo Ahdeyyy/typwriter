@@ -19,8 +19,11 @@
     autocompletion,
     closeBrackets,
     closeBracketsKeymap,
+    closeCompletion,
+    completionStatus,
     completeFromList,
     snippet,
+    startCompletion,
     type Completion,
     type CompletionContext,
     type CompletionResult,
@@ -47,10 +50,12 @@
   import { inlineDiagnostics } from "$lib/codemirror/inline-diagnostics";
   import {
     createLabelIndex,
+    mergeLabels,
     referenceCompletionSource,
   } from "$lib/codemirror/reference-completion";
   import { refPrefixAt } from "$lib/references";
   import { bibliography } from "$lib/stores/bibliography.svelte";
+  import { documentScope } from "$lib/stores/document-scope.svelte";
   import { ui } from "$lib/stores/ui.svelte";
   import { focusMode, typewriterScrolling } from "$lib/codemirror/focus-mode";
   import { snippetCompletionSource } from "$lib/codemirror/snippet-completion";
@@ -79,6 +84,7 @@
   import { keysFor } from "$lib/keybindings";
   import { lspClient } from "$lib/lsp/client.svelte";
   import { semanticTokenHighlighter } from "$lib/lsp/semantic-tokens";
+  import type { SvelteSet } from "svelte/reactivity";
   import { Compartment } from "@codemirror/state";
   import { mode, systemPrefersMode } from "mode-watcher";
   import { untrack } from "svelte";
@@ -99,24 +105,56 @@
   let editorHost = $state<HTMLDivElement | null>(null);
   const tabViews = new Map<string, EditorView>();
 
-  // Labels come from the open buffers rather than from a project-wide scan:
-  // they are already in memory and current, so reference completion costs no
-  // IPC. The trade-off is that a label in a file nobody has opened is not
-  // offered — acceptable, since referencing one means you were just there.
-  const projectLabels = createLabelIndex({
-    buffers: () =>
-      editor.tabs
-        .filter(
-          (tab) => tab.viewMode === "text" && tab.relPath.endsWith(".typ"),
-        )
-        .map((tab) => ({ path: tab.relPath, text: tab.content })),
-  });
+  // Labels come from two layers. A project-wide disk scan (refreshed with the
+  // file tree) means a figure label in a chapter nobody has opened is still
+  // offered; the open buffers themselves are layered on top because their
+  // unsaved text is what the compiler would actually see. Scanned labels for
+  // paths currently open are dropped, so no definition is counted twice and
+  // an edited buffer overrides its stale disk copy.
+  //
+  // Both layers are restricted to the document's scope — files the main file
+  // pulls in via `#include`/`#import`, plus the file being edited (an
+  // unreachable chapter still knows its own labels). Filtering is strict: an
+  // empty scope means an empty list, never a fallback to everything.
+  const openTypBuffers = () =>
+    editor.tabs
+      .filter(
+        (tab) =>
+          tab.viewMode === "text" &&
+          !tab.isLoading &&
+          tab.relPath.endsWith(".typ"),
+      )
+      .map((tab) => ({ path: tab.relPath, text: tab.content }));
+  const activeTypPath = () => {
+    const tab = editor.tabs.find((t) => t.id === editor.activeTabId);
+    return tab && tab.viewMode === "text" && !tab.isLoading && tab.relPath.endsWith(".typ")
+      ? tab.relPath
+      : null;
+  };
+  const openTabLabels = createLabelIndex({ buffers: openTypBuffers });
+  const syncScopeBuffers = () => documentScope.setBuffers(openTypBuffers());
+  const projectLabels = () => {
+    documentScope.ensureFresh();
+    const scope = documentScope.reachableFiles;
+    const inScope = <T extends { path: string }>(items: readonly T[]) =>
+      items.filter((item) => scope.has(item.path));
+    return mergeLabels(
+      inScope(documentScope.entries),
+      inScope(openTabLabels()),
+    );
+  };
   // Citation keys join the same list: Typst resolves `@key` against labels and
   // bibliography entries alike, so a citation is not separate syntax the user
-  // has to remember.
+  // has to remember. Only keys from files a reachable `#bibliography(...)`
+  // actually loads are offered — the rest cannot resolve.
+  const scopedCitations = () => {
+    documentScope.ensureFresh();
+    const bibs = documentScope.scopedBibPaths;
+    return bibliography.entries.filter((entry) => bibs.has(entry.path));
+  };
   const referenceCompletions = referenceCompletionSource(
     projectLabels,
-    () => bibliography.entries,
+    scopedCitations,
   );
   const snippetCompletions = snippetCompletionSource(() => snippets.all);
   let mountedTabId = $state<string | null>(null);
@@ -629,6 +667,9 @@
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
         editor.handleTabContentChange(tabId, update.state.doc.toString());
+        // Keep the document scope (reachable files, associated bibliographies)
+        // in step with the live text; the store debounces internally.
+        syncScopeBuffers();
       }),
       EditorView.updateListener.of((update) => {
         if (!update.selectionSet) return;
@@ -854,6 +895,32 @@
     tabSignature;
     destroyClosedTabViews();
     mountActiveView(activeTabId);
+    // Tabs opened or closed: the buffer layer feeding the document scope
+    // changed even though no docChanged event fired in any view.
+    syncScopeBuffers();
+    // The file being edited seeds its own subgraph into the scope.
+    documentScope.setActiveFile(activeTypPath());
+  });
+
+  // When the document's scope changes (a refs array edited, an include
+  // removed, the main file switched), a completion popup that is already
+  // open would keep filtering its original — now outdated — result set.
+  // Restart it so the visible list snaps to the rebuilt mappings.
+  let prevReachable: SvelteSet<string> | null = null;
+  let prevBibs: SvelteSet<string> | null = null;
+  $effect(() => {
+    const reachable = documentScope.reachableFiles;
+    const bibs = documentScope.scopedBibPaths;
+    const changed =
+      prevReachable !== null && (reachable !== prevReachable || bibs !== prevBibs);
+    prevReachable = reachable;
+    prevBibs = bibs;
+    if (!changed) return;
+
+    const view = mountedTabId ? tabViews.get(mountedTabId) : undefined;
+    if (!view || completionStatus(view.state) !== "active") return;
+    closeCompletion(view);
+    startCompletion(view);
   });
 
   // Let the store read the live selection of any tab's view — this is how

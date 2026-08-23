@@ -152,3 +152,34 @@ export function refPrefixAt(text: string, offset: number): { from: number; prefi
     // is offered before the user has typed anything.
     return { from: i - 1, prefix: text.slice(i, offset) };
 }
+
+export interface CitePrefix {
+    /** Where the typed prefix starts — replacements must cover exactly it. */
+    from: number;
+    prefix: string;
+    /**
+     * Whether the `<` marker has been typed. `#cite` takes a *label* argument,
+     * so without a leading `<` accepting an option has to supply it.
+     */
+    bracketed: boolean;
+}
+
+const CITE_ARG = /#cite\(\s*(?:label\s*:\s*)?(<([\p{L}\p{N}_:.-]*))?$/u;
+
+/**
+ * Whether `offset` sits inside the label argument of a `#cite(...)` call that
+ * is still being typed — `#cite(`, `#cite(label: ` or `#cite(<fig`.
+ *
+ * Like [`refPrefixAt`], this works on raw text before the caret: mid-typing,
+ * the argument does not parse as a `Label` yet. Only an argument that starts
+ * immediately after the opening parenthesis or a `label:` key qualifies —
+ * anything else (`supplement`, other arguments) stays quiet.
+ */
+export function citePrefixAt(text: string, offset: number): CitePrefix | null {
+    const match = CITE_ARG.exec(text.slice(0, offset));
+    if (!match) return null;
+
+    const bracketed = match[2] !== undefined;
+    const prefix = match[2] ?? '';
+    return { from: offset - prefix.length, prefix, bracketed };
+}

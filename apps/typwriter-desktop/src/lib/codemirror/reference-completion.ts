@@ -1,4 +1,5 @@
-// Completion for `@references` from the `<labels>` defined across the project.
+// Completion for `@references` — document labels plus citation keys — and for
+// the label argument of `#cite(...)` — citation keys only.
 //
 // typst-ide completes neither across files, so in a multi-file project —
 // chapters plus a shared template, which is what Typst is used for — citing a
@@ -7,7 +8,12 @@
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 
 import { describeEntry, type BibEntry } from '$lib/bibliography';
-import { extractLabels, refPrefixAt, type LabelDef } from '$lib/references';
+import {
+    citePrefixAt,
+    extractLabels,
+    refPrefixAt,
+    type LabelDef,
+} from '$lib/references';
 import { referenceCompletionSection } from './completion-sections';
 
 export interface LabelSource {
@@ -51,6 +57,24 @@ export function createLabelIndex(source: LabelSource): () => LabelDef[] {
     };
 }
 
+/**
+ * Project-scan labels combined with open-buffer labels.
+ *
+ * A label whose file is open as a tab comes from the buffer only: the
+ * buffer's unsaved text is what the compiler would see, and counting the
+ * stale disk copy too would both duplicate names and fake "N definitions".
+ */
+export function mergeLabels(
+    scanned: readonly LabelDef[],
+    buffered: readonly LabelDef[]
+): LabelDef[] {
+    const openPaths = new Set(buffered.map((label) => label.path));
+    return [
+        ...scanned.filter((label) => !openPaths.has(label.path)),
+        ...buffered,
+    ];
+}
+
 interface RefOption {
     label: string;
     type: string;
@@ -90,14 +114,40 @@ function citationOptions(entries: readonly BibEntry[]): RefOption[] {
 }
 
 /**
- * A completion source for `@` targets: document labels and citation keys.
+ * The merged option list for `@` targets: document labels and citation keys.
  *
  * Both share one list because Typst resolves `@key` against both — a citation
  * is not a separate syntax the user has to remember.
+ */
+function mergedOptions(
+    labels: readonly LabelDef[],
+    citations: readonly BibEntry[]
+): RefOption[] {
+    // Labels first: a name defined in the document itself is the more likely
+    // target, and a `.bib` key colliding with a label is the author's own
+    // naming collision to resolve.
+    const options = labelOptions(labels);
+    const taken = new Set(options.map((option) => option.label));
+    options.push(
+        ...citationOptions(citations).filter((option) => !taken.has(option.label))
+    );
+    return options;
+}
+
+/**
+ * A completion source for `@` targets: document labels and citation keys,
+ * and for the label argument of `#cite(...)`: citation keys only — `#cite`
+ * resolves against a bibliography, not against document labels.
  *
- * Fires only inside an `@…` in progress, and is authoritative there: the merged
- * typst-ide source defers to it so the two do not offer competing lists
- * anchored at different offsets.
+ * Anchoring: `from` sits *after* the trigger character (`@`, `<`). CodeMirror
+ * filters the option list by matching the text between `from` and the caret
+ * against each option's label, so anchoring on the marker itself (or baking
+ * it into `label`) would filter every option out. The marker is left in the
+ * document untouched and accepting simply completes the name.
+ *
+ * Fires only where one of those is in progress, and is authoritative there:
+ * the merged typst-ide source defers to it so the two do not offer competing
+ * lists anchored at different offsets.
  */
 export function referenceCompletionSource(
     labelsOf: () => LabelDef[],
@@ -105,32 +155,41 @@ export function referenceCompletionSource(
 ) {
     return (context: CompletionContext): CompletionResult | null => {
         const text = context.state.doc.toString();
-        const hit = refPrefixAt(text, context.pos);
-        if (!hit) return null;
+        const ref = refPrefixAt(text, context.pos);
+        const cite = ref ? null : citePrefixAt(text, context.pos);
+        if (!ref && !cite) return null;
 
-        // Labels first: a name defined in the document itself is the more
-        // likely target, and a `.bib` key colliding with a label is the
-        // author's own naming collision to resolve.
-        const labels = labelOptions(labelsOf());
-        const taken = new Set(labels.map((option) => option.label));
-        const citations = citationOptions(citationsOf()).filter(
-            (option) => !taken.has(option.label)
-        );
-        const options = [...labels, ...citations];
+        if (ref) {
+            // Labels first: a name defined in the document itself is the more
+            // likely target, and a `.bib` key colliding with a label is the
+            // author's own naming collision to resolve.
+            const options = mergedOptions(labelsOf(), citationsOf());
+            if (options.length === 0) return null;
+            return {
+                from: ref.from + 1,
+                options: options.map((option) => ({
+                    ...option,
+                    apply: option.label,
+                    section: referenceCompletionSection,
+                })),
+                // Let CodeMirror re-filter as the user types instead of asking
+                // us again for every character.
+                validFor: /^[\p{L}\p{N}_:.-]*$/u,
+            };
+        }
+
+        const options = citationOptions(citationsOf());
         if (options.length === 0) return null;
-
         return {
-            // `from` is the `@` itself, so accepting replaces the marker too
-            // and the result is exactly one `@name`.
-            from: hit.from,
+            from: cite!.from,
             options: options.map((option) => ({
                 ...option,
-                apply: `@${option.label}`,
+                apply: cite!.bracketed ? `${option.label}>` : `<${option.label}>`,
                 section: referenceCompletionSection,
             })),
-            // Let CodeMirror re-filter as the user types instead of asking us
-            // again for every character.
-            validFor: /^@[\p{L}\p{N}_:.-]*$/u,
+            // No closing `>` here: once it is typed the source runs again and
+            // stops matching, which closes the list instead of re-filtering.
+            validFor: /^[\p{L}\p{N}_:.-]*$/u,
         };
     };
 }

@@ -5,6 +5,7 @@ import type {
     FileTreeEntry,
     RecentWorkspaceEntry,
     FileContentResponse,
+    BibEntryDto,
     CompletionsResponse,
     TooltipResponse,
     JumpResponse,
@@ -206,6 +207,16 @@ export function setProjectSnippets(contents: string) {
 
 export function readFile(path: string) {
     return ResultAsync.fromPromise(invoke<FileContentResponse>('read_file', { path }), toErrString);
+}
+
+/** Parse a bibliography file (`.bib`/`.yml`/`.yaml`) into citation entries.
+ *  Parsing happens in Rust with the compiler's own hayagriva library, so a
+ *  file Typst accepts is exactly a file this accepts. */
+export function parseBibliography(path: string) {
+    return ResultAsync.fromPromise(
+        invoke<BibEntryDto[]>('parse_bibliography', { path }),
+        toErrString
+    );
 }
 
 /** Select the file in the OS file manager. Rust rejects paths outside the
