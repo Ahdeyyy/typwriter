@@ -151,6 +151,17 @@ class WorkspaceStore {
     activeFilePath = $state<string | null>(null);
     searchQuery = $state('');
     dragSrcPath = $state<string | null>(null);
+    /// True from the moment a workspace is opened until its critical open
+    /// phase settles (success or failure). The home page disables every
+    /// other entry point while this is up so a slow open can't be doubled.
+    opening = $state(false);
+    /// True while the critical open phase (teardown, watcher listener,
+    /// `open_folder`, main-file restore, tab restoration) is still running.
+    /// The workspace page covers itself with a loading overlay until this
+    /// clears — by which point the previously-open tabs and the active
+    /// tab's content are on screen — which is what lets navigation happen
+    /// optimistically on click.
+    hydrating = $state(false);
 
     filteredTree = $derived(filterTree(this.tree, this.searchQuery));
     anyFolderExpanded = $derived(hasExpandedFolder(this.tree));
@@ -181,6 +192,8 @@ class WorkspaceStore {
     }
 
     init(root: string): ResultAsync<void, string> {
+        this.opening = true;
+        this.hydrating = true;
         return ResultAsync.fromPromise(
             this._opQueue.run(() => this._init(root)),
             (err) => String(err),
@@ -194,7 +207,31 @@ class WorkspaceStore {
         );
     }
 
+    /// Open flow, split so navigation never waits on hydration. The home
+    /// page navigates optimistically on click and this runs concurrently:
+    ///
+    ///  * critical — everything that must be on screen before the overlay
+    ///    lifts: previous-session teardown, watcher listener, `open_folder`
+    ///    IPC, main-file restore, and the restored tab bar with the active
+    ///    tab's content loaded.
+    ///  * deferred — the file-tree walk for the sidebar. Runs immediately
+    ///    after the critical phase *through the same serial queue*, so a fast
+    ///    `leave()` or re-open can never interleave with it.
     private async _init(root: string): Promise<void> {
+        try {
+            await this._initCriticalPhase(root);
+            void this._opQueue
+                .run(() => this._initDeferredPhase(root))
+                .catch((err) => logError('Workspace hydration failed:', err));
+        } finally {
+            // Cleared on both paths: success lets the workspace overlay drop;
+            // failure does too before the caller bounces back home.
+            this.hydrating = false;
+            this.opening = false;
+        }
+    }
+
+    private async _initCriticalPhase(root: string): Promise<void> {
         await editor.flushAllTabs();
         await editor.reset();
         preview.clear();
@@ -224,12 +261,24 @@ class WorkspaceStore {
             this.mainFile = normalize(openResult.value);
         }
 
+        // Part of the critical phase by design: when the overlay lifts, the
+        // tab bar is populated and the active tab's content is already on
+        // screen. `_restoreTabs` keeps its own non-fatal error handling — an
+        // unreadable tab must never bounce the workspace open.
+        await this._restoreTabs(root);
+    }
+
+    private async _initDeferredPhase(root: string): Promise<void> {
+        // The workspace may have been left again while this sat queued.
+        if (this.rootPath !== normalize(root)) return;
+
+        // Post-navigation failures are non-fatal by design: an unreadable
+        // tree leaves the sidebar empty rather than bouncing the user back
+        // out of a workspace that is otherwise open and usable.
         const refreshResult = await this.refreshTree();
         if (refreshResult.isErr()) {
-            throw new Error(refreshResult.error);
+            logError('refreshTree during open failed:', refreshResult.error);
         }
-
-        await this._restoreTabs(root);
     }
 
     private async _restoreTabs(root: string): Promise<void> {
@@ -268,6 +317,8 @@ class WorkspaceStore {
         this.activeFilePath = null;
         this.searchQuery = '';
         this.dragSrcPath = null;
+        this.opening = false;
+        this.hydrating = false;
     }
 
     refreshTree(): ResultAsync<void, string> {

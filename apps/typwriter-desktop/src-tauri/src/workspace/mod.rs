@@ -162,10 +162,14 @@ impl WorkspaceState {
         // needs it. Idempotent, so the compile worker calling it again is free.
         self.world.ensure_fonts_loading();
 
-        // Bind the version-history system to this workspace. Initializes a
-        // `.git` repo on first open and seeds an initial restore point so the
-        // timeline is never empty.
-        self.vcs.attach(&path);
+        // Bind the version-history system to this workspace. The initial
+        // restore-point seed walks the whole tree reading and hashing every
+        // file — seconds on a large workspace — so only the cheap root
+        // binding happens here and the snapshot is seeded on its own thread.
+        // Commits are mutex-serialized inside `VcsState`, so a save or
+        // compile commit landing before the seed finishes is safe.
+        self.vcs.bind_root(&path);
+        self.vcs.spawn_initial_snapshot(&path);
 
         // Start a new watcher for the new root.
         let new_watcher = watcher::start_watcher(

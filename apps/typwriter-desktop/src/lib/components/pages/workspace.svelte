@@ -27,8 +27,10 @@
   import { logError } from "$lib/logger";
   import { ui } from "$lib/stores/ui.svelte";
   import { matchesCommand } from "$lib/keybindings";
-  import { page } from "$lib/stores/page.svelte";
-  import { toast } from "svelte-sonner";
+   import { page } from "$lib/stores/page.svelte";
+   import { toast } from "svelte-sonner";
+   import { HugeiconsIcon } from "@hugeicons/svelte";
+   import { Loading03Icon } from "@hugeicons/core-free-icons";
 
   const PREVIEW_WINDOW_LABEL = "preview";
 
@@ -252,6 +254,18 @@
 </script>
 
 <svelte:window onkeydown={onWindowKeydown} />
+
+<!-- Navigation into this page is optimistic: the home page switches here
+     before `workspace.init` finishes, and this overlay covers the shell
+     until the critical open phase (watcher, main file, root) settles. The
+     deferred hydration (file tree, tab restore) continues behind it. Opaque
+     background so the half-hydrated editor never flashes through. -->
+{#if workspace.hydrating}
+  <div class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background">
+    <HugeiconsIcon icon={Loading03Icon} class="size-6 animate-spin text-muted-foreground" />
+    <p class="text-sm text-muted-foreground">Opening {workspaceName}…</p>
+  </div>
+{/if}
 
 <Sidebar.Provider class="has-titlebar h-full w-full min-h-0 flex-col overflow-hidden">
   <Titlebar
