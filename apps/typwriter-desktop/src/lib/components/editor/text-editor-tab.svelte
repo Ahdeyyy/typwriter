@@ -57,7 +57,11 @@
   import { bibliography } from "$lib/stores/bibliography.svelte";
   import { documentScope } from "$lib/stores/document-scope.svelte";
   import { ui } from "$lib/stores/ui.svelte";
-  import { focusMode, typewriterScrolling } from "$lib/codemirror/focus-mode";
+  import {
+    focusMode,
+    typewriterScrolling,
+    programmaticSync,
+  } from "$lib/codemirror/focus-mode";
   import { snippetCompletionSource } from "$lib/codemirror/snippet-completion";
   import { typstCompletionSection } from "$lib/codemirror/completion-sections";
   import { snippets } from "$lib/stores/snippets.svelte";
@@ -989,6 +993,9 @@
     view.dispatch({
       changes: { from: lcp, to: oldEnd, insert: newText.slice(lcp, newEnd) },
       scrollIntoView: false,
+      // Not user movement — typewriter scrolling must leave the viewport
+      // alone; the scrollTop below restores whatever the dispatch displaced.
+      annotations: programmaticSync.of(true),
     });
 
     // Now set the cursor in the new document. If Rust returned one, use it —
@@ -1014,6 +1021,7 @@
     view.dispatch({
       selection: { anchor: newCursor },
       scrollIntoView: false,
+      annotations: programmaticSync.of(true),
     });
     view.scrollDOM.scrollTop = scrollTop;
   });

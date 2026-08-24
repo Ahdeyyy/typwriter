@@ -355,6 +355,15 @@ class WorkspaceStore {
                 // Scope is derived from the main file; the file facts are
                 // already cached, so this costs no IPC.
                 documentScope.recompute();
+                // A different document starts at its own beginning. Published
+                // as a scroll target rather than a bare `visiblePage` write so
+                // the pane and any popout go through the normal jump path: the
+                // counter reads 1/N, the backend is told to render page 1
+                // first, and the container actually snaps to the top — without
+                // that, the next scroll event would stamp the old page number
+                // right back. Instant, not smooth: the reader isn't travelling
+                // there, the document changed under them.
+                preview.scrollTarget = { page: 0, x: 0, y: 0, instant: true };
             });
     }
 

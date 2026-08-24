@@ -142,6 +142,21 @@ export interface PreviewPositionResponse {
     highlights: PreviewHighlightRect[];
 }
 
+/** A scroll-to request for the preview pane, published on the shared
+ *  `preview:scrollTarget` channel so every window showing the preview follows.
+ *  Offsets are typst points from the page's top-left corner. */
+export interface PreviewScrollTarget {
+    /** 0-based page index. */
+    page: number;
+    /** Horizontal offset in typst points from the left edge of the page. */
+    x: number;
+    /** Vertical offset in typst points from the top edge of the page. */
+    y: number;
+    /** Land without the smooth animation — a document switch resets the reader
+     *  to the first page rather than travelling there. */
+    instant?: boolean;
+}
+
 export type CompileReason =
     | 'typing'
     | 'save'

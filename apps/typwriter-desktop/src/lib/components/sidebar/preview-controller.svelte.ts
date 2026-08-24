@@ -15,7 +15,7 @@ import {
   syncPreview,
   triggerPreview,
 } from "$lib/ipc/commands";
-import type { DisplayInfo } from "$lib/types";
+import type { DisplayInfo, PreviewScrollTarget } from "$lib/types";
 import { emitPreviewSourceJump } from "$lib/ipc/events";
 import { matchesCommand } from "$lib/keybindings";
 import { logError, logPreview } from "$lib/logger";
@@ -126,7 +126,7 @@ export class PreviewController {
   private resyncCounts = new Map<string, number>();
   private static readonly MAX_RESYNCS_PER_FINGERPRINT = 3;
 
-  private lastScrollTarget: { page: number; x: number; y: number } | null = null;
+  private lastScrollTarget: PreviewScrollTarget | null = null;
 
   // A restore of `visiblePage` is owed to a freshly (re)mounted scroll
   // container. While set, the scroll-driven page counter must not write
@@ -475,7 +475,7 @@ export class PreviewController {
     this._applyScrollTarget(target);
   }
 
-  private _applyScrollTarget(target: { page: number; x: number; y: number }) {
+  private _applyScrollTarget(target: PreviewScrollTarget) {
     // A cursor-sync jump is fresher than any owed mount restore.
     this.restorePending = false;
     const prevVisible = this.visiblePage;
@@ -537,8 +537,9 @@ export class PreviewController {
       }
 
       const scrollTo = yAbs - this.scrollEl.clientHeight / 3;
-      // This is the "jumps" branch: target is off-screen, so we smooth-scroll
-      // the preview. `offsetTop`/`zoom`/`y` here show exactly where it lands.
+      // This is the "jumps" branch: target is off-screen, so we scroll the
+      // preview. Cursor-sync glides; a document switch (instant) snaps, since
+      // the reader starts at the top rather than travelling there.
       logPreview("scroll:apply:scroll-to", {
         page: target.page,
         from: Math.round(viewTop),
@@ -547,8 +548,15 @@ export class PreviewController {
         offsetTop: Math.round(pageEl.offsetTop),
         yPx: Math.round(yPx),
         zoom: preview.zoom,
+        instant: target.instant === true,
       });
-      this.scrollEl.scrollTo({ top: scrollTo, behavior: "smooth" });
+      this.scrollEl.scrollTo({
+        top: scrollTo,
+        behavior:
+          target.instant === true
+            ? ("instant" as ScrollBehavior)
+            : "smooth",
+      });
     });
   }
 

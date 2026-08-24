@@ -9,8 +9,8 @@
 // Both are view concerns. Nothing here touches the document, so neither can
 // affect what gets compiled or saved.
 
+import { Annotation, type Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin, Decoration, type DecorationSet } from '@codemirror/view';
-import type { Extension } from '@codemirror/state';
 
 /** Opacity applied to text outside the active paragraph. */
 const DIMMED_OPACITY = 0.35;
@@ -108,6 +108,14 @@ export function focusMode(): Extension {
 }
 
 /**
+ * Marks transactions that replace content programmatically — an external file
+ * reload, a formatter run, a VCS restore. Typewriter scrolling must not treat
+ * these as user movement and re-centre the view; the caller preserves the
+ * scroll position itself.
+ */
+export const programmaticSync = Annotation.define<boolean>();
+
+/**
  * Keep the caret line vertically centred.
  *
  * `scrollIntoView(..., { y: 'center' })` is how a line is centred in CodeMirror
@@ -122,6 +130,13 @@ export function typewriterScrolling(): Extension {
         }),
         EditorView.updateListener.of((update) => {
             if (!update.docChanged && !update.selectionSet) return;
+            // Content replaced programmatically (external reload, format, VCS
+            // restore) keeps the viewport where it was — the caret merely got
+            // remapped through someone else's edit.
+            if (
+                update.transactions.some((tr) => tr.annotation(programmaticSync))
+            )
+                return;
             // Never re-scroll while a selection is being dragged out — it
             // fights the user's own movement. Same hazard the mobile app hit
             // with caret-visibility scrolling.

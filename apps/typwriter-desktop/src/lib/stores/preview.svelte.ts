@@ -16,7 +16,12 @@ import {
     onPreviewTotalPages,
     type UnlistenFn,
 } from '$lib/ipc/events';
-import type { CompileReason, DisplayInfo, PreviewHighlightRect } from '$lib/types';
+import type {
+    CompileReason,
+    DisplayInfo,
+    PreviewHighlightRect,
+    PreviewScrollTarget,
+} from '$lib/types';
 import { logError, logPreview } from '$lib/logger';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
@@ -85,7 +90,7 @@ class PreviewStore {
     private _zoom = crossWindowState<number>('preview:zoom', 2.0);
     private _paginated = crossWindowState<boolean>('preview:paginated', false);
     private _totalPages = crossWindowState<number>('preview:totalPages', 0);
-    private _scrollTarget = crossWindowState<{ page: number; x: number; y: number } | null>(
+    private _scrollTarget = crossWindowState<PreviewScrollTarget | null>(
         'preview:scrollTarget',
         null,
     );
@@ -105,8 +110,8 @@ class PreviewStore {
     set zoom(v: number) { this._zoom.set(v); }
     get paginated(): boolean { return this._paginated.value; }
     set paginated(v: boolean) { this._paginated.set(v); }
-    get scrollTarget(): { page: number; x: number; y: number } | null { return this._scrollTarget.value; }
-    set scrollTarget(v: { page: number; x: number; y: number } | null) { this._scrollTarget.set(v); }
+    get scrollTarget(): PreviewScrollTarget | null { return this._scrollTarget.value; }
+    set scrollTarget(v: PreviewScrollTarget | null) { this._scrollTarget.set(v); }
 
     private _unlisteners: UnlistenFn[] = [];
     // Bumped by every `init`/`destroy` so listener registrations that resolve
