@@ -53,8 +53,10 @@ pub struct AppSettings {
     pub ui_font_family: String,
     pub editor_font_family: String,
     pub editor_font_size: u8,
-    pub light_theme: String,
-    pub dark_theme: String,
+    /// Palette applied in both light and dark mode, picked via `data-theme`
+    /// on the document root. Each theme still ships a light and a dark
+    /// variant in CSS; only the selection is shared.
+    pub theme: String,
     pub auto_check_updates: bool,
     pub default_preview_zoom: f64,
     pub default_preview_visible: bool,
@@ -119,8 +121,7 @@ impl Default for AppSettings {
             ui_font_family: "IBM Plex Sans Variable".to_string(),
             editor_font_family: "monospace".to_string(),
             editor_font_size: 13,
-            light_theme: "default".to_string(),
-            dark_theme: "default".to_string(),
+            theme: "default".to_string(),
             auto_check_updates: true,
             default_preview_zoom: 2.0,
             default_preview_visible: true,

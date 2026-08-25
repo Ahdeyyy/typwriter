@@ -94,8 +94,7 @@ export interface PersistedSettings {
     uiFontFamily: string;
     editorFontFamily: string;
     editorFontSize: number;
-    lightTheme: ThemeId;
-    darkTheme: ThemeId;
+    theme: ThemeId;
 
     // Updates
     autoCheckUpdates: boolean;
@@ -162,8 +161,7 @@ const DEFAULTS: PersistedSettings = {
     uiFontFamily: 'IBM Plex Sans Variable',
     editorFontFamily: 'JetBrains Mono Variable',
     editorFontSize: 13,
-    lightTheme: 'default',
-    darkTheme: 'default',
+    theme: 'default',
 
     autoCheckUpdates: true,
 
@@ -231,12 +229,19 @@ function isThemeId(value: unknown): value is ThemeId {
     return typeof value === 'string' && THEME_IDS.has(value as ThemeId);
 }
 
-function normalizeSettings(value: Partial<PersistedSettings>): PersistedSettings {
-    const settings = { ...DEFAULTS, ...value };
+/** Legacy field names kept readable here so settings saved before themes were
+ *  unified (one palette per mode) migrate to the single `theme` instead of
+ *  resetting to the default. */
+type RawSettings = Partial<PersistedSettings> & { lightTheme?: unknown; darkTheme?: unknown };
+
+function normalizeSettings(value: RawSettings): PersistedSettings {
+    const settings = { ...DEFAULTS, ...value } as PersistedSettings & RawSettings;
+    // When the old per-mode palettes disagreed, the dark one wins — it was the
+    // more likely deliberate pick for an app that ships dark by default.
+    const legacyTheme = [settings.theme, settings.darkTheme, settings.lightTheme].find(isThemeId);
     return {
         ...settings,
-        lightTheme: isThemeId(settings.lightTheme) ? settings.lightTheme : DEFAULTS.lightTheme,
-        darkTheme: isThemeId(settings.darkTheme) ? settings.darkTheme : DEFAULTS.darkTheme,
+        theme: legacyTheme ?? DEFAULTS.theme,
         keybindings: normalizeKeybindings(settings.keybindings),
     };
 }
@@ -265,8 +270,7 @@ class SettingsStore {
     uiFontFamily = $state(INITIAL.uiFontFamily);
     editorFontFamily = $state(INITIAL.editorFontFamily);
     editorFontSize = $state(INITIAL.editorFontSize);
-    lightTheme = $state<ThemeId>(INITIAL.lightTheme);
-    darkTheme = $state<ThemeId>(INITIAL.darkTheme);
+    theme = $state<ThemeId>(INITIAL.theme);
 
     autoCheckUpdates = $state(INITIAL.autoCheckUpdates);
 
@@ -315,8 +319,7 @@ class SettingsStore {
                     uiFontFamily: s.ui_font_family,
                     editorFontFamily: s.editor_font_family,
                     editorFontSize: s.editor_font_size,
-                    lightTheme: isThemeId(s.light_theme) ? s.light_theme : DEFAULTS.lightTheme,
-                    darkTheme: isThemeId(s.dark_theme) ? s.dark_theme : DEFAULTS.darkTheme,
+                    theme: isThemeId(s.theme) ? s.theme : DEFAULTS.theme,
                     autoCheckUpdates: s.auto_check_updates,
                     defaultPreviewZoom: s.default_preview_zoom,
                     defaultPreviewVisible: s.default_preview_visible,
@@ -363,8 +366,7 @@ class SettingsStore {
             uiFontFamily: this.uiFontFamily,
             editorFontFamily: this.editorFontFamily,
             editorFontSize: this.editorFontSize,
-            lightTheme: this.lightTheme,
-            darkTheme: this.darkTheme,
+            theme: this.theme,
             autoCheckUpdates: this.autoCheckUpdates,
             defaultPreviewZoom: this.defaultPreviewZoom,
             defaultPreviewVisible: this.defaultPreviewVisible,
@@ -402,8 +404,7 @@ class SettingsStore {
         this.uiFontFamily = settings.uiFontFamily;
         this.editorFontFamily = settings.editorFontFamily;
         this.editorFontSize = clampEditorFontSize(settings.editorFontSize);
-        this.lightTheme = isThemeId(settings.lightTheme) ? settings.lightTheme : DEFAULTS.lightTheme;
-        this.darkTheme = isThemeId(settings.darkTheme) ? settings.darkTheme : DEFAULTS.darkTheme;
+        this.theme = isThemeId(settings.theme) ? settings.theme : DEFAULTS.theme;
         this.autoCheckUpdates = settings.autoCheckUpdates;
         this.defaultPreviewZoom = clampPreviewZoom(settings.defaultPreviewZoom);
         this.defaultPreviewVisible = settings.defaultPreviewVisible;
@@ -469,8 +470,7 @@ class SettingsStore {
             ui_font_family: current.uiFontFamily,
             editor_font_family: current.editorFontFamily,
             editor_font_size: current.editorFontSize,
-            light_theme: current.lightTheme,
-            dark_theme: current.darkTheme,
+            theme: current.theme,
             auto_check_updates: current.autoCheckUpdates,
             default_preview_zoom: current.defaultPreviewZoom,
             default_preview_visible: current.defaultPreviewVisible,
@@ -518,13 +518,8 @@ class SettingsStore {
         this.persist();
     }
 
-    setLightTheme(theme: ThemeId) {
-        this.lightTheme = theme;
-        this.persist();
-    }
-
-    setDarkTheme(theme: ThemeId) {
-        this.darkTheme = theme;
+    setTheme(theme: ThemeId) {
+        this.theme = theme;
         this.persist();
     }
 
@@ -704,8 +699,7 @@ class SettingsStore {
         this.uiFontFamily = DEFAULTS.uiFontFamily;
         this.editorFontFamily = DEFAULTS.editorFontFamily;
         this.editorFontSize = DEFAULTS.editorFontSize;
-        this.lightTheme = DEFAULTS.lightTheme;
-        this.darkTheme = DEFAULTS.darkTheme;
+        this.theme = DEFAULTS.theme;
         this.autoCheckUpdates = DEFAULTS.autoCheckUpdates;
         this.defaultPreviewZoom = DEFAULTS.defaultPreviewZoom;
         this.defaultPreviewVisible = DEFAULTS.defaultPreviewVisible;

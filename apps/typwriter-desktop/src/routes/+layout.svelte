@@ -4,7 +4,7 @@
   import { Toaster } from "$lib/components/ui/sonner/index.js";
   import { installGlobalErrorLogging } from "$lib/logger";
   import { updater } from "$lib/stores/updater.svelte";
-  import { mode, ModeWatcher, setMode, resetMode, setTheme, systemPrefersMode } from "mode-watcher";
+  import { mode, ModeWatcher, setMode, resetMode, setTheme } from "mode-watcher";
   import { app } from "@tauri-apps/api"
   import { Window } from "@tauri-apps/api/window";
   import { settings, type SettingsSyncPayload } from "$lib/stores/settings.svelte";
@@ -198,9 +198,9 @@
   $effect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
-    const effectiveMode = mode.current ?? systemPrefersMode.current;
-    const activeTheme =
-      effectiveMode === "dark" ? settings.darkTheme : settings.lightTheme;
+    // One palette for both modes: the theme presets in layout.css still ship a
+    // light and a dark variant, keyed off the mode-watcher `dark` class.
+    const activeTheme = settings.theme;
     if (activeTheme !== appliedTheme) {
       appliedTheme = activeTheme;
       untrack(() => setTheme(activeTheme));

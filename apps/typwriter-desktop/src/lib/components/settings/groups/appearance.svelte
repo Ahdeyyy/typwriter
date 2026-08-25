@@ -2,9 +2,10 @@
   import { onMount } from "svelte";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
-  import ThemePicker from "../theme-picker.svelte";
+  import SettingMatch from "../setting-match.svelte";
+  import ColorSchemePicker from "../color-scheme-picker.svelte";
+  import ThemeGrid from "../theme-grid.svelte";
   import FontPicker from "../font-picker.svelte";
-  import ModeControl from "../mode-control.svelte";
   import { settings, BUNDLED_UI_FONTS } from "$lib/stores/settings.svelte";
   import { systemFonts, withoutBundled, type FontGroup } from "$lib/stores/system-fonts.svelte";
 
@@ -14,13 +15,13 @@
     void systemFonts.load();
   });
 
-  // The palette names only exist inside the dropdown, so the rows carry them as
-  // keywords — searching "gruvbox" should still surface both palette rows.
-  const paletteKeywords = [
+  // The theme names only exist on the cards, so the sections carry them as
+  // keywords — searching "gruvbox" should surface the theme grid, searching
+  // "mode" or "dark" the colour scheme cards.
+  const schemeKeywords = ["mode", "light mode", "dark mode", "system", "colour scheme", "color scheme"];
+  const themeKeywords = [
     "theme",
     "palette",
-    "colour scheme",
-    "color scheme",
     "nord",
     "dracula",
     "solarized",
@@ -41,39 +42,19 @@
 
 <SettingGroup
   title="Appearance"
-  description="How Typwriter itself looks. Pick light or dark, then a palette for each."
+  description="How Typwriter itself looks. Pick a colour scheme and a theme."
   keywords={["theme", "colours", "colors", "look", "interface", "dark mode", "light mode"]}
 >
   <div class="flex flex-col gap-6">
-    <SettingRow
-      title="Mode"
-      description="Follow the system setting, or pin Typwriter to light or dark."
-      keywords={["theme", "dark", "light", "system"]}
-    >
-      {#snippet control()}
-        <ModeControl />
-      {/snippet}
-    </SettingRow>
+    <SettingMatch keywords={schemeKeywords} class="flex flex-col gap-3">
+      <h3 class="text-sm font-medium">Color scheme</h3>
+      <ColorSchemePicker />
+    </SettingMatch>
 
-    <SettingRow
-      title="Light mode palette"
-      description="Colours used when Typwriter is in light mode."
-      keywords={paletteKeywords}
-    >
-      {#snippet control()}
-        <ThemePicker selected={settings.lightTheme} onselect={(id) => settings.setLightTheme(id)} />
-      {/snippet}
-    </SettingRow>
-
-    <SettingRow
-      title="Dark mode palette"
-      description="Colours used when Typwriter is in dark mode."
-      keywords={paletteKeywords}
-    >
-      {#snippet control()}
-        <ThemePicker dark selected={settings.darkTheme} onselect={(id) => settings.setDarkTheme(id)} />
-      {/snippet}
-    </SettingRow>
+    <SettingMatch keywords={themeKeywords} class="flex flex-col gap-3">
+      <h3 class="text-sm font-medium">Themes</h3>
+      <ThemeGrid />
+    </SettingMatch>
 
     <SettingRow
       title="UI font"
