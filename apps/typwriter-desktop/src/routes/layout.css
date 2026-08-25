@@ -192,6 +192,91 @@
    inherit from the default block above.
    ────────────────────────────────────────────────────────────────────────── */
 
+/* ── Glass accent (every theme except default) ────────────────────────────
+   A light touch of the glass treatment for all non-default themes: floating
+   chrome (popovers, menus, toasts, search panel) turns translucent and frosts
+   over the content behind it, with a soft drop shadow and hairline top
+   highlight. Weaker than the full glass theme — cards, the sidebar, and
+   tooltips stay opaque, and modals only lean translucent enough to stay
+   legible over their scrim. Declared before the glass block so glass's
+   stronger values still win on equal specificity.
+   ───────────────────────────────────────────────────────────────────────── */
+:where([data-theme]:not([data-theme='default'])) [data-slot="card"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="popover-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="dropdown-menu-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="context-menu-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="dropdown-menu-sub-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="context-menu-sub-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="menubar-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="select-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="hover-card-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="dialog-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="sheet-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="command"],
+:where([data-theme]:not([data-theme='default'])) .search-panel,
+:where([data-theme]:not([data-theme='default'])) .popover-surface,
+:where([data-theme]:not([data-theme='default'])) [data-sonner-toast] {
+  box-shadow:
+    0 4px 16px -4px rgb(0 0 0 / 0.12),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.08);
+}
+
+/* Frost the surfaces that don't already blur themselves (dropdown/context
+   menus keep their built-in ::before blur, boosted below; modals get their
+   own scrim-aware mix below). UI tooltips ([data-slot="tooltip-content"]) are
+   excluded — the translucent mix renders bugged there, so they keep the
+   theme's plain opaque surface; CodeMirror tooltips stay frosted (below). */
+:where([data-theme]:not([data-theme='default'])) [data-slot="popover-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="menubar-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="select-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="hover-card-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="command"],
+:where([data-theme]:not([data-theme='default'])) .search-panel,
+:where([data-theme]:not([data-theme='default'])) .popover-surface,
+:where([data-theme]:not([data-theme='default'])) [data-sonner-toast] {
+  background-color: color-mix(in srgb, var(--popover) 82%, transparent);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+}
+
+/* Dropdown/context menus frost via ::before — nudge it past the package
+   default without going full glass. */
+:where([data-theme]:not([data-theme='default']))
+  [data-slot="context-menu-content"]::before,
+:where([data-theme]:not([data-theme='default']))
+  [data-slot="context-menu-sub-content"]::before,
+:where([data-theme]:not([data-theme='default']))
+  [data-slot="dropdown-menu-content"]::before,
+:where([data-theme]:not([data-theme='default']))
+  [data-slot="dropdown-menu-sub-content"]::before {
+  backdrop-filter: blur(56px) saturate(185%);
+  -webkit-backdrop-filter: blur(56px) saturate(185%);
+}
+
+/* CodeMirror tooltips keep the frost — CodeMirror injects its opaque tooltip
+   backgrounds after the app CSS, so this needs !important to stick (same
+   reason as in the glass block). */
+:where([data-theme]:not([data-theme='default'])) .cm-tooltip {
+  background-color: color-mix(in srgb, var(--popover) 85%, transparent) !important;
+  backdrop-filter: blur(28px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
+}
+
+/* Inner layers must not stack a second surface on the frosted wrapper. */
+:where([data-theme]:not([data-theme='default'])) .cm-tooltip .cm-grammar-panel {
+  background-color: transparent !important;
+}
+
+/* Modals sit on a dark scrim — keep them mostly opaque, just tinted toward
+   the popover colour with a mild frost. */
+:where([data-theme]:not([data-theme='default'])) [data-slot="dialog-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="sheet-content"],
+:where([data-theme]:not([data-theme='default'])) .modal-surface {
+  background-color: color-mix(in srgb, var(--popover) 72%, var(--background));
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+}
+
 /* ── Glass ─────────────────────────────────────────────────────────────────
    Same neutral palette as the default theme, but surface tokens are made
    translucent and the floating chrome (popovers, menus, dialogs, sidebar,
