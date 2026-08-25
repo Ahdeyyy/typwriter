@@ -34,7 +34,7 @@ use crate::{
 ///
 /// `page`  — 0-based page index
 /// `x`, `y` — pixel coordinates within that page
-#[tauri::command]
+#[tauri::command(async)]
 pub fn jump_from_click(
     page: usize,
     x: f64,
@@ -91,7 +91,7 @@ pub fn jump_from_click(
 ///
 /// `path`   — absolute or workspace-relative path to the source file
 /// `cursor` — byte offset of the cursor within the source text
-#[tauri::command]
+#[tauri::command(async)]
 pub fn jump_from_cursor(
     path: String,
     cursor: usize,

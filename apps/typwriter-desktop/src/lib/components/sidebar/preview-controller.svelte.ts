@@ -6,8 +6,16 @@ import { toast } from "svelte-sonner";
 
 import { preview } from "$lib/stores/preview.svelte";
 import { editor } from "$lib/stores/editor.svelte";
+import { settings } from "$lib/stores/settings.svelte";
 import { workspace } from "$lib/stores/workspace.svelte";
-import { jumpFromClick, setVisiblePage, syncPreview, triggerPreview } from "$lib/ipc/commands";
+import {
+  jumpFromClick,
+  listDisplays,
+  setVisiblePage,
+  syncPreview,
+  triggerPreview,
+} from "$lib/ipc/commands";
+import type { DisplayInfo, PreviewScrollTarget } from "$lib/types";
 import { emitPreviewSourceJump } from "$lib/ipc/events";
 import { matchesCommand } from "$lib/keybindings";
 import { logError, logPreview } from "$lib/logger";
@@ -23,6 +31,41 @@ const STARTUP_RECOVERY_DELAY_MS = 1200;
 const STARTUP_RECOVERY_MAX_ATTEMPTS = 4;
 const WATCHDOG_INTERVAL_MS = 1500;
 const WATCHDOG_RESYNC_AFTER_TICKS = 3;
+
+// A decoded page costs `width * height * 4` bytes of bitmap however small its
+// PNG is (~6 MB for a 16:9 slide at zoom 2), so a document of a few hundred
+// pages cannot hold them all at once. Only pages near the viewport are decoded;
+// the retain window is wider so ordinary scrolling doesn't thrash
+// decode → evict → decode. `2 * DECODE_WINDOW + 1` pages are resident at a
+// time — that product is the memory budget.
+const DECODE_WINDOW = 24;
+const RETAIN_WINDOW = 80;
+
+// Share of the decode window placed ahead of the direction of travel; the rest
+// trails behind. Only the decode window leans — a leaning retain window would
+// evict the pages a reversing reader is about to reach.
+const DECODE_AHEAD_SHARE = 0.75;
+
+// Page images are `loading="lazy"`, so an off-screen one legitimately never
+// fetches and never fires `onload`. The watchdog may only judge pages close
+// enough that the browser's lazy margin has certainly been crossed.
+const WATCHDOG_WINDOW = 2;
+
+// Fallback box for a page that has never been decoded and has no decoded
+// sibling to borrow dimensions from.
+const DEFAULT_PAGE_DIMS = { w: 566, h: 800 };
+
+// How long the pointer sits still over a projected slide before it's hidden.
+const POINTER_IDLE_MS = 2000;
+
+/** Name a display the way the picker and the "now presenting" toast should:
+ *  the OS name when there is one, always with the resolution, since on a
+ *  two-screen rig "1920×1080" is what the user recognises as the projector. */
+export function displayLabel(display: DisplayInfo): string {
+  const size = `${display.width}×${display.height}`;
+  const name = display.name?.replace(/^\\\\[.?]\\/, "") ?? null;
+  return name ? `${name} · ${size}` : size;
+}
 
 export class PreviewController {
   // ── Refs / local state ──────────────────────────────────────────────
@@ -47,6 +90,23 @@ export class PreviewController {
   // loading images push the real target further down.
   pageDims = new SvelteMap<string, { w: number; h: number }>();
 
+  // Natural size of the most recently decoded page. Pages outside the decode
+  // window have no image to measure, so their skeletons borrow this to reserve
+  // the box the image would occupy — which is what keeps `offsetTop` (and so
+  // the scroll position) stable as pages decode and are released. Sound because
+  // a document's pages normally all share one size.
+  lastDims = $state<{ w: number; h: number } | null>(null);
+
+  /** Direction of travel: +1 toward later pages, -1 toward earlier. Reactive so
+   *  a reversal re-runs `syncPagesEffect` and swings the lookahead round. */
+  scrollDir = $state<1 | -1>(1);
+
+  /** Whether any page has decoded yet, i.e. whether skeletons can reserve a
+   *  realistic box and the scroll layout is worth measuring. */
+  get pageMetricsKnown(): boolean {
+    return this.lastDims !== null;
+  }
+
   private pending = new Map<number, string>();
   private decodeAttempts = new Map<number, number>();
   private startupRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -66,7 +126,7 @@ export class PreviewController {
   private resyncCounts = new Map<string, number>();
   private static readonly MAX_RESYNCS_PER_FINGERPRINT = 3;
 
-  private lastScrollTarget: { page: number; x: number; y: number } | null = null;
+  private lastScrollTarget: PreviewScrollTarget | null = null;
 
   // A restore of `visiblePage` is owed to a freshly (re)mounted scroll
   // container. While set, the scroll-driven page counter must not write
@@ -175,6 +235,15 @@ export class PreviewController {
         continue;
       }
 
+      // Away from the viewport a slot is expected to lack a decoded image
+      // (outside the decode window) or a loaded one (lazy `<img>`), so neither
+      // is evidence of a fault. Such pages recover when scrolled to, which is
+      // the only time being stuck would show.
+      if (!this.inWindow(i, WATCHDOG_WINDOW)) {
+        this.stuckTicks.delete(i);
+        continue;
+      }
+
       const committed = this.committedPages[i];
       const rendered = this.renderedFingerprints.get(i);
       if (committed === fingerprint && rendered === fingerprint) {
@@ -213,6 +282,63 @@ export class PreviewController {
     return fingerprint ? this.pageDims.get(fingerprint) : undefined;
   }
 
+  /** Box to reserve for page `i` while it has no decoded image. Templates must
+   *  lay the skeleton out exactly like the `<img>` (width + aspect-ratio,
+   *  `max-w-full`, `h-auto`) so swapping between them never changes the page's
+   *  height. */
+  skeletonDims(i: number): { w: number; h: number } {
+    return this.dimsFor(preview.pages[i]) ?? this.lastDims ?? DEFAULT_PAGE_DIMS;
+  }
+
+  /** Whether page `i` is within `span` pages of the one on screen. Documents
+   *  short enough to fit entirely inside the span are always in window, so
+   *  windowing is invisible for anything but long documents. */
+  private inWindow(i: number, span: number): boolean {
+    if (preview.pages.length <= 2 * span + 1) return true;
+    return Math.abs(i - preview.visiblePage) <= span;
+  }
+
+  /** Whether page `i` should hold a decoded image. */
+  private inDecodeWindow(i: number): boolean {
+    if (preview.pages.length <= 2 * DECODE_WINDOW + 1) return true;
+    const { lo, hi } = this.decodeBounds();
+    return i >= lo && i <= hi;
+  }
+
+  /** Inclusive page range the decode window covers, leaning `DECODE_AHEAD_SHARE`
+   *  toward `scrollDir`. Held at constant width: where the lean overhangs an end
+   *  of the document the excess moves to the other side rather than being
+   *  dropped, so the resident page count (the memory budget) doesn't vary. */
+  private decodeBounds(): { lo: number; hi: number } {
+    const last = preview.pages.length - 1;
+    const total = 2 * DECODE_WINDOW;
+    const ahead = Math.round(total * DECODE_AHEAD_SHARE);
+    const behind = total - ahead;
+    const v = preview.visiblePage;
+
+    let lo = v - (this.scrollDir >= 0 ? behind : ahead);
+    let hi = v + (this.scrollDir >= 0 ? ahead : behind);
+    if (lo < 0) {
+      hi += -lo;
+      lo = 0;
+    }
+    if (hi > last) {
+      lo -= hi - last;
+      hi = last;
+    }
+    return { lo: Math.max(0, lo), hi };
+  }
+
+  /** Drop a page's decoded image so the webview can release its bitmap. The
+   *  slot falls back to a skeleton of the same size, so nothing moves. */
+  private releaseSlot(i: number) {
+    if (untrack(() => this.committedPages[i]) != null) this.committedPages[i] = null;
+    this.pending.delete(i);
+    this.decodeAttempts.delete(i);
+    this.renderedFingerprints.delete(i);
+    this.stuckTicks.delete(i);
+  }
+
   /** Called from the template when the DOM `<img>` finishes loading. */
   notifyImageLoaded(i: number, fingerprint: string) {
     this.renderedFingerprints.set(i, fingerprint);
@@ -228,7 +354,9 @@ export class PreviewController {
     if (this.committedPages[i] === fingerprint) this.committedPages[i] = null;
     this.pending.delete(i);
     this.decodeAttempts.delete(i);
-    if (preview.pages[i] === fingerprint) this.attemptDecode(i, fingerprint, 0);
+    if (preview.pages[i] === fingerprint && this.inDecodeWindow(i)) {
+      this.attemptDecode(i, fingerprint, 0);
+    }
   }
 
   // ── Effects, exposed as methods consumers wire via $effect ──────────
@@ -236,6 +364,9 @@ export class PreviewController {
   /** Sync committed page buffer with `preview.pages` and decode incoming data. */
   syncPagesEffect() {
     const incoming = preview.pages;
+    // Read unconditionally so scrolling re-runs the effect and slides the
+    // windows along; the checks below only read it for long documents.
+    void preview.visiblePage;
 
     const curLen = untrack(() => this.committedPages.length);
     // Stage 4a: reconcile the committed (on-screen) buffer length with the
@@ -260,6 +391,17 @@ export class PreviewController {
     for (let i = 0; i < incoming.length; i++) {
       const fingerprint = incoming[i];
       if (!fingerprint) continue;
+      if (!this.inWindow(i, RETAIN_WINDOW)) {
+        this.releaseSlot(i);
+        continue;
+      }
+      // In the retain band but not the decode band: keep an image that is still
+      // current so short scrolls don't flash a skeleton, but drop one a
+      // recompile has superseded rather than show stale content off screen.
+      if (!this.inDecodeWindow(i)) {
+        if (untrack(() => this.committedPages[i]) !== fingerprint) this.releaseSlot(i);
+        continue;
+      }
       if (fingerprint === untrack(() => this.committedPages[i])) continue;
       if (this.pending.get(i) === fingerprint) continue;
 
@@ -279,7 +421,9 @@ export class PreviewController {
       .then(() => {
         // Dimensions are keyed by fingerprint, so they're valid to record
         // even if this decode lost the race for the slot.
-        this.pageDims.set(fingerprint, { w: img.naturalWidth, h: img.naturalHeight });
+        const dims = { w: img.naturalWidth, h: img.naturalHeight };
+        this.pageDims.set(fingerprint, dims);
+        this.lastDims = dims;
         if (this.pending.get(idx) !== fingerprint) return;
         this.pending.delete(idx);
         this.decodeAttempts.delete(idx);
@@ -331,10 +475,13 @@ export class PreviewController {
     this._applyScrollTarget(target);
   }
 
-  private _applyScrollTarget(target: { page: number; x: number; y: number }) {
+  private _applyScrollTarget(target: PreviewScrollTarget) {
     // A cursor-sync jump is fresher than any owed mount restore.
     this.restorePending = false;
     const prevVisible = this.visiblePage;
+    if (target.page !== prevVisible) {
+      this.scrollDir = target.page > prevVisible ? 1 : -1;
+    }
     this.visiblePage = target.page;
     if (preview.paginated) {
       // Paginated view: no scroll, just flips which single page renders.
@@ -390,8 +537,9 @@ export class PreviewController {
       }
 
       const scrollTo = yAbs - this.scrollEl.clientHeight / 3;
-      // This is the "jumps" branch: target is off-screen, so we smooth-scroll
-      // the preview. `offsetTop`/`zoom`/`y` here show exactly where it lands.
+      // This is the "jumps" branch: target is off-screen, so we scroll the
+      // preview. Cursor-sync glides; a document switch (instant) snaps, since
+      // the reader starts at the top rather than travelling there.
       logPreview("scroll:apply:scroll-to", {
         page: target.page,
         from: Math.round(viewTop),
@@ -400,8 +548,15 @@ export class PreviewController {
         offsetTop: Math.round(pageEl.offsetTop),
         yPx: Math.round(yPx),
         zoom: preview.zoom,
+        instant: target.instant === true,
       });
-      this.scrollEl.scrollTo({ top: scrollTo, behavior: "smooth" });
+      this.scrollEl.scrollTo({
+        top: scrollTo,
+        behavior:
+          target.instant === true
+            ? ("instant" as ScrollBehavior)
+            : "smooth",
+      });
     });
   }
 
@@ -474,12 +629,23 @@ export class PreviewController {
       // is the last one whose top edge sits at or above this line — i.e. the
       // page currently occupying the upper portion of the view.
       const referenceY = el.getBoundingClientRect().top + el.clientHeight / 3;
+      // Bisect rather than walk: page elements are in document order, so their
+      // top edges are monotonic. A linear walk would measure every page above
+      // the viewport — hundreds of forced layouts per scroll frame in a long
+      // document.
+      let lo = 0;
+      let hi = count - 1;
       let idx = 0;
-      for (let i = 0; i < count; i++) {
-        const pageEl = document.getElementById(`preview-page-${i}`);
-        if (!pageEl) continue;
-        if (pageEl.getBoundingClientRect().top <= referenceY) idx = i;
-        else break;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const pageEl = document.getElementById(`preview-page-${mid}`);
+        if (!pageEl) break;
+        if (pageEl.getBoundingClientRect().top <= referenceY) {
+          idx = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
       }
 
       // Stage 6: scroll-driven page-number generation. The visible page (and the
@@ -493,7 +659,20 @@ export class PreviewController {
       }
     };
 
+    // Direction comes from the scroll offset rather than from `visiblePage` so a
+    // reversal registers immediately instead of only once the reader crosses
+    // back over a page boundary. The threshold stops jitter flapping it;
+    // assigning an unchanged primitive is a no-op for `$state`, so
+    // `syncPagesEffect` is only invalidated on a real reversal.
+    let lastTop = el.scrollTop;
+    const DIR_FLIP_THRESHOLD_PX = 4;
+
     const onScroll = () => {
+      const top = el.scrollTop;
+      if (Math.abs(top - lastTop) > DIR_FLIP_THRESHOLD_PX) {
+        this.scrollDir = top > lastTop ? 1 : -1;
+        lastTop = top;
+      }
       if (rafId !== 0) return;
       rafId = requestAnimationFrame(recompute);
     };
@@ -559,6 +738,11 @@ export class PreviewController {
     // rule out user action when reading why the page number moved.
     logPreview("nav:go-to-page", { requested: idx, clamped, from: this.visiblePage });
     this.restorePending = false;
+    // Paginated view has no scroll container to take a direction from, so
+    // explicit paging is the only signal for which way to lean.
+    if (clamped !== this.visiblePage) {
+      this.scrollDir = clamped > this.visiblePage ? 1 : -1;
+    }
     this.visiblePage = clamped;
     setVisiblePage(clamped);
   }
@@ -577,16 +761,104 @@ export class PreviewController {
 
   togglePresentation() {
     if (!this.isPopout) {
+      // Presentation runs in the popout window — the in-workspace pane can
+      // only ask for it (open the popout, or nudge an already-open one).
       this.onPresentationMode?.();
       return;
     }
-    const entering = !preview.presentationMode;
-    preview
-      .togglePresentationMode()
-      .then(() => {
-        if (entering) toast.info("Press Esc to exit presenter mode");
+    if (preview.presentationMode) {
+      void this.stopPresenting();
+    } else {
+      void this.startPresenting();
+    }
+  }
+
+  /** Project the slide onto the chosen display. Entering can genuinely fail —
+   *  no display detected, a refused window call — so it surfaces rather than
+   *  leaving the UI half-switched. */
+  async startPresenting(): Promise<void> {
+    if (preview.presentationMode) return;
+    try {
+      await preview.togglePresentationMode();
+      const display = preview.presentationDisplay;
+      toast.info(
+        display
+          ? `Presenting on ${displayLabel(display)} — press Esc to exit`
+          : "Press Esc to exit presenter mode",
+      );
+    } catch (err) {
+      logError("preview enter presentation failed:", err);
+      toast.error("Could not start the presentation");
+    }
+  }
+
+  async stopPresenting(): Promise<void> {
+    if (!preview.presentationMode) return;
+    try {
+      await preview.togglePresentationMode();
+    } catch (err) {
+      logError("preview exit presentation failed:", err);
+      toast.error("Could not leave presentation mode");
+    }
+  }
+
+  // ── Display picker ──────────────────────────────────────────────────
+
+  /** Connected displays, for the Present split-button's menu. Refreshed when
+   *  the menu opens rather than kept live: a projector can be plugged in at
+   *  any moment, and there's no display-change event to listen to. */
+  displays = $state<DisplayInfo[]>([]);
+
+  refreshDisplays() {
+    listDisplays()
+      .map((displays) => {
+        this.displays = displays;
       })
-      .catch((err) => logError("preview presentation mode failed:", err));
+      .mapErr((err) => logError("preview: listing displays failed:", err));
+  }
+
+  /** Pin the display to present on, or `null` to go back to auto (whichever
+   *  display the editor window isn't on). Persisted, so the next talk on the
+   *  same rig starts on the right screen. */
+  chooseDisplay(id: string | null) {
+    settings.setPresentationDisplay(id);
+  }
+
+  // ── Pointer auto-hide ───────────────────────────────────────────────
+
+  /** Whether the pointer is currently hidden over the projected slide. A
+   *  cursor parked in the middle of a slide is the classic presentation
+   *  blemish; it comes back the moment the mouse moves. */
+  pointerHidden = $state(false);
+  private pointerTimer: ReturnType<typeof setTimeout> | null = null;
+
+  notePointerActivity() {
+    this.pointerHidden = false;
+    if (this.pointerTimer !== null) clearTimeout(this.pointerTimer);
+    if (!preview.presentationMode) {
+      this.pointerTimer = null;
+      return;
+    }
+    this.pointerTimer = setTimeout(() => {
+      this.pointerTimer = null;
+      // Re-check: presentation may have ended while the timer was pending.
+      this.pointerHidden = preview.presentationMode;
+    }, POINTER_IDLE_MS);
+  }
+
+  /** Arm the auto-hide on entering presentation and cancel it on leaving.
+   *  Driven by an `$effect` in the pane so it tracks `presentationMode`. */
+  pointerAutoHideEffect() {
+    const presenting = preview.presentationMode;
+    untrack(() => {
+      if (presenting) {
+        this.notePointerActivity();
+      } else {
+        if (this.pointerTimer !== null) clearTimeout(this.pointerTimer);
+        this.pointerTimer = null;
+        this.pointerHidden = false;
+      }
+    });
   }
 
   /** Keyboard navigation for paginated view. */
@@ -628,6 +900,10 @@ export class PreviewController {
   }
 
   async handlePageClick(e: MouseEvent, pageIndex: number) {
+    // A projected slide is not an editing surface: clicking it — to focus the
+    // window, or just to point at something — must not drive the editor's
+    // caret, whose cursor-sync would then reach back and move the slide.
+    if (preview.presentationMode) return;
     // The handler sits on the wrapping <Button>, so `e.target` can be the
     // button itself (keyboard activation, border clicks) — reading natural
     // dimensions off it would send NaN to the backend. Locate the <img> and
@@ -664,13 +940,12 @@ export class PreviewController {
   }
 }
 
-// Per-webview singleton. The Preview component used to `new PreviewController`
-// inside its <script>, which meant unmounting the pane (e.g. when the user
-// pops the preview out into a separate window) destroyed every per-controller
-// buffer — decoded page fingerprints, visible-page index, watchdog state. On
-// remount everything re-decoded from scratch and the pane looked like it
-// "reloaded". Hoisting to a singleton lets state survive across mounts;
-// `detachFromMount()` clears the DOM-bound refs without nuking the buffers.
+// Per-webview singleton. The controller's buffers — decoded page fingerprints,
+// visible-page index, watchdog state — must outlive any single mount, because
+// the pane is unmounted when the user pops the preview out into a separate
+// window. Owning them per-component would re-decode everything on remount and
+// the pane would look like it reloaded. `detachFromMount()` clears the
+// DOM-bound refs without nuking the buffers.
 //
 // One instance per webview is fine — popout windows have their own module
 // graph, so each window gets its own singleton with its own DOM-bound state,

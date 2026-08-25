@@ -48,6 +48,9 @@
   onMount(() => {
     loadRecent();
     maybeAutoShowOnboarding();
+    // The workspace ships as its own chunk now, so warm it while the user is
+    // still reading this screen — opening a project should not wait on a fetch.
+    page.preload("workspace");
   });
 
   // ── Workspace operations ────────────────────────────────────────────────────
@@ -67,15 +70,24 @@
     loading = false;
   }
 
-  async function handleOpenRecent(path: string) {
-    const result = await workspace.init(path);
-    result.match(
-      () => { page.navigate("workspace"); },
+  /** Enter a workspace optimistically: navigate right away so the editor
+   *  shell appears instantly behind its loading overlay while `init` runs,
+   *  then bounce back home with a toast if the open fails. */
+  function enterWorkspace(open: () => ReturnType<typeof workspace.init>) {
+    open().match(
+      () => {},
       (err) => {
         logError("Failed to open workspace:", err);
         toast.error(`Failed to open workspace: ${err}`);
+        page.back("home");
       },
     );
+    page.navigate("workspace");
+  }
+
+  function handleOpenRecent(path: string) {
+    if (workspace.opening) return;
+    enterWorkspace(() => workspace.init(path));
   }
 
   async function handleRemoveRecent(e: MouseEvent, path: string) {
@@ -104,15 +116,10 @@
   async function handleOpenNew() {
     const selected = await openDialog({ directory: true, multiple: false });
     if (!selected) return;
+    // The picker can sit open while another workspace is opening.
+    if (workspace.opening) return;
 
-    const result = await workspace.init(selected as string);
-    result.match(
-      () => { page.navigate("workspace"); },
-      (err) => {
-        logError("Failed to open workspace:", err);
-        toast.error(`Failed to open workspace: ${err}`);
-      },
-    );
+    enterWorkspace(() => workspace.init(selected as string));
   }
 
   async function handleSelectParentFolder() {
@@ -123,6 +130,7 @@
   }
 
   async function handleCreateWorkspace() {
+    if (workspace.opening || newWorkspaceCreating) return;
     if (!newWorkspaceName.trim()) {
       toast.error("Please enter a workspace name.");
       return;
@@ -143,21 +151,16 @@
     }
 
     const newPath = createResult.value;
-    const initResult = await workspace.init(newPath);
-    newWorkspaceCreating = false;
 
-    initResult.match(
-      () => {
-        newWorkspaceOpen = false;
-        newWorkspaceName = "";
-        newWorkspaceParent = "";
-        page.navigate("workspace");
-      },
-      (err) => {
-        logError("Failed to open new workspace:", err);
-        toast.error(`Failed to open workspace: ${err}`);
-      },
-    );
+    // The folder exists, so from here on the open is optimistic like every
+    // other entry point: dismiss the dialog and enter the workspace while
+    // `init` runs behind its overlay.
+    newWorkspaceCreating = false;
+    newWorkspaceOpen = false;
+    newWorkspaceName = "";
+    newWorkspaceParent = "";
+
+    enterWorkspace(() => workspace.init(newPath));
   }
 
   function handleNewWorkspaceKeydown(e: KeyboardEvent) {
@@ -216,6 +219,7 @@
             variant="ghost"
             size="sm"
             onclick={handleClearRecent}
+            disabled={workspace.opening}
             class="gap-2 text-destructive hover:text-destructive"
           >
             <HugeiconsIcon icon={Delete01Icon} class="size-4" />
@@ -246,7 +250,8 @@
         {#each recentWorkspaces.slice(0, 6) as entry (entry.path)}
             <li class="group relative">
                        <button
-                         class="group/card flex w-full flex-col overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:bg-accent disabled:pointer-events-none cursor-pointer disabled:opacity-50"
+                         class="group/card flex w-full flex-col overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none cursor-pointer disabled:opacity-50"
+                         disabled={workspace.opening}
                          onclick={() => handleOpenRecent(entry.path)}
                        >
                          <div class="flex h-28 w-full items-center justify-center overflow-hidden bg-muted">
@@ -271,14 +276,22 @@
                          </div>
                        </button>
 
-                       <button
-                         class="absolute right-1.5 top-1.5 flex h-6 w-6 rounded-lg items-center justify-center bg-background text-muted-foreground opacity-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 group-hover:opacity-100 "
-                         onclick={(e) => handleRemoveRecent(e, entry.path)}
-                         title="Remove from recents"
-                         aria-label="Remove {entry.name} from recents"
-                       >
-                         <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
-                       </button>
+                       <Tooltip.Root>
+                         <Tooltip.Trigger>
+                           {#snippet child({ props })}
+                              <button
+                                {...props}
+                                class="absolute right-1.5 top-1.5 flex h-6 w-6 rounded-lg items-center justify-center bg-background text-muted-foreground opacity-0 transition-opacity hover:bg-destructive hover:text-destructive-foreground focus:opacity-100 group-hover:opacity-100 "
+                                disabled={workspace.opening}
+                                onclick={(e) => handleRemoveRecent(e, entry.path)}
+                                aria-label="Remove {entry.name} from recents"
+                              >
+                               <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
+                             </button>
+                           {/snippet}
+                         </Tooltip.Trigger>
+                         <Tooltip.Content>Remove from recents</Tooltip.Content>
+                       </Tooltip.Root>
                      </li>
         {/each}
       </ul>
@@ -290,7 +303,7 @@
     <Dialog.Root bind:open={newWorkspaceOpen}>
       <Dialog.Trigger>
         {#snippet child({ props })}
-          <Button {...props} variant="outline" class="gap-2">
+          <Button {...props} variant="outline" class="gap-2" disabled={workspace.opening}>
             <HugeiconsIcon icon={FolderAddIcon} class="size-4" />
             New Workspace
           </Button>
@@ -313,7 +326,7 @@
               placeholder="my-document"
               bind:value={newWorkspaceName}
               onkeydown={handleNewWorkspaceKeydown}
-              disabled={newWorkspaceCreating}
+              disabled={newWorkspaceCreating || workspace.opening}
             />
           </div>
 
@@ -326,13 +339,13 @@
                 value={newWorkspaceParent}
                 placeholder="Select a folder…"
                 class="flex-1 cursor-default text-muted-foreground"
-                disabled={newWorkspaceCreating}
+                disabled={newWorkspaceCreating || workspace.opening}
               />
               <Button
                 variant="outline"
                 size="sm"
                 onclick={handleSelectParentFolder}
-                disabled={newWorkspaceCreating}
+                disabled={newWorkspaceCreating || workspace.opening}
               >
                 Browse
               </Button>
@@ -348,12 +361,12 @@
         <Dialog.Footer>
           <Dialog.Close>
             {#snippet child({ props })}
-              <Button {...props} variant="ghost" disabled={newWorkspaceCreating}>Cancel</Button>
+              <Button {...props} variant="ghost" disabled={newWorkspaceCreating || workspace.opening}>Cancel</Button>
             {/snippet}
           </Dialog.Close>
           <Button
             onclick={handleCreateWorkspace}
-            disabled={newWorkspaceCreating || !newWorkspaceName.trim() || !newWorkspaceParent}
+            disabled={newWorkspaceCreating || workspace.opening || !newWorkspaceName.trim() || !newWorkspaceParent}
           >
             {newWorkspaceCreating ? "Creating…" : "Create"}
           </Button>
@@ -361,7 +374,7 @@
       </Dialog.Content>
     </Dialog.Root>
 
-    <Button onclick={handleOpenNew} class="gap-2">
+    <Button onclick={handleOpenNew} disabled={workspace.opening} class="gap-2">
       <HugeiconsIcon icon={FolderOpenIcon} class="size-4" />
       Open Folder
     </Button>

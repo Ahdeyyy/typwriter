@@ -1,5 +1,28 @@
 import { describe, expect, it } from "bun:test";
-import { remapPath } from "./paths";
+import { basename, parentDir, remapPath } from "./paths";
+
+describe("basename", () => {
+  it("returns the last segment", () => {
+    expect(basename("notes/ch1.typ")).toBe("ch1.typ");
+    expect(basename("a/b/c/d.typ")).toBe("d.typ");
+  });
+
+  it("returns the path unchanged at the workspace root", () => {
+    expect(basename("main.typ")).toBe("main.typ");
+    expect(basename("")).toBe("");
+  });
+});
+
+describe("parentDir", () => {
+  it("returns the parent folder", () => {
+    expect(parentDir("notes/ch1.typ")).toBe("notes");
+    expect(parentDir("a/b/c.typ")).toBe("a/b");
+  });
+
+  it("returns / at the workspace root, since it is rendered as a subtitle", () => {
+    expect(parentDir("main.typ")).toBe("/");
+  });
+});
 
 describe("remapPath", () => {
   it("remaps the renamed entry itself", () => {

@@ -9405,18 +9405,20 @@ dependencies = [
 
 [[package]]
 name = "typwriter"
-version = "0.8.7"
+version = "0.9.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
  "ecow 0.2.6",
  "harper-core",
+ "hayagriva",
  "log",
  "lru 0.12.5",
  "notify",
  "parking_lot",
  "png 0.18.1",
  "rayon",
+ "regex",
  "serde",
  "serde_json",
  "sha2",
@@ -9440,6 +9442,7 @@ dependencies = [
  "typst-svg",
  "typst-syntax",
  "typstyle-core",
+ "windows-sys 0.61.2",
  "zstd",
 ]
 

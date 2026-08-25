@@ -5,7 +5,8 @@
 // the Keymaps settings pane renders it, the editor builds its keymap from it,
 // and the window-level handlers match keystrokes against it. Adding a
 // rebindable shortcut means adding an entry here and calling `keysFor` /
-// `matchesCommand` at the place that used to hard-code the keystroke.
+// `matchesCommand` wherever the shortcut is handled, rather than hard-coding
+// the keystroke there.
 //
 // User overrides live in the settings store (`settings.keybindings`), keyed by
 // command id and holding only the ids the user actually changed — so a command
@@ -87,6 +88,20 @@ export const KEY_COMMANDS: KeyCommandDef[] = [
         scope: 'global',
         defaults: ['Mod-Shift-b'],
     },
+    {
+        id: 'global.quickOpen',
+        label: 'Go to file',
+        description: 'Open the palette on the workspace file list.',
+        scope: 'global',
+        defaults: ['Mod-p'],
+    },
+    {
+        id: 'global.commandPalette',
+        label: 'Open the command palette',
+        description: 'Search every command by name.',
+        scope: 'global',
+        defaults: ['Mod-Shift-p'],
+    },
 
     // ── Editor ──────────────────────────────────────────────────────────
     {
@@ -132,6 +147,13 @@ export const KEY_COMMANDS: KeyCommandDef[] = [
         label: 'Toggle italic',
         scope: 'typst',
         defaults: ['Mod-i'],
+    },
+    {
+        id: 'typst.insertSymbol',
+        label: 'Insert a symbol',
+        description: 'Open the searchable Typst symbol picker.',
+        scope: 'typst',
+        defaults: ['Mod-Shift-i'],
     },
     {
         id: 'typst.toggleRawInline',

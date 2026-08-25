@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { toast } from "svelte-sonner";
-  import { SidebarLeft01Icon, EyeIcon } from "@hugeicons/core-free-icons";
+  import { SidebarLeft01Icon, EyeIcon, Alert01Icon } from "@hugeicons/core-free-icons";
   import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
@@ -155,6 +155,25 @@
       </div>
     </div>
   </header>
+
+  <!-- The open file was rewritten on disk while this buffer had unsaved edits.
+       Shown rather than resolved automatically: autosave makes "dirty" a window
+       of a few seconds, and throwing away what the user typed inside it is the
+       one outcome that loses work. A clean buffer never reaches this — it has
+       already reloaded itself. -->
+  {#if editor.externallyChanged}
+    <div
+      class="bg-destructive/10 text-foreground flex shrink-0 items-center gap-2 px-3 py-2 text-xs"
+      role="status"
+    >
+      <Icon icon={Alert01Icon} class="text-destructive shrink-0" />
+      <span class="min-w-0 flex-1">Changed on disk since you started editing.</span>
+      <Button variant="ghost" size="sm" onclick={() => editor.keepMyChanges()}>Keep mine</Button>
+      <Button variant="secondary" size="sm" onclick={() => void editor.reloadActiveFromDisk()}>
+        Reload
+      </Button>
+    </div>
+  {/if}
 
   <main class="min-h-0 flex-1">
     {#if editor.loading}

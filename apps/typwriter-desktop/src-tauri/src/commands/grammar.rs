@@ -26,12 +26,12 @@ pub async fn check_grammar(
         .map_err(|err| format!("grammar check failed: {err}"))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_grammar_config(engine: State<'_, Arc<GrammarEngine>>) -> GrammarConfig {
     engine.config()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_grammar_config(
     handle: AppHandle,
     engine: State<'_, Arc<GrammarEngine>>,
@@ -55,7 +55,7 @@ pub async fn get_grammar_rules(
 
 /// Add a word to the user dictionary — the "Add to dictionary" quick fix.
 /// Returns the updated config so the frontend stays in sync.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn add_grammar_dictionary_word(
     handle: AppHandle,
     engine: State<'_, Arc<GrammarEngine>>,
@@ -67,7 +67,7 @@ pub fn add_grammar_dictionary_word(
 }
 
 /// Turn checking on or off for a single file.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_grammar_file_enabled(
     handle: AppHandle,
     engine: State<'_, Arc<GrammarEngine>>,

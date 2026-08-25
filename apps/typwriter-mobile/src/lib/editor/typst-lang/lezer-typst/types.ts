@@ -1,5 +1,4 @@
 import { NodeType, NodeSet, NodeProp } from "@lezer/common"
-import { styleTags } from "@lezer/highlight"
 import { highlight } from "./highlight"
 
 /// All Typst syntax node type IDs.

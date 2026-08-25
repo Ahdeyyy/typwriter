@@ -4,7 +4,7 @@
   import { Toaster } from "$lib/components/ui/sonner/index.js";
   import { installGlobalErrorLogging } from "$lib/logger";
   import { updater } from "$lib/stores/updater.svelte";
-  import { mode, ModeWatcher, setMode, resetMode, setTheme, systemPrefersMode } from "mode-watcher";
+  import { mode, ModeWatcher, setMode, resetMode, setTheme } from "mode-watcher";
   import { app } from "@tauri-apps/api"
   import { Window } from "@tauri-apps/api/window";
   import { settings, type SettingsSyncPayload } from "$lib/stores/settings.svelte";
@@ -16,10 +16,10 @@
     onShowTutorialRequest,
   } from "$lib/ipc/events";
   import { grammar } from "$lib/stores/grammar.svelte";
+  import { snippets } from "$lib/stores/snippets.svelte";
   import { page } from "$lib/stores/page.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { editor } from "$lib/stores/editor.svelte";
-  import { editorSearch } from "$lib/stores/editor-search.svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { logError } from "$lib/logger";
   import { hasExternalFiles } from "$lib/services/drop-import";
@@ -97,8 +97,14 @@
     const flush = () => {
       // Force CodeMirror to commit any in-progress IME composition (an IME
       // composes a word before it lands in the document) so the latest
-      // keystrokes are mirrored into the store before we persist.
-      editorSearch.getActiveView()?.contentDOM.blur();
+      // keystrokes are mirrored into the store before we persist. Found
+      // through the DOM rather than the editor-search store: that store pulls
+      // in @codemirror/search, and this layout runs in every window — the
+      // settings and diff windows shouldn't parse CodeMirror to close cleanly.
+      const focused = document.activeElement;
+      if (focused instanceof HTMLElement && focused.closest(".cm-content")) {
+        focused.blur();
+      }
       // Snapshot the (now durable) unsaved buffers, then save dirty tabs to
       // disk. persistTabs is synchronous up to the IPC call; flushAllTabs is
       // best-effort — if the OS suspends mid-flush, the durable snapshot from
@@ -154,6 +160,13 @@
       grammar.applyExternal(config);
     }).mapErr((err) => logError("grammar sync listener failed:", err));
 
+    // Snippets are authored in the settings window and consumed by the editor's
+    // completion list in the main one, so every window replays the others'
+    // edits. Neither scope arrives on its own: the app-wide set lives in the
+    // settings store, and the project file sits in `.typwriter/`, which the
+    // workspace watcher ignores.
+    void snippets.initSync();
+
     // Light/dark lives in mode-watcher, not the settings store, so it needs its
     // own replay. Apply locally only — re-emitting would ping-pong.
     onAppModeChanged((next) => {
@@ -185,9 +198,9 @@
   $effect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
-    const effectiveMode = mode.current ?? systemPrefersMode.current;
-    const activeTheme =
-      effectiveMode === "dark" ? settings.darkTheme : settings.lightTheme;
+    // One palette for both modes: the theme presets in layout.css still ship a
+    // light and a dark variant, keyed off the mode-watcher `dark` class.
+    const activeTheme = settings.theme;
     if (activeTheme !== appliedTheme) {
       appliedTheme = activeTheme;
       untrack(() => setTheme(activeTheme));

@@ -1,9 +1,9 @@
 // CodeMirror EditorView factory — the deliberately lean mobile extension set.
 // One EditorView for the whole app; content is swapped per file via setState.
 //
-// Excluded vs. desktop (do NOT re-add without updating 04-editor.md):
+// Excluded vs. desktop, each for a reason:
 //   drawSelection (breaks Android native selection handles + magnifier),
-//   autocompletion (replaced by the custom completion strip, phase 5),
+//   autocompletion (replaced by the custom completion strip),
 //   lint/search/fold gutters, hoverTooltip, vscode keymap / Mod-S bindings,
 //   per-keystroke IPC.
 
@@ -19,6 +19,10 @@ import { caretVisibility } from "./caret-visibility";
 import { settings } from "$lib/stores/settings.svelte";
 import { editor } from "$lib/stores/editor.svelte";
 import { completions } from "./completion-controller.svelte";
+
+/** Breathing room CodeMirror leaves around the caret when it scrolls to it —
+ *  roughly a line and a half at the default size. */
+const CARET_SCROLL_MARGIN_PX = 32;
 
 export const themeC = new Compartment(); // light | dark (follows mode-watcher)
 export const lineNumbersC = new Compartment(); // settings.showLineNumbers
@@ -41,11 +45,17 @@ function baseTheme(): Extension {
       overflow: "auto",
       WebkitOverflowScrolling: "touch",
       fontFamily: "var(--font-mono)",
-      lineHeight: "1.6",
+      // Roomier than a desktop editor on purpose: line height is the vertical
+      // size of a touch target here, and the gap between lines is what stops a
+      // long-press landing one line off from where it was aimed.
+      lineHeight: "1.75",
     },
     // Caret can always scroll above the soft keyboard.
     ".cm-content": { paddingBottom: "40vh" },
     ".cm-line": { padding: "0 0.5rem" },
+    // A 1px caret is hard to find on a phone, and finding it is the whole job
+    // when you are placing it by hand.
+    ".cm-cursor, .cm-dropCursor": { borderLeftWidth: "2px" },
   });
 }
 
@@ -60,6 +70,11 @@ export function createExtensions(lang: Extension | null): Extension[] {
     highlightActiveLine(),
     inlineDiagnostics(),
     caretVisibility(), // keeps the caret out of the soft keyboard's rectangle
+    // Every `scrollIntoView` CodeMirror does on its own — toolbar inserts,
+    // arrow keys, the cursor row — otherwise parks the caret hard against the
+    // scroller's edge, i.e. tucked under the completion strip, with no context
+    // on the side you are moving towards.
+    EditorView.scrollMargins.of(() => ({ top: CARET_SCROLL_MARGIN_PX, bottom: CARET_SCROLL_MARGIN_PX })),
     lineNumbersC.of(settings.showLineNumbers ? lineNumbers() : []),
     themeC.of(themeExtensionFor(document.documentElement.classList.contains("dark"))),
     fontSizeC.of(fontThemeFor(settings.editorFontSize)),

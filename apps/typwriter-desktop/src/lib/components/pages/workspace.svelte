@@ -8,6 +8,7 @@
   import Preview from "$lib/components/sidebar/preview.svelte";
   import EditorPane from "$lib/components/editor/editor-pane.svelte";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
+  import CommandPalette from "$lib/components/palette/command-palette.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
   import { grammar } from "$lib/stores/grammar.svelte";
   import { editor } from "$lib/stores/editor.svelte";
@@ -20,9 +21,16 @@
     onPreviewSourceJump,
     onVcsRestoreFileRequest,
     emitVcsRestoreFileResult,
+    emitPresentationToggleRequest,
   } from "$lib/ipc/events";
-  import { closeDiffWindow } from "$lib/windows";
+  import { childWindowChrome, closeDiffWindow } from "$lib/windows";
   import { logError } from "$lib/logger";
+  import { ui } from "$lib/stores/ui.svelte";
+  import { matchesCommand } from "$lib/keybindings";
+   import { page } from "$lib/stores/page.svelte";
+   import { toast } from "svelte-sonner";
+   import { HugeiconsIcon } from "@hugeicons/svelte";
+   import { Loading03Icon } from "@hugeicons/core-free-icons";
 
   const PREVIEW_WINDOW_LABEL = "preview";
 
@@ -54,11 +62,21 @@
   });
 
   async function openPreviewPopout(presentAfterOpen = false) {
-    if (preview.poppedOut) return;
-
+    // The live window is the source of truth, not the `poppedOut` flag: a
+    // popout closed outside our listener would otherwise wedge this off.
     const existing = await WebviewWindow.getByLabel(PREVIEW_WINDOW_LABEL);
     if (existing) {
       preview.poppedOut = true;
+      // The popout is already up, so `?present=1` is no longer available —
+      // ask the window that owns the presentation to toggle it. Focusing it
+      // would drag it off the projector, so only do that when we're merely
+      // surfacing the popout.
+      if (presentAfterOpen) {
+        emitPresentationToggleRequest().mapErr((err) =>
+          logError("preview present toggle request failed:", err)
+        );
+        return;
+      }
       try {
         await existing.setFocus();
       } catch (err) {
@@ -66,6 +84,8 @@
       }
       return;
     }
+    // No window under that label — a stale flag from a close we missed.
+    preview.poppedOut = false;
 
     // Seed the popout's page via the URL: its cross-window state only learns
     // the current page asynchronously (ask/reply over the event bus), and the
@@ -83,8 +103,7 @@
       height: 900,
       minWidth: 360,
       minHeight: 480,
-      decorations: false,
-      resizable: true,
+      ...childWindowChrome(),
     });
 
     popout.once("tauri://created", () => {
@@ -100,6 +119,7 @@
     popout
       .onCloseRequested(() => {
         preview.poppedOut = false;
+        preview.presenting = false;
         popoutCloseUnlisten?.();
         popoutCloseUnlisten = null;
       })
@@ -111,6 +131,47 @@
 
   function openPresentationMode() {
     openPreviewPopout(true);
+  }
+
+  // ── Command palette ───────────────────────────────────────────────────────
+
+  // Shared by the titlebar button and the palette, so it guards re-entry:
+  // `leave()` is async and a second call mid-flight tears down twice.
+  let returningHome = $state(false);
+
+  async function returnHome() {
+    if (returningHome) return;
+    returningHome = true;
+    const result = await workspace.leave();
+    result.match(
+      () => page.navigate("home"),
+      (err) => {
+        logError("Failed to return home:", err);
+        toast.error(`Failed to return home: ${err}`);
+      },
+    );
+    returningHome = false;
+  }
+
+  // `toggleSidebar` is missing on purpose: the palette supplies it from
+  // `useSidebar()`, which only resolves inside the provider below.
+  const paletteContext = {
+    togglePreview: () => (previewVisible = !previewVisible),
+    popoutPreview: () => void openPreviewPopout(),
+    startPresentation: openPresentationMode,
+    returnHome: () => void returnHome(),
+  };
+
+  function onWindowKeydown(event: KeyboardEvent) {
+    // Both default to a `Mod-p` chord, which the WebView would otherwise hand
+    // to its print dialog.
+    if (matchesCommand(event, "global.commandPalette")) {
+      event.preventDefault();
+      ui.togglePalette("commands");
+    } else if (matchesCommand(event, "global.quickOpen")) {
+      event.preventDefault();
+      ui.togglePalette("files");
+    }
   }
 
   onMount(() => {
@@ -160,6 +221,10 @@
         existing
           .onCloseRequested(() => {
             preview.poppedOut = false;
+            // The window that owned the presentation is going away; clear the
+            // shared flag or this window's Present button stays stuck on
+            // "exit" with nothing left to exit.
+            preview.presenting = false;
             popoutCloseUnlisten?.();
             popoutCloseUnlisten = null;
           })
@@ -188,6 +253,20 @@
   });
 </script>
 
+<svelte:window onkeydown={onWindowKeydown} />
+
+<!-- Navigation into this page is optimistic: the home page switches here
+     before `workspace.init` finishes, and this overlay covers the shell
+     until the critical open phase (watcher, main file, root) settles. The
+     deferred hydration (file tree, tab restore) continues behind it. Opaque
+     background so the half-hydrated editor never flashes through. -->
+{#if workspace.hydrating}
+  <div class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background">
+    <HugeiconsIcon icon={Loading03Icon} class="size-6 animate-spin text-muted-foreground" />
+    <p class="text-sm text-muted-foreground">Opening {workspaceName}…</p>
+  </div>
+{/if}
+
 <Sidebar.Provider class="has-titlebar h-full w-full min-h-0 flex-col overflow-hidden">
   <Titlebar
     variant="workspace"
@@ -197,6 +276,7 @@
     previewPoppedOut={preview.poppedOut}
     onTogglePreview={() => (previewVisible = !previewVisible)}
     onPopoutPreview={openPreviewPopout}
+    onReturnHome={() => void returnHome()}
   />
 
   <div class="flex min-h-0 w-full flex-1">
@@ -219,4 +299,6 @@
       </Resizable.PaneGroup>
     </main>
   </div>
+
+  <CommandPalette ctx={paletteContext} />
 </Sidebar.Provider>

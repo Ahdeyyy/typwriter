@@ -5,6 +5,7 @@ import type {
     FileTreeEntry,
     RecentWorkspaceEntry,
     FileContentResponse,
+    BibEntryDto,
     CompletionsResponse,
     TooltipResponse,
     JumpResponse,
@@ -16,9 +17,15 @@ import type {
     SvgExportConfig,
     RestorePoint,
     WorkspaceDiff,
+    PageDiffSide,
     GrammarConfig,
     GrammarReport,
-    GrammarRuleInfo
+    GrammarRuleInfo,
+    DisplayInfo,
+    PackageEntry,
+    SearchQuery,
+    SearchResults,
+    ReplaceOutcome
 } from '$lib/types';
 
 const toErrString = (e: unknown): string => String(e);
@@ -128,8 +135,88 @@ export function getLogFilePath() {
 
 // ─── Editor ───────────────────────────────────────────────────────────────────
 
+/** Named export configurations. Opaque JSON on the Rust side — the shape lives
+ *  in `$lib/export-presets.ts`, which validates whatever comes back. */
+export function getExportPresets() {
+    return ResultAsync.fromPromise(invoke<unknown>('get_export_presets'), toErrString);
+}
+
+export function setExportPresets(presets: unknown) {
+    return ResultAsync.fromPromise(
+        invoke<void>('set_export_presets', { presets }),
+        toErrString
+    );
+}
+
+/** Search every text file in the workspace. */
+export function searchWorkspace(query: SearchQuery) {
+    return ResultAsync.fromPromise(
+        invoke<SearchResults>('search_workspace', { query }),
+        toErrString
+    );
+}
+
+/** Replace across the workspace. Rust takes a restore point first, so the
+ *  whole edit can be undone from the history pane. */
+export function replaceInWorkspace(query: SearchQuery, replacement: string) {
+    return ResultAsync.fromPromise(
+        invoke<ReplaceOutcome>('replace_in_workspace', { query, replacement }),
+        toErrString
+    );
+}
+
+/** Packages in the Typst Universe index, one entry per package with its
+ *  versions folded together. Empty when the index could not be fetched —
+ *  offline is an empty list, not an error. */
+export function listPackages() {
+    return ResultAsync.fromPromise(invoke<PackageEntry[]>('list_packages'), toErrString);
+}
+
+/** App-wide snippets. Opaque JSON on the Rust side — the shape and its
+ *  validation live in `$lib/snippets.ts`. */
+export function getUserSnippets() {
+    return ResultAsync.fromPromise(invoke<unknown>('get_user_snippets'), toErrString);
+}
+
+export function setUserSnippets(snippets: unknown) {
+    return ResultAsync.fromPromise(
+        invoke<void>('set_user_snippets', { snippets }),
+        toErrString
+    );
+}
+
+/** Project snippets, read as the raw text of `.typwriter/snippets.json`.
+ *  `null` covers both "no workspace open" and "no snippet file" — to a caller
+ *  they mean the same thing, and the file is absent in most projects.
+ *
+ *  Raw text rather than parsed JSON because the file is meant to be
+ *  hand-editable, and `$lib/snippets.ts` owns the forgiving parse that reports
+ *  a malformed entry instead of dropping the whole set. */
+export function getProjectSnippets() {
+    return ResultAsync.fromPromise(invoke<string | null>('get_project_snippets'), toErrString);
+}
+
+/** Replace `.typwriter/snippets.json`, creating the directory if needed.
+ *  Rejects when no workspace is open. */
+export function setProjectSnippets(contents: string) {
+    return ResultAsync.fromPromise(
+        invoke<void>('set_project_snippets', { contents }),
+        toErrString
+    );
+}
+
 export function readFile(path: string) {
     return ResultAsync.fromPromise(invoke<FileContentResponse>('read_file', { path }), toErrString);
+}
+
+/** Parse a bibliography file (`.bib`/`.yml`/`.yaml`) into citation entries.
+ *  Parsing happens in Rust with the compiler's own hayagriva library, so a
+ *  file Typst accepts is exactly a file this accepts. */
+export function parseBibliography(path: string) {
+    return ResultAsync.fromPromise(
+        invoke<BibEntryDto[]>('parse_bibliography', { path }),
+        toErrString
+    );
 }
 
 /** Select the file in the OS file manager. Rust rejects paths outside the
@@ -143,9 +230,19 @@ export function openFileExternally(path: string) {
     return ResultAsync.fromPromise(invoke<void>('open_file_externally', { path }), toErrString);
 }
 
+/** Monotonic ordering token for shadow writes.
+ *
+ *  `update_file_content` runs off the main thread on the Rust side, so writes
+ *  no longer complete in the order they were sent. Every call carries the next
+ *  value of this counter and the backend drops anything older than what it has
+ *  already applied. It must never reset for the lifetime of the window — a
+ *  per-file counter that restarts (as the editor store's scheduling versions
+ *  do) would make the backend reject legitimate writes. */
+let shadowWriteSeq = 0;
+
 export function updateFileContent(path: string, content: string) {
     return ResultAsync.fromPromise(
-        invoke<void>('update_file_content', { path, content }),
+        invoke<void>('update_file_content', { path, content, version: ++shadowWriteSeq }),
         toErrString
     );
 }
@@ -199,6 +296,28 @@ export function getZoom() {
 
 export function setVisiblePage(page: number) {
     invoke<void>('set_visible_page', { page }).catch(() => {});
+}
+
+// ─── Presentation mode ────────────────────────────────────────────────────────
+
+/** Every connected display, annotated so the picker can mark the projector
+ *  (`isMainWindow === false`) and the primary screen. */
+export function listDisplays() {
+    return ResultAsync.fromPromise(invoke<DisplayInfo[]>('list_displays'), toErrString);
+}
+
+/** Put the preview popout borderless-fullscreen and always-on-top on `display`
+ *  (auto-picks the display the editor isn't on when omitted). Resolves with the
+ *  display it landed on, whose pixel width sets the slide render scale. */
+export function enterPresentation(display: string | null) {
+    return ResultAsync.fromPromise(
+        invoke<DisplayInfo>('enter_presentation', { display }),
+        toErrString
+    );
+}
+
+export function exitPresentation() {
+    return ResultAsync.fromPromise(invoke<void>('exit_presentation'), toErrString);
 }
 
 // ─── Language server (tinymist) bridge ───
@@ -384,6 +503,43 @@ export function vcsRestoreFile(commitId: string, path: string) {
     );
 }
 
+/** Queue a page-level comparison and return its request id.
+ *
+ *  This one has to compile the restore point before it can answer, so it does
+ *  not return the diff: the result lands on `vcs:page-diff` (or
+ *  `vcs:page-diff-error`) tagged with the id returned here. Pass `toId` to
+ *  compare two restore points; omit it to compare against the document the
+ *  preview is currently showing. */
+export function vcsPageDiffRequest(fromId: string, toId?: string | null) {
+    return ResultAsync.fromPromise(
+        invoke<number>('vcs_page_diff_request', { fromId, toId: toId ?? null }),
+        toErrString
+    );
+}
+
+/** Abandon the page comparison: stops the worker and lets the backend drop
+ *  the laid-out documents it was holding for full-size renders. Call it when
+ *  you stop *looking* at a comparison — asking for a different one supersedes
+ *  the old request on its own. */
+export function vcsPageDiffCancel() {
+    return ResultAsync.fromPromise(invoke<void>('vcs_page_diff_cancel'), toErrString);
+}
+
+/** Render one page of the last comparison at `scale` (device pixels per typst
+ *  point) and return its `previewimg://` path component, ready for
+ *  `buildPreviewUrl`. The contact-sheet thumbnails are 72 dpi; this is how a
+ *  page gets opened at a resolution you can actually read.
+ *
+ *  Cheap — the backend still has the document laid out, so it is one
+ *  rasterization rather than a recompile — but it does fail once the
+ *  comparison has been released, which means "recompute it first". */
+export function vcsPageDiffRenderPage(side: PageDiffSide, pageIndex: number, scale: number) {
+    return ResultAsync.fromPromise(
+        invoke<string>('vcs_page_diff_render_page', { side, pageIndex, scale }),
+        toErrString
+    );
+}
+
 // ─── App init ─────────────────────────────────────────────────────────────────
 
 export function isFontsLoaded() {
@@ -432,16 +588,18 @@ export interface AppSettings {
     ui_font_family: string;
     editor_font_family: string;
     editor_font_size: number;
-    light_theme: string;
-    dark_theme: string;
+    theme: string;
     auto_check_updates: boolean;
     default_preview_zoom: number;
     default_preview_visible: boolean;
+    presentation_display: string | null;
     show_line_numbers: boolean;
     show_indentation_markers: boolean;
     spellcheck: boolean;
     tab_width: number;
     word_wrap: boolean;
+    focus_mode: boolean;
+    typewriter_scrolling: boolean;
     auto_save_enabled: boolean;
     auto_save_delay_ms: number;
     format_before_save: boolean;

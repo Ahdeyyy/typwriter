@@ -43,6 +43,54 @@ export type JumpResponse =
 /** Filesystem metadata for a file the editor can't render. Every field is
  *  optional — a stat can fail, and not every filesystem records a birth time.
  *  Timestamps are milliseconds since the Unix epoch. */
+/** A project-wide search hit. Offsets and columns are UTF-16 code units,
+ *  CodeMirror's coordinate space. */
+export interface SearchHit {
+    path: string;
+    /** 1-based. */
+    line: number;
+    /** The whole line, for display. */
+    preview: string;
+    matchStart: number;
+    matchEnd: number;
+    /** Absolute offset in the file, for jumping. */
+    offset: number;
+}
+
+export interface SearchResults {
+    hits: SearchHit[];
+    filesSearched: number;
+    /** True when the hit cap cut the list short. */
+    truncated: boolean;
+}
+
+export interface SearchQuery {
+    query: string;
+    caseSensitive: boolean;
+    wholeWord: boolean;
+    regex: boolean;
+    /** Empty means every text file. */
+    extensions: string[];
+}
+
+export interface ReplaceOutcome {
+    filesChanged: number;
+    replacements: number;
+    /** Restore point taken before writing. */
+    restorePoint: string | null;
+}
+
+/** One package from the Typst Universe index, versions folded together. */
+export interface PackageEntry {
+    namespace: string;
+    name: string;
+    /** Newest version. */
+    version: string;
+    /** Every listed version, newest first. */
+    versions: string[];
+    description: string | null;
+}
+
 export interface FileMeta {
     size: number | null;
     modified: number | null;
@@ -55,6 +103,16 @@ export type FileContentResponse =
     | { type: 'text'; content: string }
     | { type: 'image'; path: string; mime: string }
     | { type: 'unsupported'; meta: FileMeta };
+
+/** One citation target from a parsed bibliography file (Rust
+ *  `commands/bibliography.rs` → `BibEntryDto`). */
+export interface BibEntryDto {
+    key: string;
+    entryType: string;
+    title: string | null;
+    author: string | null;
+    year: string | null;
+}
 
 // ─── Click / Jump ─────────────────────────────────────────────────────────────
 
@@ -82,6 +140,21 @@ export interface PreviewPositionResponse {
     /** Rectangles covering the text run the caret maps to on the resolved page —
      *  one per rendered line. Empty when there's nothing to highlight. */
     highlights: PreviewHighlightRect[];
+}
+
+/** A scroll-to request for the preview pane, published on the shared
+ *  `preview:scrollTarget` channel so every window showing the preview follows.
+ *  Offsets are typst points from the page's top-left corner. */
+export interface PreviewScrollTarget {
+    /** 0-based page index. */
+    page: number;
+    /** Horizontal offset in typst points from the left edge of the page. */
+    x: number;
+    /** Vertical offset in typst points from the top edge of the page. */
+    y: number;
+    /** Land without the smooth animation — a document switch resets the reader
+     *  to the first page rather than travelling there. */
+    instant?: boolean;
 }
 
 export type CompileReason =
@@ -177,10 +250,30 @@ export interface CompileStatePayload {
     status: 'started' | 'idle';
     revision: number;
     reason: CompileReason;
+    /** The pages on screen are from an older compile: the most recent one
+     *  failed to produce a document. The backend keeps the last good render
+     *  rather than blanking the pane, so this is how the UI knows to say so. */
+    stale: boolean;
+}
+
+/** What happened to a path on disk between two quiet moments — mirrors
+ *  `ChangeKind` in src-tauri/src/workspace/watcher.rs. */
+export type WorkspaceChangeKind = 'created' | 'modified' | 'removed' | 'renamed';
+
+export interface WorkspaceFileChange {
+    /** Absolute path. For a rename this is where the entry *was*. */
+    path: string;
+    kind: WorkspaceChangeKind;
+    /** Where a renamed entry landed. Absent for every other kind. */
+    to?: string;
+    /** Whether the entry is a directory. Always false for `removed`, where
+     *  there is nothing left to ask — a removed path is treated as covering
+     *  everything beneath it either way. */
+    isDir: boolean;
 }
 
 export interface WorkspaceFilesChangedPayload {
-    paths: string[];
+    changes: WorkspaceFileChange[];
 }
 
 // ─── Versioning / Restore points ──────────────────────────────────────────────
@@ -221,6 +314,56 @@ export interface FileDiff {
 
 export interface WorkspaceDiff {
     files: FileDiff[];
+}
+
+// ─── Page-level diff ──────────────────────────────────────────────────────────
+//
+// "Which pages changed since this restore point." Computed by compiling the
+// snapshot and aligning its page fingerprints against the current document's,
+// so it arrives asynchronously over `vcs:page-diff` rather than as a command
+// return value — see `vcsPageDiffRequest`.
+
+export type PageChangeKind = 'unchanged' | 'changed' | 'added' | 'removed';
+
+/** Which of the two compared documents a full-size page render comes from. */
+export type PageDiffSide = 'before' | 'after';
+
+export interface PageDiffEntry {
+    kind: PageChangeKind;
+    /** 0-based page index in the older document; `null` for added pages. */
+    before_index: number | null;
+    /** 0-based page index in the newer document; `null` for removed pages. */
+    after_index: number | null;
+    /** `previewimg://` path component for the thumbnail, or `null` when the
+     *  page doesn't exist on that side or fell outside the render budget. */
+    before_key: string | null;
+    after_key: string | null;
+}
+
+export interface PageDiffPayload {
+    request_id: number;
+    from_id: string;
+    /** `null` when the comparison target is the current working document. */
+    to_id: string | null;
+    before_pages: number;
+    after_pages: number;
+    changed: number;
+    added: number;
+    removed: number;
+    unchanged: number;
+    entries: PageDiffEntry[];
+    /** Some entries carry no thumbnails: the render budget ran out. */
+    truncated: boolean;
+    elapsed_ms: number;
+}
+
+export interface PageDiffStartedPayload {
+    request_id: number;
+}
+
+export interface PageDiffErrorPayload {
+    request_id: number;
+    message: string;
 }
 
 // ─── Grammar checking ─────────────────────────────────────────────────────────
@@ -289,4 +432,25 @@ export interface GrammarRuleInfo {
     name: string;
     description: string;
     enabled: boolean;
+}
+
+// ─── Presentation mode ────────────────────────────────────────────────────────
+
+/** One connected display, as reported by the `list_displays` command. */
+export interface DisplayInfo {
+    /** Stable-ish OS identifier (`\.\DISPLAY2` on Windows) — what gets
+     *  persisted when the user pins a display for presenting. */
+    id: string;
+    /** Raw monitor name, when the OS supplies one. */
+    name: string | null;
+    /** Origin in the virtual desktop, physical pixels. */
+    x: number;
+    y: number;
+    /** Resolution in physical pixels. */
+    width: number;
+    height: number;
+    scaleFactor: number;
+    isPrimary: boolean;
+    /** The display the main editor window is currently on. */
+    isMainWindow: boolean;
 }

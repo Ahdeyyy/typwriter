@@ -5,11 +5,7 @@
   import {
     MinusSignIcon,
     MultiplicationSignIcon,
-    MaximizeIcon,
-    Square01Icon,
-    MaximizeScreenIcon,
     SquareIcon,
-    Copy01Icon,
     CopyIcon,
   } from "@hugeicons/core-free-icons";
   import { platform } from "$lib/stores/platform.svelte";

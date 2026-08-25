@@ -33,6 +33,18 @@ const KEY_ONBOARDING_COMPLETED: &str = "settings.onboarding_completed";
 /// reason as the key above — it's a nested structure with rule maps and word
 /// lists, and `set_app_settings` round-trips the whole struct.
 const KEY_GRAMMAR: &str = "settings.grammar";
+/// Named export configurations. Kept out of `AppSettings` for the same reason
+/// as the keys above, and one more specific to these: presets are edited from
+/// the export dialog in the *main* window, while the settings window
+/// round-trips the whole `AppSettings` struct. Sharing that struct would let a
+/// settings save clobber a preset saved moments earlier in the other window.
+const KEY_EXPORT_PRESETS: &str = "settings.export_presets";
+/// App-wide snippets — the ones that follow the user across every project.
+/// Project snippets live in the workspace's own `.typwriter/snippets.json`
+/// instead, so they travel with the document. Same reasoning as the key above
+/// for staying out of `AppSettings`: these are edited from the settings window
+/// *and* replaceable from the editor, so they need an independent write path.
+const KEY_SNIPPETS: &str = "settings.snippets";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -41,16 +53,27 @@ pub struct AppSettings {
     pub ui_font_family: String,
     pub editor_font_family: String,
     pub editor_font_size: u8,
-    pub light_theme: String,
-    pub dark_theme: String,
+    /// Palette applied in both light and dark mode, picked via `data-theme`
+    /// on the document root. Each theme still ships a light and a dark
+    /// variant in CSS; only the selection is shared.
+    pub theme: String,
     pub auto_check_updates: bool,
     pub default_preview_zoom: f64,
     pub default_preview_visible: bool,
+    /// Display to project onto in presentation mode, as an OS display id
+    /// (`\\.\DISPLAY2`). `None` means auto — pick whichever display the main
+    /// editor window isn't on. A pinned display that is no longer connected
+    /// falls back to auto rather than retargeting a different screen.
+    pub presentation_display: Option<String>,
     pub show_line_numbers: bool,
     pub show_indentation_markers: bool,
     pub spellcheck: bool,
     pub tab_width: u8,
     pub word_wrap: bool,
+    /// Dim every paragraph except the one the caret is in.
+    pub focus_mode: bool,
+    /// Keep the caret line vertically centred as the user types.
+    pub typewriter_scrolling: bool,
 
     // Auto-save
     pub auto_save_enabled: bool,
@@ -98,16 +121,18 @@ impl Default for AppSettings {
             ui_font_family: "IBM Plex Sans Variable".to_string(),
             editor_font_family: "monospace".to_string(),
             editor_font_size: 13,
-            light_theme: "default".to_string(),
-            dark_theme: "default".to_string(),
+            theme: "default".to_string(),
             auto_check_updates: true,
             default_preview_zoom: 2.0,
             default_preview_visible: true,
+            presentation_display: None,
             show_line_numbers: false,
             show_indentation_markers: true,
             spellcheck: true,
             tab_width: 2,
             word_wrap: true,
+            focus_mode: false,
+            typewriter_scrolling: false,
 
             auto_save_enabled: true,
             auto_save_delay_ms: 1500,
@@ -200,6 +225,58 @@ pub fn write_grammar_config(handle: &AppHandle, config: &GrammarConfig) {
     }
 }
 
+/// Read the persisted export presets.
+///
+/// Stored and returned as opaque JSON: the shape belongs to the frontend
+/// (`src/lib/export-presets.ts`), which validates and repairs it on load. Rust
+/// giving these a struct would mean two definitions to keep in step for data it
+/// never inspects.
+#[tauri::command(async)]
+pub fn get_export_presets(handle: AppHandle) -> JsonValue {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        warn!("settings: could not open {STORE_FILE}");
+        return json!([]);
+    };
+    store.get(KEY_EXPORT_PRESETS).unwrap_or_else(|| json!([]))
+}
+
+#[tauri::command(async)]
+pub fn set_export_presets(handle: AppHandle, presets: JsonValue) -> Result<(), String> {
+    let store = handle
+        .store(STORE_FILE)
+        .map_err(|err| format!("could not open {STORE_FILE}: {err}"))?;
+    store.set(KEY_EXPORT_PRESETS, presets);
+    store
+        .save()
+        .map_err(|err| format!("failed to save export presets: {err}"))?;
+    info!("settings: export presets saved");
+    Ok(())
+}
+
+/// Read the app-wide snippets. Opaque JSON, validated by the frontend
+/// (`src/lib/snippets.ts`) — see [`get_export_presets`] for the reasoning.
+#[tauri::command(async)]
+pub fn get_user_snippets(handle: AppHandle) -> JsonValue {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        warn!("settings: could not open {STORE_FILE}");
+        return json!([]);
+    };
+    store.get(KEY_SNIPPETS).unwrap_or_else(|| json!([]))
+}
+
+#[tauri::command(async)]
+pub fn set_user_snippets(handle: AppHandle, snippets: JsonValue) -> Result<(), String> {
+    let store = handle
+        .store(STORE_FILE)
+        .map_err(|err| format!("could not open {STORE_FILE}: {err}"))?;
+    store.set(KEY_SNIPPETS, snippets);
+    store
+        .save()
+        .map_err(|err| format!("failed to save snippets: {err}"))?;
+    info!("settings: app-wide snippets saved");
+    Ok(())
+}
+
 /// Load font directories from disk on startup.
 pub fn load_font_directories(handle: &AppHandle) -> Vec<PathBuf> {
     read_settings(handle)
@@ -211,7 +288,7 @@ pub fn load_font_directories(handle: &AppHandle) -> Vec<PathBuf> {
 
 // ─── Commands ───────────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_app_settings(handle: AppHandle) -> AppSettings {
     read_settings(&handle)
 }
@@ -240,7 +317,7 @@ pub fn set_onboarding_completed(handle: AppHandle, completed: bool) {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_app_settings(handle: AppHandle, settings: AppSettings) {
     write_settings(&handle, &settings);
     if let Some(policy) = handle.try_state::<Arc<RwLock<SnapshotPolicy>>>() {
@@ -265,7 +342,7 @@ pub fn formatter_config_from_handle(handle: &AppHandle) -> TypstyleConfig {
     formatter_config_from_settings(&read_settings(handle))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_typst_font_directories(
     handle: AppHandle,
     world: State<'_, Arc<EditorWorld>>,
@@ -307,7 +384,7 @@ pub fn set_typst_font_directories(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_font_families(world: State<'_, Arc<EditorWorld>>) -> Vec<String> {
     world.font_families()
 }

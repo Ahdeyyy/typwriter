@@ -23,6 +23,18 @@
 // correct with a direct `scrollTop` adjustment (exact, unlike `scrollIntoView`,
 // which resolves "nearest" against the scroller box we just established is the
 // wrong reference).
+//
+// Equally important is when NOT to correct. Scrolling the text under a finger
+// that is mid-gesture is a feedback loop, not a correction: the glyph the user
+// was pointing at moves, so the selection lands somewhere they never pointed,
+// so the head moves, so we scroll again. See `touching()`.
+//
+// Nor is the caret's position an invariant to be restored forever. Once the user
+// has scrolled the caret off screen themselves they are reading somewhere else,
+// and re-running this rule on the next viewport event drags them back — "it
+// always snaps back to the cursor". So a touch-scroll parks the plugin until the
+// caret is next put somewhere on purpose (a tap, an edit, a fresh focus) or the
+// keyboard opens anew. See `scrolledAway`.
 
 import { EditorView, ViewPlugin, type PluginValue, type ViewUpdate } from "@codemirror/view";
 import { keyboard, visibleViewportRect } from "./keyboard-visibility.svelte";
@@ -39,6 +51,14 @@ const MIN_CORRECTION_PX = 2;
 const SETTLE_DELAYS_MS = [0, 60, 160, 320, 500];
 /** How long after focus we assume a keyboard is on its way in. */
 const PREDICT_WINDOW_MS = 700;
+/**
+ * How long after a finger leaves the editor we keep treating the screen as
+ * being under a gesture. A lift is usually the middle of a gesture rather than
+ * the end of one — re-grabbing a selection handle, the second tap of a
+ * double-tap, the next flick of a scroll — and snapping the text in that gap is
+ * what turns "I lifted my finger for a moment" into "the editor moved".
+ */
+const GESTURE_GRACE_MS = 350;
 
 class CaretVisibility implements PluginValue {
   private readonly unsubscribe: () => void;
@@ -46,10 +66,48 @@ class CaretVisibility implements PluginValue {
   private timers: ReturnType<typeof setTimeout>[] = [];
   private frame = 0;
   private focusedAt = 0;
+  private pointersDown = 0;
+  private gestureEndedAt = 0;
+  /** The user has scrolled the caret out of view on purpose; stay out of it. */
+  private scrolledAway = false;
+  /** Where our own last correction left the scroller, to tell it from a gesture. */
+  private selfScrollTop = -1;
+  private keyboardWasVisible = false;
 
   private readonly onFocus = () => {
     this.focusedAt = Date.now();
+    // A fresh focus is a fresh keyboard: whatever the user was reading before,
+    // the caret they just aimed at is the thing that has to be visible now.
+    this.scrolledAway = false;
     this.settle();
+  };
+
+  // Only a scroll the user's own finger caused counts. Our corrections scroll
+  // the same element, and so does the browser when it lifts the caret after an
+  // edit — treating either as "the user looked away" would park the plugin
+  // exactly when it is needed.
+  private readonly onScroll = () => {
+    const top = this.view.scrollDOM.scrollTop;
+    if (Math.abs(top - this.selfScrollTop) < 1) return;
+    if (!this.touching()) return;
+    this.scrolledAway = true;
+    // Anything already queued was aimed at the pre-scroll geometry.
+    this.clearTimers();
+  };
+
+  private readonly onPointerDown = (e: PointerEvent) => {
+    if (e.pointerType === "mouse") return;
+    this.pointersDown++;
+  };
+
+  // Bound on the window, not the editor: a finger that starts on the text and
+  // lifts somewhere else (the toolbar, off the edge) must still clear the count,
+  // or corrections stay suspended for the rest of the session.
+  private readonly onPointerEnd = (e: PointerEvent) => {
+    if (e.pointerType === "mouse" || this.pointersDown === 0) return;
+    this.pointersDown--;
+    this.gestureEndedAt = Date.now();
+    this.settle(GESTURE_GRACE_MS);
   };
 
   constructor(private readonly view: EditorView) {
@@ -57,8 +115,20 @@ class CaretVisibility implements PluginValue {
     // resize; the ResizeObserver additionally covers the toolbar mounting and
     // the completion strip appearing, which move the scroller's edges without
     // touching the viewport.
-    this.unsubscribe = keyboard.onViewportChange(() => this.settle());
+    this.keyboardWasVisible = keyboard.visible;
+    this.unsubscribe = keyboard.onViewportChange(() => {
+      // A keyboard that has just come up takes a band of the screen the caret
+      // may have been sitting in; that is new occlusion, not the scroll position
+      // the user chose, so it overrides their choice to look elsewhere.
+      if (keyboard.visible && !this.keyboardWasVisible) this.scrolledAway = false;
+      this.keyboardWasVisible = keyboard.visible;
+      this.settle();
+    });
     view.contentDOM.addEventListener("focus", this.onFocus);
+    view.scrollDOM.addEventListener("scroll", this.onScroll, { passive: true });
+    view.dom.addEventListener("pointerdown", this.onPointerDown);
+    window.addEventListener("pointerup", this.onPointerEnd, true);
+    window.addEventListener("pointercancel", this.onPointerEnd, true);
     if (typeof ResizeObserver !== "undefined") {
       this.observer = new ResizeObserver(() => this.settle());
       this.observer.observe(view.scrollDOM);
@@ -70,14 +140,20 @@ class CaretVisibility implements PluginValue {
     // CodeMirror's own scrolling is the only thing acting and it can't see the
     // keyboard. Only worth checking while something is actually covering us.
     if (!u.selectionSet && !u.docChanged) return;
+    // Putting the caret somewhere — a tap, a keystroke, a toolbar insert — is
+    // the user pointing at it again, which ends any earlier "leave me where I
+    // scrolled to". (Scrolling dispatches no transaction, so this can't be the
+    // gesture undoing itself.)
+    this.scrolledAway = false;
     if (keyboard.visible || this.predicting()) this.schedule();
   }
 
-  /** Correct now, and again as the keyboard animation settles. */
-  private settle() {
+  /** Correct now, and again as the keyboard animation settles. `after` delays
+   *  the whole ramp — used to start it once a gesture's grace has expired. */
+  private settle(after = 0) {
     this.clearTimers();
     for (const delay of SETTLE_DELAYS_MS) {
-      this.timers.push(setTimeout(() => this.schedule(), delay));
+      this.timers.push(setTimeout(() => this.schedule(), after + delay));
     }
   }
 
@@ -98,30 +174,70 @@ class CaretVisibility implements PluginValue {
   }
 
   /**
+   * Whether a finger is on the editor, or recently was.
+   *
+   * A touch-scroll is the user deliberately looking somewhere else and the
+   * settle ramp is quite capable of firing mid-flick; the press that begins a
+   * long-press selection lands in this window too, before any range exists to
+   * notice. Either way the viewport belongs to the gesture, not to us.
+   */
+  private touching(): boolean {
+    return this.pointersDown > 0 || Date.now() - this.gestureEndedAt < GESTURE_GRACE_MS;
+  }
+
+  /**
    * The visible slice of the scroller, in client coordinates.
    *
    * While a keyboard is on its way in but not yet measurable, the band is cut
-   * short by the height of the last keyboard we saw. That is what makes the
-   * caret clear the keyboard as it opens instead of after it has landed — and,
-   * because Chrome only pans the visual viewport when the focused caret is
-   * *not* already visible, getting there first is also what stops the pan (and
-   * the misaligned shell it causes) from happening in the first place.
+   * short by the part of it the viewport has yet to account for. That is what
+   * makes the caret clear the keyboard as it opens instead of after it has
+   * landed — and, because Chrome only pans the visual viewport when the focused
+   * caret is *not* already visible, getting there first is also what stops the
+   * pan (and the misaligned shell it causes) from happening in the first place.
    *
-   * Safe against double-counting: `keyboard.visible` and the shell's height are
-   * published in the same pass, so "not visible" also means "not yet shortened".
+   * It is `keyboard.pending`, not `keyboard.lastHeight`, precisely because the
+   * two are not interchangeable mid-animation: the inset grows through values
+   * below the soft-keyboard threshold, which shrink `screen` while `visible` is
+   * still false. Subtracting the whole keyboard as well would cut the band to a
+   * fraction of the screen and shove the caret up to the top of it.
    */
   private safeBand(): { top: number; bottom: number } {
     const box = this.view.scrollDOM.getBoundingClientRect();
     const screen = visibleViewportRect();
     const top = Math.max(box.top, screen.top);
     let bottom = Math.min(box.bottom, screen.bottom);
-    if (this.predicting()) bottom = Math.min(bottom, screen.bottom - keyboard.lastHeight);
+    if (this.predicting()) bottom = Math.min(bottom, screen.bottom - keyboard.pending);
     return { top, bottom };
   }
 
   private correct() {
     const view = this.view;
     if (!view.dom.isConnected || !view.hasFocus) return;
+    // A range means a selection gesture is live: Android's drag handles, its
+    // magnifier and its own edge autoscroll are driving the viewport, and the
+    // finger is resting on a particular glyph. Scrolling the text out from under
+    // it re-aims the handle at whatever slid into that spot, which moves the
+    // head, which brings us back here to scroll again — the runaway that ends
+    // with the selection somewhere the user never pointed and the caret off
+    // screen. Nothing here is worth that: this plugin keeps a *caret* clear of
+    // the keyboard, and during a range selection there isn't one.
+    //
+    // It re-checks itself, so there is nothing to re-arm — collapsing the
+    // selection is a `selectionSet` and arrives through `update`.
+    if (!view.state.selection.main.empty) return;
+    // Scrolled away on purpose: the caret being off screen is the state the user
+    // asked for. Re-imposing the rule here is what made the editor unscrollable
+    // with the keyboard up — every pan, resize and settle tick yanked the text
+    // back. `update` and a fresh keyboard are what lift this.
+    if (this.scrolledAway) return;
+    if (this.touching()) {
+      // A gesture, on the other hand, can end without a `pointerup` we ever see
+      // — Android's selection handles are browser chrome and swallow their own
+      // touches — so the signal that brought us here has to be carried forward
+      // by hand or it is simply lost.
+      this.timers.push(setTimeout(() => this.schedule(), GESTURE_GRACE_MS));
+      return;
+    }
 
     const head = view.state.selection.main.head;
     const caret = view.coordsAtPos(head);
@@ -151,6 +267,9 @@ class CaretVisibility implements PluginValue {
     // scroller box. (`.cm-content` carries 40vh of bottom padding so there is
     // room to scroll a caret on the last line clear of the keyboard.)
     view.scrollDOM.scrollTop += delta;
+    // Remember where we left it: the scroll event this causes arrives later and
+    // must not be mistaken for the user pushing the text around.
+    this.selfScrollTop = view.scrollDOM.scrollTop;
   }
 
   private clearTimers() {
@@ -161,6 +280,10 @@ class CaretVisibility implements PluginValue {
   destroy() {
     this.unsubscribe();
     this.view.contentDOM.removeEventListener("focus", this.onFocus);
+    this.view.scrollDOM.removeEventListener("scroll", this.onScroll);
+    this.view.dom.removeEventListener("pointerdown", this.onPointerDown);
+    window.removeEventListener("pointerup", this.onPointerEnd, true);
+    window.removeEventListener("pointercancel", this.onPointerEnd, true);
     this.observer?.disconnect();
     this.observer = null;
     this.clearTimers();

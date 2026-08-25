@@ -42,6 +42,9 @@ pub use diff::{FileDiff, FileDiffStatus, WorkspaceDiff};
 pub use history::RestorePoint;
 pub use retention::RetentionPolicy;
 
+/// Workspace-relative path → blob hash, as recorded in a snapshot manifest.
+pub type SnapshotFiles = std::collections::BTreeMap<String, String>;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -111,6 +114,13 @@ pub struct VcsState {
     /// triggers when the user has configured a `min_interval_seconds`.
     /// `None` until the first successful auto-commit.
     last_auto_snapshot: Mutex<Option<Instant>>,
+    /// Serializes all snapshot writes. The initial seed runs on its own
+    /// thread (so opening a workspace never waits on it), which means it can
+    /// overlap a save/compile/file-op commit; manifests and HEAD are written
+    /// as separate files, so two racing commits could interleave into a
+    /// torn timeline. Holding this lock across `commit_if_changed` makes
+    /// commit ordering deterministic.
+    commit_lock: Mutex<()>,
 }
 
 impl VcsState {
@@ -118,17 +128,34 @@ impl VcsState {
         Self {
             root: RwLock::new(None),
             last_auto_snapshot: Mutex::new(None),
+            commit_lock: Mutex::new(()),
         }
     }
 
-    /// Bind the VCS to a workspace root and seed the timeline with an
-    /// initial snapshot if there's no history yet. Errors are logged and
-    /// swallowed — versioning failing must never block opening a workspace.
-    pub fn attach(self: &Arc<Self>, workspace_root: &Path) {
+    /// Bind the VCS to a workspace root. Cheap and synchronous — call this on
+    /// the workspace-open path. Pair it with [`Self::spawn_initial_snapshot`]
+    /// to seed the timeline without blocking the open.
+    pub fn bind_root(&self, workspace_root: &Path) {
         *self.root.write() = Some(workspace_root.to_path_buf());
         *self.last_auto_snapshot.lock() = None;
+    }
 
-        self.attach_initial(workspace_root);
+    /// Seed the timeline with an initial snapshot on a background thread, if
+    /// there's no history yet. Errors are logged and swallowed — versioning
+    /// failing must never block opening a workspace.
+    ///
+    /// Reads and hashes every file in the workspace, which is exactly the
+    /// work that made large workspaces slow to open when this ran inline, so
+    /// it must stay off the open path.
+    pub fn spawn_initial_snapshot(self: &Arc<Self>, workspace_root: &Path) {
+        let workspace_root = workspace_root.to_path_buf();
+        let state = Arc::clone(self);
+        let result = std::thread::Builder::new()
+            .name("vcs-initial-snapshot".into())
+            .spawn(move || state.attach_initial(&workspace_root));
+        if let Err(err) = result {
+            warn!("vcs::spawn_initial_snapshot: thread spawn failed err=\"{err}\"");
+        }
     }
 
     fn attach_initial(&self, workspace_root: &Path) {
@@ -178,6 +205,9 @@ impl VcsState {
         message: &str,
         retention: &RetentionPolicy,
     ) -> Result<Option<String>, String> {
+        // Held across the whole walk-hash-write pass so a backgrounded
+        // initial snapshot can't interleave with a save/compile commit.
+        let _guard = self.commit_lock.lock();
         let fs = LocalWorkingTreeFs;
         commit::commit_if_changed(root, &fs, trigger, message, retention)
     }
@@ -240,6 +270,24 @@ impl VcsState {
         let root = self.workspace_root().ok_or("No workspace open")?;
         let fs = LocalWorkingTreeFs;
         history::list_history(&root, &fs, limit)
+    }
+
+    /// The file map of a snapshot: workspace-relative (forward-slash) path →
+    /// blob hash. Deliberately *without* the blob bytes: a historical compile
+    /// only reads the handful of files the document actually imports, so
+    /// materializing the whole tree up front would be wasted work on any
+    /// workspace with sizeable assets. Pair it with [`Self::read_object`].
+    pub fn snapshot_files(&self, commit_id: &str) -> Result<SnapshotFiles, String> {
+        let root = self.workspace_root().ok_or("No workspace open")?;
+        let fs = LocalWorkingTreeFs;
+        Ok(store::find_snapshot_by_id(&fs, &root, commit_id)?.files)
+    }
+
+    /// Read one content-addressed blob out of the object store.
+    pub fn read_object(&self, hash: &str) -> Result<Vec<u8>, String> {
+        let root = self.workspace_root().ok_or("No workspace open")?;
+        let fs = LocalWorkingTreeFs;
+        store::read_blob(&fs, &root, hash)
     }
 
     /// Diff a snapshot against the current working tree.

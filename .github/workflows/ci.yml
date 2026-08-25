@@ -22,13 +22,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: "./apps/typwriter-desktop/src-tauri -> target"
+          workspaces: |
+            ./apps/typwriter-desktop/src-tauri -> target
+            ./apps/typwriter-mobile/src-tauri -> target
           key: ci
-      - name: cargo check
+      - name: cargo check (desktop)
         working-directory: apps/typwriter-desktop/src-tauri
         run: cargo check --all-targets
-      - name: cargo test
+      - name: cargo test (desktop)
         working-directory: apps/typwriter-desktop/src-tauri
+        run: cargo test
+      - name: cargo check (mobile)
+        working-directory: apps/typwriter-mobile/src-tauri
+        run: cargo check --all-targets
+      - name: cargo test (mobile)
+        working-directory: apps/typwriter-mobile/src-tauri
         run: cargo test
 
   frontend:
@@ -36,9 +44,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      # The hand-written Typst parser is duplicated in both apps and must stay
+      # byte-identical: it is shared by copy, not by package, because a
+      # workspace package would resolve its own @lezer/common and two copies
+      # collide NodeProp ids (highlighting silently renders as plain text).
+      # Every parser fix therefore has to land twice — this fails the build if
+      # only one copy got it.
+      - name: Typst parser copies are identical
+        run: |
+          diff -r \
+            apps/typwriter-desktop/src/lib/typst-codemirror-lang/lezer-typst \
+            apps/typwriter-mobile/src/lib/editor/typst-lang/lezer-typst
       - run: bun install
-      - name: svelte-check (desktop app)
-        working-directory: apps/typwriter-desktop
-        run: bun run check
+      # Runs svelte-check in all three apps via each one's check-types script.
       - name: typecheck all workspaces
         run: bun run check-types
+      # ESLint in all three apps. Formatting is not linted anywhere in this
+      # repo — there is no prettier config and the sources are hand-formatted.
+      - name: lint all workspaces
+        run: bun run lint
+      - name: bun test (desktop)
+        working-directory: apps/typwriter-desktop
+        run: bun test
+      - name: bun test (mobile)
+        working-directory: apps/typwriter-mobile
+        run: bun test

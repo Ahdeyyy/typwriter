@@ -7,6 +7,7 @@ use log::{error, info};
 use parking_lot::{Condvar, Mutex, RwLock};
 use std::{
     collections::HashMap,
+    ops::Range,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -85,6 +86,15 @@ pub struct EditorWorld {
     /// When present, this takes priority over reading from disk
     shadow: RwLock<HashMap<FileId, String>>,
 
+    /// Highest shadow-write version applied per file.
+    ///
+    /// Shadow writes run off the main thread, so two writes for the same file
+    /// can be in flight at once and complete out of order. Without this, a
+    /// slow older write could land after a newer one and leave the compiler
+    /// looking at text the user has already moved past. Guarded by the same
+    /// lock as `shadow` so the check and the write are atomic together.
+    shadow_versions: RwLock<HashMap<FileId, u64>>,
+
     /// Tauri app handle — used to emit download progress events
     app_handle: AppHandle,
 
@@ -158,6 +168,7 @@ impl EditorWorld {
             source_cache: Mutex::new(HashMap::new()),
             file_cache: Mutex::new(HashMap::new()),
             shadow: RwLock::new(HashMap::new()),
+            shadow_versions: RwLock::new(HashMap::new()),
             app_handle,
             packages,
             index_downloader: SystemDownloader::new(user_agent),
@@ -300,12 +311,18 @@ impl EditorWorld {
     }
 
     /// Update the workspace root and flush all file caches.
+    ///
+    /// Shadow versions are cleared here and *only* here. They deliberately
+    /// survive `shadow_commit` / `shadow_remove`: a save doesn't cancel a write
+    /// that is already in flight, and forgetting the high-water mark would let
+    /// that stale write be accepted afterwards and resurrect old text.
     pub fn set_root(&self, path: PathBuf) {
         *self.root.write() = path;
         *self.main.write() = None;
         self.source_cache.lock().clear();
         self.file_cache.lock().clear();
         self.shadow.write().clear();
+        self.shadow_versions.write().clear();
     }
 
     /// Convert an absolute path on disk to a local `FileId`.
@@ -321,15 +338,53 @@ impl EditorWorld {
         self.shadow.read().contains_key(&id)
     }
 
-    /// Called on every keystroke from the editor
-    /// Invalidates the source cache for this file so next compile re-reads it
-    pub fn shadow_write(&self, id: FileId, content: String) {
+    /// Called on every keystroke from the editor.
+    ///
+    /// Updates the cached [`Source`] **in place** rather than dropping it. This
+    /// is the difference between an incremental and a cold compile:
+    /// [`Source::replace`] diffs against the current text, reparses only the
+    /// changed range, and leaves every untouched [`SyntaxNode`] — and its span
+    /// number — exactly as it was. comemo keys its memoized `eval`/layout work
+    /// on those nodes, so the parts of the document the user didn't touch are
+    /// reused. Rebuilding with `Source::new` produces an all-new tree, which
+    /// invalidates everything and makes every keystroke pay a full re-evaluation.
+    ///
+    /// [`SyntaxNode`]: typst::syntax::SyntaxNode
+    /// `version` is the editor's monotonically increasing write counter for
+    /// this file. A write that is not newer than the last one applied is
+    /// dropped and this returns `false` — see [`Self::shadow_versions`].
+    pub fn shadow_write(&self, id: FileId, content: String, version: u64) -> bool {
+        // Take the version lock first and hold it across the whole update, so
+        // a concurrent write can't interleave between the check and the swap.
+        let mut versions = self.shadow_versions.write();
+        if !claim_write_version(&mut versions, id, version) {
+            return false;
+        }
+
+        {
+            let mut cache = self.source_cache.lock();
+            apply_edit_to_cache(&mut cache, id, &content);
+        }
+        // The shadow is still the authority for `has_shadow` and for rebuilding
+        // the source after an `invalidate_file` / root change drops the cache.
         self.shadow.write().insert(id, content);
-        // Invalidate source cache for this file only
-        self.source_cache.lock().remove(&id);
+        true
     }
 
-    /// Called after file is saved or when switching away
+    /// Called after the buffer has been written to disk.
+    ///
+    /// The shadow goes away — disk is authoritative again — but the parsed
+    /// [`Source`] is deliberately *kept*: it already holds exactly the bytes
+    /// that were just written, so dropping it would make the compile that
+    /// `save_file` kicks off immediately afterwards re-read and fully reparse a
+    /// file whose tree we are already holding.
+    pub fn shadow_commit(&self, id: FileId) {
+        self.shadow.write().remove(&id);
+    }
+
+    /// Called when unsaved edits are discarded — the buffer is thrown away and
+    /// disk becomes the truth again, so the parsed tree (which reflects the
+    /// discarded edits) must go with it.
     pub fn shadow_remove(&self, id: FileId) {
         self.shadow.write().remove(&id);
         self.source_cache.lock().remove(&id);
@@ -459,6 +514,45 @@ impl World for EditorWorld {
 
     fn today(&self, offset: Option<Duration>) -> Option<Datetime> {
         today_with_offset(chrono::Utc::now(), offset)
+    }
+}
+
+/// Record `version` as the newest write applied to `id`, returning whether it
+/// actually is newer.
+///
+/// The ordering guard for concurrent shadow writes. Free-standing so the rule
+/// can be tested without an `AppHandle`; the caller holds the write lock across
+/// the check and the update, which is what makes it atomic.
+fn claim_write_version(versions: &mut HashMap<FileId, u64>, id: FileId, version: u64) -> bool {
+    if versions.get(&id).is_some_and(|&applied| version <= applied) {
+        return false;
+    }
+    versions.insert(id, version);
+    true
+}
+
+/// Install `content` as the cached parse tree for `id`, reparsing incrementally
+/// when a tree is already cached.
+///
+/// Returns the byte range that was actually reparsed, or `None` when there was
+/// no cached tree to edit and the file had to be parsed from scratch. That
+/// return value is what the tests assert on: it is the only externally visible
+/// evidence that an edit stayed incremental instead of silently regressing to a
+/// full reparse.
+///
+/// Free-standing (rather than a method) so it can be unit-tested without an
+/// `AppHandle`, which `EditorWorld::new` requires.
+fn apply_edit_to_cache(
+    cache: &mut HashMap<FileId, Source>,
+    id: FileId,
+    content: &str,
+) -> Option<Range<usize>> {
+    match cache.get_mut(&id) {
+        Some(source) => Some(source.replace(content)),
+        None => {
+            cache.insert(id, Source::new(id, content.to_string()));
+            None
+        }
     }
 }
 
@@ -608,10 +702,276 @@ fn fetch_package_index(downloader: &SystemDownloader) -> Vec<(PackageSpec, Optio
 
 #[cfg(test)]
 mod tests {
-    use super::today_from_secs;
+    use super::{apply_edit_to_cache, claim_write_version, local_file_id, today_from_secs};
     use chrono::{TimeZone, Utc};
+    use std::collections::HashMap;
+    use std::path::Path;
+    use typst::syntax::{FileId, Source, SyntaxKind, SyntaxNode};
 
     const HOUR: i32 = 3600;
+
+    // ─── Shadow writes / incremental reparse ────────────────────────────────
+    //
+    // `apply_edit_to_cache` is the per-keystroke hot path. Two things must hold
+    // and are easy to regress independently:
+    //
+    //   1. Correctness — the cached tree must always parse exactly the text the
+    //      editor last sent. Everything downstream (compile, diagnostics,
+    //      typst-ide) reads through it.
+    //   2. Incrementality — a small edit must reparse a small range. Going back
+    //      to `Source::new` would keep every correctness test green while
+    //      silently costing a full re-evaluation on every keystroke, so the
+    //      reparsed range is asserted directly.
+
+    fn test_id(name: &str) -> FileId {
+        local_file_id(Path::new(name)).expect("valid virtual path")
+    }
+
+    fn count_kind(node: &SyntaxNode, kind: SyntaxKind) -> usize {
+        let here = usize::from(node.kind() == kind);
+        here + node.children().map(|child| count_kind(child, kind)).sum::<usize>()
+    }
+
+    /// A document big enough that a full reparse is clearly distinguishable
+    /// from an incremental one by the size of the reparsed range.
+    fn big_doc(body: &str) -> String {
+        let filler = "Some ordinary paragraph text that just takes up room.\n\n";
+        let mut out = String::new();
+        for i in 0..200 {
+            out.push_str(&format!("= Section {i}\n\n"));
+            out.push_str(filler);
+        }
+        out.push_str(body);
+        out.push_str("\n\n");
+        for i in 200..400 {
+            out.push_str(&format!("= Section {i}\n\n"));
+            out.push_str(filler);
+        }
+        out
+    }
+
+    #[test]
+    fn cold_cache_parses_from_scratch() {
+        let mut cache: HashMap<FileId, Source> = HashMap::new();
+        let id = test_id("main.typ");
+
+        // `None` marks the full-parse path: there was no tree to edit.
+        assert_eq!(apply_edit_to_cache(&mut cache, id, "= Hello\n"), None);
+        assert_eq!(cache[&id].text(), "= Hello\n");
+    }
+
+    #[test]
+    fn warm_cache_takes_the_edit_path_and_keeps_text_exact() {
+        // Scope here is the *edit path* and text correctness. How much gets
+        // reparsed is not asserted: on a document this small the reparser
+        // legitimately widens to the enclosing markup block (which is the whole
+        // file), and there is nothing to save at that size anyway. The size
+        // guarantee is covered by `small_edit_in_large_document_stays_incremental`.
+        let mut cache: HashMap<FileId, Source> = HashMap::new();
+        let id = test_id("main.typ");
+
+        apply_edit_to_cache(&mut cache, id, "= Hello\n\nworld\n");
+        let range = apply_edit_to_cache(&mut cache, id, "= Hello\n\nworlds\n")
+            .expect("second write must take the incremental path");
+
+        assert_eq!(cache[&id].text(), "= Hello\n\nworlds\n");
+        assert!(range.end <= cache[&id].text().len());
+    }
+
+    #[test]
+    fn small_edit_in_large_document_stays_incremental() {
+        // This is the regression guard for the optimization itself. Reverting
+        // `shadow_write` to `Source::new` (or clearing the cache first) makes
+        // this fail, while every correctness test below still passes.
+        let mut cache: HashMap<FileId, Source> = HashMap::new();
+        let id = test_id("main.typ");
+
+        let before = big_doc("The quick brown fox.");
+        let after = big_doc("The quick brown fix.");
+        apply_edit_to_cache(&mut cache, id, &before);
+
+        let range = apply_edit_to_cache(&mut cache, id, &after)
+            .expect("warm cache must reparse incrementally");
+
+        assert_eq!(cache[&id].text(), after);
+        // One character changed in a ~40 KB document. Allow generous slack for
+        // the reparser widening to a safe node boundary, but nothing close to
+        // the whole file.
+        assert!(
+            range.len() < after.len() / 10,
+            "reparsed {} bytes of a {} byte document — incremental reparse regressed",
+            range.len(),
+            after.len(),
+        );
+    }
+
+    #[test]
+    fn sequential_edits_accumulate_exactly() {
+        // Mirrors a burst of keystrokes: every intermediate state must be the
+        // text the editor sent, not a merge artifact of the incremental path.
+        let mut cache: HashMap<FileId, Source> = HashMap::new();
+        let id = test_id("main.typ");
+
+        let states = [
+            "#let x = 1\n",
+            "#let x = 12\n",
+            "#let x = 12\n\n#x\n",
+            "#let x = 12\n\n#(x + 1)\n",
+            "#let xs = (1, 2)\n\n#(xs.at(0) + 1)\n",
+        ];
+        for state in states {
+            apply_edit_to_cache(&mut cache, id, state);
+            assert_eq!(cache[&id].text(), state);
+        }
+    }
+
+    #[test]
+    fn incremental_reparse_keeps_the_tree_structurally_correct() {
+        // An incremental reparse that silently corrupted the tree would still
+        // round-trip `text()`, so assert on parsed structure too.
+        let mut cache: HashMap<FileId, Source> = HashMap::new();
+        let id = test_id("main.typ");
+
+        apply_edit_to_cache(&mut cache, id, "= One\n\nbody\n\n= Two\n\nbody\n");
+        let incremental_headings = {
+            apply_edit_to_cache(&mut cache, id, "= One\n\nbody\n\n= Two\n\nbody\n\n= Three\n\nbody\n");
+            count_kind(cache[&id].root(), SyntaxKind::Heading)
+        };
+
+        // Compare against a from-scratch parse of the same final text.
+        let fresh = Source::new(id, cache[&id].text().to_string());
+        assert_eq!(incremental_headings, count_kind(fresh.root(), SyntaxKind::Heading));
+        assert_eq!(incremental_headings, 3);
+    }
+
+    #[test]
+    fn deleting_a_large_region_is_handled() {
+        let mut cache: HashMap<FileId, Source> = HashMap::new();
+        let id = test_id("main.typ");
+
+        apply_edit_to_cache(&mut cache, id, &big_doc("keep me"));
+        apply_edit_to_cache(&mut cache, id, "= Only this survives\n");
+
+        assert_eq!(cache[&id].text(), "= Only this survives\n");
+        assert_eq!(count_kind(cache[&id].root(), SyntaxKind::Heading), 1);
+    }
+
+    #[test]
+    fn rewriting_the_whole_document_is_handled() {
+        let mut cache: HashMap<FileId, Source> = HashMap::new();
+        let id = test_id("main.typ");
+
+        apply_edit_to_cache(&mut cache, id, "#set page(width: 10cm)\n= A\n");
+        apply_edit_to_cache(&mut cache, id, "$ integral_0^1 x dif x $\n");
+
+        assert_eq!(cache[&id].text(), "$ integral_0^1 x dif x $\n");
+        assert_eq!(count_kind(cache[&id].root(), SyntaxKind::Heading), 0);
+    }
+
+    #[test]
+    fn rewriting_to_identical_content_is_a_no_op() {
+        // Idle-save and format-on-save both re-send unchanged text; that must
+        // not disturb the cached tree.
+        let mut cache: HashMap<FileId, Source> = HashMap::new();
+        let id = test_id("main.typ");
+
+        let text = "= Stable\n\nUnchanged body.\n";
+        apply_edit_to_cache(&mut cache, id, text);
+        let range = apply_edit_to_cache(&mut cache, id, text).expect("warm cache");
+
+        assert_eq!(cache[&id].text(), text);
+        assert!(range.is_empty(), "identical content should reparse nothing");
+    }
+
+    #[test]
+    fn edits_are_isolated_per_file() {
+        // The cache is keyed by FileId; a write to one file must never disturb
+        // another's tree.
+        let mut cache: HashMap<FileId, Source> = HashMap::new();
+        let main = test_id("main.typ");
+        let chapter = test_id("chapters/one.typ");
+
+        apply_edit_to_cache(&mut cache, main, "= Main\n");
+        apply_edit_to_cache(&mut cache, chapter, "= Chapter\n");
+        apply_edit_to_cache(&mut cache, main, "= Main edited\n");
+
+        assert_eq!(cache[&main].text(), "= Main edited\n");
+        assert_eq!(cache[&chapter].text(), "= Chapter\n");
+    }
+
+    // ─── Shadow write ordering ──────────────────────────────────────────────
+    //
+    // `update_file_content` runs off the main thread, so writes for one file
+    // can complete out of order. Before that, Tauri's main-thread queue gave
+    // ordering for free; `claim_write_version` is what replaces it. If it ever
+    // accepts a stale write, the compiler renders text the user has already
+    // typed past — a silent, intermittent wrong-preview bug.
+
+    #[test]
+    fn first_write_for_a_file_is_always_accepted() {
+        let mut versions = HashMap::new();
+        assert!(claim_write_version(&mut versions, test_id("main.typ"), 1));
+    }
+
+    #[test]
+    fn newer_writes_are_accepted_in_order() {
+        let mut versions = HashMap::new();
+        let id = test_id("main.typ");
+        for version in 1..=5 {
+            assert!(claim_write_version(&mut versions, id, version));
+        }
+    }
+
+    #[test]
+    fn a_write_that_lands_late_is_dropped() {
+        // Versions 7 and 8 are sent; 8 wins the race and lands first. 7 must
+        // not be allowed to overwrite it afterwards.
+        let mut versions = HashMap::new();
+        let id = test_id("main.typ");
+
+        assert!(claim_write_version(&mut versions, id, 8));
+        assert!(
+            !claim_write_version(&mut versions, id, 7),
+            "a write older than the applied one must be dropped",
+        );
+        assert_eq!(versions[&id], 8);
+    }
+
+    #[test]
+    fn a_replayed_write_is_dropped() {
+        let mut versions = HashMap::new();
+        let id = test_id("main.typ");
+
+        assert!(claim_write_version(&mut versions, id, 3));
+        assert!(!claim_write_version(&mut versions, id, 3));
+    }
+
+    #[test]
+    fn write_versions_are_tracked_per_file() {
+        // The counter is global across files, so a high version on one file
+        // must not block a lower — but still newer — version on another.
+        let mut versions = HashMap::new();
+        let main = test_id("main.typ");
+        let chapter = test_id("chapter.typ");
+
+        assert!(claim_write_version(&mut versions, main, 100));
+        assert!(claim_write_version(&mut versions, chapter, 4));
+        assert!(claim_write_version(&mut versions, chapter, 5));
+        assert!(!claim_write_version(&mut versions, main, 99));
+    }
+
+    #[test]
+    fn cached_source_keeps_its_file_id() {
+        // Diagnostic spans and click-to-source resolve through `Source::id`;
+        // an incremental edit must not re-key the tree.
+        let mut cache: HashMap<FileId, Source> = HashMap::new();
+        let id = test_id("nested/deep/main.typ");
+
+        apply_edit_to_cache(&mut cache, id, "= A\n");
+        apply_edit_to_cache(&mut cache, id, "= B\n");
+
+        assert_eq!(cache[&id].id(), id);
+    }
 
     /// A `Datetime` exposes its components via the typst foundations API; pull
     /// them back out for assertions.

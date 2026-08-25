@@ -2,7 +2,7 @@ import { Type } from "./types"
 import { Elt, TypstParseContext } from "./parser"
 import { Scanner, Ch, isAlpha, isDigit, isIdentStart, isIdentChar, isNewline, isLineWhitespace, isWhitespace } from "./scanner"
 import { parseMathContent } from "./math"
-import { parseCodeExpr, parseCodeBlock } from "./code"
+import { parseCodeExpr } from "./code"
 
 /// Parse top-level markup content. Returns a list of elements that
 /// become children of the Document node.
@@ -73,7 +73,6 @@ export function parseMarkupContent(
 
   // Track whether we're at the start of a line (for headings, lists, etc.)
   let atLineStart = atLineStartInit
-  let lineIndent = 0
 
   while (!s.done) {
     // Check for close delimiter
@@ -108,8 +107,6 @@ export function parseMarkupContent(
       if (ch === Ch.CarriageReturn) s.eat(Ch.Newline)
 
       // Check for paragraph break (blank line)
-      let blankCount = 0
-      const savedPos = s.pos
       let isParbreak = false
       // Skip whitespace-only lines
       while (!s.done) {
@@ -132,11 +129,9 @@ export function parseMarkupContent(
       }
 
       atLineStart = true
-      lineIndent = 0
       // Count indent on new line
       const indentStart = s.pos
       s.eatWhile(isLineWhitespace)
-      lineIndent = s.pos - indentStart
       if (s.pos > indentStart && !isNewline(s.peek()) && !s.done) {
         // The whitespace before content is space
         elts.push(new Elt(Type.Space, indentStart, s.pos))
@@ -160,32 +155,32 @@ export function parseMarkupContent(
       // Heading: = at line start
       if (ch === Ch.Eq) {
         flushText()
-        const elt = parseHeading(s, ctx)
+        const elt = parseHeading(s, ctx, closeChar, containerClose)
         if (elt) { elts.push(elt); continue }
       }
 
       // Bullet list: - followed by space
       if (ch === Ch.Minus && isLineWhitespace(s.peek(1))) {
         flushText()
-        const elt = parseListItem(s, ctx)
+        const elt = parseListItem(s, ctx, closeChar, containerClose)
         if (elt) { elts.push(elt); continue }
       }
 
       // Numbered list: + followed by space, or digit(s). followed by space
       if (ch === Ch.Plus && isLineWhitespace(s.peek(1))) {
         flushText()
-        const elt = parseEnumItem(s, ctx, false)
+        const elt = parseEnumItem(s, ctx, false, closeChar, containerClose)
         if (elt) { elts.push(elt); continue }
       }
       if (isDigit(ch)) {
-        const elt = tryParseEnumItemNumbered(s, ctx)
+        const elt = tryParseEnumItemNumbered(s, ctx, closeChar, containerClose)
         if (elt) { flushText(); elts.push(elt); continue }
       }
 
       // Term list: / followed by space
       if (ch === Ch.Slash && isLineWhitespace(s.peek(1))) {
         flushText()
-        const elt = parseTermItem(s, ctx)
+        const elt = parseTermItem(s, ctx, closeChar, containerClose)
         if (elt) { elts.push(elt); continue }
       }
     }
@@ -293,7 +288,7 @@ export function parseMarkupContent(
       if (s.peek(1) === Ch.Minus) {
         flushText()
         s.next(); s.next()
-        if (s.eat(Ch.Minus)) {} // em dash: ---
+        s.eat(Ch.Minus) // em dash: ---
         elts.push(new Elt(Type.Shorthand, pos, s.pos))
         continue
       }
@@ -352,10 +347,14 @@ export function parseMarkupContent(
 
 // === Heading ===
 
-function parseHeading(s: Scanner, ctx: TypstParseContext): Elt | null {
+function parseHeading(
+  s: Scanner,
+  ctx: TypstParseContext,
+  closeChar: number = Ch.EOF,
+  containerClose: number = Ch.EOF,
+): Elt | null {
   const start = s.pos
-  let level = 0
-  while (s.peek() === Ch.Eq) { s.next(); level++ }
+  while (s.peek() === Ch.Eq) s.next()
   // Must be followed by space or newline
   if (!isLineWhitespace(s.peek()) && !isNewline(s.peek()) && !s.done) {
     s.pos = start
@@ -369,7 +368,7 @@ function parseHeading(s: Scanner, ctx: TypstParseContext): Elt | null {
   s.eatWhile(isLineWhitespace)
 
   // Parse content until end of line
-  const content = parseMarkupUntilNewline(s, ctx)
+  const content = parseMarkupUntilNewline(s, ctx, closeChar, containerClose)
   children.push(...content)
 
   return new Elt(Type.Heading, start, s.pos, children)
@@ -377,7 +376,12 @@ function parseHeading(s: Scanner, ctx: TypstParseContext): Elt | null {
 
 // === List items ===
 
-function parseListItem(s: Scanner, ctx: TypstParseContext): Elt | null {
+function parseListItem(
+  s: Scanner,
+  ctx: TypstParseContext,
+  closeChar: number = Ch.EOF,
+  containerClose: number = Ch.EOF,
+): Elt | null {
   const start = s.pos
   s.next() // consume -
   const markerEnd = s.pos
@@ -385,13 +389,19 @@ function parseListItem(s: Scanner, ctx: TypstParseContext): Elt | null {
 
   s.eatWhile(isLineWhitespace)
 
-  const content = parseMarkupUntilNewline(s, ctx)
+  const content = parseMarkupUntilNewline(s, ctx, closeChar, containerClose)
   children.push(...content)
 
   return new Elt(Type.ListItem, start, s.pos, children)
 }
 
-function parseEnumItem(s: Scanner, ctx: TypstParseContext, isNumbered: boolean): Elt | null {
+function parseEnumItem(
+  s: Scanner,
+  ctx: TypstParseContext,
+  isNumbered: boolean,
+  closeChar: number = Ch.EOF,
+  containerClose: number = Ch.EOF,
+): Elt | null {
   const start = s.pos
   if (isNumbered) {
     s.eatWhile(isDigit)
@@ -404,21 +414,31 @@ function parseEnumItem(s: Scanner, ctx: TypstParseContext, isNumbered: boolean):
 
   s.eatWhile(isLineWhitespace)
 
-  const content = parseMarkupUntilNewline(s, ctx)
+  const content = parseMarkupUntilNewline(s, ctx, closeChar, containerClose)
   children.push(...content)
 
   return new Elt(Type.EnumItem, start, s.pos, children)
 }
 
-function tryParseEnumItemNumbered(s: Scanner, ctx: TypstParseContext): Elt | null {
+function tryParseEnumItemNumbered(
+  s: Scanner,
+  ctx: TypstParseContext,
+  closeChar: number = Ch.EOF,
+  containerClose: number = Ch.EOF,
+): Elt | null {
   // Look ahead for digits followed by . and space
   let i = 0
   while (isDigit(s.peek(i))) i++
   if (i === 0 || s.peek(i) !== Ch.Dot || !isLineWhitespace(s.peek(i + 1))) return null
-  return parseEnumItem(s, ctx, true)
+  return parseEnumItem(s, ctx, true, closeChar, containerClose)
 }
 
-function parseTermItem(s: Scanner, ctx: TypstParseContext): Elt | null {
+function parseTermItem(
+  s: Scanner,
+  ctx: TypstParseContext,
+  closeChar: number = Ch.EOF,
+  containerClose: number = Ch.EOF,
+): Elt | null {
   const start = s.pos
   s.next() // consume /
   const markerEnd = s.pos
@@ -427,7 +447,7 @@ function parseTermItem(s: Scanner, ctx: TypstParseContext): Elt | null {
   s.eatWhile(isLineWhitespace)
 
   // Parse until : then rest of line
-  const content = parseMarkupUntilNewline(s, ctx)
+  const content = parseMarkupUntilNewline(s, ctx, closeChar, containerClose)
   children.push(...content)
 
   return new Elt(Type.TermItem, start, s.pos, children)
@@ -702,14 +722,7 @@ function parseRef(s: Scanner, ctx: TypstParseContext): Elt | null {
 function tryParseLink(s: Scanner): Elt | null {
   // Check for http:// or https://
   const start = s.pos
-  let protocol = ""
-  if (s.eatString("https://")) {
-    protocol = "https://"
-  } else if (s.eatString("http://")) {
-    protocol = "http://"
-  } else {
-    return null
-  }
+  if (!s.eatString("https://") && !s.eatString("http://")) return null
 
   // Consume URL characters (everything except whitespace and certain punctuation at end)
   const urlStart = s.pos
@@ -793,9 +806,26 @@ export function parseBlockComment(s: Scanner): Elt {
 
 // === Helper: parse markup until end of line ===
 
-function parseMarkupUntilNewline(s: Scanner, ctx: TypstParseContext): Elt[] {
+/// Parse the body of a line-scoped construct (heading / list / enum / term
+/// item). It ends at the newline — but also at the close char of any enclosing
+/// delimiter, because those bind tighter than the line: in
+/// `#big([ 1. one], size: 36pt)` the enum item ends at `]`, not at the end of
+/// the line. `closeChar` is the immediately enclosing markup delimiter (`]`, or
+/// `*`/`_` when the line sits inside emphasis) and `containerClose` the
+/// enclosing content block; both are `Ch.EOF` at the document root, where a
+/// stray `]` is just text.
+function parseMarkupUntilNewline(
+  s: Scanner,
+  ctx: TypstParseContext,
+  closeChar: number = Ch.EOF,
+  containerClose: number = Ch.EOF,
+): Elt[] {
   const elts: Elt[] = []
   let textFrom = -1
+
+  function atClose(ch: number): boolean {
+    return ch !== Ch.EOF && (ch === closeChar || ch === containerClose)
+  }
 
   function flushText() {
     if (textFrom >= 0 && textFrom < s.pos) {
@@ -804,7 +834,7 @@ function parseMarkupUntilNewline(s: Scanner, ctx: TypstParseContext): Elt[] {
     }
   }
 
-  while (!s.done && !isNewline(s.peek())) {
+  while (!s.done && !isNewline(s.peek()) && !atClose(s.peek())) {
     const ch = s.peek()
     const pos = s.pos
 
@@ -820,7 +850,7 @@ function parseMarkupUntilNewline(s: Scanner, ctx: TypstParseContext): Elt[] {
     // strong/emph from swallowing subsequent lines when its marker is unclosed.
     if (ch === Ch.Star) {
       flushText()
-      const elt = parseStrong(s, ctx, Ch.EOF, true)
+      const elt = parseStrong(s, ctx, containerClose, true)
       if (elt) { elts.push(elt); continue }
       if (textFrom < 0) textFrom = s.pos
       s.next()
@@ -829,7 +859,7 @@ function parseMarkupUntilNewline(s: Scanner, ctx: TypstParseContext): Elt[] {
 
     if (ch === Ch.Underscore) {
       flushText()
-      const elt = parseEmph(s, ctx, Ch.EOF, true)
+      const elt = parseEmph(s, ctx, containerClose, true)
       if (elt) { elts.push(elt); continue }
       if (textFrom < 0) textFrom = s.pos
       s.next()

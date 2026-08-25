@@ -13,6 +13,7 @@
     Link01Icon,
     Image01Icon,
     Table01Icon,
+    MathIcon,
   } from "@hugeicons/core-free-icons";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -33,6 +34,7 @@
     insertTable,
   } from "$lib/typst-codemirror-lang";
   import { shortcutLabel } from "$lib/keybindings";
+  import { ui } from "$lib/stores/ui.svelte";
   import type { EditorView } from "@codemirror/view";
 
   type Cmd = (view: EditorView) => boolean;
@@ -85,6 +87,17 @@
     { label: "Link", icon: Link01Icon, run: insertLink },
     { label: "Image", icon: Image01Icon, run: insertImage },
     { label: "Table", icon: Table01Icon, run: insertTable },
+    {
+      label: "Symbol",
+      command: "typst.insertSymbol",
+      icon: MathIcon,
+      // Opens the picker rather than inserting: which text is
+      // correct depends on whether the caret is inside `$…$`.
+      run: () => {
+        ui.symbolPickerOpen = true;
+        return true;
+      },
+    },
   ];
 </script>
 
@@ -133,7 +146,7 @@
       {/snippet}
     </DropdownMenu.Trigger>
     <DropdownMenu.Content align="start" class="tb-heading-menu">
-      {#each HEADING_LABELS as label, level}
+      {#each HEADING_LABELS as label, level (level)}
         <DropdownMenu.Item
           onSelect={() => dispatch(setHeadingLevel(level))}
           class={editorFormat.headingLevel === level ? "tb-heading-item-active" : ""}
@@ -146,19 +159,19 @@
 
   <span class="separator" aria-hidden="true"></span>
 
-  {#each marks as action}
+  {#each marks as action (action.label)}
     {@render toolButton(action)}
   {/each}
 
   <span class="separator" aria-hidden="true"></span>
 
-  {#each lists as action}
+  {#each lists as action (action.label)}
     {@render toolButton(action)}
   {/each}
 
   <span class="separator" aria-hidden="true"></span>
 
-  {#each inserts as action}
+  {#each inserts as action (action.label)}
     {@render toolButton(action)}
   {/each}
 </div>

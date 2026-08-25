@@ -8,19 +8,22 @@ mod cache;
 mod compile;
 mod diff;
 mod disk_cache;
+mod page_diff;
 mod render;
+mod snapshot_world;
 
 pub use cache::{key_to_path, parse_key, zoom_to_bucket, PageCacheKey};
 pub use compile::{
     collect_workspace_diagnostics, compile_document, dedup_merge, CompileOutput,
-    SerializedDiagnostic,
+    SerializedDiagnostic, WorkspaceDiagCache,
 };
 pub use diff::fingerprint_pages;
+pub use page_diff::{PageDiffEngine, PageDiffSide};
 pub use render::render_page;
 
 use std::{
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, Sender},
         Arc,
     },
@@ -116,6 +119,12 @@ struct CompileStatePayload {
     status: CompileStatus,
     revision: u64,
     reason: CompileReason,
+    /// The pages currently on screen come from an older compile because the
+    /// most recent one produced no document. Carried on every state event
+    /// (including `Started`, since a recompile doesn't un-stale the render
+    /// until it succeeds) so any window can label the preview without
+    /// listening to diagnostics — the popout never initializes that store.
+    stale: bool,
 }
 
 // Export config types
@@ -256,6 +265,9 @@ fn parse_pdf_standard(s: &str) -> Result<typst_pdf::PdfStandards, String> {
     typst_pdf::PdfStandards::new(&standards).map_err(|e| format!("Invalid PDF standard: {e:?}"))
 }
 
+/// How many pages the background render pass holds in memory at a time.
+const RENDER_BATCH: usize = 16;
+
 #[derive(Default)]
 struct CompileQueueState {
     next_revision: u64,
@@ -285,9 +297,8 @@ pub struct PreviewPipeline {
     /// moment"; `None` means the slot exists but has never been emitted.
     ///
     /// Updated atomically — a single write at the end of (or each exit point
-    /// from) `compile_and_emit`. The mid-flight write the old code did caused
-    /// aborted compiles to leave the frontend pointing at fingerprints that
-    /// had never been rendered.
+    /// from) `compile_and_emit` — so an aborted compile can never leave the
+    /// frontend pointing at a fingerprint that was never rendered.
     last_emitted: Mutex<Vec<Option<PageCacheKey>>>,
     /// Diagnostics from `.typ` files not reachable from the main file
     /// (errors, warnings). Refreshed only on Save/Watcher/Explicit/MainFile
@@ -295,6 +306,11 @@ pub struct PreviewPipeline {
     /// workspace, far too costly to do per keystroke. Reused as-is on
     /// Typing/Zoom so the emitted diagnostic set stays complete every time.
     workspace_diags: Mutex<(Vec<SerializedDiagnostic>, Vec<SerializedDiagnostic>)>,
+    /// Per-file diagnostics from the last workspace-wide pass, keyed by entry
+    /// file and validated against the content of everything that file read.
+    /// Lets a refresh recompile only the files whose inputs actually moved
+    /// instead of the whole workspace.
+    workspace_diag_cache: Mutex<WorkspaceDiagCache>,
     page_cache: Mutex<PageCache>,
     /// Persistent on-disk mirror of `page_cache`, scoped to the open workspace.
     /// `None` until a workspace is attached via [`Self::attach_disk_cache`].
@@ -325,6 +341,10 @@ pub struct PreviewPipeline {
     /// event has already fired) still learns a compile is in flight and shows
     /// the "Compiling" indicator.
     last_compile_state: Mutex<CompileStatePayload>,
+    /// Whether the last compile failed to produce a document, i.e. whether the
+    /// render the frontend is showing is stale. Stamped onto every
+    /// [`CompileStatePayload`].
+    last_compile_failed: AtomicBool,
     /// Version-control state. Used to auto-commit a restore point whenever
     /// a compile succeeds (the user's "good known state").
     vcs: Arc<VcsState>,
@@ -337,6 +357,7 @@ impl PreviewPipeline {
             world,
             last_emitted: Mutex::new(Vec::new()),
             workspace_diags: Mutex::new((Vec::new(), Vec::new())),
+            workspace_diag_cache: Mutex::new(WorkspaceDiagCache::new()),
             page_cache: Mutex::new(PageCache::default()),
             disk_cache: Mutex::new(None),
             workspace_root: Mutex::new(None),
@@ -352,7 +373,9 @@ impl PreviewPipeline {
                 status: CompileStatus::Idle,
                 revision: 0,
                 reason: CompileReason::default(),
+                stale: false,
             }),
+            last_compile_failed: AtomicBool::new(false),
             vcs,
         }
     }
@@ -375,10 +398,13 @@ impl PreviewPipeline {
         self.page_cache.lock().clear();
         *self.last_emitted.lock() = Vec::new();
         *self.last_document.lock() = None;
+        // The incoming workspace/main file inherits no staleness from the old one.
+        self.last_compile_failed.store(false, Ordering::Release);
         // Drop cached cross-file diagnostics: they belong to the previous
         // workspace/main-file and must not bleed into the next one. The
         // following compile uses a non-Typing reason and repopulates them.
         *self.workspace_diags.lock() = (Vec::new(), Vec::new());
+        self.workspace_diag_cache.lock().clear();
     }
 
     /// Bind the persistent on-disk cache to a workspace root. Subsequent
@@ -512,7 +538,11 @@ impl PreviewPipeline {
     }
 
     pub fn request_compile(self: &Arc<Self>, reason: CompileReason) {
-        self.request_counter.fetch_add(1, Ordering::Relaxed);
+        // `Release` pairs with the `Acquire` load in `is_stale_request`. The
+        // mpsc send below is the real synchronization edge, so `Relaxed` also
+        // worked in practice — but matching the load's ordering makes the
+        // intent (this bump must be visible to the worker) explicit.
+        self.request_counter.fetch_add(1, Ordering::Release);
         // Mark "compiling" synchronously, before the worker thread has a chance
         // to run. `open_folder` calls this while still on the home screen; the
         // preview pane only mounts (and queries `sync_preview`) once the user is
@@ -566,7 +596,17 @@ impl PreviewPipeline {
                 queue.next_revision
             };
             self.emit_compile_state(CompileStatus::Started, revision, reason);
-            self.compile_and_emit(revision, reason, request_mark);
+            // An unwind out of this loop would kill the worker for the rest of
+            // the session, leaving the preview permanently silent with no error
+            // surfaced anywhere. Contain it to the one compile.
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.compile_and_emit(revision, reason, request_mark);
+            }));
+            if outcome.is_err() {
+                error!(
+                    "compile revision={revision} reason={reason:?} panicked; worker continuing"
+                );
+            }
 
             match rx.try_recv() {
                 Ok(next) => pending = Some(next),
@@ -589,6 +629,7 @@ impl PreviewPipeline {
             status,
             revision,
             reason,
+            stale: self.last_compile_failed.load(Ordering::Acquire),
         };
         // Remember it so a preview pane that mounts mid-compile can recover the
         // current status via `emit_current_state` (sync_preview).
@@ -598,6 +639,9 @@ impl PreviewPipeline {
         }
     }
 
+    /// Blank the preview outright. Reserved for "there is nothing to render" —
+    /// no main file. A *failed* compile deliberately does not come through
+    /// here; see the `None` arm in [`Self::compile_and_emit`].
     fn clear_preview(&self, old_page_count: usize) {
         let _ = self
             .app_handle
@@ -609,6 +653,8 @@ impl PreviewPipeline {
         }
         *self.last_emitted.lock() = Vec::new();
         *self.last_document.lock() = None;
+        // Nothing is on screen to be stale.
+        self.last_compile_failed.store(false, Ordering::Release);
     }
 
     fn compile_and_emit(&self, revision: u64, reason: CompileReason, request_mark: u64) {
@@ -669,7 +715,7 @@ impl PreviewPipeline {
         // so the emitted set stays complete without per-keystroke cost.
         let (extra_errors, extra_warnings) = if refreshes_workspace_diags(reason) {
             info!("compile revision={revision} reason={reason:?} refreshing workspace diagnostics");
-            let fresh = collect_workspace_diagnostics(&*self.world);
+            let fresh = collect_workspace_diagnostics(&*self.world, &self.workspace_diag_cache);
             *self.workspace_diags.lock() = fresh.clone();
             fresh
         } else {
@@ -687,15 +733,27 @@ impl PreviewPipeline {
         let doc = match document {
             Some(doc) => doc,
             None => {
-                let old_count = self.last_emitted.lock().len();
-                self.clear_preview(old_count);
+                // Deliberately keep the last good render on screen instead of
+                // clearing it. Blanking costs more than the staleness: the
+                // frontend's scroll container collapses to zero height, so the
+                // recovering compile re-seeds its page counter from scrollTop 0
+                // and throws the reader back to page 1. Holding `last_emitted`
+                // also lets that compile diff against it and re-emit only the
+                // pages that actually changed (no reflow, no full re-decode),
+                // and holding `last_document` keeps click-to-source and
+                // cursor-sync alive while the document is broken — precisely
+                // when the user is navigating to fix it. The errors themselves
+                // went out on `compile:diagnostics` above, and the `stale` flag
+                // on the next compile-state event labels the pane.
+                self.last_compile_failed.store(true, Ordering::Release);
                 info!(
-                    "compile revision={revision} reason={reason:?} produced no document ({:.1}ms)",
+                    "compile revision={revision} reason={reason:?} produced no document, keeping last render ({:.1}ms)",
                     t.elapsed().as_secs_f64() * 1000.0
                 );
                 return;
             }
         };
+        self.last_compile_failed.store(false, Ordering::Release);
 
         if self.is_stale_request(request_mark) {
             info!("compile revision={revision} reason={reason:?} skipped stale render");
@@ -818,9 +876,13 @@ impl PreviewPipeline {
         }
 
         let render_t = Instant::now();
-        let (priority_misses, rest_misses): (Vec<usize>, Vec<usize>) = cache_misses
+        let (priority_misses, mut rest_misses): (Vec<usize>, Vec<usize>) = cache_misses
             .into_iter()
             .partition(|&idx| idx == visible_page);
+
+        // Render outwards from the page on screen; in index order a long
+        // document makes the user wait for pages they aren't looking at.
+        rest_misses.sort_by_key(|&idx| idx.abs_diff(visible_page));
 
         for idx in &priority_misses {
             if self.is_stale_request(request_mark) {
@@ -851,7 +913,10 @@ impl PreviewPipeline {
             }
         }
 
-        if !rest_misses.is_empty() {
+        // Batched rather than one `collect()` over every page: that would hold
+        // the whole document's PNGs in memory until the last one finished, and
+        // publish nothing until then.
+        for batch in rest_misses.chunks(RENDER_BATCH) {
             if self.is_stale_request(request_mark) {
                 info!(
                     "compile revision={revision} reason={reason:?} skipped stale background render"
@@ -859,7 +924,7 @@ impl PreviewPipeline {
                 *self.last_emitted.lock() = new_emitted;
                 return;
             }
-            let rendered: Vec<(usize, PageCacheKey, Vec<u8>)> = rest_misses
+            let rendered: Vec<(usize, PageCacheKey, Vec<u8>)> = batch
                 .par_iter()
                 .filter_map(|&idx| {
                     let key: PageCacheKey = (new_fps[idx], zoom_bucket);

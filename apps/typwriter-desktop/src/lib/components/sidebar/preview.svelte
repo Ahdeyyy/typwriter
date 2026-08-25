@@ -1,14 +1,16 @@
 <script lang="ts">
   import { onDestroy, untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { ZoomInAreaIcon, ZoomOutAreaIcon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon, ArrowLeft01Icon, ArrowRight01Icon, Menu01Icon, File01Icon } from "@hugeicons/core-free-icons";
+  import { ZoomInAreaIcon, ZoomOutAreaIcon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon, ArrowLeft01Icon, ArrowRight01Icon, ArrowDown01Icon, Tick02Icon, Menu01Icon, File01Icon } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
 
   import { preview } from "$lib/stores/preview.svelte";
+  import { settings } from "$lib/stores/settings.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { Button } from "$lib/components/ui/button";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { previewController } from "./preview-controller.svelte";
+  import { displayLabel, previewController } from "./preview-controller.svelte";
   import { buildPreviewUrl } from "$lib/preview-url";
 
   type Props = { onPresentationMode?: () => void };
@@ -21,10 +23,27 @@
   ctrl.setOnPresentationMode(() => onPresentationMode?.());
   onDestroy(() => ctrl.detachFromMount());
 
+  // `presentationMode` is window-local (it drives the black full-bleed layout,
+  // which the main window must not adopt). `presenting` is the cross-window
+  // mirror, so the pane's button can end a presentation running in the popout.
+  const presenting = $derived(preview.presentationMode || preview.presenting);
+
   $effect(() => ctrl.syncPagesEffect());
   $effect(() => ctrl.scrollTargetEffect());
   $effect(() => ctrl.pageCounterEffect());
   $effect(() => ctrl.clampVisiblePageEffect());
+  $effect(() => ctrl.pointerAutoHideEffect());
+
+  // Match the render scale to the projector once a decoded page tells us how
+  // wide the current render actually is. A freshly opened popout enters
+  // presentation before any page has decoded, so this can't happen at the
+  // moment of entering — it waits for the first real width. `applyPresentationScale`
+  // is one-shot per presentation, so the re-render it triggers can't re-arm it.
+  $effect(() => {
+    if (!preview.presentationMode) return;
+    const width = ctrl.dimsFor(preview.pages[ctrl.visiblePage])?.w;
+    if (width) untrack(() => preview.applyPresentationScale(width));
+  });
 
   // Switching between paginated and scroll view swaps the {#if} branch below,
   // which replaces the scroll container with a fresh one at scrollTop=0. Owe
@@ -59,18 +78,21 @@
   $effect(() => {
     if (!ctrl.restorePending) return;
     const idx = preview.visiblePage;
-    // Committed pages render their <img> with explicit width/height, so the
-    // layout above the target is only final once every page up to it has
-    // committed — before that, `offsetTop` would measure skeletons and
-    // still-loading images and the snap would land short of the target.
-    // Reading those slots (and `visiblePage`) retries the restore as decodes
-    // land and as a late cross-window snapshot arrives.
+    // The layout above the target is final once every page up to it has
+    // committed; before that `offsetTop` measures still-loading images and the
+    // snap lands short. Reading those slots (and `visiblePage`) retries the
+    // restore as decodes land and as a late cross-window snapshot arrives.
+    //
+    // Once decoding is windowed, distant pages never commit and that condition
+    // can't be met — but skeletons then reserve the same box their image would,
+    // so `pageMetricsKnown` makes `offsetTop` just as measurable.
     const settled =
       preview.paginated ||
       (ctrl.scrollEl !== null &&
         preview.pages.length > idx &&
         ctrl.committedPages.length > idx &&
-        ctrl.committedPages.slice(0, idx + 1).every((fp) => fp !== null));
+        (ctrl.committedPages.slice(0, idx + 1).every((fp) => fp !== null) ||
+          ctrl.pageMetricsKnown));
     if (settled) {
       untrack(() => ctrl.restoreScrollToVisiblePage());
     }
@@ -78,6 +100,21 @@
 </script>
 
 <svelte:window onkeydown={(e) => ctrl.handleKeydown(e)} />
+
+<!-- What to say when there are no pages to show. The failed-compile case only
+     reaches here when no earlier compile ever succeeded — otherwise the
+     backend keeps the last good render up and there are pages. -->
+{#snippet emptyStateText()}
+  {#if !workspace.mainFile}
+    Select a main `.typ` file in the explorer to render a preview.
+  {:else if preview.isCompiling}
+    Compiling…
+  {:else if preview.staleRender}
+    Compile failed — see Diagnostics.
+  {:else}
+    Loading preview…
+  {/if}
+{/snippet}
 
 <!-- Transient cursor-sync highlight over a page. Rectangles are positioned as a
      fraction of the page so they track the image at any zoom / fit scale. The
@@ -87,7 +124,7 @@
     {@const hl = preview.highlight}
     {#key hl.nonce}
       <div class="pointer-events-none absolute inset-0 z-10">
-        {#each hl.rects as r}
+        {#each hl.rects as r, i (i)}
           <div
             class="cursor-sync-highlight absolute"
             style="left:{(r.x / hl.pageWidth) * 100}%; top:{(r.y / hl.pageHeight) * 100}%; width:{(r.width / hl.pageWidth) * 100}%; height:{(r.height / hl.pageHeight) * 100}%;"
@@ -158,6 +195,24 @@
         <span class="mr-2 text-[11px] uppercase tracking-wide text-muted-foreground animate-pulse">
           Compiling
         </span>
+      {:else if preview.staleRender && preview.totalPages > 0}
+        <!-- A failed compile leaves the previous render up rather than blanking
+             the pane, so say that the pages are behind the source. -->
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <span
+                {...props}
+                class="mr-2 text-[11px] uppercase tracking-wide text-destructive"
+              >
+                Stale
+              </span>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            Compile failed — showing the last successful render
+          </Tooltip.Content>
+        </Tooltip.Root>
       {/if}
 
       {#if preview.paginated && preview.totalPages > 0}
@@ -213,7 +268,7 @@
               size="icon-sm"
               onclick={() => ctrl.togglePaginated()}
               disabled={preview.totalPages === 0}
-              class={preview.paginated ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground" : ""}
+              class={preview.paginated ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground" : ""}
             >
               <HugeiconsIcon icon={preview.paginated ? Menu01Icon : File01Icon} class="size-3.5" />
             </Button>
@@ -255,30 +310,86 @@
         <Tooltip.Content>Refresh preview</Tooltip.Content>
       </Tooltip.Root>
 
-      <Tooltip.Root>
-        <Tooltip.Trigger>
-          {#snippet child({ props })}
-            <Button
-              {...props}
-              variant="ghost"
-              size="icon-sm"
-              onclick={() => ctrl.togglePresentation()}
-              disabled={preview.totalPages === 0}
-              class={preview.presentationMode ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground" : ""}
-            >
-              <HugeiconsIcon icon={preview.presentationMode ? Cancel01Icon : PresentationBarChart01Icon} class="size-3.5" />
-            </Button>
-          {/snippet}
-        </Tooltip.Trigger>
-        <Tooltip.Content>{preview.presentationMode ? "Exit presentation mode" : "Presentation mode"}</Tooltip.Content>
-      </Tooltip.Root>
+      <!-- Split control: the button presents on the remembered (or
+           auto-picked) display, the caret chooses which one. -->
+      <div class="flex items-center">
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon-sm"
+                onclick={() => ctrl.togglePresentation()}
+                disabled={preview.totalPages === 0 && !presenting}
+                class={presenting ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground" : ""}
+              >
+                <HugeiconsIcon icon={presenting ? Cancel01Icon : PresentationBarChart01Icon} class="size-3.5" />
+              </Button>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            {presenting ? "Exit presentation mode" : "Present full-screen"}
+          </Tooltip.Content>
+        </Tooltip.Root>
+
+        {#if !presenting}
+          <DropdownMenu.Root onOpenChange={(open) => open && ctrl.refreshDisplays()}>
+            <DropdownMenu.Trigger>
+              {#snippet child({ props })}
+                <Button
+                  {...props}
+                  variant="ghost"
+                  size="icon-sm"
+                  class="w-4"
+                  aria-label="Choose the display to present on"
+                >
+                  <HugeiconsIcon icon={ArrowDown01Icon} class="size-3" />
+                </Button>
+              {/snippet}
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content align="end" class="w-64">
+              <DropdownMenu.Group>
+                <DropdownMenu.GroupHeading>Present on</DropdownMenu.GroupHeading>
+                <DropdownMenu.Item onSelect={() => ctrl.chooseDisplay(null)}>
+                  <span class="flex-1">Automatic</span>
+                  {#if settings.presentationDisplay === null}
+                    <HugeiconsIcon icon={Tick02Icon} class="size-3.5" />
+                  {/if}
+                </DropdownMenu.Item>
+                <DropdownMenu.Separator />
+                {#each ctrl.displays as display (display.id)}
+                  <DropdownMenu.Item onSelect={() => ctrl.chooseDisplay(display.id)}>
+                    <span class="flex-1 truncate">
+                      {displayLabel(display)}
+                      {#if display.isMainWindow}
+                        <span class="text-muted-foreground">· editor</span>
+                      {/if}
+                    </span>
+                    {#if settings.presentationDisplay === display.id}
+                      <HugeiconsIcon icon={Tick02Icon} class="size-3.5" />
+                    {/if}
+                  </DropdownMenu.Item>
+                {:else}
+                  <DropdownMenu.Item disabled>No displays detected</DropdownMenu.Item>
+                {/each}
+              </DropdownMenu.Group>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        {/if}
+      </div>
     </div>
   </div>
   {/if}
 
   <!-- ── Page list ──────────────────────────────────────────────────────── -->
   {#if preview.presentationMode}
-    <div class="flex flex-1 items-center justify-center overflow-hidden bg-black">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="flex flex-1 items-center justify-center overflow-hidden bg-black"
+      class:cursor-none={ctrl.pointerHidden}
+      onmousemove={() => ctrl.notePointerActivity()}
+    >
       {#if ctrl.committedPages[ctrl.visiblePage]}
         <Button
           variant="ghost"
@@ -300,16 +411,12 @@
     <div class="flex flex-1 flex-col items-center overflow-auto py-4 preview-scroll">
       {#if preview.totalPages === 0}
         <div class="m-auto select-none text-xs text-muted-foreground">
-          {#if workspace.mainFile}
-            {preview.isCompiling ? "Compiling…" : "Loading preview…"}
-          {:else}
-            Select a main `.typ` file in the explorer to render a preview.
-          {/if}
+          {@render emptyStateText()}
         </div>
       {:else}
         <div
           id="preview-page-{ctrl.visiblePage}"
-          class="relative shrink-0 overflow-hidden rounded shadow-md"
+          class="relative max-w-full shrink-0 overflow-hidden rounded shadow-md"
         >
           {#if ctrl.committedPages[ctrl.visiblePage]}
             {@const fp = ctrl.committedPages[ctrl.visiblePage]!}
@@ -331,7 +438,11 @@
               />
             </Button>
           {:else}
-            <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
+            {@const sk = ctrl.skeletonDims(ctrl.visiblePage)}
+            <div
+              class="block h-auto max-w-full animate-pulse bg-muted"
+              style="width:{sk.w}px; aspect-ratio:{sk.w} / {sk.h};"
+            ></div>
           {/if}
           {@render highlightOverlay(ctrl.visiblePage)}
         </div>
@@ -350,17 +461,22 @@
         <div
           class="flex h-full select-none items-center justify-center text-xs text-muted-foreground"
         >
-          {#if workspace.mainFile}
-            {preview.isCompiling ? "Compiling…" : "Loading preview…"}
-          {:else}
-            Select a main `.typ` file in the explorer to render a preview.
-          {/if}
+          {@render emptyStateText()}
         </div>
       {:else}
-        {#each preview.pages as _, i}
+        <!-- Keyed by index, not by page key: keys repeat when two pages render
+             identically, and reusing the tile in place is what we want anyway
+             when a page is inserted mid-document. -->
+        {#each preview.pages as _, i (i)}
+          <!-- `max-w-full` clamps the page box to the pane. The <img> shrinks
+               itself (a replaced element's percentage max-width collapses its
+               min-content), but a skeleton's fixed px width does not, so
+               without this the wrapper takes the skeleton's full natural width
+               and the pane gains a horizontal scrollbar. Resolved against the
+               flex container's definite width, so it bites for both. -->
           <div
             id="preview-page-{i}"
-            class="relative shrink-0 overflow-hidden rounded shadow-md"
+            class="relative max-w-full shrink-0 overflow-hidden rounded shadow-md"
           >
             {#if ctrl.committedPages[i]}
               {@const fp = ctrl.committedPages[i]!}
@@ -376,14 +492,24 @@
                   width={dims?.w}
                   height={dims?.h}
                   draggable="false"
+                  loading="lazy"
+                  decoding="async"
                   class="block h-auto max-w-full"
                   onload={() => ctrl.notifyImageLoaded(i, fp)}
                   onerror={() => ctrl.notifyImageError(i, fp)}
                 />
               </Button>
             {:else}
-              <!-- Placeholder while page is rendering -->
-              <div class="h-[800px] w-[566px] animate-pulse bg-muted"></div>
+              <!-- Placeholder while the page renders or sits outside the decode
+                   window. Laid out exactly like the image above so swapping
+                   between the two never changes the page's height, which is
+                   what keeps the scroll position stable as pages are decoded
+                   and released around the viewport. -->
+              {@const sk = ctrl.skeletonDims(i)}
+              <div
+                class="block h-auto max-w-full animate-pulse bg-muted"
+                style="width:{sk.w}px; aspect-ratio:{sk.w} / {sk.h};"
+              ></div>
             {/if}
             {@render highlightOverlay(i)}
           </div>

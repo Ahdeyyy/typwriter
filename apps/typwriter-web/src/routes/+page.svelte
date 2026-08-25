@@ -59,6 +59,21 @@
 			})
 	);
 
+	// One download card per platform. `note` is a snippet because macOS's
+	// contains a link; `badge` is omitted where there is nothing to flag.
+	const PLATFORMS = $derived([
+		{ name: 'Windows', icon: ComputerIcon, assets: windowsAssets },
+		{ name: 'Linux', icon: LaptopIcon, assets: linuxAssets },
+		{ name: 'macOS', icon: Apple01Icon, assets: macosAssets, badge: 'Unsigned', note: macosNote },
+		{
+			name: 'Android',
+			icon: AndroidIcon,
+			assets: androidAssets,
+			badge: 'Experimental',
+			note: androidNote
+		}
+	]);
+
 	let desktopTheme = $state<'dark' | 'light' | null>(null);
 
 	function formatSize(bytes: number): string {
@@ -220,145 +235,68 @@
 	</div>
 
 	<div class="grid gap-6 sm:grid-cols-2">
-		<!-- Windows -->
-		<div class="flex flex-col gap-3">
-			<div class="flex items-center gap-2 text-sm font-medium">
-				<HugeiconsIcon icon={ComputerIcon} size={15} class="text-muted-foreground" />
-				Windows
-			</div>
-			{#if windowsAssets.length > 0}
-				{#each windowsAssets as asset (asset.name)}
-					<Button
-						variant="outline"
-						class="h-auto justify-between px-4 py-3"
-						href={asset.browser_download_url}
-					>
-						<span class="flex items-center gap-2">
-							<HugeiconsIcon icon={Download04Icon} size={14} />
-							{assetLabel(asset.name)}
+		{#each PLATFORMS as platform (platform.name)}
+			<div class="flex flex-col gap-3">
+				<div class="flex items-center gap-2 text-sm font-medium">
+					<HugeiconsIcon icon={platform.icon} size={15} class="text-muted-foreground" />
+					{platform.name}
+					{#if platform.badge}
+						<span
+							class="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[0.625rem] font-medium tracking-wide text-amber-600 uppercase dark:text-amber-400"
+						>
+							{platform.badge}
 						</span>
-						<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
+					{/if}
+				</div>
+				{#if platform.note}
+					{@render platform.note()}
+				{/if}
+				{#if platform.assets.length > 0}
+					{#each platform.assets as asset (asset.name)}
+						<Button
+							variant="outline"
+							class="h-auto justify-between px-4 py-3"
+							href={asset.browser_download_url}
+						>
+							<span class="flex items-center gap-2">
+								<HugeiconsIcon icon={Download04Icon} size={14} />
+								{assetLabel(asset.name)}
+							</span>
+							<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
+						</Button>
+					{/each}
+				{:else}
+					<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
+						<HugeiconsIcon icon={Download04Icon} size={14} class="mr-2" />
+						View {platform.name} releases
 					</Button>
-				{/each}
-			{:else}
-				<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
-					<HugeiconsIcon icon={Download04Icon} size={14} class="mr-2" />
-					View Windows releases
-				</Button>
-			{/if}
-		</div>
-
-		<!-- Linux -->
-		<div class="flex flex-col gap-3">
-			<div class="flex items-center gap-2 text-sm font-medium">
-				<HugeiconsIcon icon={LaptopIcon} size={15} class="text-muted-foreground" />
-				Linux
+				{/if}
 			</div>
-			{#if linuxAssets.length > 0}
-				{#each linuxAssets as asset (asset.name)}
-					<Button
-						variant="outline"
-						class="h-auto justify-between px-4 py-3"
-						href={asset.browser_download_url}
-					>
-						<span class="flex items-center gap-2">
-							<HugeiconsIcon icon={Download04Icon} size={14} />
-							{assetLabel(asset.name)}
-						</span>
-						<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
-					</Button>
-				{/each}
-			{:else}
-				<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
-					<HugeiconsIcon icon={Download04Icon} size={14} class="mr-2" />
-					View Linux releases
-				</Button>
-			{/if}
-		</div>
-
-		<!-- macOS -->
-		<div class="flex flex-col gap-3">
-			<div class="flex items-center gap-2 text-sm font-medium">
-				<HugeiconsIcon icon={Apple01Icon} size={15} class="text-muted-foreground" />
-				macOS
-				<span
-					class="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[0.625rem] font-medium tracking-wide text-amber-600 uppercase dark:text-amber-400"
-				>
-					Unsigned
-				</span>
-			</div>
-			<p class="text-xs text-muted-foreground">
-				The macOS build isn't code-signed, so Gatekeeper will refuse to open it on first launch.
-				<a
-					href={MACOS_UNSIGNED_GUIDE_URL}
-					target="_blank"
-					rel="noopener noreferrer"
-					class="text-foreground underline underline-offset-2 transition-colors hover:text-muted-foreground"
-				>
-					Follow this guide
-				</a>
-				to install it anyway.
-			</p>
-			{#if macosAssets.length > 0}
-				{#each macosAssets as asset (asset.name)}
-					<Button
-						variant="outline"
-						class="h-auto justify-between px-4 py-3"
-						href={asset.browser_download_url}
-					>
-						<span class="flex items-center gap-2">
-							<HugeiconsIcon icon={Download04Icon} size={14} />
-							{assetLabel(asset.name)}
-						</span>
-						<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
-					</Button>
-				{/each}
-			{:else}
-				<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
-					<HugeiconsIcon icon={Download04Icon} size={14} class="mr-2" />
-					View macOS releases
-				</Button>
-			{/if}
-		</div>
-
-		<!-- Android -->
-		<div class="flex flex-col gap-3">
-			<div class="flex items-center gap-2 text-sm font-medium">
-				<HugeiconsIcon icon={AndroidIcon} size={15} class="text-muted-foreground" />
-				Android
-				<span
-					class="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[0.625rem] font-medium tracking-wide text-amber-600 uppercase dark:text-amber-400"
-				>
-					Experimental
-				</span>
-			</div>
-			<p class="text-xs text-muted-foreground">
-				The Android build is highly experimental — expect bugs, missing features, and breaking
-				changes. Back up your work and don't rely on it for anything important yet.
-			</p>
-			{#if androidAssets.length > 0}
-				{#each androidAssets as asset (asset.name)}
-					<Button
-						variant="outline"
-						class="h-auto justify-between px-4 py-3"
-						href={asset.browser_download_url}
-					>
-						<span class="flex items-center gap-2">
-							<HugeiconsIcon icon={Download04Icon} size={14} />
-							{assetLabel(asset.name)}
-						</span>
-						<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
-					</Button>
-				{/each}
-			{:else}
-				<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
-					<HugeiconsIcon icon={Download04Icon} size={14} class="mr-2" />
-					View Android releases
-				</Button>
-			{/if}
-		</div>
+		{/each}
 	</div>
 </section>
+
+{#snippet macosNote()}
+	<p class="text-xs text-muted-foreground">
+		The macOS build isn't code-signed, so Gatekeeper will refuse to open it on first launch.
+		<a
+			href={MACOS_UNSIGNED_GUIDE_URL}
+			target="_blank"
+			rel="noopener noreferrer"
+			class="text-foreground underline underline-offset-2 transition-colors hover:text-muted-foreground"
+		>
+			Follow this guide
+		</a>
+		to install it anyway.
+	</p>
+{/snippet}
+
+{#snippet androidNote()}
+	<p class="text-xs text-muted-foreground">
+		The Android build is highly experimental — expect bugs, missing features, and breaking changes.
+		Back up your work and don't rely on it for anything important yet.
+	</p>
+{/snippet}
 
 <Separator />
 

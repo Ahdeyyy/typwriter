@@ -11,8 +11,8 @@
   onMount(async () => {
     app.init();
     await settings.init();
-    // Re-open the previously active workspace on launch (item 3). Silently fall
-    // back to the home screen if it no longer exists.
+    // Re-open the previously active workspace on launch. Silently fall back to
+    // the home screen if it no longer exists.
     const last = settings.lastWorkspace;
     if (last) {
       await workspace.refreshList();

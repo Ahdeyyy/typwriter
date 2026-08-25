@@ -1,0 +1,178 @@
+/* Preview palette tokens for the Appearance pane's colour-scheme cards and
+ * theme grid. A preview element scopes a specific theme's colours to itself
+ * (regardless of the document's active theme) via:
+ *
+ *   <div class="theme-preview" data-theme="dracula">        → light values
+ *   <div class="theme-preview dark" data-theme="dracula">   → dark values
+ *
+ * The values mirror the theme preset blocks in `src/routes/layout.css` — keep
+ * the two in step when adding or retuning a theme. Only the handful of tokens
+ * the miniature mockups and gradient circles need are carried here:
+ *
+ *   --tp-bg       window background          (background)
+ *   --tp-surface  sidebar strip              (sidebar)
+ *   --tp-card     raised floating surface    (card)
+ *   --tp-bar      text / content lines       (secondary)
+ *   --tp-heading  heading bar                (primary)
+ *   --tp-dot      accent dot                 (accent)
+ *   --tp-border   hairline borders           (border)
+ */
+
+.theme-preview[data-theme="default"] {
+  --tp-bg: oklch(1 0 0);
+  --tp-surface: oklch(0.985 0 0);
+  --tp-card: oklch(1 0 0);
+  --tp-bar: oklch(0.97 0 0);
+  --tp-heading: oklch(0.205 0 0);
+  --tp-dot: oklch(0.205 0 0);
+  --tp-border: oklch(0.922 0 0);
+}
+.theme-preview.dark[data-theme="default"] {
+  --tp-bg: oklch(0.145 0 0);
+  --tp-surface: oklch(0.205 0 0);
+  --tp-card: oklch(0.205 0 0);
+  --tp-bar: oklch(0.269 0 0);
+  --tp-heading: oklch(0.922 0 0);
+  --tp-dot: oklch(0.922 0 0);
+  --tp-border: oklch(1 0 0 / 10%);
+}
+
+/* Glass shares the default palette; the translucent surfaces hint at the
+ * frosted treatment this theme applies. `--tp-underlay` is the opaque colour
+ * those translucent surfaces sit on in the real app (white in light mode,
+ * near-black in dark), so the previews composite identically no matter which
+ * colour scheme the settings window itself is in. */
+.theme-preview[data-theme="glass"] {
+  --tp-underlay: oklch(1 0 0);
+  --tp-bg: oklch(1 0 0 / 0.5);
+  --tp-surface: oklch(0.985 0 0 / 0.35);
+  --tp-card: oklch(1 0 0 / 0.35);
+  --tp-bar: oklch(0.97 0 0 / 0.55);
+  --tp-heading: oklch(0.205 0 0);
+  --tp-dot: oklch(0.205 0 0);
+  --tp-border: oklch(0.145 0 0 / 0.1);
+}
+.theme-preview.dark[data-theme="glass"] {
+  --tp-underlay: oklch(0.145 0 0);
+  --tp-bg: oklch(0.145 0 0 / 0.5);
+  --tp-surface: oklch(0.205 0 0 / 0.35);
+  --tp-card: oklch(0.205 0 0 / 0.35);
+  --tp-bar: oklch(0.269 0 0 / 0.5);
+  --tp-heading: oklch(0.922 0 0);
+  --tp-dot: oklch(0.922 0 0);
+  --tp-border: oklch(1 0 0 / 0.1);
+}
+
+.theme-preview[data-theme="nord"] {
+  --tp-bg: oklch(0.96 0.01 250);
+  --tp-surface: oklch(0.93 0.015 250);
+  --tp-card: oklch(0.99 0.005 250);
+  --tp-bar: oklch(0.91 0.02 250);
+  --tp-heading: oklch(0.52 0.1 245);
+  --tp-dot: oklch(0.62 0.1 200);
+  --tp-border: oklch(0.86 0.02 250);
+}
+.theme-preview.dark[data-theme="nord"] {
+  --tp-bg: oklch(0.3 0.025 252);
+  --tp-surface: oklch(0.28 0.025 252);
+  --tp-card: oklch(0.35 0.03 252);
+  --tp-bar: oklch(0.38 0.03 252);
+  --tp-heading: oklch(0.75 0.08 245);
+  --tp-dot: oklch(0.72 0.1 200);
+  --tp-border: oklch(1 0 0 / 12%);
+}
+
+.theme-preview[data-theme="dracula"] {
+  --tp-bg: oklch(0.97 0.01 300);
+  --tp-surface: oklch(0.95 0.015 300);
+  --tp-card: oklch(1 0 0);
+  --tp-bar: oklch(0.94 0.02 300);
+  --tp-heading: oklch(0.55 0.2 295);
+  --tp-dot: oklch(0.65 0.18 340);
+  --tp-border: oklch(0.88 0.02 300);
+}
+.theme-preview.dark[data-theme="dracula"] {
+  --tp-bg: oklch(0.22 0.03 285);
+  --tp-surface: oklch(0.2 0.03 285);
+  --tp-card: oklch(0.28 0.035 285);
+  --tp-bar: oklch(0.32 0.03 285);
+  --tp-heading: oklch(0.78 0.16 295);
+  --tp-dot: oklch(0.74 0.18 340);
+  --tp-border: oklch(1 0 0 / 12%);
+}
+
+.theme-preview[data-theme="solarized"] {
+  --tp-bg: oklch(0.96 0.02 85);
+  --tp-surface: oklch(0.93 0.025 85);
+  --tp-card: oklch(0.99 0.01 85);
+  --tp-bar: oklch(0.91 0.03 85);
+  --tp-heading: oklch(0.55 0.13 220);
+  --tp-dot: oklch(0.6 0.13 145);
+  --tp-border: oklch(0.87 0.03 85);
+}
+.theme-preview.dark[data-theme="solarized"] {
+  --tp-bg: oklch(0.27 0.02 200);
+  --tp-surface: oklch(0.25 0.02 200);
+  --tp-card: oklch(0.32 0.025 200);
+  --tp-bar: oklch(0.35 0.025 200);
+  --tp-heading: oklch(0.7 0.12 220);
+  --tp-dot: oklch(0.72 0.13 145);
+  --tp-border: oklch(1 0 0 / 12%);
+}
+
+.theme-preview[data-theme="catppuccin"] {
+  --tp-bg: oklch(0.97 0.01 320);
+  --tp-surface: oklch(0.94 0.015 320);
+  --tp-card: oklch(1 0 0);
+  --tp-bar: oklch(0.93 0.02 320);
+  --tp-heading: oklch(0.6 0.16 320);
+  --tp-dot: oklch(0.7 0.14 200);
+  --tp-border: oklch(0.87 0.02 320);
+}
+.theme-preview.dark[data-theme="catppuccin"] {
+  --tp-bg: oklch(0.25 0.025 290);
+  --tp-surface: oklch(0.22 0.025 290);
+  --tp-card: oklch(0.3 0.03 290);
+  --tp-bar: oklch(0.34 0.03 290);
+  --tp-heading: oklch(0.78 0.13 320);
+  --tp-dot: oklch(0.78 0.12 200);
+  --tp-border: oklch(1 0 0 / 12%);
+}
+
+.theme-preview[data-theme="rose-pine"] {
+  --tp-bg: oklch(0.96 0.01 30);
+  --tp-surface: oklch(0.93 0.015 30);
+  --tp-card: oklch(0.99 0.005 30);
+  --tp-bar: oklch(0.92 0.02 30);
+  --tp-heading: oklch(0.58 0.13 10);
+  --tp-dot: oklch(0.62 0.1 190);
+  --tp-border: oklch(0.86 0.02 30);
+}
+.theme-preview.dark[data-theme="rose-pine"] {
+  --tp-bg: oklch(0.26 0.02 320);
+  --tp-surface: oklch(0.23 0.02 320);
+  --tp-card: oklch(0.3 0.025 320);
+  --tp-bar: oklch(0.34 0.03 320);
+  --tp-heading: oklch(0.76 0.11 10);
+  --tp-dot: oklch(0.74 0.1 190);
+  --tp-border: oklch(1 0 0 / 12%);
+}
+
+.theme-preview[data-theme="gruvbox"] {
+  --tp-bg: oklch(0.94 0.03 85);
+  --tp-surface: oklch(0.91 0.025 85);
+  --tp-card: oklch(0.97 0.02 85);
+  --tp-bar: oklch(0.9 0.03 85);
+  --tp-heading: oklch(0.5 0.16 30);
+  --tp-dot: oklch(0.62 0.16 145);
+  --tp-border: oklch(0.85 0.03 85);
+}
+.theme-preview.dark[data-theme="gruvbox"] {
+  --tp-bg: oklch(0.25 0.02 60);
+  --tp-surface: oklch(0.15 0.02 60);
+  --tp-card: oklch(0.3 0.025 60);
+  --tp-bar: oklch(0.34 0.025 60);
+  --tp-heading: oklch(0.72 0.13 30);
+  --tp-dot: oklch(0.74 0.14 145);
+  --tp-border: oklch(1 0 0 / 12%);
+}

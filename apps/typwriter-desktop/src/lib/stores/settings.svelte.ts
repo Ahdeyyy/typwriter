@@ -94,8 +94,7 @@ export interface PersistedSettings {
     uiFontFamily: string;
     editorFontFamily: string;
     editorFontSize: number;
-    lightTheme: ThemeId;
-    darkTheme: ThemeId;
+    theme: ThemeId;
 
     // Updates
     autoCheckUpdates: boolean;
@@ -103,6 +102,10 @@ export interface PersistedSettings {
     // Preview defaults
     defaultPreviewZoom: number;
     defaultPreviewVisible: boolean;
+    /** Display to project onto in presentation mode, as an OS display id
+     *  (`\\.\DISPLAY2`). `null` means auto: whichever display the main editor
+     *  window isn't on — the right answer for a laptop + HDMI-extend rig. */
+    presentationDisplay: string | null;
 
     // Editor behaviors
     showLineNumbers: boolean;
@@ -110,6 +113,8 @@ export interface PersistedSettings {
     spellcheck: boolean;
     tabWidth: number;
     wordWrap: boolean;
+    focusMode: boolean;
+    typewriterScrolling: boolean;
 
     /** Use the tinymist language server (when installed) for completion, hover,
      *  and diagnostics. UI-only — not round-tripped through the Rust settings. */
@@ -156,19 +161,21 @@ const DEFAULTS: PersistedSettings = {
     uiFontFamily: 'IBM Plex Sans Variable',
     editorFontFamily: 'JetBrains Mono Variable',
     editorFontSize: 13,
-    lightTheme: 'default',
-    darkTheme: 'default',
+    theme: 'default',
 
     autoCheckUpdates: true,
 
     defaultPreviewZoom: 2.0,
     defaultPreviewVisible: true,
+    presentationDisplay: null,
 
     showLineNumbers: false,
     showIndentationMarkers: true,
     spellcheck: true,
     tabWidth: 2,
     wordWrap: true,
+    focusMode: false,
+    typewriterScrolling: false,
     useLsp: true,
 
     autoSaveEnabled: true,
@@ -205,18 +212,36 @@ function clampInt(value: number, { min, max }: { min: number; max: number }): nu
     return Math.max(min, Math.min(max, Math.round(value)));
 }
 
+/** Bounds for the numeric settings that are clamped in two places — once when
+ *  loading persisted values, once in the setter. Naming each one keeps the two
+ *  call sites from drifting apart. */
+const clampEditorFontSize = (v: number) => Math.max(8, Math.min(32, Math.round(v)));
+const clampPreviewZoom = (v: number) => Math.max(0.25, Math.min(8, v));
+const clampTabWidth = (v: number) => Math.max(1, Math.min(8, Math.round(v)));
+const clampAutoSaveDelayMs = (v: number) => Math.max(250, Math.min(60_000, Math.round(v)));
+const clampSnapshotIntervalSeconds = (v: number) => Math.max(0, Math.min(3600, Math.round(v)));
+const clampSnapshotRetentionCount = (v: number) => Math.max(0, Math.min(10_000, Math.round(v)));
+const clampSnapshotRetentionDays = (v: number) => Math.max(0, Math.min(3650, Math.round(v)));
+
 const THEME_IDS = new Set<ThemeId>(THEMES.map((theme) => theme.id));
 
 function isThemeId(value: unknown): value is ThemeId {
     return typeof value === 'string' && THEME_IDS.has(value as ThemeId);
 }
 
-function normalizeSettings(value: Partial<PersistedSettings>): PersistedSettings {
-    const settings = { ...DEFAULTS, ...value };
+/** Legacy field names kept readable here so settings saved before themes were
+ *  unified (one palette per mode) migrate to the single `theme` instead of
+ *  resetting to the default. */
+type RawSettings = Partial<PersistedSettings> & { lightTheme?: unknown; darkTheme?: unknown };
+
+function normalizeSettings(value: RawSettings): PersistedSettings {
+    const settings = { ...DEFAULTS, ...value } as PersistedSettings & RawSettings;
+    // When the old per-mode palettes disagreed, the dark one wins — it was the
+    // more likely deliberate pick for an app that ships dark by default.
+    const legacyTheme = [settings.theme, settings.darkTheme, settings.lightTheme].find(isThemeId);
     return {
         ...settings,
-        lightTheme: isThemeId(settings.lightTheme) ? settings.lightTheme : DEFAULTS.lightTheme,
-        darkTheme: isThemeId(settings.darkTheme) ? settings.darkTheme : DEFAULTS.darkTheme,
+        theme: legacyTheme ?? DEFAULTS.theme,
         keybindings: normalizeKeybindings(settings.keybindings),
     };
 }
@@ -245,19 +270,21 @@ class SettingsStore {
     uiFontFamily = $state(INITIAL.uiFontFamily);
     editorFontFamily = $state(INITIAL.editorFontFamily);
     editorFontSize = $state(INITIAL.editorFontSize);
-    lightTheme = $state<ThemeId>(INITIAL.lightTheme);
-    darkTheme = $state<ThemeId>(INITIAL.darkTheme);
+    theme = $state<ThemeId>(INITIAL.theme);
 
     autoCheckUpdates = $state(INITIAL.autoCheckUpdates);
 
     defaultPreviewZoom = $state(INITIAL.defaultPreviewZoom);
     defaultPreviewVisible = $state(INITIAL.defaultPreviewVisible);
+    presentationDisplay = $state(INITIAL.presentationDisplay);
 
     showLineNumbers = $state(INITIAL.showLineNumbers);
     showIndentationMarkers = $state(INITIAL.showIndentationMarkers);
     spellcheck = $state(INITIAL.spellcheck);
     tabWidth = $state(INITIAL.tabWidth);
     wordWrap = $state(INITIAL.wordWrap);
+    focusMode = $state(INITIAL.focusMode);
+    typewriterScrolling = $state(INITIAL.typewriterScrolling);
     useLsp = $state(INITIAL.useLsp);
 
     autoSaveEnabled = $state(INITIAL.autoSaveEnabled);
@@ -292,16 +319,18 @@ class SettingsStore {
                     uiFontFamily: s.ui_font_family,
                     editorFontFamily: s.editor_font_family,
                     editorFontSize: s.editor_font_size,
-                    lightTheme: isThemeId(s.light_theme) ? s.light_theme : DEFAULTS.lightTheme,
-                    darkTheme: isThemeId(s.dark_theme) ? s.dark_theme : DEFAULTS.darkTheme,
+                    theme: isThemeId(s.theme) ? s.theme : DEFAULTS.theme,
                     autoCheckUpdates: s.auto_check_updates,
                     defaultPreviewZoom: s.default_preview_zoom,
                     defaultPreviewVisible: s.default_preview_visible,
+                    presentationDisplay: s.presentation_display ?? null,
                     showLineNumbers: s.show_line_numbers,
                     showIndentationMarkers: s.show_indentation_markers,
                     spellcheck: s.spellcheck,
                     tabWidth: s.tab_width,
                     wordWrap: s.word_wrap,
+                    focusMode: s.focus_mode,
+                    typewriterScrolling: s.typewriter_scrolling,
                     // UI-only: Rust has no say — always reseed from the local value.
                     useLsp: INITIAL.useLsp,
                     autoSaveEnabled: s.auto_save_enabled,
@@ -337,16 +366,18 @@ class SettingsStore {
             uiFontFamily: this.uiFontFamily,
             editorFontFamily: this.editorFontFamily,
             editorFontSize: this.editorFontSize,
-            lightTheme: this.lightTheme,
-            darkTheme: this.darkTheme,
+            theme: this.theme,
             autoCheckUpdates: this.autoCheckUpdates,
             defaultPreviewZoom: this.defaultPreviewZoom,
             defaultPreviewVisible: this.defaultPreviewVisible,
+            presentationDisplay: this.presentationDisplay,
             showLineNumbers: this.showLineNumbers,
             showIndentationMarkers: this.showIndentationMarkers,
             spellcheck: this.spellcheck,
             tabWidth: this.tabWidth,
             wordWrap: this.wordWrap,
+            focusMode: this.focusMode,
+            typewriterScrolling: this.typewriterScrolling,
             useLsp: this.useLsp,
             autoSaveEnabled: this.autoSaveEnabled,
             autoSaveDelayMs: this.autoSaveDelayMs,
@@ -372,20 +403,22 @@ class SettingsStore {
         const settings = { ...DEFAULTS, ...next };
         this.uiFontFamily = settings.uiFontFamily;
         this.editorFontFamily = settings.editorFontFamily;
-        this.editorFontSize = Math.max(8, Math.min(32, Math.round(settings.editorFontSize)));
-        this.lightTheme = isThemeId(settings.lightTheme) ? settings.lightTheme : DEFAULTS.lightTheme;
-        this.darkTheme = isThemeId(settings.darkTheme) ? settings.darkTheme : DEFAULTS.darkTheme;
+        this.editorFontSize = clampEditorFontSize(settings.editorFontSize);
+        this.theme = isThemeId(settings.theme) ? settings.theme : DEFAULTS.theme;
         this.autoCheckUpdates = settings.autoCheckUpdates;
-        this.defaultPreviewZoom = Math.max(0.25, Math.min(8, settings.defaultPreviewZoom));
+        this.defaultPreviewZoom = clampPreviewZoom(settings.defaultPreviewZoom);
         this.defaultPreviewVisible = settings.defaultPreviewVisible;
+        this.presentationDisplay = settings.presentationDisplay;
         this.showLineNumbers = settings.showLineNumbers;
         this.showIndentationMarkers = settings.showIndentationMarkers;
         this.spellcheck = settings.spellcheck;
-        this.tabWidth = Math.max(1, Math.min(8, Math.round(settings.tabWidth)));
+        this.tabWidth = clampTabWidth(settings.tabWidth);
         this.wordWrap = settings.wordWrap;
+        this.focusMode = settings.focusMode;
+        this.typewriterScrolling = settings.typewriterScrolling;
         this.useLsp = settings.useLsp;
         this.autoSaveEnabled = settings.autoSaveEnabled;
-        this.autoSaveDelayMs = Math.max(250, Math.min(60_000, Math.round(settings.autoSaveDelayMs)));
+        this.autoSaveDelayMs = clampAutoSaveDelayMs(settings.autoSaveDelayMs);
         this.formatBeforeSave = settings.formatBeforeSave;
         this.formatTabSpaces = clampInt(settings.formatTabSpaces, FORMAT_LIMITS.tabSpaces);
         this.formatMaxWidth = clampInt(settings.formatMaxWidth, FORMAT_LIMITS.maxWidth);
@@ -398,17 +431,14 @@ class SettingsStore {
         this.formatWrapText = settings.formatWrapText;
         this.autoSnapshotOnSave = settings.autoSnapshotOnSave;
         this.autoSnapshotOnCompile = settings.autoSnapshotOnCompile;
-        this.autoSnapshotMinIntervalSeconds = Math.max(
-            0,
-            Math.min(3600, Math.round(settings.autoSnapshotMinIntervalSeconds)),
+        this.autoSnapshotMinIntervalSeconds = clampSnapshotIntervalSeconds(
+            settings.autoSnapshotMinIntervalSeconds,
         );
-        this.snapshotRetentionMaxCount = Math.max(
-            0,
-            Math.min(10_000, Math.round(settings.snapshotRetentionMaxCount)),
+        this.snapshotRetentionMaxCount = clampSnapshotRetentionCount(
+            settings.snapshotRetentionMaxCount,
         );
-        this.snapshotRetentionMaxDays = Math.max(
-            0,
-            Math.min(3650, Math.round(settings.snapshotRetentionMaxDays)),
+        this.snapshotRetentionMaxDays = clampSnapshotRetentionDays(
+            settings.snapshotRetentionMaxDays,
         );
         this.keybindings = normalizeKeybindings(settings.keybindings);
     }
@@ -440,16 +470,18 @@ class SettingsStore {
             ui_font_family: current.uiFontFamily,
             editor_font_family: current.editorFontFamily,
             editor_font_size: current.editorFontSize,
-            light_theme: current.lightTheme,
-            dark_theme: current.darkTheme,
+            theme: current.theme,
             auto_check_updates: current.autoCheckUpdates,
             default_preview_zoom: current.defaultPreviewZoom,
             default_preview_visible: current.defaultPreviewVisible,
+            presentation_display: current.presentationDisplay,
             show_line_numbers: current.showLineNumbers,
             show_indentation_markers: current.showIndentationMarkers,
             spellcheck: current.spellcheck,
             tab_width: current.tabWidth,
             word_wrap: current.wordWrap,
+            focus_mode: current.focusMode,
+            typewriter_scrolling: current.typewriterScrolling,
             auto_save_enabled: current.autoSaveEnabled,
             auto_save_delay_ms: current.autoSaveDelayMs,
             format_before_save: current.formatBeforeSave,
@@ -482,17 +514,12 @@ class SettingsStore {
     }
 
     setEditorFontSize(size: number) {
-        this.editorFontSize = Math.max(8, Math.min(32, Math.round(size)));
+        this.editorFontSize = clampEditorFontSize(size);
         this.persist();
     }
 
-    setLightTheme(theme: ThemeId) {
-        this.lightTheme = theme;
-        this.persist();
-    }
-
-    setDarkTheme(theme: ThemeId) {
-        this.darkTheme = theme;
+    setTheme(theme: ThemeId) {
+        this.theme = theme;
         this.persist();
     }
 
@@ -502,12 +529,18 @@ class SettingsStore {
     }
 
     setDefaultPreviewZoom(zoom: number) {
-        this.defaultPreviewZoom = Math.max(0.25, Math.min(8, zoom));
+        this.defaultPreviewZoom = clampPreviewZoom(zoom);
         this.persist();
     }
 
     setDefaultPreviewVisible(value: boolean) {
         this.defaultPreviewVisible = value;
+        this.persist();
+    }
+
+    /** Pin the display presentation mode projects onto, or `null` for auto. */
+    setPresentationDisplay(id: string | null) {
+        this.presentationDisplay = id;
         this.persist();
     }
 
@@ -527,12 +560,22 @@ class SettingsStore {
     }
 
     setTabWidth(value: number) {
-        this.tabWidth = Math.max(1, Math.min(8, Math.round(value)));
+        this.tabWidth = clampTabWidth(value);
         this.persist();
     }
 
     setWordWrap(value: boolean) {
         this.wordWrap = value;
+        this.persist();
+    }
+
+    setFocusMode(value: boolean) {
+        this.focusMode = value;
+        this.persist();
+    }
+
+    setTypewriterScrolling(value: boolean) {
+        this.typewriterScrolling = value;
         this.persist();
     }
 
@@ -547,7 +590,7 @@ class SettingsStore {
     }
 
     setAutoSaveDelayMs(value: number) {
-        this.autoSaveDelayMs = Math.max(250, Math.min(60_000, Math.round(value)));
+        this.autoSaveDelayMs = clampAutoSaveDelayMs(value);
         this.persist();
     }
 
@@ -601,17 +644,17 @@ class SettingsStore {
     }
 
     setAutoSnapshotMinIntervalSeconds(value: number) {
-        this.autoSnapshotMinIntervalSeconds = Math.max(0, Math.min(3600, Math.round(value)));
+        this.autoSnapshotMinIntervalSeconds = clampSnapshotIntervalSeconds(value);
         this.persist();
     }
 
     setSnapshotRetentionMaxCount(value: number) {
-        this.snapshotRetentionMaxCount = Math.max(0, Math.min(10_000, Math.round(value)));
+        this.snapshotRetentionMaxCount = clampSnapshotRetentionCount(value);
         this.persist();
     }
 
     setSnapshotRetentionMaxDays(value: number) {
-        this.snapshotRetentionMaxDays = Math.max(0, Math.min(3650, Math.round(value)));
+        this.snapshotRetentionMaxDays = clampSnapshotRetentionDays(value);
         this.persist();
     }
 
@@ -656,8 +699,7 @@ class SettingsStore {
         this.uiFontFamily = DEFAULTS.uiFontFamily;
         this.editorFontFamily = DEFAULTS.editorFontFamily;
         this.editorFontSize = DEFAULTS.editorFontSize;
-        this.lightTheme = DEFAULTS.lightTheme;
-        this.darkTheme = DEFAULTS.darkTheme;
+        this.theme = DEFAULTS.theme;
         this.autoCheckUpdates = DEFAULTS.autoCheckUpdates;
         this.defaultPreviewZoom = DEFAULTS.defaultPreviewZoom;
         this.defaultPreviewVisible = DEFAULTS.defaultPreviewVisible;
@@ -666,6 +708,8 @@ class SettingsStore {
         this.spellcheck = DEFAULTS.spellcheck;
         this.tabWidth = DEFAULTS.tabWidth;
         this.wordWrap = DEFAULTS.wordWrap;
+        this.focusMode = DEFAULTS.focusMode;
+        this.typewriterScrolling = DEFAULTS.typewriterScrolling;
         this.useLsp = DEFAULTS.useLsp;
         this.autoSaveEnabled = DEFAULTS.autoSaveEnabled;
         this.autoSaveDelayMs = DEFAULTS.autoSaveDelayMs;

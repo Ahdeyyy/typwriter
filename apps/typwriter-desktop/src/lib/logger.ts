@@ -1,5 +1,4 @@
 import { error as tauriError, info as tauriInfo } from '@tauri-apps/plugin-log';
-import { toast } from 'svelte-sonner';
 
 type LogValue = unknown;
 

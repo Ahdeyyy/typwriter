@@ -1,9 +1,12 @@
 [package]
 name = "typwriter"
-version = "0.8.7"
+version = "0.9.0"
 description = "A typsetting app built on top of typst, with a desktop interface built using Tauri."
 authors = ["ade"]
 edition = "2021"
+
+[profile.dev]
+debug = "line-tables-only"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -38,6 +41,9 @@ tauri-plugin-log = "2"
 tauri-plugin-store = "2"
 notify = "7"
 rayon = "1"
+# Project-wide search. Already in the tree via typst; declared directly
+# because `commands/search.rs` uses it.
+regex = "1"
 base64 = "0.22"
 lru = "0.12"
 parking_lot = "0.12"
@@ -64,3 +70,18 @@ harper-core = { version = "2.7", features = ["concurrent"] }
 # `grammar/typst_parser/` walks the AST, and this pin is what decouples our
 # grammar checker from harper's own typst support.
 typst-syntax = "0.15.1"
+# Bibliography parsing for citation completions (`commands/bibliography.rs`).
+# Already in the tree via typst; declared directly so we read bibliography
+# files with the same parser the compiler uses — exact acceptance parity.
+hayagriva = "0.10"
+
+# Presentation mode needs two Win32 calls Tauri doesn't wrap:
+# `SetThreadExecutionState` (hold off display sleep for the length of a talk)
+# and `DwmSetWindowAttribute` (keep Aero Peek from ghosting the projected
+# slide). 0.61 is already in the tree via tao, so this adds no new build.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Dwm",
+  "Win32_System_Power",
+] }

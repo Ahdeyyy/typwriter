@@ -2,8 +2,10 @@
 // live FS watcher. All file-system operations funnel through here so the
 // EditorWorld caches stay consistent.
 
+pub mod text_files;
 mod error;
 mod path;
+mod self_writes;
 mod store;
 mod watcher;
 
@@ -19,7 +21,7 @@ use std::{
 use base64::Engine;
 use notify::RecommendedWatcher;
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::{
     compiler::{render_page, CompileReason, PreviewPipeline},
@@ -37,6 +39,9 @@ pub struct RecentWorkspaceEntry {
     /// Base64-encoded PNG thumbnail, if available.
     pub thumbnail: Option<String>,
 }
+
+/// File name of the per-project snippet set inside `.typwriter/`.
+const SNIPPETS_FILE: &str = "snippets.json";
 
 // ─── File tree ────────────────────────────────────────────────────────────────
 
@@ -74,6 +79,9 @@ pub struct WorkspaceState {
     /// Local-only version history. Bound to the current workspace via
     /// `VcsState::attach` whenever a folder is opened.
     pub vcs: Arc<VcsState>,
+    /// Writes the editor performed itself, so the watcher can ignore the
+    /// filesystem events they generate. Shared with the watcher thread.
+    self_writes: Arc<self_writes::SelfWriteLog>,
     pub app_handle: AppHandle,
 }
 
@@ -93,8 +101,23 @@ impl WorkspaceState {
             world,
             pipeline,
             vcs,
+            self_writes: Arc::new(self_writes::SelfWriteLog::new()),
             app_handle,
         }
+    }
+
+    /// Record that the editor is about to write `path`, so the watcher ignores
+    /// the events that write produces. See [`self_writes`].
+    ///
+    /// Every mutation in this module claims its paths *before* touching disk:
+    /// the events can arrive while the operation is still running, and a claim
+    /// filed afterwards would lose the race. Missing a claim doesn't corrupt
+    /// anything — the frontend has already applied the change and re-reading is
+    /// idempotent — but it does cost a needless workspace re-walk, and for a
+    /// file with unsaved edits it would raise a "changed on disk" prompt for a
+    /// change the user just made in the app.
+    pub fn note_self_write(&self, path: &Path) {
+        self.self_writes.note(path);
     }
 
     // ─── Workspace open ────────────────────────────────────────────────────
@@ -124,6 +147,14 @@ impl WorkspaceState {
         self.world.set_root(path.clone());
         self.pipeline.invalidate_cache();
         self.pipeline.attach_disk_cache(&path);
+        // Page-diff thumbnails were rendered from the *previous* workspace's
+        // object store; nothing about them survives the move.
+        if let Some(engine) = self
+            .app_handle
+            .try_state::<std::sync::Arc<crate::compiler::PageDiffEngine>>()
+        {
+            engine.invalidate();
+        }
 
         // Kick the (lazy) font search off now so the system scan overlaps the
         // rest of the open path — watcher start, cache attach, frontend
@@ -131,10 +162,14 @@ impl WorkspaceState {
         // needs it. Idempotent, so the compile worker calling it again is free.
         self.world.ensure_fonts_loading();
 
-        // Bind the version-history system to this workspace. Initializes a
-        // `.git` repo on first open and seeds an initial restore point so the
-        // timeline is never empty.
-        self.vcs.attach(&path);
+        // Bind the version-history system to this workspace. The initial
+        // restore-point seed walks the whole tree reading and hashing every
+        // file — seconds on a large workspace — so only the cheap root
+        // binding happens here and the snapshot is seeded on its own thread.
+        // Commits are mutex-serialized inside `VcsState`, so a save or
+        // compile commit landing before the seed finishes is safe.
+        self.vcs.bind_root(&path);
+        self.vcs.spawn_initial_snapshot(&path);
 
         // Start a new watcher for the new root.
         let new_watcher = watcher::start_watcher(
@@ -142,6 +177,7 @@ impl WorkspaceState {
             self.world.clone(),
             self.pipeline.clone(),
             self.app_handle.clone(),
+            self.self_writes.clone(),
         )
         .map_err(|e| {
             error!("WorkspaceState::open_folder: watcher start failed err=\"{e}\" path={path:?}");
@@ -200,8 +236,8 @@ impl WorkspaceState {
         let t = Instant::now();
         info!("WorkspaceState::set_main_file: path={path:?}");
 
-        // Snapshot the workspace root once — set_main_file is a hot path that
-        // used to take this lock three times.
+        // Snapshot the workspace root once; set_main_file is a hot path and the
+        // lock is needed in three places below.
         let root = self.root.read().clone().ok_or_else(|| {
             let e = "No workspace open";
             error!("WorkspaceState::set_main_file: err=\"{e}\"");
@@ -247,6 +283,53 @@ impl WorkspaceState {
         *self.main_file.write() = None;
         self.world.clear_main();
         self.pipeline.invalidate_cache();
+    }
+
+    /// Follow the main file through changes made *outside* the editor.
+    ///
+    /// The in-app file operations each maintain this pointer themselves
+    /// (`rename_file` remaps it, `delete_file` clears it); nothing did so for a
+    /// rename or delete performed by another program, which left the compiler
+    /// resolving a path that no longer exists — every later compile failing
+    /// "file not found" for a document sitting right there under its new name.
+    ///
+    /// This is the backend's own bookkeeping, deliberately not routed through
+    /// the frontend: the world has to stay consistent whether or not a window
+    /// is listening, and the queued watcher compile runs either way.
+    pub(crate) fn reconcile_main_file(&self, changes: &[watcher::FileChange]) {
+        for change in changes {
+            // Re-read per change: an earlier one in the same batch may have
+            // moved or cleared it.
+            let Some(main) = self.main_file.read().clone() else {
+                return;
+            };
+            match change.kind {
+                watcher::ChangeKind::Renamed => {
+                    let Some(to) = change.to.as_deref() else {
+                        continue;
+                    };
+                    let src = Path::new(change.path.as_str());
+                    let dst = Path::new(to);
+                    if let Err(e) = self.update_main_file_path(src, dst, change.is_dir) {
+                        warn!(
+                            "WorkspaceState::reconcile_main_file: could not follow                              {src:?} -> {dst:?} err=\"{e}\""
+                        );
+                    }
+                }
+                watcher::ChangeKind::Removed => {
+                    // Component-wise, so deleting `notes` never clears a main
+                    // file called `notes-old.typ`. A removed directory takes
+                    // everything under it, which is exactly `starts_with`.
+                    if main.starts_with(Path::new(change.path.as_str())) {
+                        info!(
+                            "WorkspaceState::reconcile_main_file: main file removed externally                              ({main:?}) — clearing"
+                        );
+                        self.clear_main_file();
+                    }
+                }
+                watcher::ChangeKind::Created | watcher::ChangeKind::Modified => {}
+            }
+        }
     }
 
     // ─── Zoom / scale ──────────────────────────────────────────────────────
@@ -383,6 +466,72 @@ impl WorkspaceState {
         store::get_workspace_tabs(&self.app_handle, &PathBuf::from(root))
     }
 
+    // ─── Project snippets ──────────────────────────────────────────────────
+    //
+    // The project snippet set lives in the workspace at
+    // `.typwriter/snippets.json` so it travels with the document and can be
+    // reviewed and committed like any other project asset.
+    //
+    // It is read and written here rather than through the generic file
+    // commands for two reasons. The settings window — where snippets are
+    // authored — has no workspace of its own to resolve a path against; the
+    // root only ever lives on this side. And routing a snippet save through
+    // `save_file` would drag a FileId lookup, a VCS restore point and a
+    // recompile behind an edit that changes nothing about the document.
+
+    /// Absolute path of the project snippet file, or `None` with no workspace.
+    fn project_snippets_path(&self) -> Option<PathBuf> {
+        self.root
+            .read()
+            .as_ref()
+            .map(|root| root.join(store::TYPWRITER_DIR).join(SNIPPETS_FILE))
+    }
+
+    /// Raw contents of the project snippet file.
+    ///
+    /// `None` covers both "no workspace open" and "no snippet file", which are
+    /// the same thing to the caller: there are no project snippets. Most
+    /// projects never grow the file at all, so a missing one is the normal
+    /// case rather than an error. Parsing stays on the frontend, which already
+    /// owns the forgiving parser and reports per-entry problems to the user.
+    pub fn project_snippets(&self) -> Option<String> {
+        let path = self.project_snippets_path()?;
+        let fs = self.working_fs().ok()?;
+        if !fs.exists(&path) {
+            return None;
+        }
+        match fs.read_file(&path) {
+            Ok(bytes) => match String::from_utf8(bytes) {
+                Ok(contents) => Some(contents),
+                Err(err) => {
+                    warn!("WorkspaceState::project_snippets: not UTF-8 path={path:?} err=\"{err}\"");
+                    None
+                }
+            },
+            Err(err) => {
+                warn!("WorkspaceState::project_snippets: read failed path={path:?} err=\"{err}\"");
+                None
+            }
+        }
+    }
+
+    /// Replace the project snippet file, creating `.typwriter/` if needed.
+    ///
+    /// Written even when the set is empty, so deleting the last project
+    /// snippet is durable rather than reverting on the next load.
+    pub fn set_project_snippets(&self, contents: &str) -> Result<(), String> {
+        let path = self
+            .project_snippets_path()
+            .ok_or("No workspace open — project snippets need a workspace to live in")?;
+        let fs = self.working_fs()?;
+        if let Some(parent) = path.parent() {
+            fs.create_dir_all(parent)?;
+        }
+        fs.write_file(&path, contents.as_bytes())?;
+        info!("WorkspaceState::set_project_snippets: wrote {path:?}");
+        Ok(())
+    }
+
     // ─── File-system helpers ───────────────────────────────────────────────
 
     fn resolve(&self, path: &str) -> Result<PathBuf, String> {
@@ -451,6 +600,7 @@ impl WorkspaceState {
         let abs = self.resolve(path)?;
         let fs = self.working_fs()?;
         info!("WorkspaceState::create_file: abs={abs:?}");
+        self.note_self_write(&abs);
         if let Some(parent) = abs.parent() {
             fs.create_dir_all(parent).map_err(|e| {
                 error!(
@@ -476,6 +626,7 @@ impl WorkspaceState {
         let t = Instant::now();
         let abs = self.resolve(path)?;
         info!("WorkspaceState::create_folder: abs={abs:?}");
+        self.note_self_write(&abs);
         self.working_fs()?.create_dir_all(&abs).map_err(|e| {
             error!("WorkspaceState::create_folder: failed abs={abs:?} err=\"{e}\"");
             e
@@ -495,6 +646,7 @@ impl WorkspaceState {
         let t = Instant::now();
         let abs = self.resolve(path)?;
         info!("WorkspaceState::delete_file: abs={abs:?}");
+        self.note_self_write(&abs);
         self.working_fs()?.remove_file(&abs).map_err(|e| {
             error!("WorkspaceState::delete_file: failed abs={abs:?} err=\"{e}\"");
             e
@@ -527,6 +679,8 @@ impl WorkspaceState {
         let dst_abs = self.resolve(dst)?;
         let fs = self.working_fs()?;
         info!("WorkspaceState::rename_file: src={src_abs:?} dst={dst_abs:?}");
+        self.note_self_write(&src_abs);
+        self.note_self_write(&dst_abs);
         if let Some(parent) = dst_abs.parent() {
             fs.create_dir_all(parent).map_err(|e| {
                 error!("WorkspaceState::rename_file: create_dir_all failed dst_parent={parent:?} err=\"{e}\"");
@@ -573,7 +727,9 @@ impl WorkspaceState {
             "WorkspaceState::delete_folder: invalidating {} cached file(s)",
             files.len()
         );
+        self.note_self_write(&abs);
         for file_path in files {
+            self.note_self_write(&file_path);
             if let Some(id) = self.world.path_to_id(&file_path) {
                 self.world.shadow_remove(id);
                 self.world.invalidate_file(id);
@@ -647,6 +803,7 @@ impl WorkspaceState {
                 error!("WorkspaceState::import_files: err=\"{e}\"");
                 return Err(e);
             }
+            self.note_self_write(&dst_path);
             let bytes = std::fs::read(src_path.as_path()).map_err(|e| {
                 error!("WorkspaceState::import_files: read failed src={src_path:?} err=\"{e}\"");
                 e.to_string()
@@ -763,6 +920,7 @@ impl WorkspaceState {
             // Route through `resolve` so a crafted entry path can't escape the
             // workspace root, even though the segments were validated above.
             let abs = self.resolve(&ws_rel)?;
+            self.note_self_write(&abs);
             if let Some(parent) = abs.parent() {
                 fs.create_dir_all(parent).map_err(|e| {
                     error!("WorkspaceState::import_dropped: create_dir_all failed parent={parent:?} err=\"{e}\"");
@@ -800,6 +958,18 @@ impl WorkspaceState {
         let dst_abs = self.resolve(dst)?;
         let fs = self.working_fs()?;
         info!("WorkspaceState::move_folder: src={src_abs:?} dst={dst_abs:?}");
+        // Claimed before the move, while the source listing still resolves.
+        // Both endpoints of every file inside are claimed: the watcher sees the
+        // move as a rename per path, and either end left unclaimed would put
+        // the whole folder back through the frontend.
+        self.note_self_write(&src_abs);
+        self.note_self_write(&dst_abs);
+        for path in collect_files_recursive(fs.as_ref(), &src_abs) {
+            if let Ok(tail) = path.strip_prefix(&src_abs) {
+                self.note_self_write(&dst_abs.join(tail));
+            }
+            self.note_self_write(&path);
+        }
         if let Some(parent) = dst_abs.parent() {
             fs.create_dir_all(parent).map_err(|e| {
                 error!("WorkspaceState::move_folder: create_dir_all failed dst_parent={parent:?} err=\"{e}\"");

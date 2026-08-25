@@ -18,7 +18,16 @@
   import { matchesCommand, shortcutLabel } from "$lib/keybindings";
   import { toast } from "svelte-sonner";
 
-  let activeGroup = $state<SettingsGroupId>(DEFAULT_SETTINGS_GROUP);
+  interface Props {
+    /** Pane to open on, seeded from the URL by whoever opened the window.
+     *  An unknown id falls back to the default rather than showing nothing. */
+    initialGroup?: string | null;
+  }
+
+  let { initialGroup = null }: Props = $props();
+
+  const requestedGroup = SETTINGS_GROUPS.find((g) => g.id === initialGroup)?.id;
+  let activeGroup = $state<SettingsGroupId>(requestedGroup ?? DEFAULT_SETTINGS_GROUP);
 
   // Owned here and handed to every pane through context, so a row anywhere in
   // the tree can filter itself without the page knowing what settings exist.

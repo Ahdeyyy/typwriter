@@ -35,7 +35,7 @@ export function parseCode(config: {
 
     // Find the language tag child
     let info = ""
-    let cursor = node.node.cursor()
+    const cursor = node.node.cursor()
     if (cursor.firstChild()) {
       do {
         if (cursor.type.id === Type.RawLang) {

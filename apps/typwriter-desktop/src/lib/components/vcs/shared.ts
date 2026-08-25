@@ -18,6 +18,7 @@ import {
 } from '@hugeicons/core-free-icons';
 
 import { vcs } from '$lib/stores/vcs.svelte';
+import type { DiffWindowView } from '$lib/windows';
 import type { CommitTrigger, RestorePoint } from '$lib/types';
 
 // ─── Trigger presentation ────────────────────────────────────────────────
@@ -140,14 +141,19 @@ export async function useAsCompare(entry: RestorePoint): Promise<void> {
     );
 }
 
-/** Select (if needed) and open the diff window. */
-export function viewDiffFor(entry: RestorePoint, onopenDiff?: () => void): void {
+/** Select (if needed) and open the diff window on `view` — `'files'` for the
+ *  source diff, `'pages'` for the rendered-page comparison. */
+export function viewDiffFor(
+    entry: RestorePoint,
+    onopenDiff?: (view: DiffWindowView) => void,
+    view: DiffWindowView = 'files'
+): void {
     if (vcs.primaryId !== entry.id) {
         vcs.selectPoint(entry.id, false).mapErr((err) =>
             toast.error(`History: ${err}`)
         );
     }
-    onopenDiff?.();
+    onopenDiff?.(view);
 }
 
 export async function restoreWithConfirm(entry: RestorePoint): Promise<void> {

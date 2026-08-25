@@ -15,8 +15,11 @@ import {
     triggerPreview,
 } from '$lib/ipc/commands';
 import { onWorkspaceFilesChanged, type UnlistenFn } from '$lib/ipc/events';
-import type { FileTreeEntry } from '$lib/types';
+import type { FileTreeEntry, WorkspaceFileChange } from '$lib/types';
 import { logError } from '$lib/logger';
+import { bibliography } from '$lib/stores/bibliography.svelte';
+import { documentScope } from '$lib/stores/document-scope.svelte';
+import { snippets } from '$lib/stores/snippets.svelte';
 import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
 import { editor } from './editor.svelte';
 import { preview } from './preview.svelte';
@@ -134,13 +137,31 @@ class WorkspaceStore {
     // — that's a deliberate idiom here, not a missed deep clone. Children are
     // intentionally shared between the old and new array.
     tree = $state.raw<FileNode[]>([]);
-    rootPath = $state<string | null>(null);
+    // Cross-window: the settings and diff windows are separate webviews with
+    // their own store instances, and both need to know which project is open —
+    // settings so it can offer the project scope for snippets, the rest so
+    // `toAbs`/`toRel` resolve. Only `_init`/`_leave` in the main window ever
+    // write it; the other windows pick it up through the snapshot handshake.
+    private _rootPath = crossWindowState<string | null>('workspace:rootPath', null);
+    get rootPath(): string | null { return this._rootPath.value; }
+    set rootPath(v: string | null) { this._rootPath.set(v); }
     private _mainFile = crossWindowState<string | null>('workspace:mainFile', null);
     get mainFile(): string | null { return this._mainFile.value; }
     set mainFile(v: string | null) { this._mainFile.set(v); }
     activeFilePath = $state<string | null>(null);
     searchQuery = $state('');
     dragSrcPath = $state<string | null>(null);
+    /// True from the moment a workspace is opened until its critical open
+    /// phase settles (success or failure). The home page disables every
+    /// other entry point while this is up so a slow open can't be doubled.
+    opening = $state(false);
+    /// True while the critical open phase (teardown, watcher listener,
+    /// `open_folder`, main-file restore, tab restoration) is still running.
+    /// The workspace page covers itself with a loading overlay until this
+    /// clears — by which point the previously-open tabs and the active
+    /// tab's content are on screen — which is what lets navigation happen
+    /// optimistically on click.
+    hydrating = $state(false);
 
     filteredTree = $derived(filterTree(this.tree, this.searchQuery));
     anyFolderExpanded = $derived(hasExpandedFolder(this.tree));
@@ -171,6 +192,8 @@ class WorkspaceStore {
     }
 
     init(root: string): ResultAsync<void, string> {
+        this.opening = true;
+        this.hydrating = true;
         return ResultAsync.fromPromise(
             this._opQueue.run(() => this._init(root)),
             (err) => String(err),
@@ -184,7 +207,31 @@ class WorkspaceStore {
         );
     }
 
+    /// Open flow, split so navigation never waits on hydration. The home
+    /// page navigates optimistically on click and this runs concurrently:
+    ///
+    ///  * critical — everything that must be on screen before the overlay
+    ///    lifts: previous-session teardown, watcher listener, `open_folder`
+    ///    IPC, main-file restore, and the restored tab bar with the active
+    ///    tab's content loaded.
+    ///  * deferred — the file-tree walk for the sidebar. Runs immediately
+    ///    after the critical phase *through the same serial queue*, so a fast
+    ///    `leave()` or re-open can never interleave with it.
     private async _init(root: string): Promise<void> {
+        try {
+            await this._initCriticalPhase(root);
+            void this._opQueue
+                .run(() => this._initDeferredPhase(root))
+                .catch((err) => logError('Workspace hydration failed:', err));
+        } finally {
+            // Cleared on both paths: success lets the workspace overlay drop;
+            // failure does too before the caller bounces back home.
+            this.hydrating = false;
+            this.opening = false;
+        }
+    }
+
+    private async _initCriticalPhase(root: string): Promise<void> {
         await editor.flushAllTabs();
         await editor.reset();
         preview.clear();
@@ -196,8 +243,8 @@ class WorkspaceStore {
         this.mainFile = null;
         this.activeFilePath = null;
 
-        const listenResult = await onWorkspaceFilesChanged(() => {
-            this._scheduleTreeRefresh();
+        const listenResult = await onWorkspaceFilesChanged((payload) => {
+            void this._applyExternalChanges(payload.changes);
         });
         if (listenResult.isOk()) {
             this._filesChangedUnlisten = listenResult.value;
@@ -214,12 +261,24 @@ class WorkspaceStore {
             this.mainFile = normalize(openResult.value);
         }
 
+        // Part of the critical phase by design: when the overlay lifts, the
+        // tab bar is populated and the active tab's content is already on
+        // screen. `_restoreTabs` keeps its own non-fatal error handling — an
+        // unreadable tab must never bounce the workspace open.
+        await this._restoreTabs(root);
+    }
+
+    private async _initDeferredPhase(root: string): Promise<void> {
+        // The workspace may have been left again while this sat queued.
+        if (this.rootPath !== normalize(root)) return;
+
+        // Post-navigation failures are non-fatal by design: an unreadable
+        // tree leaves the sidebar empty rather than bouncing the user back
+        // out of a workspace that is otherwise open and usable.
         const refreshResult = await this.refreshTree();
         if (refreshResult.isErr()) {
-            throw new Error(refreshResult.error);
+            logError('refreshTree during open failed:', refreshResult.error);
         }
-
-        await this._restoreTabs(root);
     }
 
     private async _restoreTabs(root: string): Promise<void> {
@@ -249,18 +308,30 @@ class WorkspaceStore {
         await editor.reset();
         preview.clear();
         this._clearPersistTabsTimer();
+        bibliography.clear();
+        documentScope.clear();
+        snippets.reset();
         this.tree = [];
         this.rootPath = null;
         this.mainFile = null;
         this.activeFilePath = null;
         this.searchQuery = '';
         this.dragSrcPath = null;
+        this.opening = false;
+        this.hydrating = false;
     }
 
     refreshTree(): ResultAsync<void, string> {
         return getFileTree().map((entries) => {
             const expandedPaths = collectExpandedPaths(this.tree);
             this.tree = entries.map((entry) => entryToNode(entry, expandedPaths));
+            // A `.bib`/`.yml`, a `.typ` or `snippets.json` may have been
+            // added, removed or edited outside the app. Fire-and-forget: all
+            // are completion enhancements, and nothing here should wait on
+            // reading them.
+            void bibliography.refresh();
+            void documentScope.refresh();
+            void snippets.refresh();
         });
     }
 
@@ -281,6 +352,18 @@ class WorkspaceStore {
             .andThen(() => triggerPreview('main_file'))
             .map(() => {
                 this.mainFile = normalize(path);
+                // Scope is derived from the main file; the file facts are
+                // already cached, so this costs no IPC.
+                documentScope.recompute();
+                // A different document starts at its own beginning. Published
+                // as a scroll target rather than a bare `visiblePage` write so
+                // the pane and any popout go through the normal jump path: the
+                // counter reads 1/N, the backend is told to render page 1
+                // first, and the container actually snaps to the top — without
+                // that, the next scroll event would stamp the old page number
+                // right back. Instant, not smooth: the reader isn't travelling
+                // there, the document changed under them.
+                preview.scrollTarget = { page: 0, x: 0, y: 0, instant: true };
             });
     }
 
@@ -493,6 +576,70 @@ class WorkspaceStore {
             this._persistTabsTimer = null;
             this.persistTabs();
         }, 300);
+    }
+
+    /** Handle one batch from the filesystem watcher: something outside the
+     *  editor created, changed, renamed, or deleted files in the workspace.
+     *
+     *  The tree refresh stays debounced — a checkout or an `npm install` arrives
+     *  as a long series of batches, and re-walking the workspace for each would
+     *  make the sidebar thrash — but the open tabs are reconciled immediately: a
+     *  buffer showing text that is no longer on disk is the bug this exists to
+     *  fix, and those reads are per affected file rather than per workspace.
+     *
+     *  The backend follows the *main file* through the same batch itself (see
+     *  `WorkspaceState::reconcile_main_file`), so what happens here is only the
+     *  local mirror of it. */
+    private async _applyExternalChanges(changes: WorkspaceFileChange[]): Promise<void> {
+        this._scheduleTreeRefresh();
+
+        for (const change of changes) {
+            if (change.kind === 'renamed' && change.to) {
+                this._followExternalRename(
+                    this.toRel(change.path),
+                    this.toRel(change.to),
+                    change.isDir
+                );
+            } else if (change.kind === 'removed') {
+                this._forgetExternallyRemoved(this.toRel(change.path));
+            }
+        }
+
+        await editor.applyExternalChanges(changes);
+
+        // The editor may have closed the tab the sidebar was highlighting, or
+        // carried it to a new path; either way the active tab is the truth.
+        this.activeFilePath = editor.activeTab?.relPath ?? null;
+    }
+
+    private _followExternalRename(src: string, dst: string, isDir: boolean): void {
+        this.activeFilePath = this.activeFilePath
+            ? (rewritePath(this.activeFilePath, src, dst, isDir) ?? this.activeFilePath)
+            : null;
+        this.mainFile = this.mainFile
+            ? (rewritePath(this.mainFile, src, dst, isDir) ?? this.mainFile)
+            : null;
+    }
+
+    /** A removed path takes everything beneath it, so descendants are matched by
+     *  prefix. For a file that costs nothing: a file path can never be a prefix
+     *  of another path. */
+    private _forgetExternallyRemoved(rel: string): void {
+        const removed = normalize(rel).replace(/\/$/, '');
+        const covers = (path: string | null): boolean =>
+            path !== null && (path === removed || path.startsWith(`${removed}/`));
+
+        if (covers(this.activeFilePath)) {
+            this.activeFilePath = null;
+        }
+        if (covers(this.mainFile)) {
+            this.mainFile = null;
+            // The backend has already cleared its own pointer and dropped the
+            // cached document; this repaints the pane to match.
+            triggerPreview('main_file').mapErr((err) => {
+                logError('preview trigger after external main file delete failed:', err);
+            });
+        }
     }
 
     private _scheduleTreeRefresh(): void {

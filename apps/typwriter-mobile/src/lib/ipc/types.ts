@@ -39,6 +39,24 @@ export interface EntryChange {
   to: string | null;
 }
 
+/** What happened to a path on disk between two polls — mirrors `ChangeKind`
+ *  in src-tauri/src/watcher.rs. There is no `renamed`: a poll cannot pair the
+ *  two halves of a move, so an external rename arrives as a removal plus a
+ *  creation. */
+export type WorkspaceChangeKind = "created" | "modified" | "removed";
+
+export interface WorkspaceFileChange {
+  relPath: string;
+  kind: WorkspaceChangeKind;
+  /** Always false for `removed`; a removed path is treated as covering
+   *  everything beneath it either way. */
+  isDir: boolean;
+}
+
+export interface WorkspaceFilesChangedPayload {
+  changes: WorkspaceFileChange[];
+}
+
 export interface WorkspaceInfo {
   name: string;
   root: string;

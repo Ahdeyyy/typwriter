@@ -14,13 +14,15 @@ packages/
   typescript-config/   shared tsconfig presets
 ```
 
-Each app has its own `CLAUDE.md` / `AGENTS.md` with details specific to that app.
+Each app has its own `AGENTS.md` with details specific to that app. `CLAUDE.md`
+is a one-line `@AGENTS.md` import everywhere — put content in `AGENTS.md` only,
+so the two can't drift.
 
 ## Tooling
 
 - **Package manager:** `bun` (workspaces declared in root `package.json`)
-- **Task runner:** `turbo` — `bun run dev`, `bun run build`, `bun run lint`, `bun run check-types` fan out across workspaces
-- **Formatter:** `prettier` at the root (`bun run format`)
+- **Task runner:** `turbo` — `bun run dev`, `bun run build`, `bun run check-types` fan out across workspaces. `bun run lint` only reaches `typwriter-web`; desktop and mobile have no ESLint setup, so turbo silently skips them.
+- **Formatter:** `prettier` at the root (`bun run format`). There is no prettier config, so `--write` reflows files to 80 columns — match surrounding style by hand instead of formatting files you didn't otherwise touch.
 
 ## Targets
 

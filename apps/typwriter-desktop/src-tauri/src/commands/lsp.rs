@@ -11,12 +11,12 @@ pub fn lsp_start<R: Runtime>(app: AppHandle<R>, state: State<'_, LspState>) -> b
     state.start(&app)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lsp_send(state: State<'_, LspState>, message: String) -> Result<(), String> {
     state.send(&message)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lsp_stop(state: State<'_, LspState>) {
     state.stop();
 }

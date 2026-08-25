@@ -14,7 +14,6 @@
   } from "@hugeicons/core-free-icons";
   import { toast } from "svelte-sonner";
   import Icon from "$lib/components/icon.svelte";
-  import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { exportWorkspace } from "$lib/ipc/commands";
   import { app } from "$lib/stores/app.svelte";

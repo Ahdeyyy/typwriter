@@ -1,7 +1,8 @@
-// Managed-storage workspaces (v1): each workspace is a direct subdirectory of
-// `<documents>/Typwriter/`, reachable with plain `std::fs`. SAF-picked external
-// folders are a later phase (08-saf-and-polish.md). All file IO is funnelled
-// through this module so phase 8 can swap in a `WorkspaceFs` trait in one place.
+// Managed-storage workspaces: each workspace is a direct subdirectory of
+// `<documents>/Typwriter/`, reachable with plain `std::fs`. All file IO is
+// funnelled through this module so an alternative storage backend (e.g.
+// SAF-picked external folders, which `std::fs` cannot reach) can be swapped in
+// at one seam.
 
 use std::path::{Component, Path, PathBuf};
 

@@ -9,7 +9,7 @@ use std::{
     time::Instant,
 };
 
-use log::info;
+use log::{info, warn};
 use tauri::State;
 use typst_layout::PagedDocument;
 
@@ -39,10 +39,19 @@ fn run_compile(world: &MobileWorld, state: &CompileState) -> CompileResult {
     // doesn't render with the embedded-only set. Bounded: a hung SAF read
     // must never freeze the pipeline, so after the timeout we compile with
     // whatever fonts are installed.
-    world.wait_for_fonts(std::time::Duration::from_secs(10));
+    if !world.wait_for_fonts(std::time::Duration::from_secs(10)) {
+        warn!(
+            "compile: gen={generation} font load did not finish within 10s — \
+             compiling with the embedded set only ({} families available)",
+            world.font_family_count()
+        );
+    }
 
-    // Re-read edited files from disk on every compile (disk is the truth).
-    world.reset();
+    // Disk is still the truth, but proving a cached slot matches disk is a
+    // `stat`, not a re-read: unchanged files keep their parsed tree so typst's
+    // memoization has something to reuse, and changed ones are reparsed
+    // incrementally. See `MobileWorld::revalidate`.
+    world.revalidate();
 
     if !world.has_main() {
         return CompileResult {

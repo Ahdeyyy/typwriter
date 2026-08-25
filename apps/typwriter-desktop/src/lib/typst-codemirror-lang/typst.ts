@@ -8,7 +8,6 @@ import {
   indentNodeProp,
   ParseContext,
 } from "@codemirror/language"
-import { NodeProp } from "@lezer/common"
 import { parser as baseParser, parseCode, nodeSet } from "./lezer-typst"
 
 const data = defineLanguageFacet({
@@ -20,7 +19,7 @@ const typstNodeSet = nodeSet.extend(
   languageDataProp.add({ Document: data }),
   foldNodeProp.add((type) => {
     if (type.name === "CodeBlock" || type.name === "ContentBlock") {
-      return (tree: any, state: any) => ({
+      return (tree: any, _state: any) => ({
         from: tree.from + 1,
         to: tree.to - 1,
       })
@@ -37,7 +36,7 @@ const typstNodeSet = nodeSet.extend(
       }
     }
     if (type.name === "Equation") {
-      return (tree: any, state: any) => {
+      return (tree: any, _state: any) => {
         if (tree.to - tree.from < 4) return null
         return { from: tree.from + 1, to: tree.to - 1 }
       }

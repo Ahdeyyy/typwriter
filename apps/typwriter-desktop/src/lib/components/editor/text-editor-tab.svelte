@@ -8,22 +8,22 @@
     highlightActiveLine,
     type Tooltip,
   } from "@codemirror/view";
-  import { EditorState } from "@codemirror/state";
+  import { EditorState, type Extension } from "@codemirror/state";
   import {
     defaultKeymap,
     history,
     historyKeymap,
     indentWithTab,
-    insertTab,
-    lineComment,
-    lineUncomment,
   } from "@codemirror/commands";
   import {
     autocompletion,
     closeBrackets,
     closeBracketsKeymap,
+    closeCompletion,
+    completionStatus,
     completeFromList,
     snippet,
+    startCompletion,
     type Completion,
     type CompletionContext,
     type CompletionResult,
@@ -48,11 +48,29 @@
     type Diagnostic as CMDiagnostic,
   } from "@codemirror/lint";
   import { inlineDiagnostics } from "$lib/codemirror/inline-diagnostics";
-  import { imageDrop } from "$lib/codemirror/image-drop";
   import {
-    grammarLint,
-    setGrammarLints,
-  } from "$lib/codemirror/grammar-lint";
+    createLabelIndex,
+    mergeLabels,
+    referenceCompletionSource,
+  } from "$lib/codemirror/reference-completion";
+  import { refPrefixAt } from "$lib/references";
+  import { bibliography } from "$lib/stores/bibliography.svelte";
+  import { documentScope } from "$lib/stores/document-scope.svelte";
+  import { ui } from "$lib/stores/ui.svelte";
+  import {
+    focusMode,
+    typewriterScrolling,
+    programmaticSync,
+  } from "$lib/codemirror/focus-mode";
+  import { snippetCompletionSource } from "$lib/codemirror/snippet-completion";
+  import { typstCompletionSection } from "$lib/codemirror/completion-sections";
+  import { snippets } from "$lib/stores/snippets.svelte";
+  import {
+    diagnosticsMatch,
+    type DiagnosticMark,
+  } from "$lib/codemirror/diagnostics-compare";
+  import { imageDrop } from "$lib/codemirror/image-drop";
+  import { grammarLint, setGrammarLints } from "$lib/codemirror/grammar-lint";
   import { search } from "@codemirror/search";
   import { editorSearch } from "$lib/stores/editor-search.svelte";
   import { editorFormat } from "$lib/stores/editor-format.svelte";
@@ -70,6 +88,7 @@
   import { keysFor } from "$lib/keybindings";
   import { lspClient } from "$lib/lsp/client.svelte";
   import { semanticTokenHighlighter } from "$lib/lsp/semantic-tokens";
+  import type { SvelteSet } from "svelte/reactivity";
   import { Compartment } from "@codemirror/state";
   import { mode, systemPrefersMode } from "mode-watcher";
   import { untrack } from "svelte";
@@ -83,14 +102,65 @@
     getTooltip as getTooltipIpc,
   } from "$lib/ipc/commands";
   import type { SerializedDiagnostic, TooltipResponse } from "$lib/types";
-  import { ayuLight } from "thememirror";
   import { indentationMarkers } from "@replit/codemirror-indentation-markers";
   import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
   import { logError, logPreview } from "$lib/logger";
 
-
   let editorHost = $state<HTMLDivElement | null>(null);
   const tabViews = new Map<string, EditorView>();
+
+  // Labels come from two layers. A project-wide disk scan (refreshed with the
+  // file tree) means a figure label in a chapter nobody has opened is still
+  // offered; the open buffers themselves are layered on top because their
+  // unsaved text is what the compiler would actually see. Scanned labels for
+  // paths currently open are dropped, so no definition is counted twice and
+  // an edited buffer overrides its stale disk copy.
+  //
+  // Both layers are restricted to the document's scope — files the main file
+  // pulls in via `#include`/`#import`, plus the file being edited (an
+  // unreachable chapter still knows its own labels). Filtering is strict: an
+  // empty scope means an empty list, never a fallback to everything.
+  const openTypBuffers = () =>
+    editor.tabs
+      .filter(
+        (tab) =>
+          tab.viewMode === "text" &&
+          !tab.isLoading &&
+          tab.relPath.endsWith(".typ"),
+      )
+      .map((tab) => ({ path: tab.relPath, text: tab.content }));
+  const activeTypPath = () => {
+    const tab = editor.tabs.find((t) => t.id === editor.activeTabId);
+    return tab && tab.viewMode === "text" && !tab.isLoading && tab.relPath.endsWith(".typ")
+      ? tab.relPath
+      : null;
+  };
+  const openTabLabels = createLabelIndex({ buffers: openTypBuffers });
+  const syncScopeBuffers = () => documentScope.setBuffers(openTypBuffers());
+  const projectLabels = () => {
+    documentScope.ensureFresh();
+    const scope = documentScope.reachableFiles;
+    const inScope = <T extends { path: string }>(items: readonly T[]) =>
+      items.filter((item) => scope.has(item.path));
+    return mergeLabels(
+      inScope(documentScope.entries),
+      inScope(openTabLabels()),
+    );
+  };
+  // Citation keys join the same list: Typst resolves `@key` against labels and
+  // bibliography entries alike, so a citation is not separate syntax the user
+  // has to remember. Only keys from files a reachable `#bibliography(...)`
+  // actually loads are offered — the rest cannot resolve.
+  const scopedCitations = () => {
+    documentScope.ensureFresh();
+    const bibs = documentScope.scopedBibPaths;
+    return bibliography.entries.filter((entry) => bibs.has(entry.path));
+  };
+  const referenceCompletions = referenceCompletionSource(
+    projectLabels,
+    scopedCitations,
+  );
+  const snippetCompletions = snippetCompletionSource(() => snippets.all);
   let mountedTabId = $state<string | null>(null);
 
   const themeCompartment = new Compartment();
@@ -100,6 +170,7 @@
   const lineWrapCompartment = new Compartment();
   const spellcheckCompartment = new Compartment();
   const tabSizeCompartment = new Compartment();
+  const focusCompartment = new Compartment();
   // Lezer syntax highlighting (swapped off per-file once tinymist paints tokens).
   const highlightCompartment = new Compartment();
   // User-configurable shortcuts — reconfigured when the keymap settings change.
@@ -108,7 +179,9 @@
   const lspCompartment = new Compartment();
 
   function quoteFamily(family: string): string {
-    return family.includes(" ") && !family.includes('"') ? `"${family}"` : family;
+    return family.includes(" ") && !family.includes('"')
+      ? `"${family}"`
+      : family;
   }
 
   function fontExtension() {
@@ -151,6 +224,15 @@
     return EditorState.tabSize.of(settings.tabWidth);
   }
 
+  // Two independent settings, one compartment: they are always reconfigured
+  // together and neither has state the other would disturb.
+  function focusExt() {
+    return [
+      settings.focusMode ? focusMode() : [],
+      settings.typewriterScrolling ? typewriterScrolling() : [],
+    ];
+  }
+
   function isDarkMode() {
     return mode.current === "dark" || systemPrefersMode.current === "dark";
   }
@@ -186,18 +268,37 @@
 
     const lspExt = lspClient.pluginFor(tab.absPath);
     if (lspExt) {
-      return [lspExt, semanticTokenHighlighter];
+      return [
+        lspExt,
+        semanticTokenHighlighter,
+        // Snippets are ours, not tinymist's — without this they'd vanish the
+        // moment the language server connected. `serverCompletion()` publishes
+        // its source through language data (not an `override`), so registering
+        // ours the same way merges the two lists rather than replacing the
+        // server's.
+        EditorState.languageData.of(() => [
+          { autocomplete: snippetCompletions },
+          { autocomplete: referenceCompletions },
+        ]),
+      ];
     }
 
     return [
-      autocompletion({ override: [mergedTypstCompletionsForTab(tabId)] }),
+      autocompletion({
+        override: [
+          mergedTypstCompletionsForTab(tabId),
+          referenceCompletions,
+          snippetCompletions,
+        ],
+      }),
       hoverTooltip(
         async (_view, pos) => {
           const t = editor.tabs.find((tab) => tab.id === tabId);
           if (!t || t.viewMode !== "text") return null;
 
           const tooltipResult = await getTooltipIpc(t.absPath, pos);
-          if (tooltipResult.isErr() || tooltipResult.value === null) return null;
+          if (tooltipResult.isErr() || tooltipResult.value === null)
+            return null;
 
           const data = tooltipResult.value;
           return {
@@ -242,21 +343,50 @@
     return out;
   }
 
+  /**
+   * Map a backend completion kind onto a CodeMirror completion `type`, which is
+   * what picks the icon (see `themes/completion-icons.ts`).
+   *
+   * The backend sends `format!("{:?}", CompletionKind)`, so the variant name
+   * arrives verbatim — and `Symbol(…)` carries the symbol itself, which is why
+   * this matches on the variant *prefix* rather than searching the whole string
+   * (`Symbol("func")` would otherwise come back as a function).
+   */
   function mapBackendCompletionKind(kind: string): Completion["type"] {
-    const normalizedKind = kind.toLowerCase();
-    if (normalizedKind.includes("func")) return "function";
-    if (normalizedKind.includes("type")) return "type";
-    if (normalizedKind.includes("param") || normalizedKind.includes("field"))
+    const variant = kind.split("(")[0].trim().toLowerCase();
+    switch (variant) {
+      case "syntax":
+        return "syntax";
+      case "func":
+        return "function";
+      case "type":
+        return "type";
+      case "param":
+        return "property";
+      case "constant":
+        return "constant";
+      case "path":
+        return "path";
+      case "package":
+        return "package";
+      case "label":
+        return "label";
+      case "font":
+        return "font";
+      case "symbol":
+        return "symbol";
+    }
+    // Anything else (a future variant, or a kind coming from elsewhere) still
+    // gets a sensible icon from a loose match.
+    if (variant.includes("func")) return "function";
+    if (variant.includes("type")) return "type";
+    if (variant.includes("param") || variant.includes("field"))
       return "property";
-    if (normalizedKind.includes("var")) return "variable";
-    if (
-      normalizedKind.includes("module") ||
-      normalizedKind.includes("namespace")
-    )
+    if (variant.includes("var")) return "variable";
+    if (variant.includes("module") || variant.includes("namespace"))
       return "namespace";
-    if (normalizedKind.includes("constant")) return "constant";
-    if (normalizedKind.includes("keyword")) return "keyword";
-    if (normalizedKind.includes("string")) return "text";
+    if (variant.includes("constant")) return "constant";
+    if (variant.includes("keyword")) return "keyword";
     return "text";
   }
 
@@ -282,14 +412,23 @@
     const results: CompletionResult[] = [];
     for (const source of completionSources) {
       const result = await source(context);
-      if (result) results.push(result);
+
+      if (result) {
+        results.push({
+          ...result,
+          options: result.options.map((option) => ({
+            ...option,
+            section: typstCompletionSection,
+          })),
+        });
+      }
     }
     return results;
   }
 
   function mergedTypstCompletionsForTab(tabId: string): CompletionSource {
     return async (context: CompletionContext) => {
-      const hasWordBeforeCursor = context.matchBefore(/[\w\-]+/);
+      const hasWordBeforeCursor = context.matchBefore(/[\w-]+/);
       if (
         !context.explicit &&
         (!hasWordBeforeCursor ||
@@ -301,9 +440,14 @@
       const tab = editor.tabs.find((t) => t.id === tabId);
       if (!tab || tab.viewMode !== "text") return null;
 
+      // Inside an `@…`, the reference source owns the list. Two sources
+      // answering the same position with different `from` offsets produces a
+      // list CodeMirror cannot filter coherently.
+      if (refPrefixAt(context.state.doc.toString(), context.pos)) return null;
+
       const [languageResults, backendResult] = await Promise.all([
         getLanguageCompletionResults(context),
-        getCompletions(tab.absPath, context.pos, context.explicit ),
+        getCompletions(tab.absPath, context.pos, context.explicit),
       ]);
 
       const languageOptions = languageResults.flatMap(
@@ -313,23 +457,25 @@
       // Keep the raw apply string for the dedup key: typst-ide's `${…}`
       // placeholders are turned into a CodeMirror snippet (a function apply), so
       // the option itself no longer carries a stable string to key on.
-      const backendOptions: { option: Completion; key: string }[] = backendPayload
-        ? backendPayload.completions.map((item) => {
-            const rawApply = item.apply ?? item.label;
-            const type = mapBackendCompletionKind(item.kind);
-            return {
-              option: {
-                label: item.label,
-                type,
-                apply: rawApply.includes("${")
-                  ? snippet(typstApplyToSnippet(rawApply))
-                  : rawApply,
-                detail: item.detail ?? undefined,
-              },
-              key: `${item.label}::${rawApply}::${type ?? ""}`,
-            };
-          })
-        : [];
+      const backendOptions: { option: Completion; key: string }[] =
+        backendPayload
+          ? backendPayload.completions.map((item) => {
+              const rawApply = item.apply ?? item.label;
+              const type = mapBackendCompletionKind(item.kind);
+              return {
+                option: {
+                  label: item.label,
+                  type,
+                  apply: rawApply.includes("${")
+                    ? snippet(typstApplyToSnippet(rawApply))
+                    : rawApply,
+                  detail: item.detail ?? undefined,
+                  section: typstCompletionSection,
+                },
+                key: `${item.label}::${rawApply}::${type ?? ""}`,
+              };
+            })
+          : [];
 
       const seenKeys = new Set<string>();
       const mergedOptions: Completion[] = [];
@@ -436,7 +582,15 @@
         editorSearch.closePanel();
         return true;
       },
-      ...(isTypst ? typstFormatCommands : {}),
+      ...(isTypst
+        ? {
+            ...typstFormatCommands,
+            "typst.insertSymbol": () => {
+              ui.symbolPickerOpen = true;
+              return true;
+            },
+          }
+        : {}),
     };
 
     const bindings = Object.entries(commands).flatMap(([id, run]) =>
@@ -467,6 +621,7 @@
       lineWrapCompartment.of(lineWrapExt()),
       spellcheckCompartment.of(spellcheckExt(isTypst)),
       tabSizeCompartment.of(tabSizeExt()),
+      focusCompartment.of(focusExt()),
       highlightActiveLine(),
       history(),
       drawSelection(),
@@ -516,12 +671,20 @@
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
         editor.handleTabContentChange(tabId, update.state.doc.toString());
+        // Keep the document scope (reachable files, associated bibliographies)
+        // in step with the live text; the store debounces internally.
+        syncScopeBuffers();
       }),
       EditorView.updateListener.of((update) => {
         if (!update.selectionSet) return;
         const tab = editor.tabs.find((t) => t.id === tabId);
         if (!tab || tab.viewMode !== "text") return;
         const cursor = update.state.selection.main.head;
+        // Mirror the range for the panes that display it (outline marker,
+        // status-bar counts). Unconditional — unlike the persist below, which
+        // only wants pure caret moves.
+        const range = update.state.selection.main;
+        editor.noteSelection(tabId, range.from, range.to);
         // Stage 1 (jump source): the editor selection moved. This is what
         // ultimately drives the preview's cursor-follow scroll. `docChanged`
         // distinguishes a keystroke (typing) from a pure caret move (click /
@@ -736,6 +899,32 @@
     tabSignature;
     destroyClosedTabViews();
     mountActiveView(activeTabId);
+    // Tabs opened or closed: the buffer layer feeding the document scope
+    // changed even though no docChanged event fired in any view.
+    syncScopeBuffers();
+    // The file being edited seeds its own subgraph into the scope.
+    documentScope.setActiveFile(activeTypPath());
+  });
+
+  // When the document's scope changes (a refs array edited, an include
+  // removed, the main file switched), a completion popup that is already
+  // open would keep filtering its original — now outdated — result set.
+  // Restart it so the visible list snaps to the rebuilt mappings.
+  let prevReachable: SvelteSet<string> | null = null;
+  let prevBibs: SvelteSet<string> | null = null;
+  $effect(() => {
+    const reachable = documentScope.reachableFiles;
+    const bibs = documentScope.scopedBibPaths;
+    const changed =
+      prevReachable !== null && (reachable !== prevReachable || bibs !== prevBibs);
+    prevReachable = reachable;
+    prevBibs = bibs;
+    if (!changed) return;
+
+    const view = mountedTabId ? tabViews.get(mountedTabId) : undefined;
+    if (!view || completionStatus(view.state) !== "active") return;
+    closeCompletion(view);
+    startCompletion(view);
   });
 
   // Let the store read the live selection of any tab's view — this is how
@@ -804,6 +993,9 @@
     view.dispatch({
       changes: { from: lcp, to: oldEnd, insert: newText.slice(lcp, newEnd) },
       scrollIntoView: false,
+      // Not user movement — typewriter scrolling must leave the viewport
+      // alone; the scrollTop below restores whatever the dispatch displaced.
+      annotations: programmaticSync.of(true),
     });
 
     // Now set the cursor in the new document. If Rust returned one, use it —
@@ -829,6 +1021,7 @@
     view.dispatch({
       selection: { anchor: newCursor },
       scrollIntoView: false,
+      annotations: programmaticSync.of(true),
     });
     view.scrollDOM.scrollTop = scrollTop;
   });
@@ -837,7 +1030,8 @@
   // Depends on `mountedTabId` as well as the request: when the jump targets a
   // tab whose view isn't built yet (file still loading, mount slower than one
   // frame), the request stays pending and this re-runs once the view mounts —
-  // a single rAF retry used to drop those jumps silently.
+  // retrying on a single rAF is not enough, since the mount can take longer
+  // than one frame.
   $effect(() => {
     const req = editor.cursorJumpRequest;
     mountedTabId;
@@ -908,71 +1102,83 @@
     });
   });
 
-  // ── Font / size → reconfigure all views when settings change
-  $effect(() => {
-    settings.editorFontFamily;
-    settings.editorFontSize;
-    const ext = fontExtension();
-    for (const view of tabViews.values()) {
-      view.dispatch({ effects: fontCompartment.reconfigure(ext) });
-    }
-  });
+  // ── Settings → CodeMirror compartments
+  //
+  // One table instead of seven near-identical effects. `track` names the
+  // settings the compartment depends on and is the *only* place reads are
+  // tracked; `build` and the dispatch loop run untracked, because reconfiguring
+  // a view reads editor state that would otherwise become a dependency and
+  // re-fire this on every keystroke.
+  //
+  // Adding a setting-driven compartment means adding a row here.
+  const settingCompartments: {
+    compartment: Compartment;
+    track: () => void;
+    build: (tabId: string) => Extension;
+  }[] = [
+    {
+      compartment: fontCompartment,
+      track: () => {
+        settings.editorFontFamily;
+        settings.editorFontSize;
+      },
+      build: () => fontExtension(),
+    },
+    {
+      compartment: lineNumbersCompartment,
+      track: () => void settings.showLineNumbers,
+      build: () => lineNumbersExt(),
+    },
+    {
+      compartment: indentMarkersCompartment,
+      track: () => void settings.showIndentationMarkers,
+      build: () => indentMarkersExt(),
+    },
+    {
+      compartment: lineWrapCompartment,
+      track: () => void settings.wordWrap,
+      build: () => lineWrapExt(),
+    },
+    {
+      compartment: tabSizeCompartment,
+      track: () => void settings.tabWidth,
+      build: () => tabSizeExt(),
+    },
+    {
+      compartment: focusCompartment,
+      track: () => {
+        settings.focusMode;
+        settings.typewriterScrolling;
+      },
+      build: () => focusExt(),
+    },
+    {
+      compartment: spellcheckCompartment,
+      track: () => void settings.spellcheck,
+      build: (tabId) => {
+        const tab = editor.tabs.find((t) => t.id === tabId);
+        return spellcheckExt(!!tab && tab.relPath.endsWith(".typ"));
+      },
+    },
+    {
+      // Rebinding in the settings window broadcasts on `settings:changed`, so
+      // this fires there too and the editor picks up new keys without a restart.
+      compartment: keybindingsCompartment,
+      track: () => void settings.keybindings,
+      build: (tabId) => configurableKeymap(tabId),
+    },
+  ];
 
-  // ── Editor behavior toggles → reconfigure relevant compartments
-  $effect(() => {
-    settings.showLineNumbers;
-    const ext = lineNumbersExt();
-    for (const view of tabViews.values()) {
-      view.dispatch({ effects: lineNumbersCompartment.reconfigure(ext) });
-    }
-  });
-
-  $effect(() => {
-    settings.showIndentationMarkers;
-    const ext = indentMarkersExt();
-    for (const view of tabViews.values()) {
-      view.dispatch({ effects: indentMarkersCompartment.reconfigure(ext) });
-    }
-  });
-
-  $effect(() => {
-    settings.wordWrap;
-    const ext = lineWrapExt();
-    for (const view of tabViews.values()) {
-      view.dispatch({ effects: lineWrapCompartment.reconfigure(ext) });
-    }
-  });
-
-  $effect(() => {
-    settings.spellcheck;
-    for (const [tabId, view] of tabViews) {
-      const tab = editor.tabs.find((t) => t.id === tabId);
-      const isTypst = !!tab && tab.relPath.endsWith(".typ");
-      view.dispatch({ effects: spellcheckCompartment.reconfigure(spellcheckExt(isTypst)) });
-    }
-  });
-
-  $effect(() => {
-    settings.tabWidth;
-    const ext = tabSizeExt();
-    for (const view of tabViews.values()) {
-      view.dispatch({ effects: tabSizeCompartment.reconfigure(ext) });
-    }
-  });
-
-  // ── Shortcut settings → rebuild the configurable keymap in every open tab.
-  // Rebinding in the settings window broadcasts on `settings:changed`, so this
-  // fires there too and the editor picks up the new keys without a restart.
-  $effect(() => {
-    settings.keybindings;
-    untrack(() => {
-      for (const [tabId, view] of tabViews) {
-        view.dispatch({
-          effects: keybindingsCompartment.reconfigure(configurableKeymap(tabId)),
-        });
-      }
+  for (const { compartment, track, build } of settingCompartments) {
+    $effect(() => {
+      track();
+      untrack(() => {
+        for (const [tabId, view] of tabViews) {
+          view.dispatch({ effects: compartment.reconfigure(build(tabId)) });
+        }
+      });
     });
-  });
+  }
 
   // ── Diagnostics → CodeMirror lint markers
   //
@@ -1004,18 +1210,11 @@
     state: EditorState,
     marks: CMDiagnostic[],
   ): boolean {
-    const existing: CMDiagnostic[] = [];
+    const existing: DiagnosticMark[] = [];
     forEachDiagnostic(state, (d, from, to) =>
       existing.push({ from, to, severity: d.severity, message: d.message }),
     );
-    if (existing.length !== marks.length) return false;
-    const key = (d: CMDiagnostic) =>
-      `${d.from}:${d.to}:${d.severity}:${d.message}`;
-    const sortedMarks = marks.map(key).sort();
-    return existing
-      .map(key)
-      .sort()
-      .every((k, i) => k === sortedMarks[i]);
+    return diagnosticsMatch(existing, marks);
   }
 
   $effect(() => {

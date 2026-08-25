@@ -12,8 +12,6 @@
     "moduleResolution": "bundler"
   },
   "exclude": [
-    "src/lib/typst-codemirror-lang/parser.js",
-    "src/lib/typst-codemirror-lang/test/**",
     // `bun test` runs these; svelte-check has no `bun:test` types to resolve.
     "src/**/*.test.ts"
   ]

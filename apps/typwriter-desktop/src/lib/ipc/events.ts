@@ -22,7 +22,10 @@ import type {
     PageRemovedPayload,
     CompileStatePayload,
     GrammarConfig,
-    WorkspaceFilesChangedPayload
+    WorkspaceFilesChangedPayload,
+    PageDiffPayload,
+    PageDiffStartedPayload,
+    PageDiffErrorPayload
 } from '$lib/types';
 
 export type { UnlistenFn };
@@ -162,6 +165,31 @@ export function emitGrammarConfigChanged(config: GrammarConfig) {
     return ResultAsync.fromPromise(emit('grammar:config-changed', config), toErrString);
 }
 
+// ─── Cross-window snippet sync ───────────────────────────────────────────────
+//
+// Snippets are authored in the settings window but consumed by the completion
+// list in the main one, and each window keeps its own SnippetStore. Neither
+// scope reaches the other window on its own: the app-wide set lives in the
+// settings store, and the project file sits in `.typwriter/`, which the
+// workspace watcher deliberately ignores. Without a replay, a snippet you just
+// saved would not exist in the editor until the next restart.
+//
+// The payload names the scope that changed so a receiver only re-reads that
+// one. Receivers reload and never re-emit, so there is no ping-pong.
+
+export type SnippetScopeChanged = 'app' | 'project';
+
+export function onSnippetsChanged(handler: (scope: SnippetScopeChanged) => void) {
+    return ResultAsync.fromPromise(
+        listen<SnippetScopeChanged>('snippets:changed', (event) => handler(event.payload)),
+        toErrString
+    );
+}
+
+export function emitSnippetsChanged(scope: SnippetScopeChanged) {
+    return ResultAsync.fromPromise(emit('snippets:changed', scope), toErrString);
+}
+
 // ─── Cross-window light/dark mode sync ───────────────────────────────────────
 //
 // The mode lives in mode-watcher's own per-window state, so a change made from
@@ -197,11 +225,32 @@ export function emitShowTutorialRequest() {
     return ResultAsync.fromPromise(emit('app:show-tutorial', undefined), toErrString);
 }
 
+// ─── Presentation mode ───────────────────────────────────────────────────────
+// Presentation runs in the preview popout, but the button that drives it also
+// lives in the main window's preview pane. When the popout is already open the
+// main window can't hand the intent over through `?present=1` — it asks
+// instead. A *toggle* request, so the same button can also end a presentation
+// the main window can't see the keyboard for. Only the popout listens.
+
+export function onPresentationToggleRequest(handler: () => void) {
+    return ResultAsync.fromPromise(
+        listen<void>('preview:present-toggle', () => handler()),
+        toErrString
+    );
+}
+
+export function emitPresentationToggleRequest() {
+    return ResultAsync.fromPromise(emit('preview:present-toggle', undefined), toErrString);
+}
+
 // ─── Cross-window vcs diff window sync ───────────────────────────────────────
 
 export interface VcsDiffSelectionPayload {
     primaryId: string | null;
     secondaryId: string | null;
+    /** Which tab to show. Absent on payloads from older callers — the window
+     *  keeps whatever tab it is on in that case. */
+    view?: 'files' | 'pages';
 }
 
 /** Main window → diff window: retarget an already-open diff window. */
@@ -255,4 +304,34 @@ export function onVcsRestoreFileResult(handler: (payload: VcsRestoreFileResultPa
 
 export function emitVcsRestoreFileResult(payload: VcsRestoreFileResultPayload) {
     return ResultAsync.fromPromise(emit('vcs:restore-file-result', payload), toErrString);
+}
+
+// ─── Page-level diff (backend worker → whichever window asked) ────────────────
+//
+// Emitted by the page-diff worker rather than returned from the command,
+// because computing one means compiling a historical version of the document.
+// Every payload carries the `request_id` the command handed back, so a window
+// that has since retargeted can drop results it no longer wants.
+
+export function onVcsPageDiffStarted(handler: (payload: PageDiffStartedPayload) => void) {
+    return ResultAsync.fromPromise(
+        listen<PageDiffStartedPayload>('vcs:page-diff-started', (event) =>
+            handler(event.payload)
+        ),
+        toErrString
+    );
+}
+
+export function onVcsPageDiff(handler: (payload: PageDiffPayload) => void) {
+    return ResultAsync.fromPromise(
+        listen<PageDiffPayload>('vcs:page-diff', (event) => handler(event.payload)),
+        toErrString
+    );
+}
+
+export function onVcsPageDiffError(handler: (payload: PageDiffErrorPayload) => void) {
+    return ResultAsync.fromPromise(
+        listen<PageDiffErrorPayload>('vcs:page-diff-error', (event) => handler(event.payload)),
+        toErrString
+    );
 }

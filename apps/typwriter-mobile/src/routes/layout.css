@@ -247,3 +247,18 @@
     background-clip: padding-box;
   }
 }
+
+/* Rows that are scrolled by finger and must show no bar at all.
+ *
+ * `scrollbar-width: none` alone is not enough here: the `::-webkit-scrollbar`
+ * rules above opt every element into Chromium's *custom* scrollbars, and an
+ * element that matches a custom-scrollbar rule ignores `scrollbar-width`
+ * entirely. In a fixed-height toolbar row that leaves an 8px bar eating the
+ * bottom of the row, which pushes the buttons above the axis the pinned
+ * controls on either side sit on. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

@@ -192,6 +192,91 @@
    inherit from the default block above.
    ────────────────────────────────────────────────────────────────────────── */
 
+/* ── Glass accent (every theme except default) ────────────────────────────
+   A light touch of the glass treatment for all non-default themes: floating
+   chrome (popovers, menus, toasts, search panel) turns translucent and frosts
+   over the content behind it, with a soft drop shadow and hairline top
+   highlight. Weaker than the full glass theme — cards, the sidebar, and
+   tooltips stay opaque, and modals only lean translucent enough to stay
+   legible over their scrim. Declared before the glass block so glass's
+   stronger values still win on equal specificity.
+   ───────────────────────────────────────────────────────────────────────── */
+:where([data-theme]:not([data-theme='default'])) [data-slot="card"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="popover-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="dropdown-menu-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="context-menu-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="dropdown-menu-sub-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="context-menu-sub-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="menubar-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="select-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="hover-card-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="dialog-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="sheet-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="command"],
+:where([data-theme]:not([data-theme='default'])) .search-panel,
+:where([data-theme]:not([data-theme='default'])) .popover-surface,
+:where([data-theme]:not([data-theme='default'])) [data-sonner-toast] {
+  box-shadow:
+    0 4px 16px -4px rgb(0 0 0 / 0.12),
+    inset 0 1px 0 0 rgb(255 255 255 / 0.08);
+}
+
+/* Frost the surfaces that don't already blur themselves (dropdown/context
+   menus keep their built-in ::before blur, boosted below; modals get their
+   own scrim-aware mix below). UI tooltips ([data-slot="tooltip-content"]) are
+   excluded — the translucent mix renders bugged there, so they keep the
+   theme's plain opaque surface; CodeMirror tooltips stay frosted (below). */
+:where([data-theme]:not([data-theme='default'])) [data-slot="popover-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="menubar-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="select-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="hover-card-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="command"],
+:where([data-theme]:not([data-theme='default'])) .search-panel,
+:where([data-theme]:not([data-theme='default'])) .popover-surface,
+:where([data-theme]:not([data-theme='default'])) [data-sonner-toast] {
+  background-color: color-mix(in srgb, var(--popover) 82%, transparent);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+}
+
+/* Dropdown/context menus frost via ::before — nudge it past the package
+   default without going full glass. */
+:where([data-theme]:not([data-theme='default']))
+  [data-slot="context-menu-content"]::before,
+:where([data-theme]:not([data-theme='default']))
+  [data-slot="context-menu-sub-content"]::before,
+:where([data-theme]:not([data-theme='default']))
+  [data-slot="dropdown-menu-content"]::before,
+:where([data-theme]:not([data-theme='default']))
+  [data-slot="dropdown-menu-sub-content"]::before {
+  backdrop-filter: blur(56px) saturate(185%);
+  -webkit-backdrop-filter: blur(56px) saturate(185%);
+}
+
+/* CodeMirror tooltips keep the frost — CodeMirror injects its opaque tooltip
+   backgrounds after the app CSS, so this needs !important to stick (same
+   reason as in the glass block). */
+:where([data-theme]:not([data-theme='default'])) .cm-tooltip {
+  background-color: color-mix(in srgb, var(--popover) 85%, transparent) !important;
+  backdrop-filter: blur(28px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
+}
+
+/* Inner layers must not stack a second surface on the frosted wrapper. */
+:where([data-theme]:not([data-theme='default'])) .cm-tooltip .cm-grammar-panel {
+  background-color: transparent !important;
+}
+
+/* Modals sit on a dark scrim — keep them mostly opaque, just tinted toward
+   the popover colour with a mild frost. */
+:where([data-theme]:not([data-theme='default'])) [data-slot="dialog-content"],
+:where([data-theme]:not([data-theme='default'])) [data-slot="sheet-content"],
+:where([data-theme]:not([data-theme='default'])) .modal-surface {
+  background-color: color-mix(in srgb, var(--popover) 72%, var(--background));
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+}
+
 /* ── Glass ─────────────────────────────────────────────────────────────────
    Same neutral palette as the default theme, but surface tokens are made
    translucent and the floating chrome (popovers, menus, dialogs, sidebar,
@@ -200,13 +285,13 @@
    blocks above, so the colours stay identical to the base theme.
    ────────────────────────────────────────────────────────────────────────── */
 :root[data-theme="glass"] {
-  --card: oklch(1 0 0 / 0.55);
-  --popover: oklch(1 0 0 / 0.78);
+  --card: oklch(1 0 0 / 0.35);
+  --popover: oklch(1 0 0 / 0.55);
   --secondary: oklch(0.97 0 0 / 0.55);
   --muted: oklch(0.97 0 0 / 0.5);
   --border: oklch(0.145 0 0 / 0.1);
   --input: oklch(0.145 0 0 / 0.08);
-  --sidebar: oklch(0.985 0 0 / 0.55);
+  --sidebar: oklch(0.985 0 0 / 0.35);
   --sidebar-accent: oklch(0.97 0 0 / 0.6);
   --sidebar-border: oklch(0.145 0 0 / 0.08);
   /* Opaque sidebar tint for the file tree's truncation marker. The marker
@@ -215,13 +300,13 @@
   --trees-marker-bg: oklch(0.985 0 0);
 }
 .dark[data-theme="glass"] {
-  --card: oklch(0.205 0 0 / 0.55);
-  --popover: oklch(0.205 0 0 / 0.8);
+  --card: oklch(0.205 0 0 / 0.35);
+  --popover: oklch(0.205 0 0 / 0.55);
   --secondary: oklch(0.269 0 0 / 0.5);
   --muted: oklch(0.269 0 0 / 0.45);
   --border: oklch(1 0 0 / 0.1);
   --input: oklch(1 0 0 / 0.12);
-  --sidebar: oklch(0.205 0 0 / 0.55);
+  --sidebar: oklch(0.205 0 0 / 0.35);
   --sidebar-accent: oklch(0.269 0 0 / 0.5);
   --sidebar-border: oklch(1 0 0 / 0.08);
   --trees-marker-bg: oklch(0.205 0 0);
@@ -244,8 +329,9 @@
 [data-theme="glass"] [data-slot="command"],
 [data-theme="glass"] [data-slot="sidebar-inner"],
 [data-theme="glass"] .search-panel,
-[data-theme="glass"] .cm-tooltip-autocomplete,
-[data-theme="glass"] .cm-tooltip.cm-completionInfo {
+[data-theme="glass"] .cm-tooltip,
+[data-theme="glass"] .popover-surface,
+[data-theme="glass"] [data-sonner-toast] {
   box-shadow:
     0 4px 16px -4px rgb(0 0 0 / 0.18),
     0 1px 4px -1px rgb(0 0 0 / 0.10),
@@ -266,8 +352,8 @@
 [data-theme="glass"] [data-slot="sheet-content"],
 [data-theme="glass"] [data-slot="command"],
 [data-theme="glass"] [data-slot="sidebar-inner"] {
-  backdrop-filter: blur(32px) saturate(180%);
-  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
 }
 
 /* Context and dropdown menus self-blur via ::before — crank it up in glass. */
@@ -275,65 +361,91 @@
 [data-theme="glass"] [data-slot="context-menu-sub-content"]::before,
 [data-theme="glass"] [data-slot="dropdown-menu-content"]::before,
 [data-theme="glass"] [data-slot="dropdown-menu-sub-content"]::before {
-  backdrop-filter: blur(80px) saturate(220%) !important;
-  -webkit-backdrop-filter: blur(80px) saturate(220%) !important;
+  backdrop-filter: blur(96px) saturate(220%) !important;
+  -webkit-backdrop-filter: blur(96px) saturate(220%) !important;
 }
 
-/* Search panel and CodeMirror popups get stronger blur + more transparency. */
+/* Search panel gets a slightly stronger frost of its own. */
 [data-theme="glass"] .search-panel {
-  background-color: color-mix(in srgb, var(--popover) 55%, transparent);
-  backdrop-filter: blur(40px) saturate(200%);
-  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  background-color: color-mix(in srgb, var(--popover) 80%, transparent);
+  backdrop-filter: blur(48px) saturate(200%);
+  -webkit-backdrop-filter: blur(48px) saturate(200%);
 }
 
-[data-theme="glass"] .cm-tooltip-autocomplete,
-[data-theme="glass"] .cm-tooltip.cm-completionInfo {
-  background-color: color-mix(in srgb, var(--popover) 65%, transparent);
-  backdrop-filter: blur(32px) saturate(180%);
-  -webkit-backdrop-filter: blur(32px) saturate(180%);
+/* All CodeMirror tooltips (completions, hover docs, lint, grammar) frost via
+   their shared .cm-tooltip wrapper. !important: CM injects its baseTheme
+   stylesheet after the app CSS and prefixes its selectors with a theme class,
+   so its opaque tooltip backgrounds would otherwise stack on top and kill the
+   frosted look. */
+[data-theme="glass"] .cm-tooltip {
+  background-color: color-mix(in srgb, var(--popover) 80%, transparent) !important;
+  backdrop-filter: blur(40px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
+}
+
+/* Inner layers must not stack a second surface on the frosted wrapper. */
+[data-theme="glass"] .cm-tooltip .cm-grammar-panel {
+  background-color: transparent !important;
+}
+
+/* Modal panels (dialogs, sheets, symbol picker, command palette) sit on a dark
+   scrim — a translucent surface over it reads as a grey dialog. Keep modals
+   near-opaque; the frosted scrim carries the glass look. */
+[data-theme="glass"] [data-slot="dialog-content"],
+[data-theme="glass"] [data-slot="sheet-content"],
+[data-theme="glass"] .modal-surface {
+  background-color: color-mix(in srgb, var(--popover) 15%, var(--background));
+}
+
+/* Hand-rolled floating menus (file tree actions, in-dialog selects) have no
+   frost of their own — give them the search-panel treatment. */
+[data-theme="glass"] .popover-surface {
+  background-color: color-mix(in srgb, var(--popover) 80%, transparent);
+  backdrop-filter: blur(48px) saturate(200%);
+  -webkit-backdrop-filter: blur(48px) saturate(200%);
 }
 
 /* ── Nord ──────────────────────────────────────────────────────────────── */
 :root[data-theme="nord"] {
   --background: oklch(0.96 0.01 250);
-  --foreground: oklch(0.32 0.03 252);
+  --foreground: oklch(0.25 0.03 252);
   --card: oklch(0.99 0.005 250);
-  --card-foreground: oklch(0.32 0.03 252);
+  --card-foreground: oklch(0.25 0.03 252);
   --popover: oklch(0.99 0.005 250);
-  --popover-foreground: oklch(0.32 0.03 252);
+  --popover-foreground: oklch(0.25 0.03 252);
   --primary: oklch(0.52 0.10 245);
-  --primary-foreground: oklch(0.99 0 0);
+  --primary-foreground: oklch(0.15 0.03 252);
   --secondary: oklch(0.91 0.02 250);
-  --secondary-foreground: oklch(0.32 0.03 252);
+  --secondary-foreground: oklch(0.25 0.03 252);
   --muted: oklch(0.91 0.02 250);
   --muted-foreground: oklch(0.48 0.03 250);
   --accent: oklch(0.62 0.10 200);
-  --accent-foreground: oklch(0.99 0 0);
+  --accent-foreground: oklch(0.15 0.03 252);
   --destructive: oklch(0.55 0.18 25);
   --destructive-foreground: oklch(0.99 0 0);
   --border: oklch(0.86 0.02 250);
   --input: oklch(0.86 0.02 250);
   --ring: oklch(0.62 0.10 200);
   --sidebar: oklch(0.93 0.015 250);
-  --sidebar-foreground: oklch(0.32 0.03 252);
+  --sidebar-foreground: oklch(0.25 0.03 252);
   --sidebar-primary: oklch(0.52 0.10 245);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-primary-foreground: oklch(0.15 0.03 252);
   --sidebar-accent: oklch(0.88 0.02 250);
-  --sidebar-accent-foreground: oklch(0.32 0.03 252);
+  --sidebar-accent-foreground: oklch(0.25 0.03 252);
   --sidebar-border: oklch(0.86 0.02 250);
   --sidebar-ring: oklch(0.62 0.10 200);
 }
 .dark[data-theme="nord"] {
   --background: oklch(0.30 0.025 252);
-  --foreground: oklch(0.92 0.02 250);
+  --foreground: oklch(0.985 0.01 250);
   --card: oklch(0.35 0.03 252);
-  --card-foreground: oklch(0.92 0.02 250);
+  --card-foreground: oklch(0.985 0.01 250);
   --popover: oklch(0.35 0.03 252);
-  --popover-foreground: oklch(0.92 0.02 250);
+  --popover-foreground: oklch(0.985 0.01 250);
   --primary: oklch(0.75 0.08 245);
   --primary-foreground: oklch(0.20 0.02 252);
   --secondary: oklch(0.38 0.03 252);
-  --secondary-foreground: oklch(0.92 0.02 250);
+  --secondary-foreground: oklch(0.985 0.01 250);
   --muted: oklch(0.38 0.03 252);
   --muted-foreground: oklch(0.70 0.02 250);
   --accent: oklch(0.72 0.10 200);
@@ -344,11 +456,11 @@
   --input: oklch(1 0 0 / 16%);
   --ring: oklch(0.72 0.10 200);
   --sidebar: oklch(0.28 0.025 252);
-  --sidebar-foreground: oklch(0.92 0.02 250);
+  --sidebar-foreground: oklch(0.985 0.01 250);
   --sidebar-primary: oklch(0.75 0.08 245);
   --sidebar-primary-foreground: oklch(0.20 0.02 252);
-  --sidebar-accent: oklch(0.38 0.03 252);
-  --sidebar-accent-foreground: oklch(0.92 0.02 250);
+  --sidebar-accent: oklch(0.22 0.03 252);
+  --sidebar-accent-foreground: oklch(0.985 0.01 250);
   --sidebar-border: oklch(1 0 0 / 12%);
   --sidebar-ring: oklch(0.72 0.10 200);
 }
@@ -362,13 +474,13 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.25 0.04 285);
   --primary: oklch(0.55 0.20 295);
-  --primary-foreground: oklch(0.99 0 0);
+  --primary-foreground: oklch(0.15 0.04 285);
   --secondary: oklch(0.94 0.02 300);
   --secondary-foreground: oklch(0.25 0.04 285);
   --muted: oklch(0.94 0.02 300);
   --muted-foreground: oklch(0.50 0.03 290);
   --accent: oklch(0.65 0.18 340);
-  --accent-foreground: oklch(0.99 0 0);
+  --accent-foreground: oklch(0.15 0.04 285);
   --destructive: oklch(0.58 0.22 25);
   --destructive-foreground: oklch(0.99 0 0);
   --border: oklch(0.88 0.02 300);
@@ -377,7 +489,7 @@
   --sidebar: oklch(0.95 0.015 300);
   --sidebar-foreground: oklch(0.25 0.04 285);
   --sidebar-primary: oklch(0.55 0.20 295);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-primary-foreground: oklch(0.15 0.04 285);
   --sidebar-accent: oklch(0.92 0.02 300);
   --sidebar-accent-foreground: oklch(0.25 0.04 285);
   --sidebar-border: oklch(0.88 0.02 300);
@@ -407,7 +519,7 @@
   --sidebar-foreground: oklch(0.94 0.02 290);
   --sidebar-primary: oklch(0.78 0.16 295);
   --sidebar-primary-foreground: oklch(0.20 0.03 285);
-  --sidebar-accent: oklch(0.32 0.03 285);
+  --sidebar-accent: oklch(0.15 0.03 285);
   --sidebar-accent-foreground: oklch(0.94 0.02 290);
   --sidebar-border: oklch(1 0 0 / 12%);
   --sidebar-ring: oklch(0.74 0.18 340);
@@ -416,44 +528,44 @@
 /* ── Solarized ─────────────────────────────────────────────────────────── */
 :root[data-theme="solarized"] {
   --background: oklch(0.96 0.02 85);
-  --foreground: oklch(0.40 0.04 200);
+  --foreground: oklch(0.27 0.04 200);
   --card: oklch(0.99 0.01 85);
-  --card-foreground: oklch(0.40 0.04 200);
+  --card-foreground: oklch(0.27 0.04 200);
   --popover: oklch(0.99 0.01 85);
-  --popover-foreground: oklch(0.40 0.04 200);
+  --popover-foreground: oklch(0.27 0.04 200);
   --primary: oklch(0.55 0.13 220);
-  --primary-foreground: oklch(0.99 0 0);
+  --primary-foreground: oklch(0.15 0.03 195);
   --secondary: oklch(0.91 0.03 85);
-  --secondary-foreground: oklch(0.40 0.04 200);
+  --secondary-foreground: oklch(0.27 0.04 200);
   --muted: oklch(0.91 0.03 85);
   --muted-foreground: oklch(0.55 0.04 200);
   --accent: oklch(0.60 0.13 145);
-  --accent-foreground: oklch(0.99 0 0);
+  --accent-foreground: oklch(0.15 0.03 195);
   --destructive: oklch(0.55 0.18 25);
   --destructive-foreground: oklch(0.99 0 0);
   --border: oklch(0.87 0.03 85);
   --input: oklch(0.87 0.03 85);
   --ring: oklch(0.55 0.13 220);
   --sidebar: oklch(0.93 0.025 85);
-  --sidebar-foreground: oklch(0.40 0.04 200);
+  --sidebar-foreground: oklch(0.27 0.04 200);
   --sidebar-primary: oklch(0.55 0.13 220);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-primary-foreground: oklch(0.15 0.03 195);
   --sidebar-accent: oklch(0.89 0.03 85);
-  --sidebar-accent-foreground: oklch(0.40 0.04 200);
+  --sidebar-accent-foreground: oklch(0.27 0.04 200);
   --sidebar-border: oklch(0.87 0.03 85);
   --sidebar-ring: oklch(0.55 0.13 220);
 }
 .dark[data-theme="solarized"] {
   --background: oklch(0.27 0.02 200);
-  --foreground: oklch(0.85 0.04 85);
+  --foreground: oklch(0.90 0.04 85);
   --card: oklch(0.32 0.025 200);
-  --card-foreground: oklch(0.85 0.04 85);
+  --card-foreground: oklch(0.90 0.04 85);
   --popover: oklch(0.32 0.025 200);
-  --popover-foreground: oklch(0.85 0.04 85);
+  --popover-foreground: oklch(0.90 0.04 85);
   --primary: oklch(0.70 0.12 220);
   --primary-foreground: oklch(0.20 0.02 200);
   --secondary: oklch(0.35 0.025 200);
-  --secondary-foreground: oklch(0.85 0.04 85);
+  --secondary-foreground: oklch(0.90 0.04 85);
   --muted: oklch(0.35 0.025 200);
   --muted-foreground: oklch(0.70 0.03 85);
   --accent: oklch(0.72 0.13 145);
@@ -464,11 +576,11 @@
   --input: oklch(1 0 0 / 16%);
   --ring: oklch(0.70 0.12 220);
   --sidebar: oklch(0.25 0.02 200);
-  --sidebar-foreground: oklch(0.85 0.04 85);
+  --sidebar-foreground: oklch(0.90 0.04 85);
   --sidebar-primary: oklch(0.70 0.12 220);
   --sidebar-primary-foreground: oklch(0.20 0.02 200);
-  --sidebar-accent: oklch(0.35 0.025 200);
-  --sidebar-accent-foreground: oklch(0.85 0.04 85);
+  --sidebar-accent: oklch(0.20 0.025 200);
+  --sidebar-accent-foreground: oklch(0.90 0.04 85);
   --sidebar-border: oklch(1 0 0 / 12%);
   --sidebar-ring: oklch(0.70 0.12 220);
 }
@@ -476,30 +588,30 @@
 /* ── Catppuccin ────────────────────────────────────────────────────────── */
 :root[data-theme="catppuccin"] {
   --background: oklch(0.97 0.01 320);
-  --foreground: oklch(0.36 0.04 290);
+  --foreground: oklch(0.25 0.04 290);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.36 0.04 290);
+  --card-foreground: oklch(0.25 0.04 290);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.36 0.04 290);
+  --popover-foreground: oklch(0.25 0.04 290);
   --primary: oklch(0.60 0.16 320);
-  --primary-foreground: oklch(0.99 0 0);
+  --primary-foreground: oklch(0.15 0.03 290);
   --secondary: oklch(0.93 0.02 320);
-  --secondary-foreground: oklch(0.36 0.04 290);
+  --secondary-foreground: oklch(0.25 0.04 290);
   --muted: oklch(0.93 0.02 320);
   --muted-foreground: oklch(0.55 0.03 290);
   --accent: oklch(0.70 0.14 200);
-  --accent-foreground: oklch(0.99 0 0);
+  --accent-foreground: oklch(0.15 0.03 290);
   --destructive: oklch(0.58 0.20 25);
   --destructive-foreground: oklch(0.99 0 0);
   --border: oklch(0.87 0.02 320);
   --input: oklch(0.87 0.02 320);
   --ring: oklch(0.60 0.16 320);
   --sidebar: oklch(0.94 0.015 320);
-  --sidebar-foreground: oklch(0.36 0.04 290);
+  --sidebar-foreground: oklch(0.25 0.04 290);
   --sidebar-primary: oklch(0.60 0.16 320);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-primary-foreground: oklch(0.15 0.03 290);
   --sidebar-accent: oklch(0.91 0.02 320);
-  --sidebar-accent-foreground: oklch(0.36 0.04 290);
+  --sidebar-accent-foreground: oklch(0.25 0.04 290);
   --sidebar-border: oklch(0.87 0.02 320);
   --sidebar-ring: oklch(0.60 0.16 320);
 }
@@ -527,7 +639,7 @@
   --sidebar-foreground: oklch(0.92 0.02 320);
   --sidebar-primary: oklch(0.78 0.13 320);
   --sidebar-primary-foreground: oklch(0.22 0.025 290);
-  --sidebar-accent: oklch(0.34 0.03 290);
+  --sidebar-accent: oklch(0.17 0.03 290);
   --sidebar-accent-foreground: oklch(0.92 0.02 320);
   --sidebar-border: oklch(1 0 0 / 12%);
   --sidebar-ring: oklch(0.78 0.13 320);
@@ -536,30 +648,30 @@
 /* ── Rosé Pine ─────────────────────────────────────────────────────────── */
 :root[data-theme="rose-pine"] {
   --background: oklch(0.96 0.01 30);
-  --foreground: oklch(0.38 0.03 320);
+  --foreground: oklch(0.27 0.03 320);
   --card: oklch(0.99 0.005 30);
-  --card-foreground: oklch(0.38 0.03 320);
+  --card-foreground: oklch(0.27 0.03 320);
   --popover: oklch(0.99 0.005 30);
-  --popover-foreground: oklch(0.38 0.03 320);
+  --popover-foreground: oklch(0.27 0.03 320);
   --primary: oklch(0.58 0.13 10);
-  --primary-foreground: oklch(0.99 0 0);
+  --primary-foreground: oklch(0.15 0.02 320);
   --secondary: oklch(0.92 0.02 30);
-  --secondary-foreground: oklch(0.38 0.03 320);
+  --secondary-foreground: oklch(0.27 0.03 320);
   --muted: oklch(0.92 0.02 30);
   --muted-foreground: oklch(0.55 0.02 320);
   --accent: oklch(0.62 0.10 190);
-  --accent-foreground: oklch(0.99 0 0);
+  --accent-foreground: oklch(0.15 0.02 320);
   --destructive: oklch(0.55 0.20 25);
   --destructive-foreground: oklch(0.99 0 0);
   --border: oklch(0.86 0.02 30);
   --input: oklch(0.86 0.02 30);
   --ring: oklch(0.58 0.13 10);
   --sidebar: oklch(0.93 0.015 30);
-  --sidebar-foreground: oklch(0.38 0.03 320);
+  --sidebar-foreground: oklch(0.27 0.03 320);
   --sidebar-primary: oklch(0.58 0.13 10);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-primary-foreground: oklch(0.15 0.02 320);
   --sidebar-accent: oklch(0.90 0.02 30);
-  --sidebar-accent-foreground: oklch(0.38 0.03 320);
+  --sidebar-accent-foreground: oklch(0.27 0.03 320);
   --sidebar-border: oklch(0.86 0.02 30);
   --sidebar-ring: oklch(0.58 0.13 10);
 }
@@ -587,7 +699,7 @@
   --sidebar-foreground: oklch(0.92 0.02 30);
   --sidebar-primary: oklch(0.76 0.11 10);
   --sidebar-primary-foreground: oklch(0.22 0.02 320);
-  --sidebar-accent: oklch(0.34 0.03 320);
+  --sidebar-accent: oklch(0.18 0.03 320);
   --sidebar-accent-foreground: oklch(0.92 0.02 30);
   --sidebar-border: oklch(1 0 0 / 12%);
   --sidebar-ring: oklch(0.76 0.11 10);
@@ -596,30 +708,30 @@
 /* ── Gruvbox ───────────────────────────────────────────────────────────── */
 :root[data-theme="gruvbox"] {
   --background: oklch(0.94 0.03 85);
-  --foreground: oklch(0.30 0.04 60);
+  --foreground: oklch(0.25 0.04 60);
   --card: oklch(0.97 0.02 85);
-  --card-foreground: oklch(0.30 0.04 60);
+  --card-foreground: oklch(0.25 0.04 60);
   --popover: oklch(0.97 0.02 85);
-  --popover-foreground: oklch(0.30 0.04 60);
+  --popover-foreground: oklch(0.25 0.04 60);
   --primary: oklch(0.50 0.16 30);
-  --primary-foreground: oklch(0.99 0 0);
+  --primary-foreground: oklch(0.12 0.02 60);
   --secondary: oklch(0.90 0.03 85);
-  --secondary-foreground: oklch(0.30 0.04 60);
+  --secondary-foreground: oklch(0.25 0.04 60);
   --muted: oklch(0.90 0.03 85);
   --muted-foreground: oklch(0.50 0.04 60);
   --accent: oklch(0.62 0.16 145);
-  --accent-foreground: oklch(0.99 0 0);
+  --accent-foreground: oklch(0.12 0.02 60);
   --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(0.99 0 0);
   --border: oklch(0.85 0.03 85);
   --input: oklch(0.85 0.03 85);
   --ring: oklch(0.50 0.16 30);
   --sidebar: oklch(0.91 0.025 85);
-  --sidebar-foreground: oklch(0.30 0.04 60);
+  --sidebar-foreground: oklch(0.25 0.04 60);
   --sidebar-primary: oklch(0.50 0.16 30);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-primary-foreground: oklch(0.12 0.02 60);
   --sidebar-accent: oklch(0.88 0.03 85);
-  --sidebar-accent-foreground: oklch(0.30 0.04 60);
+  --sidebar-accent-foreground: oklch(0.25 0.04 60);
   --sidebar-border: oklch(0.85 0.03 85);
   --sidebar-ring: oklch(0.50 0.16 30);
 }
@@ -631,23 +743,23 @@
   --popover: oklch(0.30 0.025 60);
   --popover-foreground: oklch(0.90 0.04 85);
   --primary: oklch(0.72 0.13 30);
-  --primary-foreground: oklch(0.22 0.02 60);
+  --primary-foreground: oklch(0.15 0.02 60);
   --secondary: oklch(0.34 0.025 60);
   --secondary-foreground: oklch(0.90 0.04 85);
   --muted: oklch(0.34 0.025 60);
   --muted-foreground: oklch(0.72 0.03 85);
   --accent: oklch(0.74 0.14 145);
-  --accent-foreground: oklch(0.22 0.02 60);
+  --accent-foreground: oklch(0.15 0.02 60);
   --destructive: oklch(0.66 0.22 25);
   --destructive-foreground: oklch(0.99 0 0);
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 16%);
   --ring: oklch(0.72 0.13 30);
-  --sidebar: oklch(0.22 0.02 60);
+  --sidebar: oklch(0.15 0.02 60);
   --sidebar-foreground: oklch(0.90 0.04 85);
   --sidebar-primary: oklch(0.72 0.13 30);
-  --sidebar-primary-foreground: oklch(0.22 0.02 60);
-  --sidebar-accent: oklch(0.34 0.025 60);
+  --sidebar-primary-foreground: oklch(0.15 0.02 60);
+  --sidebar-accent: oklch(0.17 0.025 60);
   --sidebar-accent-foreground: oklch(0.90 0.04 85);
   --sidebar-border: oklch(1 0 0 / 12%);
   --sidebar-ring: oklch(0.72 0.13 30);

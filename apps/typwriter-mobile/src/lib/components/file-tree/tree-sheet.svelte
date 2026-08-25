@@ -23,6 +23,7 @@
   import * as Drawer from "$lib/components/ui/drawer";
   import * as Dialog from "$lib/components/ui/dialog";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
+  import { parentDir } from "$lib/paths";
   import { app } from "$lib/stores/app.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { editor } from "$lib/stores/editor.svelte";
@@ -196,12 +197,6 @@
     return { files, folders };
   });
 
-  /** Parent folder of the action target, shown as a subtitle in the drawer. */
-  function parentDir(relPath: string): string {
-    const i = relPath.lastIndexOf("/");
-    return i === -1 ? "/" : relPath.slice(0, i);
-  }
-
   const dialogTitle = $derived.by(() => {
     switch (dialogMode) {
       case "newFile":
@@ -244,18 +239,20 @@
         </div>
       </ScrollArea>
 
-      <!-- Action toolbar -->
+      <!-- Action toolbar. `icon` rather than `icon-sm`: these are the sheet's
+           only always-visible commands and they are aimed at with a thumb, so
+           they carry the full 20px glyph and touch target. -->
       <div class="border-border/60 flex items-center gap-1 border-t px-2 py-1.5">
-        <Button variant="ghost" size="icon-sm" aria-label="Go to home" onclick={() => app.goHome()}>
+        <Button variant="ghost" size="icon" aria-label="Go to home" onclick={() => app.goHome()}>
           <Icon icon={Home01Icon} />
         </Button>
-        <Button variant="ghost" size="icon-sm" aria-label="New file" onclick={() => startCreate("newFile", "")}>
+        <Button variant="ghost" size="icon" aria-label="New file" onclick={() => startCreate("newFile", "")}>
           <Icon icon={FileAddIcon} />
         </Button>
-        <Button variant="ghost" size="icon-sm" aria-label="New folder" onclick={() => startCreate("newFolder", "")}>
+        <Button variant="ghost" size="icon" aria-label="New folder" onclick={() => startCreate("newFolder", "")}>
           <Icon icon={FolderAddIcon} />
         </Button>
-        <Button variant="ghost" size="icon-sm" aria-label="Collapse all" onclick={collapseAll}>
+        <Button variant="ghost" size="icon" aria-label="Collapse all" onclick={collapseAll}>
           <Icon icon={ArrowShrink01Icon} />
         </Button>
       </div>
@@ -279,7 +276,7 @@
           </div>
           <Icon icon={UnfoldMoreIcon} class="text-muted-foreground size-4 shrink-0" />
         </button>
-        <Button variant="ghost" size="icon-sm" aria-label="Settings" onclick={openSettings}>
+        <Button variant="ghost" size="icon" aria-label="Settings" onclick={openSettings}>
           <Icon icon={Settings01Icon} />
         </Button>
       </div>
