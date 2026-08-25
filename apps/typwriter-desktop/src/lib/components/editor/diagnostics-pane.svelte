@@ -115,13 +115,13 @@
                 <div class="flex items-baseline gap-2">
                   <span class="break-words flex-1 min-w-0">{diag.message}</span>
                   {#if diag.range}
-                    <span class="shrink-0 rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] font-mono font-semibold tabular-nums text-destructive group-hover:bg-accent-foreground/20 group-hover:text-accent-foreground">
+                    <span class="shrink-0 rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] font-mono font-semibold tabular-nums text-destructive">
                       {diag.range.start_line + 1}:{diag.range.start_col + 1}
                     </span>
                   {/if}
                 </div>
                 {#each diag.hints as hint, hintIndex (hintIndex)}
-                  <p class="text-xs italic text-muted-foreground group-hover:text-accent-foreground/80">Hint: {hint}</p>
+                  <p class="text-xs italic text-muted-foreground">Hint: {hint}</p>
                 {/each}
               </div>
             </button>
@@ -137,13 +137,13 @@
                 <div class="flex items-baseline gap-2">
                   <span class="break-words flex-1 min-w-0">{diag.message}</span>
                   {#if diag.range}
-                    <span class="shrink-0 rounded bg-yellow-500/20 px-1.5 py-0.5 text-[10px] font-mono font-semibold tabular-nums text-yellow-700 dark:text-yellow-400 group-hover:bg-accent-foreground/20 group-hover:text-accent-foreground">
+                    <span class="shrink-0 rounded bg-yellow-500/20 px-1.5 py-0.5 text-[10px] font-mono font-semibold tabular-nums text-yellow-700 dark:text-yellow-400">
                       {diag.range.start_line + 1}:{diag.range.start_col + 1}
                     </span>
                   {/if}
                 </div>
                 {#each diag.hints as hint, hintIndex (hintIndex)}
-                  <p class="text-xs italic text-muted-foreground group-hover:text-accent-foreground/80">Hint: {hint}</p>
+                  <p class="text-xs italic text-muted-foreground">Hint: {hint}</p>
                 {/each}
               </div>
             </button>

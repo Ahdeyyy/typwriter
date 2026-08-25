@@ -66,7 +66,7 @@
           type="button"
           class="flex w-full items-center gap-3 rounded-sm px-2 py-1.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground {selected ===
           theme.id
-            ? 'bg-accent/60 text-accent-foreground'
+            ? 'bg-accent text-accent-foreground'
             : ''}"
           onclick={() => select(theme.id)}
         >

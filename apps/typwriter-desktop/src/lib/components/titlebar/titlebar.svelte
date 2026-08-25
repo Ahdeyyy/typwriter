@@ -63,7 +63,7 @@
               size="icon"
               aria-label="Toggle sidebar"
               onclick={() => sidebarCtx.toggle()}
-              class="text-foreground/60 hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground"
+              class="text-foreground/60 hover:bg-accent hover:text-accent-foreground"
             >
               {#if sidebarCtx.open}
                 <HugeiconsIcon icon={PanelLeftCloseIcon} class="size-4" />
@@ -89,7 +89,7 @@
               size="icon"
               aria-label="Return home"
               onclick={() => onReturnHome?.()}
-              class="text-foreground/60 hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground"
+              class="text-foreground/60 hover:bg-accent hover:text-accent-foreground"
             >
               <HugeiconsIcon icon={Home01Icon} class="size-4" />
             </Button>
@@ -134,7 +134,7 @@
               disabled={previewPoppedOut}
               aria-label={previewVisible ? "Hide preview" : "Show preview"}
               onclick={() => onTogglePreview?.()}
-              class="text-foreground/70 hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground"
+              class="text-foreground/70 hover:bg-accent hover:text-accent-foreground"
             >
               {#if previewVisible && !previewPoppedOut}
                 <HugeiconsIcon icon={EyeIcon} class="size-4" />
@@ -163,7 +163,7 @@
               aria-label="Pop out preview to a new window"
               disabled={previewPoppedOut}
               onclick={() => onPopoutPreview?.()}
-              class="text-foreground/70 hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground {previewPoppedOut ? 'bg-accent text-accent-foreground' : ''}"
+              class="text-foreground/70 hover:bg-accent hover:text-accent-foreground {previewPoppedOut ? 'bg-accent text-accent-foreground' : ''}"
             >
               <HugeiconsIcon icon={LinkSquare01Icon} class="size-4" />
             </Button>

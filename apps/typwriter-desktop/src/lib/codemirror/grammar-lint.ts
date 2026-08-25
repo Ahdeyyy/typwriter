@@ -277,7 +277,10 @@ const grammarTheme = EditorView.baseTheme({
     borderRadius: "calc(var(--radius) / 2)",
     cursor: "pointer",
   },
-  ".cm-grammar-fix:hover": { backgroundColor: "var(--accent)" },
+  ".cm-grammar-fix:hover": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
   ".cm-grammar-actions": {
     display: "flex",
     flexWrap: "wrap",

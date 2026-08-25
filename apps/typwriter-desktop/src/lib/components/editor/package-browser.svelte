@@ -125,7 +125,7 @@
     role="presentation"
   >
     <div
-      class="bg-popover text-popover-foreground mt-[12vh] flex h-fit max-h-[70vh] w-full
+      class="modal-surface bg-popover text-popover-foreground mt-[12vh] flex h-fit max-h-[70vh] w-full
              max-w-2xl flex-col overflow-hidden rounded-xl shadow-2xl"
     >
       <div class="flex items-center gap-2 px-4 py-3">

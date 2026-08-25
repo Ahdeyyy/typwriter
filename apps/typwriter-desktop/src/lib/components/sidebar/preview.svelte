@@ -268,7 +268,7 @@
               size="icon-sm"
               onclick={() => ctrl.togglePaginated()}
               disabled={preview.totalPages === 0}
-              class={preview.paginated ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground" : ""}
+              class={preview.paginated ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground" : ""}
             >
               <HugeiconsIcon icon={preview.paginated ? Menu01Icon : File01Icon} class="size-3.5" />
             </Button>
@@ -322,7 +322,7 @@
                 size="icon-sm"
                 onclick={() => ctrl.togglePresentation()}
                 disabled={preview.totalPages === 0 && !presenting}
-                class={presenting ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground dark:hover:text-foreground" : ""}
+                class={presenting ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground" : ""}
               >
                 <HugeiconsIcon icon={presenting ? Cancel01Icon : PresentationBarChart01Icon} class="size-3.5" />
               </Button>

@@ -357,7 +357,7 @@
               </Select.Trigger>
               <Select.Portal>
                 <Select.Content
-                  class="z-50 min-w-[var(--bits-select-trigger-width)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+                  class="popover-surface z-50 min-w-[var(--bits-select-trigger-width)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
                   sideOffset={4}
                 >
                   {#each PDF_STANDARDS as std (std.value)}

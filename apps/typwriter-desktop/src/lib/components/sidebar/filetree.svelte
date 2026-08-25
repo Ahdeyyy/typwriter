@@ -224,7 +224,7 @@
   ></div>
   <div
     data-file-tree-context-menu-root="true"
-    class="fixed z-50 w-40 rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+    class="popover-surface fixed z-50 w-40 rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
     style:top="{controller.menuState.rect.y + controller.menuState.rect.height}px"
     style:left="{controller.menuState.rect.x}px"
     role="menu"

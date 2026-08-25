@@ -250,7 +250,7 @@
         {#each recentWorkspaces.slice(0, 6) as entry (entry.path)}
             <li class="group relative">
                        <button
-                         class="group/card flex w-full flex-col overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:bg-accent disabled:pointer-events-none cursor-pointer disabled:opacity-50"
+                         class="group/card flex w-full flex-col overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none cursor-pointer disabled:opacity-50"
                          disabled={workspace.opening}
                          onclick={() => handleOpenRecent(entry.path)}
                        >

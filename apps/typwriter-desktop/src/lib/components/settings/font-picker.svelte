@@ -85,7 +85,7 @@
               type="button"
               class="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground {value ===
               family
-                ? 'bg-accent/60 text-accent-foreground'
+                ? 'bg-accent text-accent-foreground'
                 : ''}"
               onclick={() => select(family)}
               style={fontStack(family)}
