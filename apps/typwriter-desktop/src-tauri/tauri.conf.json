@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "Typwriter",
-        "width": 850,
-        "height": 650,
+        "width": 1024,
+        "height": 768,
+        "minWidth": 1024,
+        "minHeight": 768,
         "maximized": true,
         "dragDropEnabled": false,
         "decorations": false,
