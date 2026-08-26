@@ -401,4 +401,19 @@ describe('computeDocumentScope', () => {
         expect(scope.scopedBibPaths).toEqual(new Set(['b.bib']));
         expect(scope.reachableFiles).toEqual(new Set(['a.typ', 'b.typ']));
     });
+
+    it('tolerates a reachable file whose facts have not loaded yet', () => {
+        // During early workspace open, the main file's buffer is available but
+        // included files may not have been read from disk yet — factsFor
+        // returns null for them. The scope computation must not crash.
+        const partial = new Map<string, FileScopeFacts>([
+            ['main.typ', facts([str('chapter.typ')], [str('refs.bib')])],
+            // chapter.typ is NOT in the map — simulates an unloaded file.
+        ]);
+        const scope = computeDocumentScope('main.typ', (p) => partial.get(p) ?? null);
+        // The main file's own bibliography is still found.
+        expect(scope.scopedBibPaths).toEqual(new Set(['refs.bib']));
+        // chapter.typ is reachable even though its facts are unknown.
+        expect(scope.reachableFiles.has('chapter.typ')).toBe(true);
+    });
 });

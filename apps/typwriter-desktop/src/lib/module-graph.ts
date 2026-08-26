@@ -423,7 +423,8 @@ export function computeDocumentScope(
     const bibs = new Set<string>();
     if (mainFile && factsFor(mainFile)) {
         for (const path of componentFrom(mainFile)) {
-            const facts = factsFor(path)!;
+            const facts = factsFor(path);
+            if (!facts) continue;
             for (const raw of resolveArgs(path, facts.bibSources, bibMemo)) {
                 const resolved = resolveModulePath(path, raw);
                 if (resolved) bibs.add(resolved);
