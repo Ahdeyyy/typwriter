@@ -99,10 +99,10 @@
     const popout = new WebviewWindow(PREVIEW_WINDOW_LABEL, {
       url: `/?${popoutParams}`,
       title: "Typwriter Preview",
-      width: 720,
+      width: 1200,
       height: 900,
-      minWidth: 360,
-      minHeight: 480,
+      minWidth: 1200,
+      minHeight: 640,
       ...childWindowChrome(),
     });
 
