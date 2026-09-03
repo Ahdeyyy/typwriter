@@ -2,7 +2,10 @@
 	import type { PageData } from './$types';
 	import { Button } from '$lib/components/ui/button';
 	import { Separator } from '$lib/components/ui/separator';
+	import Navbar from '$lib/components/Navbar.svelte';
 	import FeatureCard from '$lib/components/FeatureCard.svelte';
+	import InteractiveShowcase from '$lib/components/InteractiveShowcase.svelte';
+	import DownloadSection from '$lib/components/DownloadSection.svelte';
 
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
@@ -10,427 +13,271 @@
 		ViewIcon,
 		ArrowDataTransferHorizontalIcon,
 		FlashIcon,
-		FileExportIcon,
 		Download04Icon,
-		Apple01Icon,
-		ComputerIcon,
 		SourceCodeIcon,
-		AndroidIcon,
-		LaptopIcon,
 		TextCheckIcon,
 		MagicWand01Icon,
-		GitCommitIcon
+		GitCommitIcon,
+		SparklesIcon,
+		ArrowRight01Icon,
+		FavouriteIcon
 	} from '@hugeicons/core-free-icons';
-
-	import showcaseDark from '$lib/assets/showcase_dark.png';
-	import showcaseLight from '$lib/assets/showcase_light.png';
 
 	let { data }: { data: PageData } = $props();
 
 	const GITHUB_URL = 'https://github.com/Ahdeyyy/typwriter';
 	const RELEASES_URL = 'https://github.com/Ahdeyyy/typwriter/releases/latest';
-	// The macOS build is unsigned, so Gatekeeper blocks it on first launch.
-	const MACOS_UNSIGNED_GUIDE_URL =
-		'https://github.com/st235/macos-unverified-signature-apps-installation';
+	const SPONSOR_URL = 'https://github.com/sponsors/Ahdeyyy';
 
 	const assets = $derived(data.release?.assets ?? []);
 	const version = $derived(data.release?.tag_name ?? null);
 
-	const windowsAssets = $derived(
-		assets.filter((a) => a.name.endsWith('.exe') || a.name.endsWith('.msi'))
-	);
-	const macosAssets = $derived(assets.filter((a) => a.name.endsWith('.dmg')));
-	const linuxAssets = $derived(
-		assets.filter(
-			(a) => a.name.endsWith('.deb') || a.name.endsWith('.rpm') || a.name.endsWith('.AppImage')
-		)
-	);
-	// APK asset names follow `typwriter_${VERSION}_${abi}.apk`.
-	// Sort by preferred ABI so 64-bit ARM (what almost every modern phone wants) comes first.
-	const APK_ABI_ORDER = ['arm64', 'arm', 'x86_64', 'x86'];
-	const androidAssets = $derived(
-		assets
-			.filter((a) => a.name.endsWith('.apk'))
-			.slice()
-			.sort((a, b) => {
-				const ia = APK_ABI_ORDER.findIndex((abi) => a.name.endsWith(`_${abi}.apk`));
-				const ib = APK_ABI_ORDER.findIndex((abi) => b.name.endsWith(`_${abi}.apk`));
-				return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-			})
-	);
-
-	// One download card per platform. `note` is a snippet because macOS's
-	// contains a link; `badge` is omitted where there is nothing to flag.
-	const PLATFORMS = $derived([
-		{ name: 'Windows', icon: ComputerIcon, assets: windowsAssets },
-		{ name: 'Linux', icon: LaptopIcon, assets: linuxAssets },
-		{ name: 'macOS', icon: Apple01Icon, assets: macosAssets, badge: 'Unsigned', note: macosNote },
-		{
-			name: 'Android',
-			icon: AndroidIcon,
-			assets: androidAssets,
-			badge: 'Experimental',
-			note: androidNote
-		}
-	]);
-
-	let desktopTheme = $state<'dark' | 'light' | null>(null);
-
-	function formatSize(bytes: number): string {
-		return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-	}
-
-	function assetLabel(name: string): string {
-		if (name.endsWith('.exe')) return 'Setup installer (.exe)';
-		if (name.endsWith('.msi')) return 'MSI installer (.msi)';
-		if (name.includes('x64') && name.endsWith('.dmg')) return 'Intel / x64 (.dmg)';
-		if (name.includes('aarch64') && name.endsWith('.dmg')) return 'Apple Silicon (.dmg)';
-		if (name.endsWith('.deb')) return 'Debian / Ubuntu (.deb)';
-		if (name.endsWith('.rpm')) return 'Fedora / RHEL (.rpm)';
-		if (name.endsWith('.AppImage')) return 'AppImage';
-		if (name.endsWith('_arm64.apk')) return 'ARM64 (.apk)';
-		if (name.endsWith('_arm.apk')) return 'ARMv7 (.apk)';
-		if (name.endsWith('_x86_64.apk')) return 'x86_64 (.apk)';
-		if (name.endsWith('_x86.apk')) return 'x86 (.apk)';
-		if (name.endsWith('.apk')) return 'Android (.apk)';
-		return name;
-	}
-
 	const features = [
 		{
 			icon: ViewIcon,
-			title: 'Live preview',
+			title: 'Instant Live Preview',
 			description:
-				'Your document recompiles as you type. The rendered page stays one keystroke behind your source, no manual refresh.'
+				'Your document recompiles as you type. Updates render as quickly as possible (typically sub-100ms), keeping preview in lockstep with your source without manual refreshes.',
+			tag: 'Sub-100ms',
+			featured: true
 		},
 		{
 			icon: SourceCodeIcon,
-			title: 'Syntax highlighting',
+			title: 'Handcrafted Syntax Engine',
 			description:
-				'Full Typst highlighting across markup, math, and code blocks — plus the embedded languages inside raw code fences.'
+				'Full Typst highlighting across markup, math, and code blocks, including embedded languages inside raw code fences.',
+			tag: 'Parser'
 		},
 		{
 			icon: ArrowDataTransferHorizontalIcon,
-			title: 'Two-way navigation',
+			title: 'Two-Way Source Navigation',
 			description:
-				'Click in the preview to jump to the matching source line. Move your cursor in the source to see the page follow.'
+				'Click directly in the preview to jump to the matching source line. Move your cursor in code and watch the viewport follow.',
+			tag: 'Bi-directional'
 		},
 		{
 			icon: FlashIcon,
-			title: 'Autocomplete & docs',
+			title: 'Autocomplete & Documentation',
 			description:
-				'Context-aware suggestions, hover documentation, and go-to-definition. Point it at tinymist for a full language server.'
+				'Context-aware suggestions and hover documentation out of the box. Optionally point it at Tinymist to enhance documentation lookup.',
+			tag: 'Docs'
 		},
 		{
 			icon: TextCheckIcon,
-			title: 'Grammar & spell check',
+			title: 'Local Harper Grammar & Spellcheck',
 			description:
-				'Harper checks your prose entirely on your machine — no text leaves the app. Pick a dialect, add words to your dictionary.'
-		},
-		{
-			icon: MagicWand01Icon,
-			title: 'Formatting',
-			description:
-				'Typstyle formats the file, the selection, or every .typ file in the workspace. Run it on save if you prefer.'
+				'Harper checks your prose entirely on your local machine with no text leaving your device. Dialect support with custom dictionaries.',
+			tag: 'Offline Privacy'
 		},
 		{
 			icon: GitCommitIcon,
-			title: 'Restore points',
+			title: 'Automatic Restore Points',
 			description:
-				'Local snapshots taken on save or on a successful compile. Diff any two, then roll back a single file or the whole workspace.'
+				'Local snapshots taken on save or successful compile using Zstandard compression. Diff any two points and roll back files instantly.',
+			tag: 'Version Control',
+			featured: true
 		},
 		{
-			icon: FileExportIcon,
-			title: 'Export anywhere',
+			icon: MagicWand01Icon,
+			title: 'Typstyle Code Formatting',
 			description:
-				'Generate pixel-perfect PDF, SVG, PNG, or HTML output from the current document in one click.'
+				'Typstyle formats the file, the selection, or every .typ file in the workspace on command or automatically on save.',
+			tag: 'Code Formatter'
 		}
 	];
 </script>
 
 <svelte:head>
-	<title>Typwriter — a Typst editor for desktop and mobile</title>
+	<title>Typwriter: Fast, Native Typst Editor for Desktop & Mobile</title>
 	<meta
 		name="description"
-		content="Typwriter is a Typst editor for Windows, macOS, Linux, and Android. Live preview, syntax highlighting, autocomplete, offline grammar checking, restore points, and export to PDF, SVG, PNG, or HTML."
+		content="Typwriter is a modern, native Typst editor for Windows, macOS, Linux, and Android. Live preview, syntax highlighting, offline Harper grammar checking, and automatic restore points."
 	/>
 </svelte:head>
 
-<!-- ─── Hero ───────────────────────────────────────────────── -->
-<section class="mx-auto max-w-7xl px-6 py-24 text-center">
-	<h1 class="mb-4 text-4xl font-bold tracking-tighter sm:text-5xl lg:text-6xl">Typwriter</h1>
+<div class="relative min-h-screen bg-background text-foreground transition-colors duration-300">
+	<!-- Navbar -->
+	<Navbar {version} />
 
-	<p class="mx-auto mb-10 max-w-xl text-base text-muted-foreground sm:text-lg">
-		A Typst editor for Windows, macOS, Linux, and Android*. Write with syntax highlighting and
-		autocomplete, watch your document render as you type, and export to PDF, SVG, PNG, or HTML.
-	</p>
-
-	<div class="flex flex-wrap items-center justify-center gap-3">
-		<Button size="lg" class="px-8 py-6 text-base" href="#download">
-			<HugeiconsIcon icon={Download04Icon} size={18} class="mr-2" />
-			Download
-		</Button>
-	</div>
-
-	<div class="showcase-row">
-		<div class="theme-stack relative w-full">
-			<div class="theme-stack__frames" data-active-theme={desktopTheme ?? undefined}>
-				<button
-					type="button"
-					class="theme-frame theme-frame--dark"
-					aria-label="Show the desktop dark mode screenshot"
-					onclick={() => (desktopTheme = 'dark')}
-				>
-					<img
-						src={showcaseDark}
-						alt="Typwriter editor in dark mode, source on the left, rendered preview on the right"
-						fetchpriority="high"
-					/>
-				</button>
-
-				<button
-					type="button"
-					class="theme-frame theme-frame--light"
-					aria-label="Show the desktop light mode screenshot"
-					onclick={() => (desktopTheme = 'light')}
-				>
-					<img
-						src={showcaseLight}
-						alt="Typwriter editor in light mode, source on the left, rendered preview on the right"
-						loading="lazy"
-					/>
-				</button>
-			</div>
-		</div>
-	</div>
-</section>
-
-<Separator />
-
-<!-- ─── Features ──────────────────────────────────────────── -->
-<section class="mx-auto max-w-5xl px-6 py-20">
-	<div class="mb-12 text-center">
-		<h2 class="mb-2 text-2xl font-bold tracking-tight">Features</h2>
-	</div>
-
-	<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-		{#each features as feature, index (feature.title + index)}
-			<FeatureCard icon={feature.icon} title={feature.title} description={feature.description} />
-		{/each}
-	</div>
-</section>
-
-<Separator />
-
-<!-- ─── Download ──────────────────────────────────────────── -->
-<section id="download" class="mx-auto max-w-5xl px-6 py-20">
-	<div class="mb-12 text-center">
-		<h2 class="mb-2 text-2xl font-bold tracking-tight">Download</h2>
-		<p class="text-sm text-muted-foreground">
-			Available for Windows, macOS, Linux, and Android.
-			{#if version}
-				Latest release: <span class="text-foreground">{version}</span>
-			{/if}
-		</p>
-	</div>
-
-	<div class="grid gap-6 sm:grid-cols-2">
-		{#each PLATFORMS as platform (platform.name)}
-			<div class="flex flex-col gap-3">
-				<div class="flex items-center gap-2 text-sm font-medium">
-					<HugeiconsIcon icon={platform.icon} size={15} class="text-muted-foreground" />
-					{platform.name}
-					{#if platform.badge}
-						<span
-							class="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[0.625rem] font-medium tracking-wide text-amber-600 uppercase dark:text-amber-400"
-						>
-							{platform.badge}
-						</span>
-					{/if}
-				</div>
-				{#if platform.note}
-					{@render platform.note()}
-				{/if}
-				{#if platform.assets.length > 0}
-					{#each platform.assets as asset (asset.name)}
-						<Button
-							variant="outline"
-							class="h-auto justify-between px-4 py-3"
-							href={asset.browser_download_url}
-						>
-							<span class="flex items-center gap-2">
-								<HugeiconsIcon icon={Download04Icon} size={14} />
-								{assetLabel(asset.name)}
-							</span>
-							<span class="text-xs text-muted-foreground">{formatSize(asset.size)}</span>
-						</Button>
-					{/each}
-				{:else}
-					<Button variant="outline" href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
-						<HugeiconsIcon icon={Download04Icon} size={14} class="mr-2" />
-						View {platform.name} releases
-					</Button>
-				{/if}
-			</div>
-		{/each}
-	</div>
-</section>
-
-{#snippet macosNote()}
-	<p class="text-xs text-muted-foreground">
-		The macOS build isn't code-signed, so Gatekeeper will refuse to open it on first launch.
-		<a
-			href={MACOS_UNSIGNED_GUIDE_URL}
-			target="_blank"
-			rel="noopener noreferrer"
-			class="text-foreground underline underline-offset-2 transition-colors hover:text-muted-foreground"
-		>
-			Follow this guide
-		</a>
-		to install it anyway.
-	</p>
-{/snippet}
-
-{#snippet androidNote()}
-	<p class="text-xs text-muted-foreground">
-		The Android build is highly experimental — expect bugs, missing features, and breaking changes.
-		Back up your work and don't rely on it for anything important yet.
-	</p>
-{/snippet}
-
-<Separator />
-
-<!-- ─── Footer ────────────────────────────────────────────── -->
-<footer class="mx-auto max-w-5xl px-6 py-10">
+	<!-- Ambient background lighting -->
 	<div
-		class="flex flex-col items-center justify-between gap-4 text-xs text-muted-foreground sm:flex-row"
+		class="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 h-[650px] w-full max-w-7xl overflow-hidden opacity-40 dark:opacity-25"
+		aria-hidden="true"
 	>
-		<span>
-			© {new Date().getFullYear()} typwriter · MIT License
-		</span>
-		<div class="flex items-center gap-4">
-			<a
-				href={GITHUB_URL}
-				target="_blank"
-				rel="noopener noreferrer"
-				class="flex items-center gap-1 transition-colors hover:text-foreground"
-			>
-				<HugeiconsIcon icon={Github01Icon} size={13} />
-				GitHub
-			</a>
-			<a
-				href={RELEASES_URL}
-				target="_blank"
-				rel="noopener noreferrer"
-				class="transition-colors hover:text-foreground"
-			>
-				Releases
-			</a>
-		</div>
+		<div
+			class="animate-pulse-subtle absolute -top-40 left-1/2 -translate-x-1/2 h-[500px] w-[750px] rounded-full bg-gradient-to-tr from-primary/20 via-accent/30 to-transparent blur-[120px]"
+		></div>
+		<div
+			class="absolute inset-0 bg-dot-pattern [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_75%)]"
+		></div>
 	</div>
-</footer>
 
-<style>
-	.showcase-row {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr);
-		justify-items: center;
-		margin-top: 5rem;
-		padding-inline: clamp(1.5rem, 4vw, 4rem);
-	}
+	<main class="relative z-10">
+		<!-- ─── Hero Section ───────────────────────────────────────── -->
+		<section
+			class="mx-auto max-w-5xl px-4 pt-16 pb-20 text-center sm:px-6 sm:pt-24 sm:pb-28"
+		>
+			<!-- Eyebrow Pill -->
+			<div class="mb-6 inline-flex items-center justify-center">
+				<a
+					href="#download"
+					class="group inline-flex items-center gap-2 rounded-full border border-border/80 bg-muted/60 px-3.5 py-1 text-xs font-medium text-muted-foreground backdrop-blur-xs transition-all duration-200 hover:border-foreground/30 hover:bg-muted hover:text-foreground active:scale-95"
+				>
+					<span
+						class="flex size-1.5 rounded-full bg-primary transition-transform group-hover:scale-125"
+					></span>
+					<span class="font-mono text-[0.6875rem]">Typwriter {version ?? 'v0.9'}</span>
+					<span class="text-border">|</span>
+					<span>Desktop & Mobile Typst Editor</span>
+					<HugeiconsIcon
+						icon={ArrowRight01Icon}
+						size={12}
+						class="transition-transform duration-200 group-hover:translate-x-0.5"
+					/>
+				</a>
+			</div>
 
-	.theme-stack__frames {
-		position: relative;
-		aspect-ratio: 16 / 10;
-		isolation: isolate;
-		width: 100%;
-		max-width: 56rem;
-		margin-inline: auto;
-	}
+			<!-- Main Heading -->
+			<h1
+				class="mx-auto mb-6 max-w-4xl text-4xl font-extrabold tracking-tight font-heading sm:text-5xl md:text-6xl lg:text-7xl"
+			>
+				Effortless Typst typesetting,
+				<br class="hidden sm:inline" />
+				<span
+					class="bg-gradient-to-r from-foreground via-foreground/80 to-muted-foreground bg-clip-text text-transparent"
+				>
+					rendered in real-time.
+				</span>
+			</h1>
 
-	.theme-frame {
-		position: absolute;
-		inset: 0;
-		margin: 0;
-		overflow: hidden;
-		border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
-		border-radius: 0.5rem;
-		background: transparent;
-		padding: 0;
-		color: inherit;
-		box-shadow: 0 14px 30px -18px oklch(0 0 0 / 0.35);
-		-webkit-mask-image: linear-gradient(to bottom, black 0%, black 76%, rgb(0 0 0 / 0.38) 100%);
-		mask-image: linear-gradient(to bottom, black 0%, black 76%, rgb(0 0 0 / 0.38) 100%);
-		cursor: pointer;
-		transition:
-			transform 600ms cubic-bezier(0.16, 1, 0.3, 1),
-			box-shadow 600ms cubic-bezier(0.16, 1, 0.3, 1),
-			border-color 200ms ease;
-	}
+			<!-- Subtitle -->
+			<p
+				class="mx-auto mb-10 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg sm:leading-8"
+			>
+				The local-first Typst workspace built for speed. Enjoy keystroke-by-keystroke preview,
+				privacy-respecting grammar checks, and instant local snapshots.
+			</p>
 
-	.theme-frame:focus-visible {
-		outline: 2px solid var(--ring);
-		outline-offset: 0.35rem;
-	}
+			<!-- Primary CTAs -->
+			<div class="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+				<Button
+					size="lg"
+					class="h-12 gap-2 rounded-xl px-7 text-sm font-semibold shadow-md transition-transform duration-200 active:scale-95 sm:text-base"
+					href="#download"
+				>
+					<HugeiconsIcon icon={Download04Icon} size={18} />
+					<span>Download Free</span>
+				</Button>
 
-	.theme-frame img {
-		display: block;
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		object-position: top left;
-	}
+				<Button
+					variant="outline"
+					size="lg"
+					class="h-12 gap-2 rounded-xl border-border/80 px-6 text-sm font-medium transition-colors hover:bg-muted/70 active:scale-95 sm:text-base"
+					href={GITHUB_URL}
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					<HugeiconsIcon icon={Github01Icon} size={18} />
+					<span>Star on GitHub</span>
+				</Button>
+			</div>
 
-	.theme-frame--light {
-		z-index: 1;
-		transform: translate(-9%, 10%) scale(0.93) rotate(-1.2deg);
-	}
-	.theme-frame--dark {
-		z-index: 2;
-		transform: translate(3%, -2%) scale(0.96);
-	}
+			<!-- Interactive Showcase -->
+			<div id="showcase" class="mt-14 scroll-mt-20">
+				<InteractiveShowcase />
+			</div>
+		</section>
 
-	.theme-stack__frames[data-active-theme='light'] .theme-frame--light,
-	.theme-stack__frames[data-active-theme='dark'] .theme-frame--dark {
-		z-index: 4;
-		transform: translate(2%, -1%) scale(0.98) rotate(0deg);
-		box-shadow: 0 40px 60px -28px oklch(0 0 0 / 0.4);
-	}
+		<Separator class="opacity-50" />
 
-	.theme-stack__frames[data-active-theme='light'] .theme-frame--dark {
-		z-index: 1;
-		transform: translate(11%, -8%) scale(0.9) rotate(1.2deg);
-		opacity: 0.86;
-	}
+		<!-- ─── Features Section ───────────────────────────────────── -->
+		<section id="features" class="mx-auto max-w-5xl px-4 py-20 sm:px-6 scroll-mt-14">
+			<div class="mb-14 text-center">
+				<div
+					class="mb-3 inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-muted/40 px-3 py-1 text-xs font-medium text-muted-foreground"
+				>
+					<HugeiconsIcon icon={SparklesIcon} size={14} class="text-primary" />
+					<span>Engineered for Writers & Researchers</span>
+				</div>
+				<h2 class="text-3xl font-bold tracking-tight font-heading sm:text-4xl">
+					Everything you need to write and publish.
+				</h2>
+				<p class="mt-3 text-sm text-muted-foreground sm:text-base">
+					Every feature is native, locally executed, and tuned for responsive performance.
+				</p>
+			</div>
 
-	.theme-stack__frames[data-active-theme='dark'] .theme-frame--light {
-		z-index: 1;
-		transform: translate(-9%, 10%) scale(0.93) rotate(-1.2deg);
-		opacity: 0.86;
-	}
+			<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+				{#each features as feature, index (feature.title + index)}
+					<FeatureCard
+						icon={feature.icon}
+						title={feature.title}
+						description={feature.description}
+						tag={feature.tag}
+						featured={feature.featured}
+					/>
+				{/each}
+			</div>
+		</section>
 
-	@media (prefers-color-scheme: light) {
-		.theme-stack__frames:not([data-active-theme]) .theme-frame--light {
-			z-index: 2;
-			transform: translate(2%, -1%) scale(0.98);
-		}
+		<Separator class="opacity-50" />
 
-		.theme-stack__frames:not([data-active-theme]) .theme-frame--dark {
-			z-index: 1;
-			transform: translate(11%, -8%) scale(0.9) rotate(1.2deg);
-			opacity: 0.86;
-		}
-	}
+		<!-- ─── Download Section ───────────────────────────────────── -->
+		<DownloadSection {assets} {version} />
+	</main>
 
-	@media (max-width: 640px) {
-		.showcase-row {
-			margin-top: 4rem;
-		}
-	}
+	<Separator class="opacity-50" />
 
-	@media (prefers-reduced-motion: reduce) {
-		.theme-frame {
-			transition: none;
-		}
-	}
-</style>
+	<!-- ─── Footer ─────────────────────────────────────────────── -->
+	<footer class="mx-auto max-w-5xl px-4 py-12 sm:px-6">
+		<div
+			class="flex flex-col items-center justify-between gap-6 text-xs text-muted-foreground sm:flex-row"
+		>
+			<div class="flex items-center gap-2">
+				<img src="/icon.png" alt="Typwriter" class="size-4 object-contain" />
+				<span>© {new Date().getFullYear()} Typwriter · Open source under MIT License</span>
+			</div>
+
+			<div class="flex items-center gap-6">
+				<a
+					href="#features"
+					class="transition-colors hover:text-foreground active:scale-95"
+				>
+					Features
+				</a>
+				<a
+					href="#download"
+					class="transition-colors hover:text-foreground active:scale-95"
+				>
+					Downloads
+				</a>
+				<a
+					href={SPONSOR_URL}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="flex items-center gap-1 text-muted-foreground transition-colors hover:text-rose-500 active:scale-95"
+				>
+					<HugeiconsIcon icon={FavouriteIcon} size={14} class="text-rose-500" />
+					Sponsor
+				</a>
+				<a
+					href={GITHUB_URL}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="flex items-center gap-1 transition-colors hover:text-foreground active:scale-95"
+				>
+					<HugeiconsIcon icon={Github01Icon} size={14} />
+					GitHub
+				</a>
+				<a
+					href={RELEASES_URL}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="transition-colors hover:text-foreground active:scale-95"
+				>
+					Releases
+				</a>
+			</div>
+		</div>
+	</footer>
+</div>

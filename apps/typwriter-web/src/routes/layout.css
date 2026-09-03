@@ -235,3 +235,51 @@
 		display: none;
 	}
 }
+
+@utility bg-grid-pattern {
+	background-size: 32px 32px;
+	background-image: 
+		linear-gradient(to right, color-mix(in oklch, var(--foreground) 4.5%, transparent) 1px, transparent 1px),
+		linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 4.5%, transparent) 1px, transparent 1px);
+}
+
+@utility bg-dot-pattern {
+	background-size: 24px 24px;
+	background-image: radial-gradient(color-mix(in oklch, var(--foreground) 7%, transparent) 1px, transparent 1px);
+}
+
+@keyframes float-subtle {
+	0%, 100% {
+		transform: translateY(0px);
+	}
+	50% {
+		transform: translateY(-5px);
+	}
+}
+
+@keyframes pulse-subtle {
+	0%, 100% {
+		opacity: 0.4;
+		transform: scale(1);
+	}
+	50% {
+		opacity: 0.75;
+		transform: scale(1.04);
+	}
+}
+
+@utility animate-float {
+	animation: float-subtle 6s ease-in-out infinite;
+}
+
+@utility animate-pulse-subtle {
+	animation: pulse-subtle 5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.animate-float,
+	.animate-pulse-subtle {
+		animation: none !important;
+	}
+}
+

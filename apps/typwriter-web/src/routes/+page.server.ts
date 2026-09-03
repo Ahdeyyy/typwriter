@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 
 // Prerendered: this load runs at build time, not per request. The download
-// links are therefore only as fresh as the last site build — publishing a
+// links are therefore only as fresh as the last site build, because publishing a
 // release does not update them on its own, since publish.yml ignores
 // apps/typwriter-web/**. Trigger a site rebuild after a release, or the
 // buttons keep pointing at the previous version's assets.
