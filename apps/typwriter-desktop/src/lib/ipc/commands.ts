@@ -25,7 +25,8 @@ import type {
     PackageEntry,
     SearchQuery,
     SearchResults,
-    ReplaceOutcome
+    ReplaceOutcome,
+    InitWorkspaceResult
 } from '$lib/types';
 
 const toErrString = (e: unknown): string => String(e);
@@ -38,6 +39,13 @@ export function openFolder(path: string) {
 
 export function createWorkspace(parentPath: string, name: string) {
     return ResultAsync.fromPromise(invoke<string>('create_workspace', { parentPath, name }), toErrString);
+}
+
+export function initPackageWorkspace(parentPath: string, name: string, template: string) {
+    return ResultAsync.fromPromise(
+        invoke<InitWorkspaceResult>('init_package_workspace', { parentPath, name, template }),
+        toErrString
+    );
 }
 
 export function setMainFile(path: string) {

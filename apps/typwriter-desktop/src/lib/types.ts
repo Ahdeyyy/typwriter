@@ -80,6 +80,11 @@ export interface ReplaceOutcome {
     restorePoint: string | null;
 }
 
+export interface TemplateMetadata {
+    path: string;
+    entrypoint: string;
+}
+
 /** One package from the Typst Universe index, versions folded together. */
 export interface PackageEntry {
     namespace: string;
@@ -89,6 +94,13 @@ export interface PackageEntry {
     /** Every listed version, newest first. */
     versions: string[];
     description: string | null;
+    isTemplate?: boolean;
+    template?: TemplateMetadata | null;
+}
+
+export interface InitWorkspaceResult {
+    workspacePath: string;
+    entrypoint: string;
 }
 
 export interface FileMeta {

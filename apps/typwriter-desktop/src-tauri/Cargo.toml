@@ -74,6 +74,8 @@ typst-syntax = "0.15.1"
 # Already in the tree via typst; declared directly so we read bibliography
 # files with the same parser the compiler uses — exact acceptance parity.
 hayagriva = "0.10"
+toml = "0.8"
+fs_extra = "1.3"
 
 # Presentation mode needs two Win32 calls Tauri doesn't wrap:
 # `SetThreadExecutionState` (hold off display sleep for the length of a talk)

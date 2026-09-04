@@ -2,13 +2,30 @@
   import { onMount } from "svelte";
   import { page } from "@/stores/page.svelte";
   import Button from "../ui/button/button.svelte";
-  import { getRecentWorkspaces, createWorkspace, removeRecentWorkspace, clearRecentWorkspaces } from "$lib/ipc/commands";
-  import type { RecentWorkspaceEntry } from "$lib/types";
+  import {
+    getRecentWorkspaces,
+    createWorkspace,
+    initPackageWorkspace,
+    listPackages,
+    removeRecentWorkspace,
+    clearRecentWorkspaces,
+  } from "$lib/ipc/commands";
+  import type { RecentWorkspaceEntry, PackageEntry } from "$lib/types";
+  import { fuzzyRank } from "$lib/fuzzy";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { onboarding } from "$lib/stores/onboarding.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { Folder01Icon, FolderOpenIcon, FolderAddIcon, Delete01Icon, Cancel01Icon, Settings01Icon } from "@hugeicons/core-free-icons";
+  import {
+    Folder01Icon,
+    FolderOpenIcon,
+    FolderAddIcon,
+    Delete01Icon,
+    Cancel01Icon,
+    Settings01Icon,
+    Search01Icon,
+    PackageIcon,
+  } from "@hugeicons/core-free-icons";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
@@ -22,9 +39,65 @@
 
   // New workspace dialog state
   let newWorkspaceOpen = $state(false);
+  let newWorkspaceType = $state<"blank" | "template">("blank");
   let newWorkspaceName = $state("");
   let newWorkspaceParent = $state("");
   let newWorkspaceCreating = $state(false);
+  let autoFilledName = $state(false);
+
+  // Template picker state
+  let templatePackages = $state<PackageEntry[]>([]);
+  let templatesLoading = $state(false);
+  let templatesLoaded = false;
+  let templateQuery = $state("");
+  let selectedTemplate = $state<PackageEntry | null>(null);
+  let useCustomSpec = $state(false);
+  let customTemplateSpec = $state("");
+
+  async function loadTemplates() {
+    if (templatesLoaded || templatesLoading) return;
+    templatesLoading = true;
+    const result = await listPackages();
+    result.match(
+      (entries) => {
+        templatePackages = entries.filter((e) => e.isTemplate);
+        templatesLoaded = true;
+        templatesLoading = false;
+      },
+      (err) => {
+        logError("Failed to load packages for templates:", err);
+        templatesLoading = false;
+      },
+    );
+  }
+
+  $effect(() => {
+    if (newWorkspaceOpen && newWorkspaceType === "template") {
+      void loadTemplates();
+    }
+  });
+
+  const templateMatches = $derived(
+    fuzzyRank(
+      templatePackages,
+      templateQuery,
+      (entry) => entry.name,
+      (entry) => entry.description ?? "",
+    ).slice(0, 50),
+  );
+
+  function selectTemplate(entry: PackageEntry) {
+    selectedTemplate = entry;
+    useCustomSpec = false;
+    if (!newWorkspaceName.trim() || autoFilledName) {
+      newWorkspaceName = entry.name;
+      autoFilledName = true;
+    }
+  }
+
+  function handleNameInput() {
+    autoFilledName = false;
+  }
 
   // ── Onboarding ────────────────────────────────────────────────────────────
 
@@ -140,6 +213,45 @@
       return;
     }
 
+    if (newWorkspaceType === "template") {
+      const templateSpec = useCustomSpec
+        ? customTemplateSpec.trim()
+        : selectedTemplate
+          ? `@${selectedTemplate.namespace}/${selectedTemplate.name}:${selectedTemplate.version}`
+          : "";
+      if (!templateSpec) {
+        toast.error("Please select a template or enter a package spec.");
+        return;
+      }
+
+      newWorkspaceCreating = true;
+      const initResult = await initPackageWorkspace(
+        newWorkspaceParent,
+        newWorkspaceName.trim(),
+        templateSpec,
+      );
+
+      if (initResult.isErr()) {
+        logError("Failed to initialize template workspace:", initResult.error);
+        toast.error(`Failed to initialize template: ${initResult.error}`);
+        newWorkspaceCreating = false;
+        return;
+      }
+
+      const newPath = initResult.value.workspacePath;
+      newWorkspaceCreating = false;
+      newWorkspaceOpen = false;
+      newWorkspaceName = "";
+      newWorkspaceParent = "";
+      selectedTemplate = null;
+      customTemplateSpec = "";
+      useCustomSpec = false;
+      autoFilledName = false;
+
+      enterWorkspace(() => workspace.init(newPath));
+      return;
+    }
+
     newWorkspaceCreating = true;
     const createResult = await createWorkspace(newWorkspaceParent, newWorkspaceName.trim());
 
@@ -159,6 +271,7 @@
     newWorkspaceOpen = false;
     newWorkspaceName = "";
     newWorkspaceParent = "";
+    autoFilledName = false;
 
     enterWorkspace(() => workspace.init(newPath));
   }
@@ -309,22 +422,130 @@
           </Button>
         {/snippet}
       </Dialog.Trigger>
-      <Dialog.Content class="sm:max-w-md">
+      <Dialog.Content class="sm:max-w-lg">
         <Dialog.Header>
           <Dialog.Title>New Workspace</Dialog.Title>
           <Dialog.Description>
-            Choose a location and name for your new workspace. A folder with a
-            <code>.typwriter</code> metadata directory will be created inside.
+            {newWorkspaceType === "template"
+              ? "Initialize a new project from a Typst package template."
+              : "Choose a location and name for your new workspace."}
           </Dialog.Description>
         </Dialog.Header>
 
-        <div class="flex flex-col gap-4 py-2">
+        <!-- Segmented toggle: Blank vs From Template -->
+        <div class="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-xs font-medium">
+          <button
+            type="button"
+            class="flex items-center justify-center rounded-md py-1.5 transition-colors cursor-pointer {newWorkspaceType === 'blank' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}"
+            onclick={() => { newWorkspaceType = 'blank'; }}
+            disabled={newWorkspaceCreating || workspace.opening}
+          >
+            Blank Workspace
+          </button>
+          <button
+            type="button"
+            class="flex items-center justify-center rounded-md py-1.5 transition-colors cursor-pointer {newWorkspaceType === 'template' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}"
+            onclick={() => {
+              newWorkspaceType = 'template';
+              void loadTemplates();
+            }}
+            disabled={newWorkspaceCreating || workspace.opening}
+          >
+            From Template
+          </button>
+        </div>
+
+        <div class="flex flex-col gap-4 py-1">
+          {#if newWorkspaceType === "template"}
+            <div class="flex flex-col gap-2">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium">Template</span>
+                <button
+                  type="button"
+                  class="text-xs text-primary hover:underline cursor-pointer"
+                  onclick={() => { useCustomSpec = !useCustomSpec; }}
+                >
+                  {useCustomSpec ? "Pick from known templates" : "Enter custom spec"}
+                </button>
+              </div>
+
+              {#if useCustomSpec}
+                <Input
+                  id="template-spec"
+                  placeholder="@preview/touying:0.5.5 or @preview/charged-ieee"
+                  bind:value={customTemplateSpec}
+                  disabled={newWorkspaceCreating || workspace.opening}
+                  oninput={() => {
+                    const match = customTemplateSpec.match(/@?[^/]+\/([^:]+)/);
+                    if (match && (!newWorkspaceName.trim() || autoFilledName)) {
+                      newWorkspaceName = match[1];
+                      autoFilledName = true;
+                    }
+                  }}
+                />
+                <p class="text-[11px] text-muted-foreground">
+                  Specify any Typst Universe package spec (e.g. <code>@preview/touying</code>).
+                </p>
+              {:else}
+                <div class="flex flex-col gap-1.5">
+                  <div class="relative flex items-center">
+                    <HugeiconsIcon icon={Search01Icon} class="absolute left-2.5 size-3.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Search templates (e.g. slides, cv, report, touying)…"
+                      bind:value={templateQuery}
+                      class="pl-8 text-xs"
+                      disabled={newWorkspaceCreating || workspace.opening}
+                    />
+                  </div>
+
+                  <div class="max-h-40 min-h-24 overflow-y-auto rounded-md border border-border bg-card p-1">
+                    {#if templatesLoading}
+                      <p class="py-6 text-center text-xs text-muted-foreground">Loading templates…</p>
+                    {:else if templateMatches.length === 0}
+                      <p class="py-6 text-center text-xs text-muted-foreground">
+                        {templatePackages.length === 0 ? "No templates available" : "No templates match"}
+                      </p>
+                    {:else}
+                      <div class="flex flex-col gap-0.5">
+                        {#each templateMatches as { item } (item.namespace + "/" + item.name)}
+                          <button
+                            type="button"
+                            class="flex w-full flex-col rounded px-2 py-1.5 text-left transition-colors cursor-pointer {selectedTemplate?.name === item.name ? 'bg-accent text-accent-foreground ring-1 ring-primary' : 'hover:bg-accent/50'}"
+                            onclick={() => selectTemplate(item)}
+                          >
+                            <div class="flex items-center justify-between">
+                              <span class="font-mono text-xs font-medium">{item.name}</span>
+                              <span class="text-[10px] text-muted-foreground tabular-nums">{item.version}</span>
+                            </div>
+                            {#if item.description}
+                              <p class="line-clamp-1 text-[11px] text-muted-foreground">
+                                {item.description}
+                              </p>
+                            {/if}
+                          </button>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
+
+                  {#if selectedTemplate}
+                    <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <HugeiconsIcon icon={PackageIcon} class="size-3.5 text-primary" />
+                      <span>Selected: <strong class="font-mono text-foreground">{selectedTemplate.name}</strong> ({selectedTemplate.version})</span>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/if}
+
           <div class="flex flex-col gap-1.5">
-            <label for="ws-name" class="text-sm font-medium">Name</label>
+            <label for="ws-name" class="text-sm font-medium">Workspace Name</label>
             <Input
               id="ws-name"
               placeholder="my-document"
               bind:value={newWorkspaceName}
+              oninput={handleNameInput}
               onkeydown={handleNewWorkspaceKeydown}
               disabled={newWorkspaceCreating || workspace.opening}
             />
@@ -337,7 +558,7 @@
                 readonly
                 id="ws-location"
                 value={newWorkspaceParent}
-                placeholder="Select a folder…"
+                placeholder="Select a parent folder…"
                 class="flex-1 cursor-default text-muted-foreground"
                 disabled={newWorkspaceCreating || workspace.opening}
               />
@@ -366,9 +587,16 @@
           </Dialog.Close>
           <Button
             onclick={handleCreateWorkspace}
-            disabled={newWorkspaceCreating || workspace.opening || !newWorkspaceName.trim() || !newWorkspaceParent}
+            disabled={newWorkspaceCreating ||
+              workspace.opening ||
+              !newWorkspaceName.trim() ||
+              !newWorkspaceParent ||
+              (newWorkspaceType === "template" && !useCustomSpec && !selectedTemplate) ||
+              (newWorkspaceType === "template" && useCustomSpec && !customTemplateSpec.trim())}
           >
-            {newWorkspaceCreating ? "Creating…" : "Create"}
+            {newWorkspaceCreating
+              ? newWorkspaceType === "template" ? "Initializing…" : "Creating…"
+              : newWorkspaceType === "template" ? "Initialize Workspace" : "Create"}
           </Button>
         </Dialog.Footer>
       </Dialog.Content>

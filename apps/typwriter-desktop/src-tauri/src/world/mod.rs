@@ -15,6 +15,7 @@ use std::{
     },
     time::Instant,
 };
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use typst::{
     diag::{FileError, FileResult},
@@ -32,6 +33,13 @@ use typst_kit::{
     packages::{FsPackages, SystemPackages, UniversePackages},
 };
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateMetadata {
+    pub path: String,
+    pub entrypoint: String,
+}
+
 pub struct EditorWorld {
     /// Workspace root on disk — updatable when the user opens a new folder.
     root: RwLock<PathBuf>,
@@ -46,7 +54,8 @@ pub struct EditorWorld {
     /// collide with a real file in the workspace.
     main: RwLock<Option<FileId>>,
 
-    /// Typst standard library — built lazily on first compile, not at startup
+    /// Precompiled standard library. Initialized once lazily via
+    /// `ensure_library()` on the first compile so construction is cheap.
     library: OnceLock<LazyHash<Library>>,
 
     /// Active font set, behind a lock so settings changes can swap fonts at
@@ -109,9 +118,12 @@ pub struct EditorWorld {
     /// not expose it).
     index_downloader: SystemDownloader,
 
-    /// Lazily cached list of all available packages from the Typst registry.
-    /// Populated on the first call to `IdeWorld::packages()`.
-    package_index: OnceLock<Vec<(PackageSpec, Option<EcoString>)>>,
+    /// Lazily cached list of all available packages and templates from the Typst registry.
+    /// Populated on the first call to `IdeWorld::packages()` or template queries.
+    package_index: OnceLock<(
+        Vec<(PackageSpec, Option<EcoString>)>,
+        HashMap<(EcoString, EcoString), TemplateMetadata>,
+    )>,
 }
 
 impl EditorWorld {
@@ -446,6 +458,16 @@ impl EditorWorld {
             VirtualRoot::Project => Ok(self.root.read().join(vpath.get_without_slash())),
         }
     }
+
+    pub fn package_storage(&self) -> &SystemPackages {
+        &self.packages
+    }
+
+    pub fn template_map(&self) -> &HashMap<(EcoString, EcoString), TemplateMetadata> {
+        &self.package_index
+            .get_or_init(|| fetch_package_index(&self.index_downloader))
+            .1
+    }
 }
 
 impl World for EditorWorld {
@@ -616,6 +638,7 @@ impl IdeWorld for EditorWorld {
     fn packages(&self) -> &[(PackageSpec, Option<EcoString>)] {
         self.package_index
             .get_or_init(|| fetch_package_index(&self.index_downloader))
+            .0
             .as_slice()
     }
 
@@ -631,9 +654,14 @@ impl IdeWorld for EditorWorld {
 
 /// Download and parse the Typst preview package index from the registry.
 ///
-/// Returns a `Vec<(PackageSpec, Option<EcoString>)>` suitable for
-/// [`IdeWorld::packages`]. Returns an empty vec on any network or parse error.
-fn fetch_package_index(downloader: &SystemDownloader) -> Vec<(PackageSpec, Option<EcoString>)> {
+/// Returns a `(Vec<(PackageSpec, Option<EcoString>)>, HashMap<(EcoString, EcoString), TemplateMetadata>)`
+/// suitable for [`IdeWorld::packages`] and template lookups. Returns empty collections on any error.
+fn fetch_package_index(
+    downloader: &SystemDownloader,
+) -> (
+    Vec<(PackageSpec, Option<EcoString>)>,
+    HashMap<(EcoString, EcoString), TemplateMetadata>,
+) {
     const INDEX_URL: &str = "https://packages.typst.org/preview/index.json";
     let t = Instant::now();
 
@@ -647,7 +675,7 @@ fn fetch_package_index(downloader: &SystemDownloader) -> Vec<(PackageSpec, Optio
                 "package_index: network error ({:.1}ms)",
                 t.elapsed().as_secs_f64() * 1000.0
             );
-            return vec![];
+            return (vec![], HashMap::new());
         }
     };
 
@@ -658,7 +686,7 @@ fn fetch_package_index(downloader: &SystemDownloader) -> Vec<(PackageSpec, Optio
                 "package_index: parse error ({:.1}ms)",
                 t.elapsed().as_secs_f64() * 1000.0
             );
-            return vec![];
+            return (vec![], HashMap::new());
         }
     };
 
@@ -669,35 +697,60 @@ fn fetch_package_index(downloader: &SystemDownloader) -> Vec<(PackageSpec, Optio
                 "package_index: invalid format ({:.1}ms)",
                 t.elapsed().as_secs_f64() * 1000.0
             );
-            return vec![];
+            return (vec![], HashMap::new());
         }
     };
 
-    let packages: Vec<(PackageSpec, Option<EcoString>)> = array
-        .iter()
-        .filter_map(|entry| {
-            let name = entry.get("name")?.as_str()?;
-            let version_str = entry.get("version")?.as_str()?;
-            let version: typst::syntax::package::PackageVersion = version_str.parse().ok()?;
-            let description = entry
-                .get("description")
-                .and_then(|d| d.as_str())
-                .map(EcoString::from);
-            let spec = PackageSpec {
-                namespace: EcoString::from("preview"),
-                name: EcoString::from(name),
-                version,
-            };
-            Some((spec, description))
-        })
-        .collect();
+    let mut packages: Vec<(PackageSpec, Option<EcoString>)> = Vec::with_capacity(array.len());
+    let mut templates: HashMap<(EcoString, EcoString), TemplateMetadata> = HashMap::new();
+
+    for entry in array {
+        let Some(name) = entry.get("name").and_then(|n| n.as_str()) else {
+            continue;
+        };
+        let Some(version_str) = entry.get("version").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Ok(version) = version_str.parse::<typst::syntax::package::PackageVersion>() else {
+            continue;
+        };
+        let description = entry
+            .get("description")
+            .and_then(|d| d.as_str())
+            .map(EcoString::from);
+        let spec = PackageSpec {
+            namespace: EcoString::from("preview"),
+            name: EcoString::from(name),
+            version,
+        };
+
+        if let Some(tmpl) = entry.get("template").and_then(|t| t.as_object()) {
+            let path = tmpl
+                .get("path")
+                .and_then(|p| p.as_str())
+                .unwrap_or("template")
+                .to_string();
+            let entrypoint = tmpl
+                .get("entrypoint")
+                .and_then(|e| e.as_str())
+                .unwrap_or("main.typ")
+                .to_string();
+            templates.insert(
+                (spec.namespace.clone(), spec.name.clone()),
+                TemplateMetadata { path, entrypoint },
+            );
+        }
+
+        packages.push((spec, description));
+    }
 
     info!(
-        "package_index: fetched {} packages ({:.1}ms)",
+        "package_index: fetched {} packages, {} templates ({:.1}ms)",
         packages.len(),
+        templates.len(),
         t.elapsed().as_secs_f64() * 1000.0
     );
-    packages
+    (packages, templates)
 }
 
 #[cfg(test)]

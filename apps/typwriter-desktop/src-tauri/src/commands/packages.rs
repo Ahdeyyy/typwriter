@@ -7,12 +7,13 @@
 
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
+use ecow::EcoString;
 use log::info;
 use serde::Serialize;
 use tauri::State;
 use typst_ide::IdeWorld;
 
-use crate::world::EditorWorld;
+use crate::world::{EditorWorld, TemplateMetadata};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +26,8 @@ pub struct PackageEntry {
     /// Every version the registry lists, newest first.
     pub versions: Vec<String>,
     pub description: Option<String>,
+    pub is_template: bool,
+    pub template: Option<TemplateMetadata>,
 }
 
 /// List the packages in the registry index, one entry per package.
@@ -39,6 +42,7 @@ pub struct PackageEntry {
 #[tauri::command(async)]
 pub fn list_packages(world: State<'_, Arc<EditorWorld>>) -> Vec<PackageEntry> {
     let t = Instant::now();
+    let templates = world.template_map();
 
     // One bucket per (namespace, name), collecting every version seen.
     let mut buckets: HashMap<(String, String), Vec<(typst::syntax::package::PackageVersion, Option<String>)>> =
@@ -60,12 +64,18 @@ pub fn list_packages(world: State<'_, Arc<EditorWorld>>) -> Vec<PackageEntry> {
             // entries are sometimes missing it, and a blank row is worse than a
             // slightly stale summary.
             let description = versions.iter().find_map(|(_, d)| d.clone());
+            let template = templates
+                .get(&(EcoString::from(&namespace), EcoString::from(&name)))
+                .cloned();
+            let is_template = template.is_some();
             PackageEntry {
                 namespace,
                 name,
                 version: versions[0].0.to_string(),
                 versions: versions.iter().map(|(v, _)| v.to_string()).collect(),
                 description,
+                is_template,
+                template,
             }
         })
         .collect();
