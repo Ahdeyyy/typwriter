@@ -9,7 +9,6 @@
     Alert02Icon,
     Loading03Icon,
     ArrowDown01Icon,
-    CheckmarkBadge01Icon,
     FolderExportIcon,
     Package01Icon,
   } from "@hugeicons/core-free-icons";
@@ -33,7 +32,6 @@
   import { compileStore } from "$lib/stores/compile.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { settings } from "$lib/stores/settings.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
 
   // ── State ──────────────────────────────────────────────────────────────────
 
@@ -239,8 +237,8 @@
           await navigator.share({ files: [file], title: fileName });
           shared = true;
         }
-      } catch (err: any) {
-        if (err?.name === "AbortError") {
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
           sharing = false;
           return;
         }
@@ -253,7 +251,7 @@
         await openPath(filePath);
         toast.success(`Exported for sharing: ${fileName}`);
         app.closeOverlay();
-      } catch (e) {
+      } catch {
         toast.info(`Exported to ${filePath}`);
       }
     } else {
@@ -380,7 +378,7 @@
             <div>
               <span class="text-muted-foreground mb-1.5 block text-xs font-medium">Standard</span>
               <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                {#each PDF_STANDARDS.slice(0, 4) as std}
+                {#each PDF_STANDARDS.slice(0, 4) as std (std.value)}
                   <button
                     class="border-input flex items-center justify-between rounded-lg border px-2.5 py-2 text-xs transition-colors {pdfStandard === std.value ? 'bg-accent border-primary text-foreground font-medium' : 'bg-background text-muted-foreground hover:bg-muted'}"
                     onclick={() => selectStandard(std.value)}
@@ -436,7 +434,7 @@
             <div>
               <span class="text-muted-foreground mb-1.5 block text-xs font-medium">Resolution</span>
               <div class="grid grid-cols-4 gap-1.5">
-                {#each DPI_OPTIONS as opt}
+                {#each DPI_OPTIONS as opt (opt.scale)}
                   <button
                     class="border-input flex flex-col items-center rounded-lg border py-2 text-xs transition-colors {pngScale === opt.scale ? 'bg-primary text-primary-foreground border-primary font-medium' : 'bg-background text-foreground hover:bg-muted'}"
                     onclick={() => selectScale(opt.scale)}

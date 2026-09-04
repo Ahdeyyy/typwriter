@@ -21,11 +21,7 @@
   import { workspace } from "$lib/stores/workspace.svelte";
   import { compileStore } from "$lib/stores/compile.svelte";
 
-  let { onFormat }: {
-    onExport?: () => void;
-    onFormat: () => void;
-    exporting?: boolean;
-  } = $props();
+  let { onFormat }: { onFormat: () => void } = $props();
 
   // Only typst buffers can be formatted; disable otherwise.
   const canFormat = $derived(editor.fileKind === "text" && !!editor.relPath?.endsWith(".typ"));

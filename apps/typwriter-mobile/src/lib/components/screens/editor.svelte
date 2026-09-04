@@ -148,7 +148,7 @@
   <main class="min-h-0 flex-1">
     {#if editor.loading}
       <div class="flex flex-col gap-2 p-4">
-        {#each Array(8) as _}
+        {#each [0, 1, 2, 3, 4, 5, 6, 7] as id (id)}
           <Skeleton class="h-4 w-full" />
         {/each}
       </div>
