@@ -37,9 +37,12 @@ function anyModalOpen(): boolean {
 }
 
 /** Drop a body lock that outlived the modal that installed it. */
-function releaseIfStuck() {
+export function releaseIfStuck() {
+  if (typeof document === "undefined") return;
   const body = document.body;
-  if (body.style.pointerEvents !== "none" || anyModalOpen()) return;
+  if (!body) return;
+  const isStuck = body.style.pointerEvents === "none" || body.style.overflow === "hidden";
+  if (!isStuck || anyModalOpen()) return;
   console.warn("body-lock: releasing a modal lock that outlived its modal");
   body.style.removeProperty("pointer-events");
   body.style.removeProperty("overflow");
@@ -55,4 +58,38 @@ export function scheduleBodyLockRelease() {
   if (typeof document === "undefined") return;
   for (const timer of timers) clearTimeout(timer);
   timers = CHECK_DELAYS_MS.map((delay) => setTimeout(releaseIfStuck, delay));
+}
+
+let initialized = false;
+
+/**
+ * Global safety net:
+ * 1. Observes style changes on document.body. When pointer-events: none or overflow: hidden
+ *    is applied, schedule release checks to guarantee it is removed once modals close.
+ * 2. In capture-phase pointerdown on window, if the user interacts while no modal is open
+ *    but the body lock is stranded, immediately release it so the tap is not lost.
+ */
+export function initBodyLockSafety() {
+  if (initialized || typeof window === "undefined" || typeof document === "undefined") return;
+  initialized = true;
+
+  const body = document.body;
+  if (body && typeof MutationObserver !== "undefined") {
+    const observer = new MutationObserver(() => {
+      if (body.style.pointerEvents === "none" || body.style.overflow === "hidden") {
+        scheduleBodyLockRelease();
+      }
+    });
+    observer.observe(body, { attributes: true, attributeFilter: ["style"] });
+  }
+
+  window.addEventListener(
+    "pointerdown",
+    () => {
+      if (!anyModalOpen() && (body.style.pointerEvents === "none" || body.style.overflow === "hidden")) {
+        releaseIfStuck();
+      }
+    },
+    { capture: true, passive: true },
+  );
 }

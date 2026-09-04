@@ -3,7 +3,7 @@
 // exits the editor before leaving the app. Every overlay component must use
 // `openOverlay` / `closeOverlay` — never set `overlay` directly.
 
-import { scheduleBodyLockRelease } from "$lib/body-lock";
+import { initBodyLockSafety, scheduleBodyLockRelease } from "$lib/body-lock";
 
 export type Screen = "home" | "editor";
 export type Overlay =
@@ -42,6 +42,7 @@ class AppStore {
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") scheduleBodyLockRelease();
     });
+    initBodyLockSafety();
   }
 
   private applyState(state: HistoryState | null) {
