@@ -5,8 +5,7 @@
   import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
-  import * as Dialog from "$lib/components/ui/dialog";
-  import { exportPdfToUri, pageForCursor } from "$lib/ipc/commands";
+  import { pageForCursor } from "$lib/ipc/commands";
   import { app } from "$lib/stores/app.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { compileStore } from "$lib/stores/compile.svelte";
@@ -67,8 +66,6 @@
     return pageForCursor(editor.relPath, cursor).unwrapOr(null);
   }
 
-  let exporting = $state(false);
-  let confirmExportOpen = $state(false);
   let formatting = $state(false);
 
   async function formatFile() {
@@ -77,33 +74,6 @@
     const result = await editor.formatActive();
     formatting = false;
     result.mapErr((e) => toast.error(`Format failed: ${e}`));
-  }
-
-  async function exportPdf() {
-    if (compileStore.stale || compileStore.pages.length === 0) {
-      await editor.flush();
-      await compileStore.run();
-    }
-    if (compileStore.errors.length > 0) {
-      confirmExportOpen = true; // confirm exporting the last good document
-      return;
-    }
-    doExport();
-  }
-
-  function doExport() {
-    confirmExportOpen = false;
-    exporting = true;
-    exportPdfToUri().match(
-      (name) => {
-        exporting = false;
-        toast.success(`Exported ${name}`);
-      },
-      (e) => {
-        exporting = false;
-        if (e !== "Export cancelled") toast.error(`Export failed: ${e}`);
-      },
-    );
   }
 </script>
 
@@ -202,7 +172,7 @@
     <CompletionStrip />
     <EditorToolbar />
   {:else}
-    <BottomBar onExport={exportPdf} onFormat={formatFile} {exporting} />
+    <BottomBar onFormat={formatFile} />
   {/if}
 </div>
 
@@ -210,19 +180,3 @@
 <PreviewOverlay startPage={previewStartPage} />
 <QuickSwitcher />
 <TabSwitcher />
-
-<!-- Export-with-errors confirmation -->
-<Dialog.Root open={confirmExportOpen} onOpenChange={(o) => { if (!o) confirmExportOpen = false; }}>
-  <Dialog.Content>
-    <Dialog.Header>
-      <Dialog.Title>Document has {compileStore.errors.length} error(s)</Dialog.Title>
-      <Dialog.Description>
-        Export the last successful compile anyway?
-      </Dialog.Description>
-    </Dialog.Header>
-    <Dialog.Footer class="mt-4 flex flex-col gap-2">
-      <Button class="w-full" onclick={doExport}>Export anyway</Button>
-      <Button variant="ghost" class="w-full" onclick={() => (confirmExportOpen = false)}>Cancel</Button>
-    </Dialog.Footer>
-  </Dialog.Content>
-</Dialog.Root>

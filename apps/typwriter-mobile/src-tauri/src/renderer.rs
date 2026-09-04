@@ -106,7 +106,7 @@ pub fn bucket_to_scale(bucket: u8) -> Option<f32> {
 }
 
 /// Render a single page to PNG bytes with fast compression (preview speed).
-fn render_page(page: &Page, scale: f32) -> Result<Vec<u8>, String> {
+pub(crate) fn render_page(page: &Page, scale: f32) -> Result<Vec<u8>, String> {
     let opts = RenderOptions {
         pixel_per_pt: Scalar::new(scale as f64),
         ..Default::default()

@@ -19,6 +19,10 @@ class SettingsStore {
   previewScaleBucket = $state<1 | 2 | 3 | 4>(defaultBucket());
   lastWorkspace = $state<string | null>(null);
   fontsDir = $state<string | null>(null);
+  lastExportFormat = $state<"pdf" | "png" | "svg" | "html">("pdf");
+  lastPdfStandard = $state<string>("1.7");
+  lastPngScale = $state<number>(2.0);
+  lastPackageMode = $state<"zip" | "folder">("zip");
 
   private store: Store | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -38,6 +42,10 @@ class SettingsStore {
         this.previewScaleBucket = saved.previewScaleBucket ?? this.previewScaleBucket;
         this.lastWorkspace = saved.lastWorkspace ?? this.lastWorkspace;
         this.fontsDir = saved.fontsDir ?? this.fontsDir;
+        this.lastExportFormat = saved.lastExportFormat ?? this.lastExportFormat;
+        this.lastPdfStandard = saved.lastPdfStandard ?? this.lastPdfStandard;
+        this.lastPngScale = saved.lastPngScale ?? this.lastPngScale;
+        this.lastPackageMode = saved.lastPackageMode ?? this.lastPackageMode;
       }
     } catch (e) {
       console.error("settings: load failed", e);
@@ -52,6 +60,10 @@ class SettingsStore {
       previewScaleBucket: this.previewScaleBucket,
       lastWorkspace: this.lastWorkspace,
       fontsDir: this.fontsDir,
+      lastExportFormat: this.lastExportFormat,
+      lastPdfStandard: this.lastPdfStandard,
+      lastPngScale: this.lastPngScale,
+      lastPackageMode: this.lastPackageMode,
     };
   }
 
@@ -93,6 +105,22 @@ class SettingsStore {
   }
   setFontsDir(dir: string | null) {
     this.fontsDir = dir;
+    this.save();
+  }
+  setLastExportFormat(format: "pdf" | "png" | "svg" | "html") {
+    this.lastExportFormat = format;
+    this.save();
+  }
+  setLastPdfStandard(standard: string) {
+    this.lastPdfStandard = standard;
+    this.save();
+  }
+  setLastPngScale(scale: number) {
+    this.lastPngScale = scale;
+    this.save();
+  }
+  setLastPackageMode(mode: "zip" | "folder") {
+    this.lastPackageMode = mode;
     this.save();
   }
 }

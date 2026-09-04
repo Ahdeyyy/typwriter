@@ -15,6 +15,12 @@ import type {
   PreviewJump,
   WorkspaceInfo,
   WorkspaceMeta,
+  PdfExportConfig,
+  PngExportConfig,
+  SvgExportConfig,
+  HtmlExportConfig,
+  ExportShareConfig,
+  ExportShareResult,
 } from "./types";
 
 const call = <T>(cmd: string, args?: Record<string, unknown>): ResultAsync<T, string> =>
@@ -104,7 +110,18 @@ export const formatTypstSource = (source: string) =>
 export const formatTypstSourceWithCursor = (source: string, cursor: number) =>
   call<FormatWithCursorResponse>("format_typst_cursor_virtual", { source, cursor });
 
-// ─── PDF export ───────────────────────────────────────────────────────────────
+// ─── Export ───────────────────────────────────────────────────────────────────
+
+export const exportPdf = (config: PdfExportConfig) =>
+  call<string>("export_pdf", { config });
+export const exportPng = (config: PngExportConfig) =>
+  call<string>("export_png", { config });
+export const exportSvg = (config: SvgExportConfig) =>
+  call<string>("export_svg", { config });
+export const exportHtml = (config: HtmlExportConfig) =>
+  call<string>("export_html", { config });
+export const exportForShare = (config: ExportShareConfig) =>
+  call<ExportShareResult>("export_for_share", { config });
 
 export const exportPdfToUri = () => call<string>("export_pdf_to_uri");
 export const exportPdfToCacheFile = () => call<string>("export_pdf_to_cache_file");

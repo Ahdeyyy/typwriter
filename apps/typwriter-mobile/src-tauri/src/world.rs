@@ -26,7 +26,7 @@ use typst::{
     syntax::{FileId, RootedPath, Source, VirtualPath, VirtualRoot},
     text::{Font, FontBook},
     utils::LazyHash,
-    Features, Library, LibraryExt, World,
+    Feature, Features, Library, LibraryExt, World,
 };
 use typst_ide::IdeWorld;
 use typst_kit::{
@@ -172,7 +172,7 @@ impl MobileWorld {
             main: RwLock::new(None),
             library: LazyHash::new(
                 Library::builder()
-                    .with_features(Features::default())
+                    .with_features(Features::from_iter([Feature::Html]))
                     .build(),
             ),
             font_store: RwLock::new(Box::leak(Box::new(embedded))),

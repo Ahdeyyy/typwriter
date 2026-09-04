@@ -7,6 +7,7 @@
   import EditorScreen from "$lib/components/screens/editor.svelte";
   import SettingsOverlay from "$lib/components/screens/settings-overlay.svelte";
   import DiagnosticsDrawer from "$lib/components/diagnostics/diagnostics-drawer.svelte";
+  import ExportDrawer from "$lib/components/export/export-drawer.svelte";
 
   onMount(async () => {
     app.init();
@@ -34,3 +35,4 @@
 <!-- Overlays reachable from both screens. -->
 <SettingsOverlay />
 <DiagnosticsDrawer />
+<ExportDrawer />
