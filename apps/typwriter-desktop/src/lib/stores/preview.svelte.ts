@@ -100,8 +100,12 @@ class PreviewStore {
     // window-local `presentationMode`, which drives the black full-bleed
     // layout: the main window must keep its normal pane while projecting.
     private _presenting = crossWindowState<boolean>('preview:presenting', false);
+    private _blackout = crossWindowState<boolean>('preview:blackout', false);
+    rehearsalMode = $state(false);
     get presenting(): boolean { return this._presenting.value; }
     set presenting(v: boolean) { this._presenting.set(v); }
+    get blackout(): boolean { return this._blackout.value; }
+    set blackout(v: boolean) { this._blackout.set(v); }
     get visiblePage(): number { return this._visiblePage.value; }
     set visiblePage(v: number) { this._visiblePage.set(v); }
     get totalPages(): number { return this._totalPages.value; }
@@ -317,6 +321,41 @@ class PreviewStore {
         // without this the new workspace inherits the old one's page number —
         // and the popout, which restores to it on mount, lands mid-document.
         this.visiblePage = 0;
+        this.rehearsalMode = false;
+        this.blackout = false;
+    }
+
+    /** Start single-display presentation rehearsal mode. */
+    startRehearsal(): void {
+        this._paginatedBeforePresentation = this.paginated;
+        this._zoomBeforePresentation = this.zoom;
+        this.rehearsalMode = true;
+        this.presenting = true;
+        this.blackout = false;
+        this.paginated = true;
+    }
+
+    /** Toggle blanking/blackout of the audience screen during presentation. */
+    toggleBlackout(): void {
+        this.blackout = !this.blackout;
+    }
+
+    /** End presentation whether running via external popout or in rehearsal mode. */
+    async endPresentation(): Promise<void> {
+        if (this.rehearsalMode) {
+            this.rehearsalMode = false;
+            this.presenting = false;
+            this.blackout = false;
+            this.paginated = this._paginatedBeforePresentation;
+            this._restoreZoomAfterPresentation();
+            return;
+        }
+        if (this.presentationMode) {
+            await this.togglePresentationMode();
+        } else if (this.presenting) {
+            this.presenting = false;
+            this.blackout = false;
+        }
     }
 
     /** Enter or leave true presentation mode.
@@ -335,6 +374,8 @@ class PreviewStore {
             if (result.isErr()) throw new Error(result.error);
             this.presentationMode = false;
             this.presenting = false;
+            this.rehearsalMode = false;
+            this.blackout = false;
             this.presentationDisplay = null;
             this.paginated = this._paginatedBeforePresentation;
             this._restoreZoomAfterPresentation();
@@ -349,6 +390,8 @@ class PreviewStore {
         this.presentationDisplay = result.value;
         this.presentationMode = true;
         this.presenting = true;
+        this.rehearsalMode = false;
+        this.blackout = false;
         this.paginated = true;
     }
 

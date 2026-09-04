@@ -221,6 +221,27 @@ export const KEY_COMMANDS: KeyCommandDef[] = [
         scope: 'preview',
         defaults: ['Escape'],
     },
+    {
+        id: 'preview.toggleBlackout',
+        label: 'Toggle screen blackout',
+        description: 'Blank audience screen in presentation mode.',
+        scope: 'preview',
+        defaults: ['b', 'Period'],
+    },
+    {
+        id: 'preview.toggleAllSlides',
+        label: 'See all slides grid',
+        description: 'Open full-screen slide thumbnail grid in presentation mode.',
+        scope: 'preview',
+        defaults: ['g'],
+    },
+    {
+        id: 'preview.togglePresenterEditor',
+        label: 'Toggle presenter view / code editor',
+        description: 'Switch between presenter console and code editor while presenting.',
+        scope: 'preview',
+        defaults: ['Tab', 'Mod-e'],
+    },
 
     // ── Settings window ─────────────────────────────────────────────────
     {

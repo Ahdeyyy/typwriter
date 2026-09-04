@@ -1,6 +1,7 @@
 <script lang="ts">
   import "./layout.css";
   import { onMount, untrack } from "svelte";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Toaster } from "$lib/components/ui/sonner/index.js";
   import { installGlobalErrorLogging } from "$lib/logger";
   import { updater } from "$lib/stores/updater.svelte";
@@ -218,4 +219,6 @@
 
 <Toaster position="top-right" />
 <ModeWatcher />
-{@render children()}
+<Tooltip.Provider>
+  {@render children()}
+</Tooltip.Provider>
