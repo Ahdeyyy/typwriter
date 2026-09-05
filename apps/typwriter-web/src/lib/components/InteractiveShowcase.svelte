@@ -26,7 +26,7 @@
 			id: 'preview',
 			icon: ViewIcon,
 			label: 'Live Preview',
-			desc: 'Recompiles as you type. Updates as quickly as possible (sub-100ms in most cases) to stay in sync with your source.'
+			desc: 'Recompiles as you type with sub-100ms updates. Supports full-screen presentation mode on desktop.'
 		},
 		{
 			id: 'grammar',

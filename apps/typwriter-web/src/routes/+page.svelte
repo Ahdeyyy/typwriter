@@ -35,10 +35,10 @@
 	const features = [
 		{
 			icon: ViewIcon,
-			title: 'Instant Live Preview',
+			title: 'Live Preview & Presentation Mode',
 			description:
-				'Your document recompiles as you type. Updates render as quickly as possible (typically sub-100ms), keeping preview in lockstep with your source without manual refreshes.',
-			tag: 'Sub-100ms',
+				'Your document recompiles as you type with sub-100ms updates. On desktop, project full-screen slides onto external displays with a dedicated presenter view, speaker timers, next-slide previews, and instant slide navigation.',
+			tag: 'Presenter View',
 			featured: true
 		},
 		{
@@ -91,7 +91,7 @@
 	<title>Typwriter: Fast, Native Typst Editor for Desktop & Mobile</title>
 	<meta
 		name="description"
-		content="Typwriter is a modern, native Typst editor for Windows, macOS, Linux, and Android. Live preview, syntax highlighting, offline Harper grammar checking, and automatic restore points."
+		content="Typwriter is a modern, native Typst editor for Windows, macOS, Linux, and Android. Live preview, presentation mode, syntax highlighting, offline Harper grammar checking, and automatic restore points."
 	/>
 </svelte:head>
 
