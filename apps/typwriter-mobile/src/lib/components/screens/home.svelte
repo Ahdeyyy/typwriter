@@ -24,13 +24,14 @@
   import { longpress } from "$lib/actions/longpress";
   import { openedAgo } from "$lib/time";
   import { exportWorkspace } from "$lib/ipc/commands";
+  import { scheduleBodyLockRelease } from "$lib/body-lock";
   import type { WorkspaceMeta } from "$lib/ipc/types";
 
   let loading = $state(true);
   let createOpen = $state(false);
   let newName = $state("");
   let menuTarget = $state<WorkspaceMeta | null>(null);
-  let confirmDelete = $state<WorkspaceMeta | null>(null);
+  let confirmingDelete = $state(false);
   let exporting = $state(false);
 
   const INVALID = /[/\\:*?"<>|]/;
@@ -77,6 +78,7 @@
       () => {
         createOpen = false;
         newName = "";
+        scheduleBodyLockRelease();
         workspace.open(name).mapErr((e) => toast.error(`Failed to open: ${e}`));
       },
       (e) => toast.error(`Failed to create: ${e}`),
@@ -91,7 +93,9 @@
     workspace.delete(meta.name).match(
       () => {
         toast.success(`Deleted "${meta.name}"`);
-        confirmDelete = null;
+        menuTarget = null;
+        confirmingDelete = false;
+        scheduleBodyLockRelease();
       },
       (e) => toast.error(`Failed to delete: ${e}`),
     );
@@ -244,7 +248,12 @@
 {/if}
 
 <!-- New workspace dialog -->
-<Dialog.Root bind:open={createOpen}>
+<Dialog.Root
+  bind:open={createOpen}
+  onOpenChange={(o) => {
+    if (!o) scheduleBodyLockRelease();
+  }}
+>
   <Dialog.Content>
     <Dialog.Header>
       <Dialog.Title>New workspace</Dialog.Title>
@@ -269,51 +278,65 @@
   </Dialog.Content>
 </Dialog.Root>
 
-<!-- Long-press actions -->
-<Drawer.Root open={menuTarget !== null} onOpenChange={(o) => { if (!o) menuTarget = null; }}>
+<!-- Long-press actions & delete confirmation -->
+<Drawer.Root
+  open={menuTarget !== null}
+  onOpenChange={(o) => {
+    if (!o) {
+      menuTarget = null;
+      confirmingDelete = false;
+      scheduleBodyLockRelease();
+    }
+  }}
+>
   <Drawer.Content>
-    <Drawer.Header>
-      <Drawer.Title>{menuTarget?.name}</Drawer.Title>
-    </Drawer.Header>
-    <div class="flex flex-col gap-1 p-2 pb-6" style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);">
-      <Button
-        variant="ghost"
-        class="justify-start"
-        disabled={exporting}
-        onclick={() => menuTarget && doExport(menuTarget)}
-      >
-        <Icon icon={FolderExportIcon} />
-        Export to folder…
-      </Button>
-      {#if !menuTarget?.system}
+    {#if confirmingDelete && menuTarget}
+      <Drawer.Header>
+        <Drawer.Title>Delete "{menuTarget.name}"?</Drawer.Title>
+        <Drawer.Description>This permanently deletes the workspace and all its files.</Drawer.Description>
+      </Drawer.Header>
+      <div class="flex flex-col gap-2 p-4 pt-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);">
         <Button
-          variant="ghost"
-          class="text-destructive justify-start"
-          onclick={() => {
-            confirmDelete = menuTarget;
-            menuTarget = null;
-          }}
+          variant="destructive"
+          class="w-full"
+          onclick={() => menuTarget && doDelete(menuTarget)}
         >
           <Icon icon={Delete02Icon} />
           Delete workspace
         </Button>
-      {/if}
-    </div>
+        <Button
+          variant="ghost"
+          class="w-full"
+          onclick={() => (confirmingDelete = false)}
+        >
+          Cancel
+        </Button>
+      </div>
+    {:else}
+      <Drawer.Header>
+        <Drawer.Title>{menuTarget?.name}</Drawer.Title>
+      </Drawer.Header>
+      <div class="flex flex-col gap-1 p-2 pb-6" style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);">
+        <Button
+          variant="ghost"
+          class="justify-start"
+          disabled={exporting}
+          onclick={() => menuTarget && doExport(menuTarget)}
+        >
+          <Icon icon={FolderExportIcon} />
+          Export to folder…
+        </Button>
+        {#if !menuTarget?.system}
+          <Button
+            variant="ghost"
+            class="text-destructive justify-start"
+            onclick={() => (confirmingDelete = true)}
+          >
+            <Icon icon={Delete02Icon} />
+            Delete workspace
+          </Button>
+        {/if}
+      </div>
+    {/if}
   </Drawer.Content>
 </Drawer.Root>
-
-<!-- Delete confirmation -->
-<Dialog.Root open={confirmDelete !== null} onOpenChange={(o) => { if (!o) confirmDelete = null; }}>
-  <Dialog.Content>
-    <Dialog.Header>
-      <Dialog.Title>Delete "{confirmDelete?.name}"?</Dialog.Title>
-      <Dialog.Description>This permanently deletes the workspace and all its files.</Dialog.Description>
-    </Dialog.Header>
-    <Dialog.Footer class="mt-4 flex flex-col gap-2">
-      <Button variant="destructive" class="w-full" onclick={() => confirmDelete && doDelete(confirmDelete)}>
-        Delete
-      </Button>
-      <Button variant="ghost" class="w-full" onclick={() => (confirmDelete = null)}>Cancel</Button>
-    </Dialog.Footer>
-  </Dialog.Content>
-</Dialog.Root>

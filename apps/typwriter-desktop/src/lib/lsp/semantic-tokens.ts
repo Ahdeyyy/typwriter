@@ -16,15 +16,18 @@ import {
     type PluginValue,
     type ViewUpdate,
 } from '@codemirror/view';
-import { StateField, StateEffect, RangeSetBuilder, Prec } from '@codemirror/state';
-import { LSPPlugin } from '@codemirror/lsp-client';
+import { StateField, StateEffect, RangeSetBuilder, Prec, type Text } from '@codemirror/state';
+import { LSPPlugin, type WorkspaceMapping } from '@codemirror/lsp-client';
 
 const REFRESH_DELAY = 300; // debounce after an edit
 const RETRY_DELAY = 600; // backoff while plugin/server capabilities aren't ready
 const MAX_RETRIES = 25;
 
 // tokenType 'text' inherits the theme default (no explicit color) — see themes.
-const SKIP_TOKEN_TYPE = 'text';
+// 'comment' is handled synchronously by Lezer highlighting and typstCommentDecorations;
+// decorating comments with semantic tokens causes stale comment styling to linger over
+// uncommented text until the next server refresh arrives.
+export const SKIP_TOKEN_TYPES = new Set(['text', 'comment']);
 
 const setTokens = StateEffect.define<DecorationSet>();
 
@@ -44,12 +47,66 @@ const tokenField = StateField.define<DecorationSet>({
     provide: (field) => EditorView.decorations.from(field),
 });
 
-interface SemanticTokensLegend {
+export interface SemanticTokensLegend {
     tokenTypes: string[];
     tokenModifiers: string[];
 }
-interface SemanticTokensResult {
+export interface SemanticTokensResult {
     data: number[];
+}
+
+export function buildSemanticTokens(
+    uri: string,
+    mapping: Pick<WorkspaceMapping, 'mapPos'> | null,
+    syncedDoc: Text,
+    docLength: number,
+    legend: SemanticTokensLegend,
+    data: number[],
+): DecorationSet {
+    const builder = new RangeSetBuilder<Decoration>();
+
+    let line = 0;
+    let char = 0;
+    let lastTo = -1;
+
+    for (let i = 0; i + 4 < data.length; i += 5) {
+        const deltaLine = data[i];
+        const deltaChar = data[i + 1];
+        const length = data[i + 2];
+        const tokenType = data[i + 3];
+        const tokenModifiers = data[i + 4];
+
+        if (deltaLine > 0) {
+            line += deltaLine;
+            char = deltaChar;
+        } else {
+            char += deltaChar;
+        }
+
+        const typeName = legend.tokenTypes[tokenType];
+        if (!typeName || SKIP_TOKEN_TYPES.has(typeName) || length <= 0) continue;
+        if (line < 0 || line >= syncedDoc.lines) continue;
+
+        const lineObj = syncedDoc.line(line + 1);
+        const rawFrom = lineObj.from + char;
+        if (rawFrom > lineObj.to) continue;
+        const rawTo = Math.min(rawFrom + length, lineObj.to);
+
+        const from = mapping ? mapping.mapPos(uri, rawFrom, 1) : rawFrom;
+        const to = mapping ? mapping.mapPos(uri, rawTo, -1) : rawTo;
+        if (to <= from || from < 0 || to > docLength) continue;
+        // RangeSetBuilder needs non-decreasing, non-overlapping starts.
+        if (from < lastTo) continue;
+
+        const classes = [`cm-tok-${typeName}`];
+        for (let bit = 0; bit < legend.tokenModifiers.length; bit++) {
+            if (tokenModifiers & (1 << bit)) classes.push(`cm-tokmod-${legend.tokenModifiers[bit]}`);
+        }
+        builder.add(from, to, Decoration.mark({ class: classes.join(' ') }));
+        lastTo = to;
+    }
+
+    return builder.finish();
 }
 
 class SemanticTokenRequester implements PluginValue {
@@ -102,26 +159,37 @@ class SemanticTokenRequester implements PluginValue {
         }
         const legend = provider.legend;
 
-        let result: SemanticTokensResult | null;
+        // Push any unsynced changes to the server so tinymist computes tokens against
+        // the current document version, and track in-flight edits with WorkspaceMapping.
+        plugin.client.sync();
+        const syncedDoc = plugin.syncedDoc;
+
+        let deco: DecorationSet | null = null;
         try {
-            result = await plugin.client.request<
-                { textDocument: { uri: string } },
-                SemanticTokensResult | null
-            >('textDocument/semanticTokens/full', { textDocument: { uri: plugin.uri } });
+            deco = await plugin.client.withMapping(async (mapping) => {
+                const result = await plugin.client.request<
+                    { textDocument: { uri: string } },
+                    SemanticTokensResult | null
+                >('textDocument/semanticTokens/full', { textDocument: { uri: plugin.uri } });
+                if (generation !== this.generation) return null;
+                const data = result?.data ?? [];
+                if (data.length === 0) return Decoration.none;
+                return buildSemanticTokens(
+                    plugin.uri,
+                    mapping,
+                    syncedDoc,
+                    this.view.state.doc.length,
+                    legend,
+                    data,
+                );
+            });
         } catch {
             this.retryLater(generation);
             return;
         }
-        if (generation !== this.generation) return;
+        if (generation !== this.generation || deco === null) return;
 
         this.retries = 0;
-        const data = result?.data ?? [];
-        if (data.length === 0) {
-            this.view.dispatch({ effects: setTokens.of(Decoration.none) });
-            return;
-        }
-
-        const deco = this.buildDecorations(plugin, legend, data);
         this.view.dispatch({ effects: setTokens.of(deco) });
     }
 
@@ -130,62 +198,6 @@ class SemanticTokenRequester implements PluginValue {
         if (this.retries >= MAX_RETRIES) return;
         this.retries++;
         this.schedule(RETRY_DELAY);
-    }
-
-    private buildDecorations(
-        plugin: LSPPlugin,
-        legend: SemanticTokensLegend,
-        data: number[],
-    ): DecorationSet {
-        // Positions are computed against the document version synced to the
-        // server, then mapped through edits made while the request was in flight.
-        const syncedDoc = plugin.syncedDoc;
-        const changes = plugin.unsyncedChanges;
-        const docLength = this.view.state.doc.length;
-        const builder = new RangeSetBuilder<Decoration>();
-
-        let line = 0;
-        let char = 0;
-        let lastTo = -1;
-
-        for (let i = 0; i + 4 < data.length; i += 5) {
-            const deltaLine = data[i];
-            const deltaChar = data[i + 1];
-            const length = data[i + 2];
-            const tokenType = data[i + 3];
-            const tokenModifiers = data[i + 4];
-
-            if (deltaLine > 0) {
-                line += deltaLine;
-                char = deltaChar;
-            } else {
-                char += deltaChar;
-            }
-
-            const typeName = legend.tokenTypes[tokenType];
-            if (!typeName || typeName === SKIP_TOKEN_TYPE || length <= 0) continue;
-            if (line < 0 || line >= syncedDoc.lines) continue;
-
-            const lineObj = syncedDoc.line(line + 1);
-            const rawFrom = lineObj.from + char;
-            if (rawFrom > lineObj.to) continue;
-            const rawTo = Math.min(rawFrom + length, lineObj.to);
-
-            const from = changes.mapPos(rawFrom, 1);
-            const to = changes.mapPos(rawTo, -1);
-            if (to <= from || from < 0 || to > docLength) continue;
-            // RangeSetBuilder needs non-decreasing, non-overlapping starts.
-            if (from < lastTo) continue;
-
-            const classes = [`cm-tok-${typeName}`];
-            for (let bit = 0; bit < legend.tokenModifiers.length; bit++) {
-                if (tokenModifiers & (1 << bit)) classes.push(`cm-tokmod-${legend.tokenModifiers[bit]}`);
-            }
-            builder.add(from, to, Decoration.mark({ class: classes.join(' ') }));
-            lastTo = to;
-        }
-
-        return builder.finish();
     }
 }
 

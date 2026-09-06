@@ -142,4 +142,54 @@ export interface AppSettings {
   lastWorkspace: string | null;
   /** App-wide fonts source folder (path or SAF URI) loaded into the compiler. */
   fontsDir: string | null;
+  lastExportFormat?: ExportFormat;
+  lastPdfStandard?: string;
+  lastPngScale?: number;
+  lastPackageMode?: "zip" | "folder";
 }
+
+// ─── Export configuration ──────────────────────────────────────────────────
+
+export type ExportFormat = "pdf" | "png" | "svg" | "html";
+
+export interface PdfExportConfig {
+  pageRange?: string | null;
+  standard?: string | null;
+  title?: string | null;
+  author?: string | null;
+  includeDate?: boolean;
+}
+
+export interface PngExportConfig {
+  pageRange?: string | null;
+  scale?: number;
+  packageMode?: "zip" | "folder";
+}
+
+export interface SvgExportConfig {
+  pageRange?: string | null;
+  packageMode?: "zip" | "folder";
+}
+
+export interface HtmlExportConfig {
+  pretty?: boolean;
+}
+
+export interface ExportShareConfig {
+  format: ExportFormat;
+  pageRange?: string | null;
+  scale?: number;
+  standard?: string | null;
+  title?: string | null;
+  author?: string | null;
+  pretty?: boolean;
+  packageMode?: "zip" | "folder";
+}
+
+export interface ExportShareResult {
+  filePath: string;
+  fileName: string;
+  mimeType: string;
+  dataBase64: string;
+}
+

@@ -6,7 +6,7 @@ pub mod text_files;
 mod error;
 mod path;
 mod self_writes;
-mod store;
+pub mod store;
 mod watcher;
 
 use log::{error, info, warn};

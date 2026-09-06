@@ -390,7 +390,7 @@
       class:cursor-none={ctrl.pointerHidden}
       onmousemove={() => ctrl.notePointerActivity()}
     >
-      {#if ctrl.committedPages[ctrl.visiblePage]}
+      {#if !preview.blackout && ctrl.committedPages[ctrl.visiblePage]}
         <Button
           variant="ghost"
           class="block h-full md:h-full w-full rounded-none border-0 bg-transparent p-0 hover:bg-transparent"

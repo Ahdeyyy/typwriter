@@ -1,7 +1,7 @@
 <script lang="ts">
   import { toast } from "svelte-sonner";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { Cancel01Icon, RefreshIcon, Alert02Icon, Loading03Icon } from "@hugeicons/core-free-icons";
+  import { Cancel01Icon, RefreshIcon, Alert02Icon, Loading03Icon, Download01Icon } from "@hugeicons/core-free-icons";
   import Icon from "$lib/components/icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { jumpFromClick } from "$lib/ipc/commands";
@@ -235,6 +235,10 @@
           {compileStore.errors.length}
         </button>
       {/if}
+
+      <Button variant="ghost" size="icon" aria-label="Export document" onclick={() => app.openOverlay("export")}>
+        <Icon icon={Download01Icon} />
+      </Button>
 
       <Button variant="ghost" size="icon" aria-label="Recompile" onclick={() => void compileStore.run()}>
         <Icon icon={RefreshIcon} />

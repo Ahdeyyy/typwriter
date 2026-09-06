@@ -236,7 +236,6 @@
 :where([data-theme]:not([data-theme='default'])) [data-sonner-toast] {
   background-color: color-mix(in srgb, var(--popover) 82%, transparent);
   backdrop-filter: blur(28px) saturate(160%);
-  -webkit-backdrop-filter: blur(28px) saturate(160%);
 }
 
 /* Dropdown/context menus frost via ::before — nudge it past the package
@@ -250,7 +249,6 @@
 :where([data-theme]:not([data-theme='default']))
   [data-slot="dropdown-menu-sub-content"]::before {
   backdrop-filter: blur(56px) saturate(185%);
-  -webkit-backdrop-filter: blur(56px) saturate(185%);
 }
 
 /* CodeMirror tooltips keep the frost — CodeMirror injects its opaque tooltip
@@ -259,7 +257,6 @@
 :where([data-theme]:not([data-theme='default'])) .cm-tooltip {
   background-color: color-mix(in srgb, var(--popover) 85%, transparent) !important;
   backdrop-filter: blur(28px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
 }
 
 /* Inner layers must not stack a second surface on the frosted wrapper. */
@@ -274,7 +271,6 @@
 :where([data-theme]:not([data-theme='default'])) .modal-surface {
   background-color: color-mix(in srgb, var(--popover) 72%, var(--background));
   backdrop-filter: blur(28px) saturate(160%);
-  -webkit-backdrop-filter: blur(28px) saturate(160%);
 }
 
 /* ── Glass ─────────────────────────────────────────────────────────────────
@@ -353,7 +349,6 @@
 [data-theme="glass"] [data-slot="command"],
 [data-theme="glass"] [data-slot="sidebar-inner"] {
   backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
 }
 
 /* Context and dropdown menus self-blur via ::before — crank it up in glass. */
@@ -362,14 +357,12 @@
 [data-theme="glass"] [data-slot="dropdown-menu-content"]::before,
 [data-theme="glass"] [data-slot="dropdown-menu-sub-content"]::before {
   backdrop-filter: blur(96px) saturate(220%) !important;
-  -webkit-backdrop-filter: blur(96px) saturate(220%) !important;
 }
 
 /* Search panel gets a slightly stronger frost of its own. */
 [data-theme="glass"] .search-panel {
   background-color: color-mix(in srgb, var(--popover) 80%, transparent);
   backdrop-filter: blur(48px) saturate(200%);
-  -webkit-backdrop-filter: blur(48px) saturate(200%);
 }
 
 /* All CodeMirror tooltips (completions, hover docs, lint, grammar) frost via
@@ -380,7 +373,6 @@
 [data-theme="glass"] .cm-tooltip {
   background-color: color-mix(in srgb, var(--popover) 80%, transparent) !important;
   backdrop-filter: blur(40px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
 }
 
 /* Inner layers must not stack a second surface on the frosted wrapper. */
@@ -402,7 +394,6 @@
 [data-theme="glass"] .popover-surface {
   background-color: color-mix(in srgb, var(--popover) 80%, transparent);
   backdrop-filter: blur(48px) saturate(200%);
-  -webkit-backdrop-filter: blur(48px) saturate(200%);
 }
 
 /* ── Nord ──────────────────────────────────────────────────────────────── */

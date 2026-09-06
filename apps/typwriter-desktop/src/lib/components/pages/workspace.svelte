@@ -31,10 +31,25 @@
    import { toast } from "svelte-sonner";
    import { HugeiconsIcon } from "@hugeicons/svelte";
    import { Loading03Icon } from "@hugeicons/core-free-icons";
+  import PresenterView from "$lib/components/presentation/presenter-view.svelte";
+  import PresentationBanner from "$lib/components/presentation/presentation-banner.svelte";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { listDisplays } from "$lib/ipc/commands";
 
   const PREVIEW_WINDOW_LABEL = "preview";
 
   let previewVisible = $state(settings.defaultPreviewVisible);
+  let showPresenterView = $state(false);
+
+  let wasPresenting = false;
+  $effect(() => {
+    if (preview.presenting && !wasPresenting) {
+      showPresenterView = true;
+    } else if (!preview.presenting && wasPresenting) {
+      showPresenterView = false;
+    }
+    wasPresenting = preview.presenting;
+  });
 
   const paneVisible = $derived(previewVisible && !preview.poppedOut);
 
@@ -99,10 +114,10 @@
     const popout = new WebviewWindow(PREVIEW_WINDOW_LABEL, {
       url: `/?${popoutParams}`,
       title: "Typwriter Preview",
-      width: 720,
+      width: 1200,
       height: 900,
-      minWidth: 360,
-      minHeight: 480,
+      minWidth: 1200,
+      minHeight: 640,
       ...childWindowChrome(),
     });
 
@@ -120,6 +135,7 @@
       .onCloseRequested(() => {
         preview.poppedOut = false;
         preview.presenting = false;
+        showPresenterView = false;
         popoutCloseUnlisten?.();
         popoutCloseUnlisten = null;
       })
@@ -129,8 +145,34 @@
       .catch((err) => logError("preview popout close listener failed:", err));
   }
 
-  function openPresentationMode() {
+  async function openPresentationMode() {
+    try {
+      const displaysResult = await listDisplays();
+      const displays = displaysResult.isOk() ? displaysResult.value : [];
+      const hasExternal = displays.length > 1;
+      const pinned = settings.presentationDisplay;
+
+      if (!hasExternal && !pinned) {
+        preview.startRehearsal();
+        showPresenterView = true;
+        toast.info("Started presentation rehearsal mode — press Esc to exit");
+        return;
+      }
+    } catch (err) {
+      logError("Checking displays for presentation failed:", err);
+    }
+
+    showPresenterView = true;
     openPreviewPopout(true);
+  }
+
+  async function handleEndPresentation() {
+    await preview.endPresentation();
+    showPresenterView = false;
+    const existing = await WebviewWindow.getByLabel(PREVIEW_WINDOW_LABEL);
+    if (existing) {
+      existing.close().catch(() => {});
+    }
   }
 
   // ── Command palette ───────────────────────────────────────────────────────
@@ -163,6 +205,19 @@
   };
 
   function onWindowKeydown(event: KeyboardEvent) {
+    if (preview.presenting && !showPresenterView) {
+      if (matchesCommand(event, "preview.togglePresenterEditor")) {
+        event.preventDefault();
+        showPresenterView = true;
+        return;
+      }
+      if (matchesCommand(event, "preview.exitPresentation")) {
+        event.preventDefault();
+        void handleEndPresentation();
+        return;
+      }
+    }
+
     // Both default to a `Mod-p` chord, which the WebView would otherwise hand
     // to its print dialog.
     if (matchesCommand(event, "global.commandPalette")) {
@@ -225,6 +280,7 @@
             // shared flag or this window's Present button stays stuck on
             // "exit" with nothing left to exit.
             preview.presenting = false;
+            showPresenterView = false;
             popoutCloseUnlisten?.();
             popoutCloseUnlisten = null;
           })
@@ -250,6 +306,9 @@
     // The diff window shows this workspace's history — it has no subject once
     // the workspace closes.
     void closeDiffWindow();
+    if (preview.presenting) {
+      void handleEndPresentation();
+    }
   });
 </script>
 
@@ -267,38 +326,54 @@
   </div>
 {/if}
 
-<Sidebar.Provider class="has-titlebar h-full w-full min-h-0 flex-col overflow-hidden">
-  <Titlebar
-    variant="workspace"
-    title={workspaceName}
-    subtitle={openedName}
-    bind:previewVisible
-    previewPoppedOut={preview.poppedOut}
-    onTogglePreview={() => (previewVisible = !previewVisible)}
-    onPopoutPreview={openPreviewPopout}
-    onReturnHome={() => void returnHome()}
+<Tooltip.Provider>
+{#if preview.presenting && showPresenterView}
+  <PresenterView
+    onToggleEditor={() => (showPresenterView = false)}
+    onEndPresentation={() => void handleEndPresentation()}
   />
+{:else}
+  <Sidebar.Provider class="has-titlebar h-full w-full min-h-0 flex-col overflow-hidden">
+    <Titlebar
+      variant="workspace"
+      title={workspaceName}
+      subtitle={openedName}
+      bind:previewVisible
+      previewPoppedOut={preview.poppedOut}
+      onTogglePreview={() => (previewVisible = !previewVisible)}
+      onPopoutPreview={openPreviewPopout}
+      onReturnHome={() => void returnHome()}
+    />
 
-  <div class="flex min-h-0 w-full flex-1">
-    <AppSidebar />
-    <main class="relative flex h-full min-w-0 flex-1 overflow-hidden">
-      <Resizable.PaneGroup direction="horizontal" class="h-full w-full">
-        <Resizable.Pane defaultSize={paneVisible ? 60 : 100} minSize={30}>
-          <EditorPane />
-        </Resizable.Pane>
+    {#if preview.presenting && !showPresenterView}
+      <PresentationBanner
+        onReturnToPresenter={() => (showPresenterView = true)}
+        onEndPresentation={() => void handleEndPresentation()}
+      />
+    {/if}
 
-        {#if paneVisible}
-          <Resizable.Handle />
-
-          <Resizable.Pane defaultSize={40} minSize={30} maxSize={60}>
-            <div class="h-full border-l border-border bg-background">
-              <Preview onPresentationMode={openPresentationMode} />
-            </div>
+    <div class="flex min-h-0 w-full flex-1">
+      <AppSidebar />
+      <main class="relative flex h-full min-w-0 flex-1 overflow-hidden">
+        <Resizable.PaneGroup direction="horizontal" class="h-full w-full">
+          <Resizable.Pane defaultSize={paneVisible ? 60 : 100} minSize={30}>
+            <EditorPane />
           </Resizable.Pane>
-        {/if}
-      </Resizable.PaneGroup>
-    </main>
-  </div>
 
-  <CommandPalette ctx={paletteContext} />
-</Sidebar.Provider>
+          {#if paneVisible}
+            <Resizable.Handle />
+
+            <Resizable.Pane defaultSize={40} minSize={30} maxSize={60}>
+              <div class="h-full border-l border-border bg-background">
+                <Preview onPresentationMode={openPresentationMode} />
+              </div>
+            </Resizable.Pane>
+          {/if}
+        </Resizable.PaneGroup>
+      </main>
+    </div>
+
+    <CommandPalette ctx={paletteContext} />
+  </Sidebar.Provider>
+{/if}
+</Tooltip.Provider>

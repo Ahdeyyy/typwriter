@@ -1,6 +1,6 @@
 [package]
 name = "typwriter-mobile"
-version = "0.9.0"
+version = "0.9.1"
 edition = "2021"
 
 [profile.dev]
@@ -33,13 +33,17 @@ typst = "0.15.1"
 # `Page` / `PagedDocument` moved out of the `typst` facade into `typst-layout`
 # in 0.15; depend on it directly for the document/page types.
 typst-layout = "0.15.1"
+typst-library = "0.15.1"
 typst-ide = "0.15.1"
 typst-render = "0.15.1"
+typst-svg = "0.15.1"
 typst-pdf = "0.15.1"
+typst-html = "0.15.1"
 typst-kit = { version = "0.15.1", features = ["embedded-fonts", "scan-fonts", "system-packages", "universe-packages", "system-downloader"] }
 typstyle-core = "0.15"
 ecow = { version = "0.2", features = ["serde"] }
 png = "0.18"
+zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 base64 = "0.22"
 tauri-plugin-android-fs = { version = "=28.1.0", features = ["legacy_storage_permission"] }
 

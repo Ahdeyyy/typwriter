@@ -132,10 +132,10 @@ export async function openSettingsWindow(group?: string): Promise<void> {
     const win = new WebviewWindow(SETTINGS_WINDOW_LABEL, {
         url: `/?${params}`,
         title: 'Settings - Typwriter',
-        width: 880,
+        width: 1200,
         height: 720,
-        minWidth: 480,
-        minHeight: 400,
+        minWidth: 1200,
+        minHeight: 640,
         ...childWindowChrome(),
     });
     win.once('tauri://error', (event) => {

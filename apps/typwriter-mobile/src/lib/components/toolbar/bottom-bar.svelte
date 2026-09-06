@@ -21,11 +21,7 @@
   import { workspace } from "$lib/stores/workspace.svelte";
   import { compileStore } from "$lib/stores/compile.svelte";
 
-  let { onExport, onFormat, exporting }: {
-    onExport: () => void;
-    onFormat: () => void;
-    exporting: boolean;
-  } = $props();
+  let { onFormat }: { onFormat: () => void } = $props();
 
   // Only typst buffers can be formatted; disable otherwise.
   const canFormat = $derived(editor.fileKind === "text" && !!editor.relPath?.endsWith(".typ"));
@@ -133,8 +129,8 @@
         <DropdownMenu.Item class={itemClass} disabled={!canFormat} onclick={onFormat}>
           <Icon icon={MagicWand01Icon} /> Format file
         </DropdownMenu.Item>
-        <DropdownMenu.Item class={itemClass} disabled={exporting} onclick={onExport}>
-          <Icon icon={Pdf01Icon} /> Export PDF
+        <DropdownMenu.Item class={itemClass} onclick={() => app.openOverlay("export")}>
+          <Icon icon={Pdf01Icon} /> Export…
         </DropdownMenu.Item>
         <DropdownMenu.Item
           class={itemClass}

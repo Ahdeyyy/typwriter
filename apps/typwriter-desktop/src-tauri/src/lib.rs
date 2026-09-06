@@ -35,6 +35,7 @@ use commands::{
         add_grammar_dictionary_word, check_grammar, get_grammar_config, get_grammar_rules,
         set_grammar_config, set_grammar_file_enabled,
     },
+    init::init_package_workspace,
     logs::get_log_file_path,
     lsp::{lsp_probe, lsp_send, lsp_start, lsp_stop},
     packages::list_packages,
@@ -324,6 +325,7 @@ pub fn run() {
             // logs
             get_log_file_path,
             list_packages,
+            init_package_workspace,
             search_workspace,
             replace_in_workspace,
             // language server (tinymist) bridge

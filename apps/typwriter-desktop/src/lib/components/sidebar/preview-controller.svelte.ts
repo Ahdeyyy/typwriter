@@ -745,6 +745,14 @@ export class PreviewController {
     }
     this.visiblePage = clamped;
     setVisiblePage(clamped);
+
+    // Scroll container to the target page if in scroll view
+    if (this.scrollEl && !preview.paginated) {
+      const pageEl = document.getElementById(`preview-page-${clamped}`);
+      if (pageEl) {
+        pageEl.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
   }
 
   nextPage() {
@@ -881,6 +889,9 @@ export class PreviewController {
     } else if (matchesCommand(e, "preview.lastPage")) {
       e.preventDefault();
       this.goToPage(preview.totalPages - 1);
+    } else if (matchesCommand(e, "preview.toggleBlackout")) {
+      e.preventDefault();
+      preview.toggleBlackout();
     }
   }
 
