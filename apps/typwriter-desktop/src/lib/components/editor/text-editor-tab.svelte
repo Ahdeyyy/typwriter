@@ -65,7 +65,6 @@
     programmaticSync,
   } from "$lib/codemirror/focus-mode";
   import { snippetCompletionSource } from "$lib/codemirror/snippet-completion";
-  import { typstCompletionSection } from "$lib/codemirror/completion-sections";
   import { snippets } from "$lib/stores/snippets.svelte";
   import {
     diagnosticsMatch,
@@ -416,13 +415,7 @@
       const result = await source(context);
 
       if (result) {
-        results.push({
-          ...result,
-          options: result.options.map((option) => ({
-            ...option,
-            section: typstCompletionSection,
-          })),
-        });
+        results.push(result);
       }
     }
     return results;
@@ -472,7 +465,6 @@
                     ? snippet(typstApplyToSnippet(rawApply))
                     : rawApply,
                   detail: item.detail ?? undefined,
-                  section: typstCompletionSection,
                 },
                 key: `${item.label}::${rawApply}::${type ?? ""}`,
               };
