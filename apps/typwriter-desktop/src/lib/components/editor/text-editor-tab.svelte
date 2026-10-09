@@ -1,11 +1,13 @@
 <script lang="ts">
   import {
     EditorView,
+    closeHoverTooltips,
     hoverTooltip,
     keymap,
     lineNumbers,
     drawSelection,
     highlightActiveLine,
+    tooltips,
     type Tooltip,
   } from "@codemirror/view";
   import { EditorState, type Extension } from "@codemirror/state";
@@ -606,6 +608,9 @@
     const langExt = getLanguageExtension(relPath);
 
     return [
+      // Escape pane clipping and WebKit's fixed-position containing blocks.
+      // Shared by LSP/fallback hovers, diagnostics, grammar and completions.
+      tooltips({ parent: document.body }),
       // Error-lens-style inline messages instead of a lint gutter — the
       // diagnostic text renders faded at the end of the offending line.
       inlineDiagnostics(),
@@ -721,9 +726,15 @@
       }),
       // ayuLight,
       EditorView.theme({
-        "&": {
+        "&.cm-editor": {
           height: "100%",
           width: "100%",
+        },
+        // Above workspace chrome, below portaled dialogs and menus (z-50).
+        ".cm-tooltip": {
+          zIndex: 40,
+          userSelect: "text",
+          WebkitUserSelect: "text",
         },
         ".cm-scroller": { overflow: "auto" },
         // Line-number gutter — give the digits breathing room from the
@@ -843,6 +854,13 @@
 
   function mountActiveView(activeTabId: string | null) {
     if (!editorHost) return;
+    if (mountedTabId && mountedTabId !== activeTabId) {
+      const previous = tabViews.get(mountedTabId);
+      if (previous) {
+        previous.dispatch({ effects: closeHoverTooltips });
+        closeCompletion(previous);
+      }
+    }
     const activeTab = activeTabId
       ? (editor.tabs.find((tab) => tab.id === activeTabId) ?? null)
       : null;
