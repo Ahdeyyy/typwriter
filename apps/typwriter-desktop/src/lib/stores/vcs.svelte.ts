@@ -33,6 +33,9 @@ import { closeDiffWindow } from '$lib/windows';
 import { logError } from '$lib/logger';
 
 class VcsStore {
+    private refreshRequest = 0;
+    private diffRequest = 0;
+    private pageRequest = 0;
     /** Newest first. Empty until the first [`refresh`] call resolves. */
     history = $state<RestorePoint[]>([]);
 
@@ -117,12 +120,14 @@ class VcsStore {
     // ─── Loading ─────────────────────────────────────────────────────────
 
     refresh(limit?: number): ResultAsync<void, string> {
+        const request = ++this.refreshRequest;
         this.loading = true;
         // Pull HEAD in parallel with the history list — both are cheap, and
         // we want the "you are here" highlight to land in the same paint as
         // the timeline so nodes don't visibly re-style on first mount.
         return vcsListHistory(limit)
             .map((entries) => {
+                if (request !== this.refreshRequest) return;
                 this.history = entries;
                 // Reset selections if they no longer exist (e.g. after a
                 // history rewrite — not currently possible, but cheap).
@@ -132,11 +137,12 @@ class VcsStore {
             })
             .andThen(() => vcsCurrentId())
             .map((id) => {
+                if (request !== this.refreshRequest) return;
                 this.currentId = id;
                 this.loading = false;
             })
             .mapErr((err) => {
-                this.loading = false;
+                if (request === this.refreshRequest) this.loading = false;
                 logError('vcs: refresh failed:', err);
                 return err;
             });
@@ -170,7 +176,7 @@ class VcsStore {
             this.primaryId = null;
             this.secondaryId = null;
             this.diff = null;
-            return ResultAsync.fromSafePromise(Promise.resolve());
+            return this.reloadDiff();
         }
         this.primaryId = id;
         this.secondaryId = null;
@@ -195,6 +201,7 @@ class VcsStore {
     }
 
     private reloadDiff(): ResultAsync<void, string> {
+        const request = ++this.diffRequest;
         // The page diff belongs to the *previous* selection and costs a
         // compile to recompute, so drop it rather than silently showing the
         // wrong pages. The Pages view re-requests when it needs one.
@@ -206,6 +213,7 @@ class VcsStore {
         if (this.primaryId == null) {
             this.releasePageDiff();
             this.diff = null;
+            this.diffLoading = false;
             return ResultAsync.fromSafePromise(Promise.resolve());
         }
         this.discardPageDiff();
@@ -215,11 +223,12 @@ class VcsStore {
             : vcsDiffVsCurrent(this.primaryId);
         return cmd
             .map((d) => {
+                if (request !== this.diffRequest) return;
                 this.diff = d;
                 this.diffLoading = false;
             })
             .mapErr((err) => {
-                this.diffLoading = false;
+                if (request === this.diffRequest) this.diffLoading = false;
                 logError('vcs: diff failed:', err);
                 return err;
             });
@@ -238,11 +247,15 @@ class VcsStore {
         this.pageDiff = null;
         this.pageDiffError = null;
         this.pageDiffLoading = true;
+        this.pageDiffRequestId = null;
+        const request = ++this.pageRequest;
         return vcsPageDiffRequest(this.primaryId, this.secondaryId)
             .map((requestId) => {
+                if (request !== this.pageRequest) return;
                 this.pageDiffRequestId = requestId;
             })
             .mapErr((err) => {
+                if (request !== this.pageRequest) return err;
                 this.pageDiffLoading = false;
                 this.pageDiffRequestId = null;
                 this.pageDiffError = err;
@@ -279,6 +292,7 @@ class VcsStore {
      *  cancellation; use [`releasePageDiff`] for the terminal case where
      *  nothing further will be asked for. */
     discardPageDiff(): void {
+        this.pageRequest++;
         this.pageDiff = null;
         this.pageDiffError = null;
         this.pageDiffLoading = false;
@@ -374,6 +388,10 @@ class VcsStore {
     }
 
     destroy(): void {
+        this.refreshRequest++;
+        this.diffRequest++;
+        this.loading = false;
+        this.diffLoading = false;
         this.releasePageDiff();
         this.history = [];
         this.primaryId = null;

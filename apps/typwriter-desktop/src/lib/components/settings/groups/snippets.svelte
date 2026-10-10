@@ -53,7 +53,10 @@
   // itself needs nothing from us.
   $effect(() => {
     const root = workspace.rootPath;
-    if (!root) return;
+    if (!root) {
+      snippets.reset();
+      return;
+    }
     void snippets.refreshProject();
   });
 

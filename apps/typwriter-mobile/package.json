@@ -10,6 +10,7 @@
     "check-types": "bun run check",
     "lint": "eslint .",
     "test": "bun test",
+    "test:state": "bun test --conditions=browser --preload ../../scripts/register-svelte-runes.ts ../../tests/frontend-state/mobile.regression.ts && bun test --conditions=browser --preload ../../scripts/register-svelte-runes.ts ../../tests/frontend-state/mobile-lifecycle.regression.ts",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -30,6 +31,7 @@
     "@tauri-apps/plugin-opener": "~2",
     "@tauri-apps/plugin-store": "~2",
     "neverthrow": "^8.2.0",
+    "runed": "^0.37.1",
     "vaul-svelte": "^1.0.0-next.7"
   },
   "devDependencies": {

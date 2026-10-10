@@ -3,7 +3,7 @@
 // exits the editor before leaving the app. Every overlay component must use
 // `openOverlay` / `closeOverlay` — never set `overlay` directly.
 
-import { initBodyLockSafety, scheduleBodyLockRelease } from "$lib/body-lock";
+import { destroyBodyLockSafety, initBodyLockSafety, scheduleBodyLockRelease } from "$lib/body-lock";
 
 export type Screen = "home" | "editor";
 export type Overlay =
@@ -30,19 +30,43 @@ class AppStore {
   flushEditor: (() => void) | null = null;
 
   private initialized = false;
+  private historyInitialized = false;
+  private cleanup: (() => void) | null = null;
+  private pendingHistory = new Set<() => void>();
 
   /** Register the popstate listener once (call from the root component). */
   init() {
     if (this.initialized || typeof window === "undefined") return;
     this.initialized = true;
-    history.replaceState({ screen: "home", overlay: "none" } satisfies HistoryState, "");
-    window.addEventListener("popstate", (e) => this.applyState(e.state as HistoryState | null));
+    if (!this.historyInitialized) {
+      history.replaceState({ screen: this.screen, overlay: this.overlay } satisfies HistoryState, "");
+      this.historyInitialized = true;
+    } else {
+      this.applyState(history.state as HistoryState | null);
+    }
+    const windowTarget = window;
+    const documentTarget = document;
+    const onPopState = (e: PopStateEvent) => this.applyState(e.state as HistoryState | null);
+    windowTarget.addEventListener("popstate", onPopState);
     // Backgrounding and coming back is the only gesture left to a user staring
     // at an app that has stopped accepting taps — make it a recovery path.
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") scheduleBodyLockRelease();
-    });
+    const onVisibility = () => {
+      if (documentTarget.visibilityState === "visible") scheduleBodyLockRelease();
+    };
+    documentTarget.addEventListener("visibilitychange", onVisibility);
     initBodyLockSafety();
+    this.cleanup = () => {
+      windowTarget.removeEventListener("popstate", onPopState);
+      documentTarget.removeEventListener("visibilitychange", onVisibility);
+      destroyBodyLockSafety();
+    };
+  }
+
+  destroy() {
+    this.initialized = false;
+    this.cleanup?.();
+    this.cleanup = null;
+    for (const done of this.pendingHistory) done();
   }
 
   private applyState(state: HistoryState | null) {
@@ -95,6 +119,7 @@ class AppStore {
       // the spec's guarantee, not this function's.
       let timer: ReturnType<typeof setTimeout> | null = null;
       let settled = false;
+      const target = window;
       // Resolves on the first popstate whichever entry it lands on — a
       // concurrent back press satisfies the wait too, and all the caller needs
       // is that history has settled. Our own popstate listener was registered
@@ -102,13 +127,15 @@ class AppStore {
       const done = () => {
         if (settled) return;
         settled = true;
-        window.removeEventListener("popstate", done);
+        target.removeEventListener("popstate", done);
         if (timer !== null) clearTimeout(timer);
+        this.pendingHistory.delete(done);
         resolve();
       };
       // Safety net: never leave a caller hanging if no popstate arrives.
       timer = setTimeout(done, 300);
-      window.addEventListener("popstate", done);
+      this.pendingHistory.add(done);
+      target.addEventListener("popstate", done);
       history.back();
     });
   }

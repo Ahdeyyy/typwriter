@@ -17,6 +17,7 @@
 <script lang="ts" generics="T">
   import type { Snippet } from "svelte";
   import { onDestroy } from "svelte";
+  import { watch } from "runed";
 
   import { crossWindowState } from "$lib/ipc/cross-window-state.svelte";
 
@@ -37,12 +38,12 @@
   const sync = crossWindowState<T>(name, value);
 
   // Local -> remote: when the parent mutates `value`, broadcast.
-  $effect(() => {
+  watch(() => value, () => {
     if (!Object.is(value, sync.value)) sync.set(value);
   });
 
   // Remote -> local: when a peer writes, mirror into the bound `value`.
-  $effect(() => {
+  watch(() => sync.value, () => {
     if (!Object.is(sync.value, value)) value = sync.value;
   });
 

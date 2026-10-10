@@ -1,5 +1,10 @@
 # Typwriter Code Review — June 2026
 
+For the newer desktop and mobile rune/state audit, see
+[the October 2026 frontend state review](./frontend-state-2026-10.md).
+The [October 10 adversarial follow-up](./frontend-adversarial-2026-10-10.md)
+records additional save, reload, navigation, export and lifecycle fixes.
+
 A full audit of `apps/typwriter-desktop` (Rust core + Svelte frontend), with a
 prioritized guide for improving the codebase.
 

@@ -13,7 +13,7 @@
 // are different windows: snippets are authored in the settings window and
 // consumed by the completion list in the main one. So each write broadcasts
 // `snippets:changed` and each store reloads the named scope on hearing it —
-// see `initSync`.
+// see the root layout's listener scope.
 
 import {
     BUILTIN_SNIPPETS,
@@ -35,9 +35,7 @@ import {
 } from '$lib/ipc/commands';
 import {
     emitSnippetsChanged,
-    onSnippetsChanged,
     type SnippetScopeChanged,
-    type UnlistenFn,
 } from '$lib/ipc/events';
 import { logError } from '$lib/logger';
 import { workspace } from '$lib/stores/workspace.svelte';
@@ -55,7 +53,7 @@ class SnippetStore {
     errors = $state<string[]>([]);
 
     private appLoaded = false;
-    private syncUnlisten: UnlistenFn | null = null;
+    private projectRequest = 0;
 
     /** The layered set the completion source consumes. */
     all = $derived<ResolvedSnippet[]>(
@@ -73,28 +71,8 @@ class SnippetStore {
 
     // ── Loading ───────────────────────────────────────────────────────────────
 
-    /**
-     * Start replaying other windows' snippet edits into this store.
-     *
-     * Called once per window from the root layout. Receivers reload from
-     * storage rather than applying the payload, so the two scopes' files stay
-     * the single source of truth, and they never re-emit, so there is no
-     * ping-pong.
-     */
-    async initSync(): Promise<void> {
-        if (this.syncUnlisten) return;
-        const result = await onSnippetsChanged((scope) => {
-            void this.reloadScope(scope);
-        });
-        result.match(
-            (unlisten) => {
-                this.syncUnlisten = unlisten;
-            },
-            (err) => logError('snippets: sync listener failed:', err)
-        );
-    }
-
-    private async reloadScope(scope: SnippetScopeChanged): Promise<void> {
+    /** Replay other windows' edits by reading storage, without re-emitting. */
+    async reloadScope(scope: SnippetScopeChanged): Promise<void> {
         if (scope === 'app') {
             // `loadApp` is a one-shot; this is a deliberate re-read.
             this.appLoaded = false;
@@ -132,7 +110,14 @@ class SnippetStore {
      * window, which has no workspace of its own.
      */
     async refreshProject(): Promise<void> {
+        const request = ++this.projectRequest;
+        const root = workspace.rootPath;
+        if (!root) {
+            this.reset();
+            return;
+        }
         const result = await getProjectSnippets();
+        if (request !== this.projectRequest || root !== workspace.rootPath) return;
         if (result.isErr()) {
             logError('snippets: reading the project set failed:', result.error);
             return;
@@ -221,6 +206,7 @@ class SnippetStore {
     }
 
     reset(): void {
+        this.projectRequest++;
         this.projectSnippets = [];
         this.errors = [];
     }
