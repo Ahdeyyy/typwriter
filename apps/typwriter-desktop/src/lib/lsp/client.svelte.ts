@@ -32,7 +32,6 @@ import type { SerializedDiagnostic } from '$lib/types';
 
 import { lspProbeState } from './probe.svelte';
 import { createTauriLspTransport, type TauriLspTransport } from './transport';
-import { typstCompletionSection } from '$lib/codemirror/completion-sections';
 import { refPrefixAt } from '$lib/references';
 
 const INIT_TIMEOUT_MS = 10_000;
@@ -40,16 +39,7 @@ const INIT_TIMEOUT_MS = 10_000;
 const typstServerCompletion: CompletionSource = async (context) => {
     if (refPrefixAt(context.state.doc.toString(), context.pos)) return null;
 
-    const result = await serverCompletionSource(context);
-    if (!result) return null;
-
-    return {
-        ...result,
-        options: result.options.map((option) => ({
-            ...option,
-            section: typstCompletionSection,
-        })),
-    };
+    return serverCompletionSource(context);
 };
 
 const typstServerCompletionExtension = [

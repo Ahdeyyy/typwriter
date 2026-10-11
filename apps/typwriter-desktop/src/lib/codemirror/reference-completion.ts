@@ -14,7 +14,6 @@ import {
     refPrefixAt,
     type LabelDef,
 } from '$lib/references';
-import { referenceCompletionSection } from './completion-sections';
 
 export interface LabelSource {
     /** Buffers to harvest labels from: usually every open `.typ` tab. */
@@ -170,7 +169,6 @@ export function referenceCompletionSource(
                 options: options.map((option) => ({
                     ...option,
                     apply: option.label,
-                    section: referenceCompletionSection,
                 })),
                 // Let CodeMirror re-filter as the user types instead of asking
                 // us again for every character.
@@ -185,7 +183,6 @@ export function referenceCompletionSource(
             options: options.map((option) => ({
                 ...option,
                 apply: cite!.bracketed ? `${option.label}>` : `<${option.label}>`,
-                section: referenceCompletionSection,
             })),
             // No closing `>` here: once it is typed the source runs again and
             // stops matching, which closes the list instead of re-filtering.

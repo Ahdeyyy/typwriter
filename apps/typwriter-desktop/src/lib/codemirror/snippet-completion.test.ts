@@ -133,10 +133,10 @@ describe('snippetCompletionSource', () => {
         expect(result.options.find((o) => o.label === 'figure')?.detail).toBe('Figure block');
     });
 
-    it('places snippets after Typst completions', () => {
+    it('lets snippets compete with Typst completions by match quality', () => {
         const result = source(contextAt('fi'))!;
         for (const option of result.options) {
-            expect(option.section).toMatchObject({ name: 'Snippets', rank: 1 });
+            expect(option.section).toBeUndefined();
         }
     });
 

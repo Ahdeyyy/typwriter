@@ -19,9 +19,11 @@ class CompileStore {
   warnings = $state<Diagnostic[]>([]);
   stale = $state(true);
   lastGeneration = 0;
+  private request = 0;
 
   /** Drop every compile result — there is no document to show (no main file). */
   clear() {
+    this.request++;
     this.pages = [];
     this.errors = [];
     this.warnings = [];
@@ -32,7 +34,10 @@ class CompileStore {
   /** Called by editor.flush() after every successful save — and by any other
    *  change to what's on disk, since that's what the compiler reads. */
   onSaved() {
+    // A compile started before this disk write cannot make the new bytes fresh.
+    this.request++;
     this.stale = true;
+    if (this.status === "compiling") this.status = this.pages.length ? "ok" : "idle";
     // Background-refresh only while the preview is open (reading); otherwise
     // wait until the user opens the preview.
     if (app.overlay === "preview") void this.run();
@@ -46,11 +51,7 @@ class CompileStore {
    * the render is ready (and correct) the moment the preview is opened.
    */
   onMainChanged() {
-    this.pages = [];
-    this.errors = [];
-    this.warnings = [];
-    this.status = "compiling";
-    this.stale = true;
+    this.clear();
     void this.run();
   }
 
@@ -69,10 +70,11 @@ class CompileStore {
   }
 
   run(): ResultAsync<void, string> {
+    const request = ++this.request;
     this.status = "compiling";
     return ipc.compile().map((res) => {
       // Discard stale responses.
-      if (res.generation < this.lastGeneration) return;
+      if (request !== this.request || res.generation < this.lastGeneration) return;
       this.lastGeneration = res.generation;
       this.errors = res.errors;
       this.warnings = res.warnings;
@@ -84,6 +86,12 @@ class CompileStore {
         // Failed compile: keep the last good render visible.
         this.status = "error";
       }
+    }).mapErr((error) => {
+      if (request === this.request) {
+        this.status = "error";
+        this.stale = true;
+      }
+      return error;
     });
   }
 }

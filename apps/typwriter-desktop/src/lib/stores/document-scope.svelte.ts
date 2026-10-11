@@ -93,7 +93,7 @@ class DocumentScopeStore {
         const collected: LabelDef[] = [];
         for (let i = 0; i < paths.length; i += BATCH) {
             const batch = paths.slice(i, i + BATCH);
-            const settled = await Promise.all(batch.map((path) => this.readDisk(path)));
+            const settled = await Promise.all(batch.map((path) => this.readDisk(path, generation)));
             // A refresh started later has already taken over; drop our work.
             if (generation !== this.generation) return;
             for (const found of settled) collected.push(...found.labels);
@@ -198,7 +198,8 @@ class DocumentScopeStore {
     }
 
     private async readDisk(
-        path: string
+        path: string,
+        generation: number,
     ): Promise<{ labels: LabelDef[] } & FileScopeFacts> {
         const cached = this.cache.get(path);
         const result = await readFile(workspace.toAbs(path));
@@ -221,7 +222,8 @@ class DocumentScopeStore {
             letValues: extractLetValues(response.content),
             imports: extractImports(response.content),
         };
-        this.cache.set(path, facts);
+        // A stale read must not repopulate the cache after a workspace clear.
+        if (generation === this.generation) this.cache.set(path, facts);
         return facts;
     }
 

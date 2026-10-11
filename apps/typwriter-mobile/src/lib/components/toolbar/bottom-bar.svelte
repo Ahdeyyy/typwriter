@@ -50,17 +50,24 @@
     const name = workspace.name;
     if (!name || exportingWorkspace) return;
     exportingWorkspace = true;
-    await editor.flush();
-    exportWorkspace(name).match(
-      (count) => {
-        exportingWorkspace = false;
-        toast.success(`Exported ${count} file${count === 1 ? "" : "s"}`);
-      },
-      (e) => {
-        exportingWorkspace = false;
-        if (e !== "Export cancelled") toast.error(`Export failed: ${e}`);
-      },
-    );
+    const version = workspace.version;
+    try {
+      const saved = await editor.flush();
+      if (saved.isErr()) {
+        toast.error(`Export failed: ${saved.error}`);
+        return;
+      }
+      if (version !== workspace.version || workspace.isOpening) return;
+      const result = await exportWorkspace(name);
+      result.match(
+        (count) => toast.success(`Exported ${count} file${count === 1 ? "" : "s"}`),
+        (e) => {
+          if (e !== "Export cancelled") toast.error(`Export failed: ${e}`);
+        },
+      );
+    } finally {
+      exportingWorkspace = false;
+    }
   }
 
   // Larger touch targets than the default dropdown item (which is sized for a

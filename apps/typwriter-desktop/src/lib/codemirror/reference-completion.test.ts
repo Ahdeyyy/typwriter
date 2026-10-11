@@ -88,10 +88,10 @@ describe('referenceCompletionSource', () => {
         expect(result?.options.map((o) => o.label).sort()).toEqual(['fig-one', 'intro']);
     });
 
-    it('places references after Typst completions and snippets', () => {
+    it('lets references compete by match quality', () => {
         const result = source(contextAt('See @'))!;
         for (const option of result.options) {
-            expect(option.section).toMatchObject({ name: 'References', rank: 2 });
+            expect(option.section).toBeUndefined();
         }
     });
 

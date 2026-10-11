@@ -9,20 +9,37 @@
   import DiagnosticsDrawer from "$lib/components/diagnostics/diagnostics-drawer.svelte";
   import ExportDrawer from "$lib/components/export/export-drawer.svelte";
 
-  onMount(async () => {
+  onMount(() => {
+    let disposed = false;
     app.init();
-    await settings.init();
-    // Re-open the previously active workspace on launch. Silently fall back to
-    // the home screen if it no longer exists.
-    const last = settings.lastWorkspace;
-    if (last) {
-      await workspace.refreshList();
-      if (workspace.workspaces.some((w) => w.name === last)) {
-        workspace.open(last).mapErr(() => settings.setLastWorkspace(null));
-      } else {
-        settings.setLastWorkspace(null);
+    workspace.init();
+    const version = workspace.version;
+    const restoreWorkspace = async () => {
+      await settings.init();
+      if (disposed || version !== workspace.version) return;
+      // Re-open the previously active workspace on launch. Silently fall back
+      // to the home screen if it no longer exists.
+      const last = settings.lastWorkspace;
+      if (last) {
+        const result = await workspace.refreshList();
+        if (disposed || version !== workspace.version || result.isErr()) return;
+        if (workspace.workspaces.some((w) => w.name === last)) {
+          const opening = workspace.open(last);
+          const openVersion = workspace.version;
+          void opening.mapErr(() => {
+            if (!disposed && workspace.version === openVersion) settings.setLastWorkspace(null);
+          });
+        } else {
+          settings.setLastWorkspace(null);
+        }
       }
-    }
+    };
+    void restoreWorkspace();
+    return () => {
+      disposed = true;
+      workspace.destroy();
+      app.destroy();
+    };
   });
 </script>
 

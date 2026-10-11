@@ -80,18 +80,22 @@ class CompletionStore {
   }
 
   private schedule(view: EditorView, explicit: boolean, immediate = false) {
+    this.requestSeq++;
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => void this.request(view, explicit), immediate ? 0 : DEBOUNCE_MS);
   }
 
   private async request(view: EditorView, explicit: boolean) {
-    if (!editor.relPath) return;
+    this.debounceTimer = null;
+    const relPath = editor.relPath;
+    if (!relPath || editor.view !== view) return;
     const seq = ++this.requestSeq;
     const head = view.state.selection.main.head;
     const text = view.state.doc.toString();
-    const res = await getCompletions(editor.relPath, text, head, explicit);
+    const res = await getCompletions(relPath, text, head, explicit);
     if (seq !== this.requestSeq) return; // stale response
-    if (view.state.selection.main.head !== head) return; // cursor moved while waiting
+    if (editor.view !== view || editor.relPath !== relPath) return;
+    if (view.state.selection.main.head !== head || view.state.doc.toString() !== text) return;
     res.match(
       (r) => this.adopt(view.state, r.completions.map(toStripItem), r.from),
       () => this.clear(),
@@ -159,6 +163,11 @@ class CompletionStore {
   }
 
   clear() {
+    this.requestSeq++;
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = null;
+    this.unpin?.();
+    this.unpin = null;
     this.items = [];
     this.all = [];
   }

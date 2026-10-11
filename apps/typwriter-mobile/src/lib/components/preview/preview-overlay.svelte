@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { toast } from "svelte-sonner";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { Cancel01Icon, RefreshIcon, Alert02Icon, Loading03Icon, Download01Icon } from "@hugeicons/core-free-icons";
@@ -10,6 +11,7 @@
   import { compileStore } from "$lib/stores/compile.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { settings } from "$lib/stores/settings.svelte";
+  import { workspace } from "$lib/stores/workspace.svelte";
   import PageList from "./page-list.svelte";
 
   let {
@@ -20,7 +22,7 @@
 
   // No pinch-to-zoom: the pinch gesture fought the scroll gesture and made
   // panning through pages miserable. Zoom is double-tap only (fit-width ↔ 2×).
-  let bucket = $state<1 | 2 | 3 | 4>(settings.previewScaleBucket);
+  let bucket = $derived<1 | 2 | 3 | 4>(settings.previewScaleBucket);
   let committedZoom = $state(1);
   let currentPage = $state(0);
   let lastTap = 0;
@@ -40,6 +42,8 @@
     const pages = total;
     if (!visible) {
       jumpedTo = -1;
+      lastTap = 0;
+      down = null;
       cancelPendingTap();
       flash = null;
       return;
@@ -83,6 +87,7 @@
    *  waits out the double-tap window so the first tap of a zoom gesture doesn't
    *  navigate away. */
   let tapTimer: ReturnType<typeof setTimeout> | null = null;
+  let tapRequest = 0;
 
   /** Fading marker on the point a jump landed on, in scroller content px. */
   let flash = $state<{ id: number; top: number; left: number; width: number } | null>(null);
@@ -90,6 +95,7 @@
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
 
   function cancelPendingTap() {
+    tapRequest++;
     if (tapTimer !== null) clearTimeout(tapTimer);
     tapTimer = null;
   }
@@ -100,6 +106,7 @@
 
   function onPointerCancel() {
     down = null;
+    cancelPendingTap();
   }
 
   function onPointerUp(e: PointerEvent) {
@@ -148,11 +155,15 @@
 
     const lookup = jumpFromClick(index, xPt, yPt);
     cancelPendingTap();
+    const request = tapRequest;
+    const workspaceVersion = workspace.version;
+    const generation = compileStore.lastGeneration;
     tapTimer = setTimeout(() => {
       tapTimer = null;
       void lookup.match(
         (jump) => {
-          if (jump) applyJump(jump);
+          if (jump && visible && request === tapRequest && workspaceVersion === workspace.version &&
+            generation === compileStore.lastGeneration) applyJump(jump);
         },
         (err) => console.error("preview jump lookup failed:", err),
       );
@@ -202,10 +213,17 @@
 
   /** Follow a glyph back to the source that produced it. */
   async function openSource(relPath: string, offset: number) {
+    const version = workspace.version;
     await app.closeOverlayAsync();
+    if (version !== workspace.version || app.screen !== "editor" || app.overlay !== "none") return;
     const res = await editor.jumpTo(relPath, offset);
     res.mapErr((e) => toast.error(`Couldn't open ${relPath}: ${e}`));
   }
+
+  onDestroy(() => {
+    cancelPendingTap();
+    if (flashTimer !== null) clearTimeout(flashTimer);
+  });
 </script>
 
 {#if visible}
