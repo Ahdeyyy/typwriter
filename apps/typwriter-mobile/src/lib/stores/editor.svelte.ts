@@ -2,7 +2,7 @@
 // `flush()` is the only writer: it runs on the autosave timer, on blur, on
 // preview-open, on file switch, on leaving the editor, and on app backgrounding.
 
-import { ResultAsync, okAsync } from "neverthrow";
+import { ResultAsync, errAsync, okAsync } from "neverthrow";
 import type { EditorView } from "@codemirror/view";
 import * as ipc from "$lib/ipc/commands";
 import type { WorkspaceFileChange } from "$lib/ipc/types";
@@ -36,7 +36,7 @@ class EditorStore {
   /** Text most recently loaded from disk; the editor screen seeds CM with it. */
   loadedText = $state("");
   /** Set by the screen component once the EditorView exists. */
-  view: EditorView | null = null;
+  view = $state.raw<EditorView | null>(null);
 
   /** Caret to place once the restored file's text reaches CodeMirror (UTF-16
    *  code units), tagged with the file it belongs to. Set by `seedTabs` on
@@ -56,6 +56,12 @@ class EditorStore {
   private inflight: ResultAsync<void, string> | null = null;
   /** Suppresses the dirty flag while we replace the doc programmatically. */
   private suppressChange = false;
+  private loadRequest = 0;
+  private editVersion = 0;
+  // Saves can finish after the screen has unmounted its CodeMirror view.
+  // Retain the latest text so a coalesced save can still drain newer edits.
+  private buffer = "";
+  private documentVersion = 0;
 
   /** Run a programmatic CM mutation (e.g. loading a file) without marking the
    *  buffer dirty — `setState`/`dispatch` fire the updateListener synchronously. */
@@ -90,17 +96,28 @@ class EditorStore {
   }
 
   loadFile(relPath: string): ResultAsync<void, string> {
+    const request = ++this.loadRequest;
     return this.flush().andThen(() => {
+      if (request !== this.loadRequest) return okAsync(undefined);
+      // Keep the previous identity until the read succeeds. The host unmounts
+      // while loading, so also retain the saved text for a failed switch.
+      if (this.fileKind === "text") {
+        this.buffer = this.view?.state.doc.toString() ?? this.buffer;
+        this.loadedText = this.buffer;
+      }
       this.loading = true;
-      this.newTabOpen = false;
-      this.relPath = relPath;
-      this.imageDataUrl = null;
       return ipc
         .readFile(relPath)
         .map((content) => {
+          if (request !== this.loadRequest) return;
+          this.documentVersion++;
+          this.newTabOpen = false;
+          this.relPath = relPath;
+          this.imageDataUrl = null;
           if (content.type === "text") {
             this.fileKind = "text";
             this.loadedText = content.content;
+            this.buffer = content.content;
             this.dirty = false;
             this.externallyChanged = false;
             // The buffer this caret was recorded against is now the one the
@@ -124,7 +141,7 @@ class EditorStore {
           this.persistTabs();
         })
         .mapErr((e) => {
-          this.loading = false;
+          if (request === this.loadRequest) this.loading = false;
           return e;
         });
     });
@@ -193,46 +210,60 @@ class EditorStore {
 
   /** Open an empty "new tab" — the editor shows the open/create/switch options. */
   openNewTab() {
-    void this.flush();
-    this.newTabOpen = true;
-    this.clearFile();
-    this.persistTabs();
+    const request = ++this.loadRequest;
+    return this.flush().map(() => {
+      if (request !== this.loadRequest) return;
+      this.newTabOpen = true;
+      this.clearFile();
+      this.persistTabs();
+    });
   }
 
   /** Close a tab; activate a neighbour, or fall back to an empty new tab. */
-  closeTab(relPath: string) {
+  closeTab(relPath: string): ResultAsync<void, string> {
     const idx = this.tabs.indexOf(relPath);
-    if (idx < 0) return;
+    if (idx < 0) return okAsync(undefined);
     const wasActive = !this.newTabOpen && this.relPath === relPath;
     const next = this.tabs.filter((t) => t !== relPath);
-    this.tabs = next;
     if (wasActive) {
-      if (next.length) {
-        void this.loadFile(next[Math.min(idx, next.length - 1)]);
-      } else {
-        void this.flush();
-        this.newTabOpen = true;
-        this.clearFile();
-      }
+      // Commit the close only after the save and replacement load succeed.
+      // A save error or unresolved disk conflict must leave the tab reachable.
+      const switching = next.length
+        ? this.loadFile(next[Math.min(idx, next.length - 1)]) : this.openNewTab();
+      const version = this.documentVersion;
+      return switching.map(() => {
+        if (this.documentVersion !== version + 1 || this.isActiveTab(relPath)) return;
+        this.tabs = this.tabs.filter((t) => t !== relPath);
+        this.persistTabs();
+      });
     }
+    this.tabs = next;
     this.persistTabs();
+    return okAsync(undefined);
   }
 
   /** Close every tab but `relPath`, which becomes the active one. */
-  closeOtherTabs(relPath: string) {
-    if (!this.tabs.includes(relPath)) return;
-    this.tabs = [relPath];
-    if (!this.isActiveTab(relPath)) void this.loadFile(relPath);
-    this.persistTabs();
+  closeOtherTabs(relPath: string): ResultAsync<void, string> {
+    if (!this.tabs.includes(relPath)) return okAsync(undefined);
+    const loading = this.isActiveTab(relPath) ? okAsync(undefined) : this.loadFile(relPath);
+    const request = this.loadRequest;
+    return loading.map(() => {
+      if (request !== this.loadRequest) return;
+      this.tabs = [relPath];
+      this.persistTabs();
+    });
   }
 
   /** Close every tab, leaving an empty new tab. */
   closeAllTabs() {
-    void this.flush();
-    this.tabs = [];
-    this.newTabOpen = true;
-    this.clearFile();
-    this.persistTabs();
+    const request = ++this.loadRequest;
+    return this.flush().map(() => {
+      if (request !== this.loadRequest) return;
+      this.tabs = [];
+      this.newTabOpen = true;
+      this.clearFile();
+      this.persistTabs();
+    });
   }
 
   /** Whether `relPath` is the active tab's file. */
@@ -356,21 +387,39 @@ class EditorStore {
         this.externallyChanged = true;
         continue;
       }
-      void this.reloadActiveFromDisk();
+      void this.reloadActiveFromDisk(false);
     }
   }
 
   /** Re-read the active file, replacing the buffer. Discards unsaved edits, so
    *  it is only reached automatically for a clean buffer — a dirty one goes
    *  through `externallyChanged` and waits for the user. */
-  reloadActiveFromDisk(): ResultAsync<void, string> {
+  reloadActiveFromDisk(discardEdits = true): ResultAsync<void, string> {
     const relPath = this.newTabOpen ? null : this.relPath;
     if (!relPath) return okAsync(undefined);
-    this.discardPendingWrites();
-    this.externallyChanged = false;
-    return ipc.readFile(relPath).map((content) => {
+    if (!discardEdits && this.dirty) {
+      this.externallyChanged = true;
+      return okAsync(undefined);
+    }
+    const request = ++this.loadRequest;
+    const version = this.editVersion;
+    if (discardEdits) this.cancelSaveTimers();
+    // A write already crossing IPC must settle before we read its replacement.
+    // Keep the dirty buffer until the read succeeds, so a failure is retryable.
+    const waiting = discardEdits && this.inflight
+      ? this.inflight.orElse(() => okAsync(undefined)) : okAsync(undefined);
+    return waiting.andThen(() => {
+      if (request !== this.loadRequest || !this.isActiveTab(relPath)) return okAsync(null);
+      return ipc.readFile(relPath);
+    }).map((content) => {
+      if (!content) return;
       // The user may have navigated away across the read.
-      if (!this.isActiveTab(relPath)) return;
+      if (request !== this.loadRequest || !this.isActiveTab(relPath)) return;
+      if (version !== this.editVersion) {
+        this.externallyChanged = true;
+        return;
+      }
+      this.externallyChanged = false;
       if (content.type === "text") {
         this.fileKind = "text";
         this.applyTextFromDisk(content.content);
@@ -394,6 +443,7 @@ class EditorStore {
    *  host remounts and re-seeds from it. */
   private applyTextFromDisk(text: string) {
     this.loadedText = text;
+    this.buffer = text;
     this.dirty = false;
     const view = this.view;
     if (!view) return;
@@ -408,6 +458,7 @@ class EditorStore {
    *  overwrites what is on disk. */
   keepMyChanges() {
     this.externallyChanged = false;
+    return this.flush();
   }
 
   /**
@@ -435,18 +486,27 @@ class EditorStore {
   /** Forget the pending buffer: no autosave, no live compile, nothing dirty.
    *  Used when the open file has been deleted out from under the editor. */
   private discardPendingWrites() {
+    this.cancelSaveTimers();
+    this.dirty = false;
+  }
+
+  private cancelSaveTimers() {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     if (this.liveTimer) clearTimeout(this.liveTimer);
     this.saveTimer = null;
     this.liveTimer = null;
-    this.dirty = false;
   }
 
   /** Drop the active document (empty-tab / closed-workspace state). */
   private clearFile() {
+    this.documentVersion++;
+    this.loadRequest++;
+    this.loading = false;
+    this.discardPendingWrites();
     this.relPath = null;
     this.fileKind = null;
     this.loadedText = "";
+    this.buffer = "";
     this.imageDataUrl = null;
     this.dirty = false;
     this.externallyChanged = false;
@@ -508,6 +568,8 @@ class EditorStore {
   /** Called from CM's updateListener on every doc change. NO IPC here. */
   handleDocChanged() {
     if (this.suppressChange) return;
+    this.editVersion++;
+    this.buffer = this.view?.state.doc.toString() ?? this.buffer;
     this.dirty = true;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => void this.flush(), settings.autosaveMs);
@@ -536,7 +598,7 @@ class EditorStore {
     return ipc.formatTypstSourceWithCursor(original, cursor).map((res) => {
       // The format ran across an IPC await: if the user typed in the meantime,
       // or the document was already formatted, leave the buffer untouched.
-      if (view.state.doc.toString() !== original) return;
+      if (this.view !== view || view.state.doc.toString() !== original) return;
       if (res.formatted === original) return;
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: res.formatted },
@@ -553,32 +615,46 @@ class EditorStore {
   /** Persist now. Single-flight: concurrent calls coalesce. */
   flush(): ResultAsync<void, string> {
     if (this.inflight) return this.inflight;
-    if (!this.dirty || this.fileKind !== "text" || !this.relPath || !this.view) {
+    if (!this.dirty || this.fileKind !== "text" || !this.relPath) {
       return okAsync(undefined);
+    }
+    if (this.externallyChanged) {
+      return errAsync("File changed on disk. Choose Keep mine or Reload before saving.");
     }
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
     const relPath = this.relPath;
-    const content = this.view.state.doc.toString();
+    const version = this.documentVersion;
+    const content = this.view?.state.doc.toString() ?? this.buffer;
+    this.buffer = content;
     this.saving = true;
     const run = ipc
       .saveFile(relPath, content)
       .map(() => {
-        this.dirty = false;
+        // A save acknowledges only the bytes it sent. Keep newer edits dirty
+        // and drain them before file/workspace switches are allowed to finish.
+        if (
+          version === this.documentVersion &&
+          !this.externallyChanged &&
+          (this.view?.state.doc.toString() ?? this.buffer) === content
+        ) {
+          this.dirty = false;
+          this.externallyChanged = false;
+        }
         this.saving = false;
         this.inflight = null;
-        // The save resolved the divergence the only other way it can be
-        // resolved: our buffer is now what is on disk.
-        this.externallyChanged = false;
-        compileStore.onSaved();
+        if (version === this.documentVersion) compileStore.onSaved();
       })
       .mapErr((e) => {
         this.saving = false;
         this.inflight = null;
         return e;
-      });
+      })
+      .andThen(() =>
+        version === this.documentVersion ? this.flush() : okAsync(undefined),
+      );
     this.inflight = run;
     return run;
   }

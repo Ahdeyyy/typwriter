@@ -23,6 +23,7 @@
   import type { SearchHit, SearchQuery } from "$lib/types";
   import { logError } from "$lib/logger";
   import { toast } from "svelte-sonner";
+  import { watch } from "runed";
 
   interface Props {
     onclose?: () => void;
@@ -54,14 +55,17 @@
   }
 
   async function run() {
+    const id = ++requestId;
     const text = query.trim();
     if (!text || !workspace.rootPath) {
       hits = [];
       error = null;
+      searching = false;
+      filesSearched = 0;
+      truncated = false;
       return;
     }
 
-    const id = ++requestId;
     searching = true;
     error = null;
 
@@ -85,20 +89,23 @@
   }
 
   // Debounced: typing a query should not fire a workspace walk per keystroke.
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  $effect(() => {
-    query;
-    caseSensitive;
-    wholeWord;
-    regex;
-
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => void run(), 250);
-    return () => {
-      if (timer) clearTimeout(timer);
-      timer = null;
-    };
-  });
+  watch(
+    [
+      () => query, () => caseSensitive, () => wholeWord, () => regex,
+      () => workspace.rootPath,
+    ],
+    () => {
+      // Invalidate the old result as soon as the source changes, including the
+      // debounce window and clearing the query, rather than when IPC starts.
+      requestId++;
+      if (!query.trim() || !workspace.rootPath) void run();
+      const timer = setTimeout(() => void run(), 250);
+      return () => {
+        clearTimeout(timer);
+        requestId++;
+      };
+    },
+  );
 
   function toggleGroup(path: string) {
     const next = new Set(collapsed);

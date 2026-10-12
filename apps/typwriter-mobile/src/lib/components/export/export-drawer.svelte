@@ -30,27 +30,28 @@
   import type { ExportFormat } from "$lib/ipc/types";
   import { app } from "$lib/stores/app.svelte";
   import { compileStore } from "$lib/stores/compile.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
+  import { workspace } from "$lib/stores/workspace.svelte";
+  import { prepareExport } from "$lib/services/prepare-export";
   import { settings } from "$lib/stores/settings.svelte";
 
   // ── State ──────────────────────────────────────────────────────────────────
 
-  let format = $state<ExportFormat>(settings.lastExportFormat || "pdf");
+  let format = $derived<ExportFormat>(settings.lastExportFormat);
   let pageRangeMode = $state<"all" | "custom">("all");
   let pageRangeCustom = $state("");
 
   // PDF
-  let pdfStandard = $state(settings.lastPdfStandard || "1.7");
+  let pdfStandard = $derived(settings.lastPdfStandard);
   let pdfTitle = $state("");
   let pdfAuthor = $state("");
   let pdfIncludeDate = $state(false);
   let metadataOpen = $state(false);
 
   // PNG
-  let pngScale = $state(settings.lastPngScale || 2.0);
+  let pngScale = $derived(settings.lastPngScale);
 
   // Multi-page image packing
-  let packageMode = $state<"zip" | "folder">(settings.lastPackageMode || "zip");
+  let packageMode = $derived<"zip" | "folder">(settings.lastPackageMode);
 
   // HTML
   let htmlPretty = $state(false);
@@ -103,14 +104,6 @@
 
   // ─── Export Execution ──────────────────────────────────────────────────────
 
-  async function ensureFreshCompile(): Promise<boolean> {
-    if (compileStore.stale || compileStore.pages.length === 0) {
-      await editor.flush();
-      await compileStore.run();
-    }
-    return true;
-  }
-
   function getPageRange(): string | null {
     if (pageRangeMode === "custom" && pageRangeCustom.trim()) {
       return pageRangeCustom.trim();
@@ -118,147 +111,117 @@
     return null;
   }
 
+  function captureExport() {
+    const version = workspace.version;
+    const mainFile = workspace.mainFile;
+    return {
+      config: {
+        format,
+        pageRange: getPageRange(),
+        scale: pngScale,
+        standard: pdfStandard,
+        title: pdfTitle.trim() || null,
+        author: pdfAuthor.trim() || null,
+        includeDate: pdfIncludeDate,
+        pretty: htmlPretty,
+        packageMode,
+      },
+      owns: () => app.screen === "editor" && app.overlay === "export" &&
+        version === workspace.version && mainFile === workspace.mainFile && !workspace.isOpening,
+    };
+  }
+
   async function handleSave() {
     if (saving || sharing) return;
-    await ensureFreshCompile();
-
     saving = true;
-    const pageRange = getPageRange();
-
+    const { config, owns } = captureExport();
     try {
-      if (format === "pdf") {
-        const res = await exportPdf({
-          pageRange,
-          standard: pdfStandard,
-          title: pdfTitle.trim() || null,
-          author: pdfAuthor.trim() || null,
-          includeDate: pdfIncludeDate,
-        });
-        saving = false;
-        res.match(
-          (name) => {
-            toast.success(`Exported ${name}`);
-            app.closeOverlay();
-          },
-          (err) => {
-            if (err !== "Export cancelled") toast.error(`Export failed: ${err}`);
-          },
-        );
-      } else if (format === "png") {
-        const res = await exportPng({
-          pageRange,
-          scale: pngScale,
-          packageMode,
-        });
-        saving = false;
-        res.match(
-          (name) => {
-            toast.success(`Exported ${name}`);
-            app.closeOverlay();
-          },
-          (err) => {
-            if (err !== "Export cancelled") toast.error(`Export failed: ${err}`);
-          },
-        );
-      } else if (format === "svg") {
-        const res = await exportSvg({
-          pageRange,
-          packageMode,
-        });
-        saving = false;
-        res.match(
-          (name) => {
-            toast.success(`Exported ${name}`);
-            app.closeOverlay();
-          },
-          (err) => {
-            if (err !== "Export cancelled") toast.error(`Export failed: ${err}`);
-          },
-        );
-      } else if (format === "html") {
-        const res = await exportHtml({
-          pretty: htmlPretty,
-        });
-        saving = false;
-        res.match(
-          (name) => {
-            toast.success(`Exported ${name}`);
-            app.closeOverlay();
-          },
-          (err) => {
-            if (err !== "Export cancelled") toast.error(`Export failed: ${err}`);
-          },
-        );
+      const prepared = await prepareExport(config.format, owns);
+      if (prepared.isErr()) {
+        if (prepared.error !== "Export cancelled") toast.error(`Export failed: ${prepared.error}`);
+        return;
       }
+      const res = await (config.format === "pdf" ? exportPdf(config)
+        : config.format === "png" ? exportPng(config)
+        : config.format === "svg" ? exportSvg(config)
+        : exportHtml(config));
+      if (!owns()) return;
+      res.match(
+        (name) => {
+          toast.success(`Exported ${name}`);
+          app.closeOverlay();
+        },
+        (err) => {
+          if (err !== "Export cancelled") toast.error(`Export failed: ${err}`);
+        },
+      );
     } catch (e) {
-      saving = false;
       toast.error(`Export failed: ${e}`);
+    } finally {
+      saving = false;
     }
   }
 
   async function handleShare() {
     if (saving || sharing) return;
-    await ensureFreshCompile();
-
     sharing = true;
-    const pageRange = getPageRange();
+    const { config, owns } = captureExport();
+    try {
+      const prepared = await prepareExport(config.format, owns);
+      if (prepared.isErr()) {
+        if (prepared.error !== "Export cancelled") toast.error(`Share export failed: ${prepared.error}`);
+        return;
+      }
+      const res = await exportForShare(config);
+      if (!owns()) return;
 
-    const res = await exportForShare({
-      format,
-      pageRange,
-      scale: pngScale,
-      standard: pdfStandard,
-      title: pdfTitle.trim() || null,
-      author: pdfAuthor.trim() || null,
-      pretty: htmlPretty,
-      packageMode,
-    });
+      if (res.isErr()) {
+        toast.error(`Share export failed: ${res.error}`);
+        return;
+      }
 
-    if (res.isErr()) {
-      sharing = false;
-      toast.error(`Share export failed: ${res.error}`);
-      return;
-    }
+      const { filePath, fileName, mimeType, dataBase64 } = res.value;
 
-    const { filePath, fileName, mimeType, dataBase64 } = res.value;
-
-    // First attempt: Web Share API with binary File
-    let shared = false;
-    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-      try {
-        const binary = atob(dataBase64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i);
-        }
-        const blob = new Blob([bytes], { type: mimeType });
-        const file = new File([blob], fileName, { type: mimeType });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: fileName });
-          shared = true;
-        }
-      } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") {
-          sharing = false;
-          return;
+      // First attempt: Web Share API with binary File
+      let shared = false;
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        try {
+          const binary = atob(dataBase64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: mimeType });
+          const file = new File([blob], fileName, { type: mimeType });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: fileName });
+            shared = true;
+          }
+        } catch (err) {
+          if (err instanceof Error && err.name === "AbortError") {
+            return;
+          }
         }
       }
-    }
 
-    // Fallback: Open with system viewer / intent via opener
-    if (!shared) {
-      try {
-        await openPath(filePath);
-        toast.success(`Exported for sharing: ${fileName}`);
+      // Fallback: Open with system viewer / intent via opener
+      if (!owns()) return;
+      if (!shared) {
+        try {
+          await openPath(filePath);
+          toast.success(`Exported for sharing: ${fileName}`);
+          if (owns()) app.closeOverlay();
+        } catch {
+          toast.info(`Exported to ${filePath}`);
+        }
+      } else if (owns()) {
         app.closeOverlay();
-      } catch {
-        toast.info(`Exported to ${filePath}`);
       }
-    } else {
-      app.closeOverlay();
+    } catch (e) {
+      toast.error(`Share export failed: ${e}`);
+    } finally {
+      sharing = false;
     }
-
-    sharing = false;
   }
 </script>
 

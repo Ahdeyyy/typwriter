@@ -93,6 +93,7 @@
   import { Compartment } from "@codemirror/state";
   import { mode, systemPrefersMode } from "mode-watcher";
   import { untrack } from "svelte";
+  import { watch } from "runed";
   import { editor } from "$lib/stores/editor.svelte";
   import { preview } from "$lib/stores/preview.svelte";
   import { diagnostics } from "$lib/stores/diagnostics.svelte";
@@ -900,21 +901,24 @@
     }
   }
 
-  $effect(() => {
-    const activeTabId = editor.activeTabId;
-    const tabSignature = editor.tabs
-      .map((tab) => `${tab.id}:${tab.viewMode}:${tab.isLoading ? "1" : "0"}`)
-      .join("|");
-    editorHost;
-    tabSignature;
-    destroyClosedTabViews();
-    mountActiveView(activeTabId);
-    // Tabs opened or closed: the buffer layer feeding the document scope
-    // changed even though no docChanged event fired in any view.
-    syncScopeBuffers();
-    // The file being edited seeds its own subgraph into the scope.
-    documentScope.setActiveFile(activeTypPath());
-  });
+  watch(
+    [
+      () => editor.activeTabId,
+      () => editor.tabs
+        .map((tab) => `${tab.id}:${tab.viewMode}:${tab.isLoading ? "1" : "0"}`)
+        .join("|"),
+      () => editorHost,
+    ],
+    ([activeTabId]) => {
+      destroyClosedTabViews();
+      mountActiveView(activeTabId);
+      // Tabs opened or closed: the buffer layer feeding the document scope
+      // changed even though no docChanged event fired in any view.
+      syncScopeBuffers();
+      // The file being edited seeds its own subgraph into the scope.
+      documentScope.setActiveFile(activeTypPath());
+    },
+  );
 
   // When the document's scope changes (a refs array edited, an include
   // removed, the main file switched), a completion popup that is already
@@ -963,8 +967,7 @@
   // can work in UTF-8 byte space without confusing JavaScript's UTF-16 string
   // indexing. Here we just diff to a minimal changeset and, if the store
   // supplied a cursor, set the selection to it.
-  $effect(() => {
-    const req = editor.contentSyncRequest;
+  watch([() => editor.contentSyncRequest, () => mountedTabId], ([req]) => {
     if (!req) return;
     const view = tabViews.get(req.tabId);
     if (!view) return;
@@ -1047,8 +1050,8 @@
     mountedTabId;
     if (!req) return;
     // rAF lets any pending tab mount complete before we look up the view
-    requestAnimationFrame(() => {
-      if (editor.cursorJumpRequest?.tabId !== req.tabId) return;
+    const frame = requestAnimationFrame(() => {
+      if (editor.cursorJumpRequest !== req) return;
       const view = tabViews.get(req.tabId);
       if (!view) {
         // Keep the request pending while its tab still exists (the mount
@@ -1064,6 +1067,7 @@
       view.dispatch({ selection: { anchor: offset }, scrollIntoView: true });
       if (!editorSearch.open) view.focus();
     });
+    return () => cancelAnimationFrame(frame);
   });
 
   // ── Theme → reconfigure all views when mode changes

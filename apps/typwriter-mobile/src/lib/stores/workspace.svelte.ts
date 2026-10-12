@@ -2,7 +2,7 @@
 // replaces `tree` with the root node the command returns, so the UI never
 // patches the tree client-side.
 
-import { ResultAsync, okAsync } from "neverthrow";
+import { ResultAsync, errAsync, okAsync } from "neverthrow";
 import type {
   EntryChange,
   FileNode,
@@ -26,11 +26,60 @@ class WorkspaceStore {
   mainFile = $state<string | null>(null);
 
   private filesChangedUnlisten: UnlistenFn | null = null;
-  private rescanBound = false;
+  private foregroundUnlisten: (() => void) | null = null;
+  private initialized = false;
+  private listenerPending = false;
+  private listenerGeneration = 0;
+  private generation = 0;
+  private treeRequest = 0;
+  private listRequest = 0;
+  private changing = false;
+  private pendingOpens = 0;
+  private openQueue: Promise<void> = Promise.resolve();
+
+  /** Own the native and foreground listeners for the mounted application. */
+  init() {
+    if (typeof document === "undefined") return;
+    if (!this.initialized) {
+      this.initialized = true;
+      this.listenerGeneration++;
+      this.watchForeground();
+    }
+    if (!this.filesChangedUnlisten && !this.listenerPending) {
+      void this.listenForExternalChanges(this.listenerGeneration);
+    }
+  }
+
+  destroy() {
+    this.initialized = false;
+    this.listenerGeneration++;
+    this.listenerPending = false;
+    this.generation++;
+    this.treeRequest++;
+    this.listRequest++;
+    this.filesChangedUnlisten?.();
+    this.filesChangedUnlisten = null;
+    this.foregroundUnlisten?.();
+    this.foregroundUnlisten = null;
+  }
+
+  get isOpening(): boolean {
+    return this.changing;
+  }
+
+  /** Startup captures this so user navigation can supersede auto-restore. */
+  get version(): number {
+    return this.generation;
+  }
+
+  private ownsWorkspace(generation: number, root: string | null): boolean {
+    return !this.changing && !!root && generation === this.generation && root === this.root;
+  }
 
   refreshList(): ResultAsync<void, string> {
+    const request = ++this.listRequest;
     return ipc.listWorkspaces().map((list) => {
-      this.workspaces = list;
+      if (request === this.listRequest) this.workspaces = list;
     });
   }
 
@@ -43,10 +92,25 @@ class WorkspaceStore {
   }
 
   open(name: string): ResultAsync<WorkspaceInfo, string> {
-    return ipc.openWorkspace(name).map((info) => {
+    const generation = ++this.generation;
+    this.treeRequest++;
+    this.changing = true;
+    this.pendingOpens++;
+    // Native workspace commands share one root. Finish an already dispatched
+    // open before starting the next, even if its UI owner has been destroyed.
+    const run = ResultAsync.fromSafePromise(this.openQueue).andThen(() => {
+      if (generation !== this.generation) return errAsync("Workspace opening was canceled");
+      return editor.flush();
+    }).andThen(() => {
+      if (generation !== this.generation) return errAsync("Workspace opening was canceled");
+      editor.resetTabs();
+      return ipc.openWorkspace(name);
+    }).andThen((info) => {
+      if (generation !== this.generation) return errAsync("Workspace opening was canceled");
+      this.changing = false;
       this.name = info.name;
       this.root = info.root;
-      this.tree = info.tree;
+      this.replaceTree(info.tree);
       this.mainFile = info.mainFile;
       settings.setLastWorkspace(info.name);
       app.openEditor();
@@ -61,10 +125,17 @@ class WorkspaceStore {
       editor.seedTabs(initialTabs, active, cursor);
       // The preview must never show a previous workspace's pages.
       compileStore.onWorkspaceOpened(!!info.mainFile);
-      void this.listenForExternalChanges();
-      this.watchForeground();
-      return info;
-    });
+      // Retry a failed native subscription on the next workspace open.
+      this.init();
+      return okAsync(info);
+    }).andTee(() => this.finishOpen()).orTee(() => this.finishOpen());
+    this.openQueue = Promise.resolve(run).then(() => undefined);
+    return run;
+  }
+
+  private finishOpen() {
+    this.pendingOpens--;
+    if (!this.pendingOpens) this.changing = false;
   }
 
   /**
@@ -75,44 +146,45 @@ class WorkspaceStore {
    */
   switchTo(name: string): ResultAsync<void, string> {
     if (name === this.name) return okAsync(undefined);
-    return editor
-      .flush()
-      .andThen(() => {
-        editor.resetTabs();
-        return this.open(name).map(() => undefined);
-      })
+    const opening = this.open(name);
+    const generation = this.generation;
+    return opening
+      .map(() => undefined)
       .mapErr((e) => {
         // `open_workspace` swaps the backend root *before* it can still fail
         // (resolving the main file, writing metadata), so a failure leaves us
         // unable to say which workspace we are in. Restoring the old tabs would
         // then re-read — and later save — the previous workspace's paths against
-        // the new root, which is exactly the corruption `resetTabs` above exists
+        // the new root, which is exactly the corruption `resetTabs` in `open` exists
         // to prevent. Home is the only root-agnostic screen; drop to it and let
         // the user pick again. `lastWorkspace` is deliberately left alone, so a
         // relaunch re-opens it and re-syncs the backend either way.
-        app.goHome();
+        if (generation === this.generation) app.goHome();
         return e;
       });
   }
 
   /** Close the current workspace and return home, clearing the auto-open hint. */
   close() {
+    this.generation++;
+    this.treeRequest++;
     settings.setLastWorkspace(null);
     app.goHome();
   }
 
   // ─── External (on-disk) changes ─────────────────────────────────────────
 
-  /** Subscribe to the backend watcher. Idempotent: re-opening a workspace keeps
-   *  the one listener, since the event carries no workspace of its own and the
-   *  backend only ever watches the current root. */
-  private async listenForExternalChanges(): Promise<void> {
-    if (this.filesChangedUnlisten) return;
+  /** A registration resolving after teardown must release itself immediately. */
+  private async listenForExternalChanges(generation: number): Promise<void> {
+    this.listenerPending = true;
     const result = await onWorkspaceFilesChanged((payload) => {
+      if (generation !== this.listenerGeneration) return;
       this.applyExternalChanges(payload.changes);
     });
+    if (generation === this.listenerGeneration) this.listenerPending = false;
     if (result.isOk()) {
-      this.filesChangedUnlisten = result.value;
+      if (generation === this.listenerGeneration) this.filesChangedUnlisten = result.value;
+      else result.value();
     } else {
       console.error("onWorkspaceFilesChanged listener failed:", result.error);
     }
@@ -124,7 +196,7 @@ class WorkspaceStore {
     // user has gone home — where there is no tree on screen, no open buffer, and
     // possibly no workspace any more (they may have just deleted it). Opening
     // one rebuilds all of this from scratch, so there is nothing to reconcile.
-    if (!this.root || app.screen !== "editor") return;
+    if (this.changing || !this.root || app.screen !== "editor") return;
     void this.refreshTree();
 
     // A main file deleted out from under us would otherwise leave every compile
@@ -151,44 +223,79 @@ class WorkspaceStore {
    *  Coming back is also exactly when a user expects to see what they just did
    *  elsewhere, so asking outright is worth one round-trip. */
   private watchForeground() {
-    if (this.rescanBound || typeof document === "undefined") return;
-    this.rescanBound = true;
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState !== "visible") return;
-      if (!this.root || app.screen !== "editor") return;
+    const target = document;
+    const onVisibility = () => {
+      if (target.visibilityState !== "visible") return;
+      const generation = this.generation;
+      const root = this.root;
+      if (!this.ownsWorkspace(generation, root) || app.screen !== "editor") return;
+      const request = ++this.treeRequest;
       void ipc.rescanWorkspace().map((tree) => {
+        if (!this.ownsWorkspace(generation, root) || request !== this.treeRequest) return;
+        if (app.screen !== "editor") return;
         this.replaceTree(tree);
         compileStore.onSaved();
         // A file the user edited elsewhere is the whole reason for this path;
         // a clean buffer should show it rather than the text from before.
-        if (!editor.dirty) void editor.reloadActiveFromDisk();
+        if (!editor.dirty) void editor.reloadActiveFromDisk(false);
       });
-    });
+    };
+    target.addEventListener("visibilitychange", onVisibility);
+    this.foregroundUnlisten = () => target.removeEventListener("visibilitychange", onVisibility);
   }
 
   refreshTree(): ResultAsync<void, string> {
-    return ipc.getFileTree().map((tree) => this.replaceTree(tree));
+    const generation = this.generation;
+    const root = this.root;
+    if (!this.ownsWorkspace(generation, root)) return okAsync(undefined);
+    const request = ++this.treeRequest;
+    return ipc.getFileTree().map((tree) => {
+      if (this.ownsWorkspace(generation, root) && request === this.treeRequest) this.replaceTree(tree);
+    });
   }
 
   setMain(relPath: string): ResultAsync<void, string> {
-    return ipc.setMainFile(relPath).andThen(() => {
+    const generation = this.generation;
+    const root = this.root;
+    if (!this.ownsWorkspace(generation, root)) return errAsync("Workspace is not ready");
+    return editor.flush().andThen(() => {
+      if (!this.ownsWorkspace(generation, root)) return errAsync("Workspace changed");
+      return ipc.setMainFile(relPath);
+    }).andThen(() => {
+      if (!this.ownsWorkspace(generation, root)) return errAsync("Workspace changed");
       this.mainFile = relPath;
       // A new main file is a new document identity. Persist any pending edits
       // first (the compiler reads from disk), then drop the stale render and
       // rebuild the preview in the background so it's ready when next opened.
-      return editor.flush().map(() => compileStore.onMainChanged());
+      compileStore.onMainChanged();
+      return okAsync(undefined);
     });
   }
 
   private replaceTree(next: FileNode) {
+    this.treeRequest++;
     this.tree = next;
   }
 
   createFile(relPath: string): ResultAsync<void, string> {
-    return ipc.createFile(relPath).map((t) => this.replaceTree(t));
+    const generation = this.generation;
+    const root = this.root;
+    if (!this.ownsWorkspace(generation, root)) return errAsync("Workspace is not ready");
+    return ipc.createFile(relPath).andThen((tree) => {
+      if (!this.ownsWorkspace(generation, root)) return errAsync("Workspace changed");
+      this.replaceTree(tree);
+      return okAsync(undefined);
+    });
   }
   createFolder(relPath: string): ResultAsync<void, string> {
-    return ipc.createFolder(relPath).map((t) => this.replaceTree(t));
+    const generation = this.generation;
+    const root = this.root;
+    if (!this.ownsWorkspace(generation, root)) return errAsync("Workspace is not ready");
+    return ipc.createFolder(relPath).andThen((tree) => {
+      if (!this.ownsWorkspace(generation, root)) return errAsync("Workspace changed");
+      this.replaceTree(tree);
+      return okAsync(undefined);
+    });
   }
 
   /**
@@ -199,19 +306,35 @@ class WorkspaceStore {
    * file would keep the pre-edit text.
    */
   renameEntry(relPath: string, newName: string): ResultAsync<void, string> {
+    const generation = this.generation;
+    const root = this.root;
+    if (!this.ownsWorkspace(generation, root)) return errAsync("Workspace is not ready");
     return editor
       .flush()
-      .andThen(() => ipc.renameEntry(relPath, newName))
-      .map((change) => this.applyEntryChange(change));
+      .andThen(() => this.ownsWorkspace(generation, root)
+        ? ipc.renameEntry(relPath, newName) : errAsync("Workspace changed"))
+      .andThen((change) => {
+        if (!this.ownsWorkspace(generation, root)) return errAsync("Workspace changed");
+        this.applyEntryChange(change);
+        return okAsync(undefined);
+      });
   }
 
   /** Move an entry into another folder. Flushes first, for the same reason as
    *  {@link renameEntry}. */
   moveEntry(relPath: string, newParentRel: string): ResultAsync<void, string> {
+    const generation = this.generation;
+    const root = this.root;
+    if (!this.ownsWorkspace(generation, root)) return errAsync("Workspace is not ready");
     return editor
       .flush()
-      .andThen(() => ipc.moveEntry(relPath, newParentRel))
-      .map((change) => this.applyEntryChange(change));
+      .andThen(() => this.ownsWorkspace(generation, root)
+        ? ipc.moveEntry(relPath, newParentRel) : errAsync("Workspace changed"))
+      .andThen((change) => {
+        if (!this.ownsWorkspace(generation, root)) return errAsync("Workspace changed");
+        this.applyEntryChange(change);
+        return okAsync(undefined);
+      });
   }
 
   /**
@@ -224,10 +347,18 @@ class WorkspaceStore {
    * write to settle, so the delete is always the last word on that path.
    */
   deleteEntry(relPath: string): ResultAsync<void, string> {
+    const generation = this.generation;
+    const root = this.root;
+    if (!this.ownsWorkspace(generation, root)) return errAsync("Workspace is not ready");
     return editor
       .abandonWrites(relPath)
-      .andThen(() => ipc.deleteEntry(relPath))
-      .map((change) => this.applyEntryChange(change));
+      .andThen(() => this.ownsWorkspace(generation, root)
+        ? ipc.deleteEntry(relPath) : errAsync("Workspace changed"))
+      .andThen((change) => {
+        if (!this.ownsWorkspace(generation, root)) return errAsync("Workspace changed");
+        this.applyEntryChange(change);
+        return okAsync(undefined);
+      });
   }
 
   /**

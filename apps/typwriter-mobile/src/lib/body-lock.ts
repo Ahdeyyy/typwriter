@@ -60,7 +60,7 @@ export function scheduleBodyLockRelease() {
   timers = CHECK_DELAYS_MS.map((delay) => setTimeout(releaseIfStuck, delay));
 }
 
-let initialized = false;
+let cleanup: (() => void) | null = null;
 
 /**
  * Global safety net:
@@ -70,12 +70,13 @@ let initialized = false;
  *    but the body lock is stranded, immediately release it so the tap is not lost.
  */
 export function initBodyLockSafety() {
-  if (initialized || typeof window === "undefined" || typeof document === "undefined") return;
-  initialized = true;
+  if (cleanup || typeof window === "undefined" || typeof document === "undefined") return;
 
   const body = document.body;
-  if (body && typeof MutationObserver !== "undefined") {
-    const observer = new MutationObserver(() => {
+  if (!body) return;
+  let observer: MutationObserver | null = null;
+  if (typeof MutationObserver !== "undefined") {
+    observer = new MutationObserver(() => {
       if (body.style.pointerEvents === "none" || body.style.overflow === "hidden") {
         scheduleBodyLockRelease();
       }
@@ -83,13 +84,23 @@ export function initBodyLockSafety() {
     observer.observe(body, { attributes: true, attributeFilter: ["style"] });
   }
 
-  window.addEventListener(
-    "pointerdown",
-    () => {
-      if (!anyModalOpen() && (body.style.pointerEvents === "none" || body.style.overflow === "hidden")) {
-        releaseIfStuck();
-      }
-    },
-    { capture: true, passive: true },
-  );
+  const target = window;
+  const onPointerDown = () => {
+    if (!anyModalOpen() && (body.style.pointerEvents === "none" || body.style.overflow === "hidden")) {
+      releaseIfStuck();
+    }
+  };
+  target.addEventListener("pointerdown", onPointerDown, { capture: true, passive: true });
+  cleanup = () => {
+    observer?.disconnect();
+    target.removeEventListener("pointerdown", onPointerDown, true);
+  };
+}
+
+/** Release application-owned observers, listeners, and queued recovery checks. */
+export function destroyBodyLockSafety() {
+  cleanup?.();
+  cleanup = null;
+  for (const timer of timers) clearTimeout(timer);
+  timers = [];
 }

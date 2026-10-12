@@ -117,6 +117,9 @@ class EditorStore {
     private _shadowWriteVersions = new Map<string, number>();
     private _idleSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private _typingPreviewTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private _saves = new WeakMap<TabInfo, Promise<void>>();
+    private _diskReads = new WeakMap<TabInfo, number>();
+    private _navigationRequest = 0;
 
     requestCursorJump(tabId: string, offset: number): void {
         this.cursorJumpRequest = { tabId, offset };
@@ -127,10 +130,12 @@ class EditorStore {
     }
 
     private async _openFile(relPath: string, unsavedContent?: string): Promise<void> {
+        const request = ++this._navigationRequest;
         const id = normalize(relPath);
         if (this.activeTabId && this.activeTabId !== id) {
             await this.flushActiveTab();
         }
+        if (request !== this._navigationRequest) return;
 
         const existing = this.tabs.find((t) => t.id === id);
         if (existing) {
@@ -163,8 +168,12 @@ class EditorStore {
         if (this.activeTabId === tabId) {
             return;
         }
+        const request = ++this._navigationRequest;
+        const tab = this.tabs.find((t) => t.id === tabId);
+        if (!tab) return;
         await this.flushActiveTab();
-        this.activeTabId = tabId;
+        if (request !== this._navigationRequest || !this.tabs.includes(tab)) return;
+        this.activeTabId = tab.id;
         workspace.schedulePersistTabs();
     }
 
@@ -185,6 +194,7 @@ class EditorStore {
         unsaved: Record<string, string>,
         cursor: number | null = null,
     ): Promise<void> {
+        const request = ++this._navigationRequest;
         const loads: Promise<void>[] = [];
 
         for (const relPath of tabPaths) {
@@ -214,6 +224,7 @@ class EditorStore {
         }
 
         await Promise.all(loads);
+        if (request !== this._navigationRequest) return;
 
         // Activate the previously-active tab, falling back to the first one.
         const restoredActive =
@@ -237,7 +248,9 @@ class EditorStore {
      *  editor pane (which gate on `isLoading`) show a loading skeleton rather
      *  than flashing the wrong viewer. */
     private _createLoadingTab(id: string): TabInfo {
-        return {
+        // Keep the same proxy both in the array and in hot-exit seeding code.
+        // Mutating the plain object after push bypasses Svelte's signals.
+        const tab = $state<TabInfo>({
             id,
             relPath: id,
             absPath: workspace.toAbs(id),
@@ -251,7 +264,8 @@ class EditorStore {
             isLoading: true,
             externalContent: null,
             externallyRemoved: false,
-        };
+        });
+        return tab;
     }
 
     /** Seed a tab from a durable unsaved (hot-exit) buffer. Such buffers are
@@ -279,11 +293,9 @@ class EditorStore {
         if (!tab) {
             return;
         }
-        const response = await readFile(tab.absPath);
-        const liveTab = this.tabs.find((t) => t.id === tabId);
-        if (!liveTab) {
-            return;
-        }
+        const response = await this._readTab(tab);
+        if (!response) return;
+        const liveTab = tab;
         if (response.isErr()) {
             liveTab.isLoading = false;
             throw new Error(response.error);
@@ -320,7 +332,7 @@ class EditorStore {
 
     async closeTab(id: string, options: { flush?: boolean } = {}): Promise<boolean> {
         const { flush = true } = options;
-        const idx = this.tabs.findIndex((t) => t.id === id);
+        let idx = this.tabs.findIndex((t) => t.id === id);
         if (idx === -1) {
             return true;
         }
@@ -333,6 +345,12 @@ class EditorStore {
                 return false;
             }
         }
+
+        // Other closes or a workspace reset may have changed the array while
+        // saving. Close only this tab object, including after a rename.
+        idx = this.tabs.indexOf(tab);
+        if (idx === -1) return true;
+        id = tab.id;
 
         this._clearTimers(id);
         grammar.forget(tab.relPath);
@@ -420,7 +438,7 @@ class EditorStore {
         const applyResult = (formatted: string, newCursor: number | undefined) => {
             // If the user typed while format was running, don't clobber
             // their newer keystrokes with a stale formatted result.
-            if (tab.content !== original) return;
+            if (!this.tabs.includes(tab) || tab.content !== original) return;
             if (formatted === original) return;
             tab.content = formatted;
             tab.hasUnsavedChanges = true;
@@ -467,8 +485,25 @@ class EditorStore {
         return this.saveTabById(tab.id);
     }
 
-    async flushTab(tabId: string): Promise<void> {
+    flushTab(tabId: string): Promise<void> {
         const tab = this.tabs.find((t) => t.id === tabId);
+        if (!tab) return Promise.resolve();
+        const saving = this._saves.get(tab);
+        if (saving) return saving;
+        if (!tab.isEditable || !tab.hasUnsavedChanges) return Promise.resolve();
+
+        // Serialize writes per tab and drain keystrokes received during IPC.
+        // Callers closing tabs or switching workspaces await the entire drain.
+        const run = Promise.resolve().then(async () => {
+            while (this.tabs.includes(tab) && tab.isEditable && tab.hasUnsavedChanges) {
+                await this._flushTabOnce(tab);
+            }
+        }).finally(() => this._saves.delete(tab));
+        this._saves.set(tab, run);
+        return run;
+    }
+
+    private async _flushTabOnce(tab: TabInfo): Promise<void> {
         if (!tab || !tab.isEditable || !tab.hasUnsavedChanges) {
             return;
         }
@@ -485,14 +520,19 @@ class EditorStore {
         }
 
         await this._flushShadowWrite(tab);
+        if (!this.tabs.includes(tab) || !tab.hasUnsavedChanges) return;
 
         const contentToSave = tab.content;
-        const saveResult = await saveFile(tab.absPath, contentToSave);
+        const pathToSave = tab.absPath;
+        this._diskReads.set(tab, (this._diskReads.get(tab) ?? 0) + 1);
+        const saveResult = await saveFile(pathToSave, contentToSave);
         if (saveResult.isErr()) {
             const message = `Failed to save ${tab.name}: ${saveResult.error}`;
             toast.error(message);
             throw new Error(message);
         }
+        if (!this.tabs.includes(tab)) return;
+        this._diskReads.set(tab, (this._diskReads.get(tab) ?? 0) + 1);
 
         // A saved bibliography changes citation completions, but nothing else
         // would notice: self-writes are suppressed for the watcher, and the
@@ -517,12 +557,25 @@ class EditorStore {
 
         // Don't clear the dirty flag if the user typed during the save —
         // their newer content still needs to be persisted on the next pass.
-        if (tab.content === contentToSave) {
+        if (tab.absPath === pathToSave && tab.content === contentToSave) {
             tab.hasUnsavedChanges = false;
             // The tab is clean now; re-persist so it drops out of the durable
             // unsaved map and a later restore doesn't resurrect stale edits.
             workspace.schedulePersistTabs();
         }
+    }
+
+    /** Reads belong to a tab lifetime, path and request. A closed/reopened or
+     *  renamed tab, a newer read, or a save makes the old snapshot obsolete. */
+    private async _readTab(tab: TabInfo) {
+        const request = (this._diskReads.get(tab) ?? 0) + 1;
+        this._diskReads.set(tab, request);
+        const path = tab.absPath;
+        const response = await readFile(path);
+        if (!this.tabs.includes(tab) || tab.absPath !== path || this._diskReads.get(tab) !== request) {
+            return null;
+        }
+        return response;
     }
 
     async flushActiveTab(): Promise<void> {
@@ -555,7 +608,8 @@ class EditorStore {
                     logError('reloadAllTabsFromDisk: discardShadow:', err)
                 );
             }
-            const response = await readFile(tab.absPath);
+            const response = await this._readTab(tab);
+            if (!response) continue;
             if (response.isErr()) {
                 // File is gone (e.g. restore deleted it). Close the tab.
                 await this.closeTab(tab.id, { flush: false });
@@ -674,12 +728,9 @@ class EditorStore {
             return;
         }
 
-        const response = await readFile(tab.absPath);
-        // The tab may have been closed or renamed across the read.
-        const live = this.tabs.find((t) => t.id === tab.id);
-        if (!live) {
-            return;
-        }
+        const response = await this._readTab(tab);
+        if (!response) return;
+        const live = tab;
         if (response.isErr()) {
             // Written and removed again before we got to it. The removal branch
             // is the honest description of where the file now stands.
@@ -791,11 +842,13 @@ class EditorStore {
         if (!tab) {
             return;
         }
-        const response = await readFile(tab.absPath);
-        const live = this.tabs.find((t) => t.id === tabId);
-        if (!live) {
-            return;
-        }
+        const original = tab.content;
+        const saving = this._saves.get(tab);
+        if (saving) await saving;
+        if (!this.tabs.includes(tab) || tab.content !== original) return;
+        const response = await this._readTab(tab);
+        if (!response || tab.content !== original) return;
+        const live = tab;
         if (response.isErr()) {
             toast.error(`Could not read ${live.name}: ${response.error}`);
             return;
@@ -822,6 +875,7 @@ class EditorStore {
     }
 
     async reset(): Promise<void> {
+        this._navigationRequest++;
         for (const tab of [...this.tabs]) {
             await this.closeTab(tab.id, { flush: false });
         }
