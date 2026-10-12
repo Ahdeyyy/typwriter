@@ -22,7 +22,7 @@ const ML = {
     bg:          "#fefcf8",
     bgDark:      "#f5f3ee",
     bgHighlight: "#eef2fb",
-    bgSelection: "#b8d4ff50",
+    bgSelection: "#5c349060",
     border:      "#e8e4dc",
 
     fg:          "#1a1a1a",
@@ -63,6 +63,16 @@ export const lightTheme = EditorView.theme(
         ".cm-panels.cm-panels-top": { borderBottom: "2px solid var(--border)" },
         ".cm-panels.cm-panels-bottom": { borderTop: "2px solid var(--border)" },
         ".cm-activeLine": {
+            position: "relative",
+            backgroundColor: "transparent",
+        },
+        ".cm-activeLine::before": {
+            content: '""',
+            position: "absolute",
+            inset: "0",
+            // CodeMirror's selection layer is at -2, below the text.
+            zIndex: "-3",
+            pointerEvents: "none",
             backgroundColor: "#eef2fb80",
         },
         ".cm-searchMatch": {
