@@ -14,7 +14,7 @@ jobs:
   rust:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: install system dependencies
         run: |
           sudo apt-get update
@@ -42,7 +42,7 @@ jobs:
   frontend:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       # The hand-written Typst parser is duplicated in both apps and must stay
       # byte-identical: it is shared by copy, not by package, because a

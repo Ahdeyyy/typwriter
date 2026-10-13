@@ -69,7 +69,7 @@ describe("completion cache context", () => {
   test("retains font candidates across spaces and Unicode", () => {
     const cached = snapshot('#set text(font: "Noto")', 'Noto');
     const doc = '#set text(font: "Noto Sans 中文")';
-    expect(canReuseCompletions(cached, stateAt(doc, doc.indexOf('\")')))).toBe(true);
+    expect(canReuseCompletions(cached, stateAt(doc, doc.indexOf('")')))).toBe(true);
   });
 
   test("retains the opening quote in the IDE's font and path replacement ranges", () => {
@@ -78,7 +78,7 @@ describe("completion cache context", () => {
       ['#image("images/fi")', '"images/fi', '#image("images/figure")'],
     ]) {
       const cached = snapshot(doc, prefix);
-      expect(canReuseCompletions(cached, stateAt(next, next.indexOf('\")')))).toBe(true);
+      expect(canReuseCompletions(cached, stateAt(next, next.indexOf('")')))).toBe(true);
     }
   });
 
@@ -91,9 +91,9 @@ describe("completion cache context", () => {
     const cached = snapshot('#image("images/fi")', 'images/fi');
     expect(canReuseCompletions(cached, stateAt(cached.text, cached.to))).toBe(true);
     const next = '#image("images/fig")';
-    expect(canReuseCompletions(cached, stateAt(next, next.indexOf('\")')))).toBe(true);
+    expect(canReuseCompletions(cached, stateAt(next, next.indexOf('")')))).toBe(true);
     const subdir = '#image("images/fig/")';
-    expect(canReuseCompletions(cached, stateAt(subdir, subdir.indexOf('\")')))).toBe(false);
+    expect(canReuseCompletions(cached, stateAt(subdir, subdir.indexOf('")')))).toBe(false);
   });
 
   test("invalidates when the argument key changes at the same cursor offset", () => {
