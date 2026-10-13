@@ -5,15 +5,22 @@
 use std::{sync::Arc, time::Instant};
 
 use base64::Engine;
+use ecow::EcoString;
 use log::info;
 use serde::Serialize;
 use tauri::State;
-use typst::syntax::Source;
+use typst::{
+    foundations::Bytes,
+    syntax::{package::PackageSpec, FileId, Source},
+    text::{Font, FontBook},
+    utils::LazyHash,
+    Library, World,
+};
+use typst_ide::IdeWorld;
 use typst_layout::PagedDocument;
 
 use crate::{
-    compiler::CompileState, watcher::WatcherState, workspace::resolve_in_root,
-    world::MobileWorld,
+    compiler::CompileState, watcher::WatcherState, workspace::resolve_in_root, world::MobileWorld,
 };
 
 #[derive(Serialize)]
@@ -41,13 +48,61 @@ pub struct CompletionsResponse {
     pub completions: Vec<CompletionItem>,
 }
 
-/// Safety cap on the completion list. typst-ide returns its candidates
-/// *unfiltered* (for `#im` that's every binding in scope, in scope order), and
-/// the client is what ranks them against the typed prefix — so this has to stay
-/// above the size of the global scope (~200 in 0.15). Cutting closer to the
-/// strip's chip count would drop the item the user is typing towards before
-/// anything got a chance to rank it.
-const MAX_COMPLETIONS: usize = 256;
+/// Completion queries own their unsaved source. The shared world continues
+/// reading saved files, even while requests and compiles overlap.
+struct CompletionWorld<'a> {
+    inner: &'a dyn IdeWorld,
+    source: Source,
+}
+
+impl World for CompletionWorld<'_> {
+    fn library(&self) -> &LazyHash<Library> {
+        self.inner.library()
+    }
+    fn book(&self) -> &LazyHash<FontBook> {
+        self.inner.book()
+    }
+    fn main(&self) -> FileId {
+        self.inner.main()
+    }
+    fn source(&self, id: FileId) -> typst::diag::FileResult<Source> {
+        if id == self.source.id() {
+            return Ok(self.source.clone());
+        }
+        self.inner.source(id)
+    }
+    fn file(&self, id: FileId) -> typst::diag::FileResult<Bytes> {
+        if id == self.source.id() {
+            return Ok(Bytes::from_string(self.source.text().to_owned()));
+        }
+        self.inner.file(id)
+    }
+    fn font(&self, index: usize) -> Option<Font> {
+        self.inner.font(index)
+    }
+    fn today(
+        &self,
+        offset: Option<typst::foundations::Duration>,
+    ) -> Option<typst::foundations::Datetime> {
+        self.inner.today(offset)
+    }
+}
+
+impl IdeWorld for CompletionWorld<'_> {
+    fn upcast(&self) -> &dyn World {
+        self
+    }
+    fn packages(&self) -> &[(PackageSpec, Option<EcoString>)] {
+        self.inner.packages()
+    }
+    fn files(&self) -> Vec<FileId> {
+        let mut ids = self.inner.files();
+        if !ids.contains(&self.source.id()) {
+            ids.push(self.source.id());
+        }
+        ids
+    }
+}
 
 fn workspace_root(world: &MobileWorld) -> Result<std::path::PathBuf, String> {
     world.root().ok_or_else(|| "No workspace open".to_string())
@@ -178,14 +233,17 @@ pub async fn get_completions(
         let doc = compile.document.lock().clone();
         let doc_ref: Option<&PagedDocument> = doc.as_deref();
 
-        let response = world.with_overlay(id, &text, |w| {
-            let source = Source::new(id, text.clone());
-            match typst_ide::autocomplete(w, doc_ref, &source, byte_cursor, explicit) {
+        let source = Source::new(id, text);
+        let query_world = CompletionWorld {
+            inner: &*world,
+            source: source.clone(),
+        };
+        let response =
+            match typst_ide::autocomplete(&query_world, doc_ref, &source, byte_cursor, explicit) {
                 Some((from, items)) => CompletionsResponse {
-                    from: byte_to_utf16(&text, from),
+                    from: byte_to_utf16(source.text(), from),
                     completions: items
                         .into_iter()
-                        .take(MAX_COMPLETIONS)
                         .map(|c| CompletionItem {
                             kind: format!("{:?}", c.kind),
                             label: c.label.to_string(),
@@ -198,8 +256,7 @@ pub async fn get_completions(
                     from: cursor,
                     completions: vec![],
                 },
-            }
-        });
+            };
 
         info!(
             "get_completions: {rel_path:?} {} items explicit={explicit} ({:.1}ms)",
@@ -246,7 +303,128 @@ pub(crate) fn utf16_to_byte(text: &str, utf16_offset: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{byte_to_utf16, utf16_to_byte};
+    use super::*;
+    use typst::LibraryExt;
+
+    struct SavedWorld {
+        source: Source,
+        library: LazyHash<Library>,
+        book: LazyHash<FontBook>,
+    }
+
+    impl SavedWorld {
+        fn new() -> Self {
+            Self {
+                source: Source::detached("#let saved = 1\n#sa"),
+                library: LazyHash::new(Library::default()),
+                book: LazyHash::new(FontBook::new()),
+            }
+        }
+    }
+
+    impl World for SavedWorld {
+        fn library(&self) -> &LazyHash<Library> {
+            &self.library
+        }
+        fn book(&self) -> &LazyHash<FontBook> {
+            &self.book
+        }
+        fn main(&self) -> FileId {
+            self.source.id()
+        }
+        fn source(&self, _id: FileId) -> typst::diag::FileResult<Source> {
+            Ok(self.source.clone())
+        }
+        fn file(&self, _id: FileId) -> typst::diag::FileResult<Bytes> {
+            Ok(Bytes::from_string(self.source.text().to_owned()))
+        }
+        fn font(&self, _index: usize) -> Option<Font> {
+            None
+        }
+        fn today(
+            &self,
+            _offset: Option<typst::foundations::Duration>,
+        ) -> Option<typst::foundations::Datetime> {
+            None
+        }
+    }
+
+    impl IdeWorld for SavedWorld {
+        fn upcast(&self) -> &dyn World {
+            self
+        }
+    }
+
+    #[test]
+    fn overlapping_completion_queries_do_not_share_unsaved_sources() {
+        let saved = SavedWorld::new();
+        let left = CompletionWorld {
+            inner: &saved,
+            source: Source::new(saved.main(), "#let left_local_only = 1\n#le".into()),
+        };
+        let right = CompletionWorld {
+            inner: &saved,
+            source: Source::new(saved.main(), "#let right_local_only = 1\n#ri".into()),
+        };
+        for (query, expected, unexpected) in [
+            (&left, "left_local_only", "right_local_only"),
+            (&right, "right_local_only", "left_local_only"),
+        ] {
+            let source = query.source(saved.main()).expect("request-local source");
+            assert_eq!(
+                query
+                    .file(saved.main())
+                    .expect("request-local bytes")
+                    .as_slice(),
+                source.text().as_bytes()
+            );
+            let (_, items) = typst_ide::autocomplete(
+                query,
+                None::<&PagedDocument>,
+                &source,
+                source.text().len(),
+                false,
+            )
+            .expect("binding completions");
+            assert!(items.iter().any(|item| item.label == expected));
+            assert!(!items.iter().any(|item| item.label == unexpected));
+        }
+        assert_eq!(
+            saved.source(saved.main()).expect("saved source").text(),
+            "#let saved = 1\n#sa"
+        );
+        assert_eq!(
+            saved.file(saved.main()).expect("saved bytes").as_slice(),
+            b"#let saved = 1\n#sa"
+        );
+    }
+
+    #[test]
+    fn completion_values_follow_the_argument_in_the_unsaved_buffer() {
+        let saved = SavedWorld::new();
+        for (text, expected) in [
+            ("#set par(justify: )", "true"),
+            ("#set text(weight: )", "\"bold\""),
+            ("#set text(style: )", "\"italic\""),
+        ] {
+            let query = CompletionWorld {
+                inner: &saved,
+                source: Source::new(saved.main(), text.into()),
+            };
+            let (_, items) = typst_ide::autocomplete(
+                &query,
+                None::<&PagedDocument>,
+                &query.source,
+                text.len() - 1,
+                false,
+            )
+            .expect("argument value completions");
+            assert!(
+                items.iter().any(|item| item.label == expected),
+                "missing {expected} for {text}"
+            );
+        }
+    }
 
     #[test]
     fn roundtrip_ascii() {

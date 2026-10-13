@@ -81,7 +81,7 @@ class Page {
     /** Swap to `def`, waiting on its chunk if it isn't loaded yet. Leaves the
      *  current page up on failure — a page we can't render is strictly worse
      *  than the one the user is already looking at. */
-    #show(def: PageDefinition): void {
+    #show(def: PageDefinition, nextHistory: Pages[] = this.history): void {
         const resolved = resolve(def)
         const token = ++this.#pending
 
@@ -89,6 +89,7 @@ class Page {
             this.navigating = false
             this.current = def
             this.component = resolved
+            this.history = nextHistory
             return
         }
 
@@ -98,6 +99,7 @@ class Page {
                 if (token !== this.#pending) return
                 this.current = def
                 this.component = component
+                this.history = nextHistory
             })
             .catch((err) => logError(`loading the ${def.name} page failed:`, err))
             .finally(() => {
@@ -107,10 +109,11 @@ class Page {
 
     navigate(target: Pages) {
         if (this.current.name === target) {
+            // Returning to the visible page also cancels a pending chunk load.
+            if (this.navigating) this.#show(pages[target])
             return
         }
-        this.history = [...this.history, this.current.name]
-        this.#show(pages[target])
+        this.#show(pages[target], [...this.history, this.current.name])
     }
 
     back(fallback: Pages) {
@@ -120,8 +123,7 @@ class Page {
             return
         }
 
-        this.history = this.history.slice(0, -1)
-        this.#show(pages[previous])
+        this.#show(pages[previous], this.history.slice(0, -1))
     }
 }
 

@@ -111,8 +111,6 @@ pub struct MobileWorld {
     /// at. Revalidated (not cleared) at the start of each compile — see
     /// [`MobileWorld::revalidate`].
     slots: Mutex<HashMap<FileId, CachedFile>>,
-    /// Transient per-call overlay (used by `with_overlay` for completions).
-    overlay: RwLock<HashMap<FileId, String>>,
     /// Package resolution: custom data/cache dirs (an app-reachable folder)
     /// backed by Typst Universe downloads for missing packages.
     packages: SystemPackages,
@@ -180,7 +178,6 @@ impl MobileWorld {
             fonts_cv: Condvar::new(),
             font_loads: AtomicUsize::new(0),
             slots: Mutex::new(HashMap::new()),
-            overlay: RwLock::new(HashMap::new()),
             packages,
             index_downloader: SystemDownloader::new(user_agent),
             package_index: OnceLock::new(),
@@ -251,7 +248,6 @@ impl MobileWorld {
         *self.root.write() = Some(path);
         *self.main.write() = None;
         self.slots.lock().clear();
-        self.overlay.write().clear();
     }
 
     pub fn root(&self) -> Option<PathBuf> {
@@ -404,19 +400,6 @@ impl MobileWorld {
         *self.now.lock() = None;
     }
 
-    /// Run `f` with `text` temporarily installed as the source for `id`. Used
-    /// by `get_completions` to evaluate against the live (unsaved) buffer
-    /// without a persistent shadow concept.
-    pub fn with_overlay<T>(&self, id: FileId, text: &str, f: impl FnOnce(&Self) -> T) -> T {
-        self.overlay.write().insert(id, text.to_string());
-        // Drop any cached source for this id so the overlay is observed.
-        self.slots.lock().remove(&id);
-        let out = f(self);
-        self.overlay.write().remove(&id);
-        self.slots.lock().remove(&id);
-        out
-    }
-
     /// Stamp for a project-rooted file, or `None` for a package file (immutable
     /// for its version, so it is never revalidated).
     fn stamp_for(&self, id: FileId) -> Option<FileStamp> {
@@ -460,17 +443,9 @@ impl World for MobileWorld {
         {
             return Ok(src.clone());
         }
-        // An overlay is a transient in-memory buffer with no file behind it, so
-        // it gets no stamp — `revalidate` would otherwise compare it against
-        // the on-disk file and drop it. `with_overlay` clears the slot on the
-        // way out either way.
-        let (text, stamp) = if let Some(content) = self.overlay.read().get(&id) {
-            (content.clone(), None)
-        } else {
-            let bytes = self.read_file_bytes(id)?;
-            let text = String::from_utf8(bytes).map_err(|_| FileError::AccessDenied)?;
-            (text, self.stamp_for(id))
-        };
+        let bytes = self.read_file_bytes(id)?;
+        let text = String::from_utf8(bytes).map_err(|_| FileError::AccessDenied)?;
+        let stamp = self.stamp_for(id);
         let source = Source::new(id, text);
         self.slots.lock().insert(
             id,
@@ -564,7 +539,6 @@ impl IdeWorld for MobileWorld {
         // `FileId` is not `Ord` in 0.15 — dedupe through a set instead.
         let mut ids = std::collections::HashSet::new();
         ids.extend(self.slots.lock().keys().copied());
-        ids.extend(self.overlay.read().keys().copied());
         ids.into_iter().collect()
     }
 }

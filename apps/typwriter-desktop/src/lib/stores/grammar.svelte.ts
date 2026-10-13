@@ -84,6 +84,7 @@ class GrammarStore {
   /** Monotonic per-file token; a response whose token is stale is dropped so
    *  a slow check can't overwrite a newer one. */
   private _tokens = new Map<string, number>();
+  private _nextToken = 0;
 
   // ── Lifecycle ────────────────────────────────────────────────────────
 
@@ -162,7 +163,7 @@ class GrammarStore {
       return okAsync(undefined);
     }
 
-    const token = (this._tokens.get(relPath) ?? 0) + 1;
+    const token = ++this._nextToken;
     this._tokens.set(relPath, token);
     if (!this.checking.includes(relPath)) {
       this.checking = [...this.checking, relPath];
@@ -178,14 +179,19 @@ class GrammarStore {
         logError(`grammar: check failed for ${relPath}:`, err);
         return err;
       })
-      .andTee(() => this._finishChecking(relPath))
-      .orTee(() => this._finishChecking(relPath));
+      .andTee(() => {
+        if (this._tokens.get(relPath) === token) this._finishChecking(relPath);
+      })
+      .orTee(() => {
+        if (this._tokens.get(relPath) === token) this._finishChecking(relPath);
+      });
   }
 
   /** Forget a file's results — on tab close, or when it stops being checked. */
   forget(relPath: string): void {
     this._clearTimer(relPath);
     this._tokens.delete(relPath);
+    this._finishChecking(relPath);
     this._dropReport(relPath);
   }
 
@@ -310,6 +316,8 @@ class GrammarStore {
    *  changes what counts as a lint, so any change invalidates every report we
    *  hold. */
   private _apply(config: GrammarConfig): void {
+    this._tokens.clear();
+    this.checking = [];
     this.config = config;
     if (config.enabled) {
       this._scheduleRecheck();
@@ -342,6 +350,7 @@ class GrammarStore {
   }
 
   private _clearReports(): void {
+    this._tokens.clear();
     for (const timer of this._timers.values()) clearTimeout(timer);
     this._timers.clear();
     this.reports = {};

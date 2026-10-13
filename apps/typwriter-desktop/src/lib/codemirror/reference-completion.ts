@@ -6,15 +6,13 @@
 // figure defined in another chapter means remembering its exact label.
 
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
+import { referenceContextAt } from './completion-context';
 
 import { describeEntry, type BibEntry } from '$lib/bibliography';
 import {
-    citePrefixAt,
     extractLabels,
-    refPrefixAt,
     type LabelDef,
 } from '$lib/references';
-import { referenceCompletionSection } from './completion-sections';
 
 export interface LabelSource {
     /** Buffers to harvest labels from: usually every open `.typ` tab. */
@@ -146,7 +144,7 @@ function mergedOptions(
  * document untouched and accepting simply completes the name.
  *
  * Fires only where one of those is in progress, and is authoritative there:
- * the merged typst-ide source defers to it so the two do not offer competing
+ * the built-in and tinymist sources defer to it so they do not offer competing
  * lists anchored at different offsets.
  */
 export function referenceCompletionSource(
@@ -154,9 +152,7 @@ export function referenceCompletionSource(
     citationsOf: () => BibEntry[] = () => []
 ) {
     return (context: CompletionContext): CompletionResult | null => {
-        const text = context.state.doc.toString();
-        const ref = refPrefixAt(text, context.pos);
-        const cite = ref ? null : citePrefixAt(text, context.pos);
+        const { ref, cite } = referenceContextAt(context.state, context.pos);
         if (!ref && !cite) return null;
 
         if (ref) {
@@ -170,11 +166,13 @@ export function referenceCompletionSource(
                 options: options.map((option) => ({
                     ...option,
                     apply: option.label,
-                    section: referenceCompletionSection,
                 })),
                 // Let CodeMirror re-filter as the user types instead of asking
                 // us again for every character.
-                validFor: /^[\p{L}\p{N}_:.-]*$/u,
+                validFor: (word, from, to, state) => {
+                    const current = referenceContextAt(state, to).ref;
+                    return /^[\p{L}\p{N}_:.-]*$/u.test(word) && current?.from === from - 1;
+                },
             };
         }
 
@@ -185,11 +183,14 @@ export function referenceCompletionSource(
             options: options.map((option) => ({
                 ...option,
                 apply: cite!.bracketed ? `${option.label}>` : `<${option.label}>`,
-                section: referenceCompletionSection,
             })),
             // No closing `>` here: once it is typed the source runs again and
             // stops matching, which closes the list instead of re-filtering.
-            validFor: /^[\p{L}\p{N}_:.-]*$/u,
+            validFor: (word, from, to, state) => {
+                const current = referenceContextAt(state, to).cite;
+                return /^[\p{L}\p{N}_:.-]*$/u.test(word) &&
+                    current?.from === from && current.bracketed === cite!.bracketed;
+            },
         };
     };
 }

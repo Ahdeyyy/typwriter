@@ -9,7 +9,7 @@
 // shows the first N things typst happened to emit, so `#im` would surface
 // `align, alt, arguments, …` and never `image`.
 
-import type { EditorState, Text } from "@codemirror/state";
+import type { EditorState } from "@codemirror/state";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
 import { snippet } from "@codemirror/autocomplete";
 import { getCompletions } from "$lib/ipc/commands";
@@ -19,16 +19,17 @@ import {
   autoTriggerApplies,
   rankCompletions,
   toStripItem,
-  wordStartBefore,
+  completionAnchor,
   type StripItem,
 } from "./completion-logic";
+import { canReuseCompletions, completionScope, type CompletionSnapshot } from "./completion-context";
 
 const DEBOUNCE_MS = 150;
 const MAX_ITEMS = 20;
 
 class CompletionStore {
   /** Ranked and truncated — exactly what the strip renders. */
-  items = $state<StripItem[]>([]);
+  items = $state.raw<StripItem[]>([]);
   /** UTF-16 doc offset accepting an item replaces from. */
   from = $state(0);
 
@@ -36,6 +37,7 @@ class CompletionStore {
    *  keystroke can re-narrow the strip locally instead of waiting for (and
    *  flickering through) another round trip. */
   private all: StripItem[] = [];
+  private snapshot: (CompletionSnapshot & { view: EditorView; relPath: string }) | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private requestSeq = 0;
   /** Releases the scroll pin held across a manual trigger, if one is active. */
@@ -45,23 +47,26 @@ class CompletionStore {
   onCursorActivity(update: ViewUpdate) {
     const sel = update.state.selection.main;
     const head = sel.head;
-    // Drop the strip once the cursor leaves the active replacement region: a
-    // non-empty selection, moved before `from`, or the text from `from` to the
-    // cursor is no longer the single identifier being completed. Anchoring to
-    // `from` + token continuity (rather than a cursor-delta guess) keeps the
-    // list stable through continuous typing while still clearing on a tap away.
+    if (!editor.relPath?.endsWith(".typ") || !sel.empty) {
+      this.clear();
+      return;
+    }
+    if (!update.docChanged) {
+      // Cancel queued and in-flight requests even before candidates arrive.
+      if (update.selectionSet) this.clear();
+      return;
+    }
+    // Cached candidates are valid only while their surrounding syntax stays
+    // unchanged. Changing an argument, string delimiter or path invalidates it.
     if (this.all.length) {
-      const inRegion =
-        sel.empty &&
-        head >= this.from &&
-        /^[#@.]?[\w-]*$/.test(update.state.doc.sliceString(this.from, head));
+      const inRegion = this.snapshot && this.snapshot.view === update.view &&
+        this.snapshot.relPath === editor.relPath && canReuseCompletions(this.snapshot, update.state);
       if (inRegion) this.refilter(update.state);
       else this.clear();
     }
-    if (!update.docChanged) return;
     const line = update.state.doc.lineAt(head);
     const before = update.state.doc.sliceString(line.from, head);
-    if (!autoTriggerApplies(before)) {
+    if (!autoTriggerApplies(before, completionScope(update.state))) {
       this.clear();
       return;
     }
@@ -70,6 +75,11 @@ class CompletionStore {
 
   /** Manual trigger (Sparkle button) — reaches places auto-trigger declines. */
   trigger(view: EditorView) {
+    const scope = completionScope(view.state);
+    if (!editor.relPath?.endsWith(".typ") || !view.state.selection.main.empty || scope === "comment" || scope === "raw") {
+      this.clear();
+      return;
+    }
     // Nothing about asking for suggestions should move the editor, but the tap
     // lands outside the contenteditable and the answer comes back a round trip
     // later, which between them give Chrome and the strip's first layout plenty
@@ -80,57 +90,42 @@ class CompletionStore {
   }
 
   private schedule(view: EditorView, explicit: boolean, immediate = false) {
+    this.requestSeq++;
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => void this.request(view, explicit), immediate ? 0 : DEBOUNCE_MS);
   }
 
   private async request(view: EditorView, explicit: boolean) {
-    if (!editor.relPath) return;
-    const seq = ++this.requestSeq;
+    this.debounceTimer = null;
+    const relPath = editor.relPath;
+    if (!relPath?.endsWith(".typ") || editor.view !== view || !view.state.selection.main.empty) return;
+    const seq = this.requestSeq;
     const head = view.state.selection.main.head;
     const text = view.state.doc.toString();
-    const res = await getCompletions(editor.relPath, text, head, explicit);
+    const res = await getCompletions(relPath, text, head, explicit);
     if (seq !== this.requestSeq) return; // stale response
-    if (view.state.selection.main.head !== head) return; // cursor moved while waiting
+    if (editor.view !== view || editor.relPath !== relPath) return;
+    if (view.state.selection.main.head !== head || view.state.doc.toString() !== text) return;
     res.match(
-      (r) => this.adopt(view.state, r.completions.map(toStripItem), r.from),
+      (r) => this.adopt(view, relPath, r.completions.map(toStripItem), r.from),
       () => this.clear(),
     );
   }
 
   /** Install a fresh candidate set and pick the anchor it replaces from. */
-  private adopt(state: EditorState, all: StripItem[], typstFrom: number) {
+  private adopt(view: EditorView, relPath: string, all: StripItem[], typstFrom: number) {
+    const state = view.state;
+    if (!all.length || typstFrom < 0 || typstFrom > state.selection.main.head) {
+      this.clear();
+      return;
+    }
     this.all = all;
-    this.from = this.anchor(state, typstFrom);
+    const text = state.doc.toString();
+    const to = state.selection.main.head;
+    const scope = completionScope(state);
+    this.from = completionAnchor(text, to, typstFrom, scope, all);
+    this.snapshot = { text, from: this.from, to, scope, view, relPath };
     this.refilter(state);
-  }
-
-  /**
-   * Where an accepted item should start replacing.
-   *
-   * typst-ide anchors an *explicit* completion at the cursor even when a word
-   * is being typed (`complete_markup` sets `from = cursor` before emitting the
-   * snippet list). Taken literally that means the prefix is always empty, so
-   * nothing filters, and accepting appends after the half-typed word — tapping
-   * "heading" mid-word produced `Line 17 of f= titleiller prose`. When a word
-   * sits before the cursor and some candidate actually matches it, treat that
-   * word as the prefix instead. If nothing matches it we keep typst's anchor,
-   * so tapping the button mid-prose still offers the full snippet list and
-   * inserts rather than overwrites.
-   */
-  private anchor(state: EditorState, typstFrom: number): number {
-    const cursor = state.selection.main.head;
-    if (typstFrom !== cursor) return typstFrom;
-    const start = this.wordStart(state.doc, cursor);
-    if (start === cursor) return typstFrom;
-    return rankCompletions(this.all, state.doc.sliceString(start, cursor), 1).length
-      ? start
-      : typstFrom;
-  }
-
-  private wordStart(doc: Text, cursor: number): number {
-    const line = doc.lineAt(cursor);
-    return wordStartBefore(line.text, line.from, cursor);
   }
 
   /** Re-rank the current candidates against the text typed since `from`. */
@@ -144,6 +139,11 @@ class CompletionStore {
   }
 
   accept(view: EditorView, item: StripItem) {
+    if (!this.snapshot || view !== editor.view || view !== this.snapshot.view ||
+      editor.relPath !== this.snapshot.relPath || !canReuseCompletions(this.snapshot, view.state) || !this.items.includes(item)) {
+      this.clear();
+      return;
+    }
     // Accepting is exactly the case the pin must get out of the way of: the
     // insert scrolls the caret into view on purpose.
     this.unpin?.();
@@ -159,8 +159,14 @@ class CompletionStore {
   }
 
   clear() {
+    this.requestSeq++;
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = null;
+    this.unpin?.();
+    this.unpin = null;
     this.items = [];
     this.all = [];
+    this.snapshot = null;
   }
 }
 

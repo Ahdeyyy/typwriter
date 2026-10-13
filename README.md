@@ -77,3 +77,13 @@ To run the project locally, follow these steps:
 - **Formatter:** [Typstyle](https://github.com/typstyle-rs/typstyle)
 - **Grammer Checker:** [Harper](https://github.com/Automattic/harper/)
 - **UI Component:** [Shadcn-Svelte](https://www.shadcn-svelte.com/)
+
+## Support the Project
+
+Typwriter is free, open-source software built and maintained in my spare time. 
+
+If you find Typwriter useful and would like to support its development (and help cover things like an official Apple Developer certificate so macOS users don't have to bypass gatekeeper warnings), consider sponsoring!
+
+[![Fund my work on FLOSSAfrica](https://flossafrica.com/badge.svg)](https://flossafrica.com/m/ahdeyyy?p=typwriter)
+
+**Other ways to support:** You don't have to spend money to help! Giving the repository a star, reporting bugs, or helping solve issues goes a long way.

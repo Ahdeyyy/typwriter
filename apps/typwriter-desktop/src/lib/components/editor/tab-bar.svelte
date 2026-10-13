@@ -67,7 +67,8 @@
           </button>
               {/snippet}
             </Tooltip.Trigger>
-            <Tooltip.Content>
+            <!-- Block layout lets long paths wrap within the tooltip's width. -->
+            <Tooltip.Content class="block whitespace-normal wrap-break-word">
               {#if tab.externallyRemoved}
                 {tab.relPath} — deleted outside the editor; save to write it back
               {:else if tab.externalContent !== null}

@@ -8,13 +8,9 @@
 //   zoom.set(2.5)          // local write + broadcast to peers
 //   zoom.destroy()         // tear down listeners (call from store destroy())
 //
-// IMPORTANT: state lives on a class instance, not in a closure. Per the
-// project rule, module-level/closure `$state` loses reactivity — only
-// class-field `$state` is observed by Svelte's signal tracking when read
-// through getters from other modules. Earlier versions of this file used
-// `let value = $state(...)` inside a factory function and silently broke
-// every dependent `$derived` / `$effect` (the editor pane was the most
-// visible casualty).
+// Keep the project's class-store convention. Closure state can also remain
+// reactive when exposed through a getter; exporting a reassigned primitive
+// or returning its current value directly would lose the live signal.
 //
 // Protocol:
 //   xwin:<key>         payload { s: senderId, v: value }   — value updates
@@ -70,6 +66,7 @@ export class CrossWindowState<T> {
   /** Whether this holder has ever written the key, and so has an authoritative
    *  value to answer an ask with. */
   #authoritative = false;
+  #destroyed = false;
 
   constructor(key: string, initial: T) {
     this.#key = key;
@@ -85,17 +82,21 @@ export class CrossWindowState<T> {
     // would be dropped — leaving this holder stuck on its default with no
     // second chance to ask.
     listen<ValueEnvelope<T>>(EVT(key), ({ payload }) => {
-      if (payload.s === this.#sid) return;
+      if (this.#destroyed || payload.s === this.#sid) return;
       this.#value = payload.v;
     })
       .then((u) => {
+        if (this.#destroyed) {
+          u();
+          return;
+        }
         this.#unlisteners.push(u);
         return emit(ASK(key), { s: this.#sid } satisfies AskEnvelope);
       })
       .catch((err) => logError(`crossWindowState[${key}]: value listen failed:`, err));
 
     listen<AskEnvelope>(ASK(key), ({ payload }) => {
-      if (payload.s === this.#sid) return;
+      if (this.#destroyed || payload.s === this.#sid) return;
       // Pure readers stay quiet — see the note on writers above.
       if (!this.#authoritative) return;
       emit(EVT(key), {
@@ -105,7 +106,10 @@ export class CrossWindowState<T> {
         logError(`crossWindowState[${key}]: snapshot reply failed:`, err)
       );
     })
-      .then((u) => this.#unlisteners.push(u))
+      .then((u) => {
+        if (this.#destroyed) u();
+        else this.#unlisteners.push(u);
+      })
       .catch((err) => logError(`crossWindowState[${key}]: ask listen failed:`, err));
   }
 
@@ -126,6 +130,7 @@ export class CrossWindowState<T> {
   }
 
   destroy(): void {
+    this.#destroyed = true;
     for (const u of this.#unlisteners) u();
     this.#unlisteners.length = 0;
   }

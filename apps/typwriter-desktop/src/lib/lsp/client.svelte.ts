@@ -17,10 +17,7 @@ import {
 } from '@codemirror/lsp-client';
 import { EditorState, type Extension } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
-import {
-    autocompletion,
-    type CompletionSource,
-} from '@codemirror/autocomplete';
+import { autocompletion } from '@codemirror/autocomplete';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 import { lspStart, lspStop } from '$lib/ipc/commands';
@@ -32,25 +29,11 @@ import type { SerializedDiagnostic } from '$lib/types';
 
 import { lspProbeState } from './probe.svelte';
 import { createTauriLspTransport, type TauriLspTransport } from './transport';
-import { typstCompletionSection } from '$lib/codemirror/completion-sections';
-import { refPrefixAt } from '$lib/references';
+import { semanticCompletionSource } from '$lib/codemirror/typst-completion';
 
 const INIT_TIMEOUT_MS = 10_000;
 
-const typstServerCompletion: CompletionSource = async (context) => {
-    if (refPrefixAt(context.state.doc.toString(), context.pos)) return null;
-
-    const result = await serverCompletionSource(context);
-    if (!result) return null;
-
-    return {
-        ...result,
-        options: result.options.map((option) => ({
-            ...option,
-            section: typstCompletionSection,
-        })),
-    };
-};
+const typstServerCompletion = semanticCompletionSource(serverCompletionSource);
 
 const typstServerCompletionExtension = [
     autocompletion(),

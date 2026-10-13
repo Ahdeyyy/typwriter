@@ -1,6 +1,7 @@
 // Pure completion helpers (no Svelte/CM imports) so they're unit-testable.
 
 import type { IpcCompletion } from "$lib/ipc/types";
+import type { CompletionScope } from "./completion-context";
 
 export interface StripItem {
   label: string;
@@ -145,12 +146,11 @@ export function rankCompletions(
   return scored.slice(0, limit).map((s) => s.item);
 }
 
-/** Start of the `[\w-]` run ending at `cursor` within `line`, as a doc offset.
+/** Start of the identifier ending at `cursor` within `line`, as a doc offset.
  *  `lineFrom` is the doc offset of the line's first character. */
 export function wordStartBefore(line: string, lineFrom: number, cursor: number): number {
-  let i = cursor - lineFrom;
-  while (i > 0 && /[\w-]/.test(line[i - 1])) i--;
-  return lineFrom + i;
+  const prefix = line.slice(0, cursor - lineFrom);
+  return cursor - (prefix.match(/[\p{L}\p{M}\p{N}_-]+$/u)?.[0].length ?? 0);
 }
 
 /** Whether auto-trigger applies, given the text on the current line before the
@@ -162,13 +162,27 @@ export function wordStartBefore(line: string, lineFrom: number, cursor: number):
  *  bare `#` fires, but so does `#i` and `#im` — without it, the single-char
  *  state (`#i`) matched neither the sigil nor the ≥2-word branch, so the strip
  *  cleared for one keystroke and reappeared, reading as broken. */
-export function autoTriggerApplies(beforeCursor: string): boolean {
-  // Cheap noise filter: a line comment before the cursor.
-  if (beforeCursor.includes("//")) return false;
+export function autoTriggerApplies(beforeCursor: string, scope?: CompletionScope): boolean {
+  if (scope === "comment" || scope === "raw") return false;
+  // Let typst-ide choose values, fields, parameters and paths from syntax,
+  // including empty values after an opening quote, colon or argument delimiter.
+  if (scope && scope !== "markup") return true;
+  // Text-only callers cannot distinguish comments from strings and raw blocks.
+  if (!scope && beforeCursor.includes("//")) return false;
   const lastChar = beforeCursor.at(-1);
   if (lastChar === "#" || lastChar === "@" || lastChar === ".") return true;
   // Mid-identifier right after a sigil — complete from the first character.
-  if (/[#@.][\w-]+$/.test(beforeCursor)) return true;
+  if (/[#@.][\p{L}\p{M}\p{N}_-]+$/u.test(beforeCursor)) return true;
   // A standalone word of 2+ chars, so plain prose doesn't request on every key.
-  return /[\w-]{2,}$/.test(beforeCursor);
+  return /[\p{L}\p{M}\p{N}_-]{2,}$/u.test(beforeCursor);
+}
+
+/** Only markup's explicit snippet list needs the mid-word anchor workaround. */
+export function completionAnchor(
+  text: string, cursor: number, typstFrom: number, scope: CompletionScope, candidates: readonly StripItem[],
+): number {
+  if (scope !== "markup" || typstFrom !== cursor) return typstFrom;
+  const from = wordStartBefore(text, 0, cursor);
+  const prefix = text.slice(from, cursor);
+  return from < cursor && candidates.some((item) => scoreCompletion(item.label, prefix) !== null) ? from : typstFrom;
 }

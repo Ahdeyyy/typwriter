@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { watch } from "runed";
   import { page } from "@/stores/page.svelte";
   import Button from "../ui/button/button.svelte";
   import {
@@ -71,8 +72,8 @@
     );
   }
 
-  $effect(() => {
-    if (newWorkspaceOpen && newWorkspaceType === "template") {
+  watch([() => newWorkspaceOpen, () => newWorkspaceType], ([open, type]) => {
+    if (open && type === "template") {
       void loadTemplates();
     }
   });

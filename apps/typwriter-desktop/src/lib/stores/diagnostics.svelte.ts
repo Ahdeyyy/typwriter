@@ -15,15 +15,23 @@ class DiagnosticsStore {
     togglePane() { this.paneOpen = !this.paneOpen; }
 
     private _unlisten: UnlistenFn | null = null;
+    private _initGeneration = 0;
 
     async init(): Promise<void> {
+        const generation = ++this._initGeneration;
+        this._unlisten?.();
+        this._unlisten = null;
         const result = await onCompileDiagnostics(({ errors, warnings }) => {
+            if (generation !== this._initGeneration) return;
             // While the LSP is active, compile-pipeline diagnostics are ignored.
             if (this.lspActive) return;
             this.errors   = errors;
             this.warnings = warnings;
         });
-        if (result.isOk()) this._unlisten = result.value;
+        if (result.isOk()) {
+            if (generation !== this._initGeneration) result.value();
+            else this._unlisten = result.value;
+        }
         else logError('diagnostics: listener failed:', result.error);
     }
 
@@ -61,6 +69,7 @@ class DiagnosticsStore {
     }
 
     destroy(): void {
+        this._initGeneration++;
         this._unlisten?.();
         this._unlisten = null;
         this.errors = [];

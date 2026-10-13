@@ -12,7 +12,7 @@ function defaultBucket(): 1 | 2 | 3 | 4 {
   return dpr >= 2 ? 3 : 2;
 }
 
-class SettingsStore {
+export class SettingsStore {
   editorFontSize = $state(15);
   showLineNumbers = $state(false);
   autosaveMs = $state(600);
@@ -27,14 +27,23 @@ class SettingsStore {
   private store: Store | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private loaded = false;
+  private initPromise: Promise<void> | null = null;
 
-  /** Load persisted values once (call from the root component on mount). */
-  async init() {
-    if (this.loaded || typeof window === "undefined") return;
-    this.loaded = true;
+  /** Concurrent callers wait for the same hydration; a failed load may retry. */
+  init(): Promise<void> {
+    if (this.loaded || typeof window === "undefined") return Promise.resolve();
+    if (!this.initPromise) {
+      this.initPromise = this.loadSettings().finally(() => {
+        this.initPromise = null;
+      });
+    }
+    return this.initPromise;
+  }
+
+  private async loadSettings(): Promise<void> {
     try {
-      this.store = await load(STORE_FILE, { autoSave: false, defaults: {} });
-      const saved = await this.store.get<AppSettings>("settings");
+      const store = await load(STORE_FILE, { autoSave: false, defaults: {} });
+      const saved = await store.get<AppSettings>("settings");
       if (saved) {
         this.editorFontSize = saved.editorFontSize ?? this.editorFontSize;
         this.showLineNumbers = saved.showLineNumbers ?? this.showLineNumbers;
@@ -47,6 +56,8 @@ class SettingsStore {
         this.lastPngScale = saved.lastPngScale ?? this.lastPngScale;
         this.lastPackageMode = saved.lastPackageMode ?? this.lastPackageMode;
       }
+      this.store = store;
+      this.loaded = true;
     } catch (e) {
       console.error("settings: load failed", e);
     }

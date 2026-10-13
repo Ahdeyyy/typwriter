@@ -14,6 +14,8 @@ export interface TauriLspTransport extends Transport {
 
 export async function createTauriLspTransport(): Promise<TauriLspTransport> {
     const handlers = new Set<(value: string) => void>();
+    let pending = Promise.resolve();
+    let disposed = false;
 
     // Await the listener before returning so no early server messages are
     // dropped between connect() and the first subscribe().
@@ -23,7 +25,12 @@ export async function createTauriLspTransport(): Promise<TauriLspTransport> {
 
     return {
         send(message) {
-            void lspSend(message).mapErr((err) => logError('lsp send failed:', err));
+            // Tauri runs lsp_send on worker threads. Preserve wire order so
+            // didOpen/didChange reaches tinymist before the query using it.
+            pending = pending.then(async () => {
+                if (disposed) return;
+                await lspSend(message).mapErr((err) => logError('lsp send failed:', err));
+            }).catch((err) => logError('lsp send failed:', err));
         },
         subscribe(handler) {
             handlers.add(handler);
@@ -32,6 +39,8 @@ export async function createTauriLspTransport(): Promise<TauriLspTransport> {
             handlers.delete(handler);
         },
         dispose() {
+            if (disposed) return;
+            disposed = true;
             handlers.clear();
             unlisten();
         },

@@ -15,7 +15,9 @@
     onGrammarConfigChanged,
     onAppModeChanged,
     onShowTutorialRequest,
+    onSnippetsChanged,
   } from "$lib/ipc/events";
+  import { ListenerScope } from "$lib/ipc/listener-scope";
   import { grammar } from "$lib/stores/grammar.svelte";
   import { snippets } from "$lib/stores/snippets.svelte";
   import { page } from "$lib/stores/page.svelte";
@@ -126,7 +128,8 @@
     };
   });
 
-  onMount(async () => {
+  onMount(() => {
+    const listeners = new ListenerScope();
     app.setTheme(mode.current === "dark" ? "dark" : "light");
     settings.init();
 
@@ -139,55 +142,55 @@
 
     // Background font reloads (settings change) replay the same event the
     // initial startup load uses; refresh the family list when they land.
-    const result = await onAppFontsLoaded(() => {
+    listeners.listen<void>(onAppFontsLoaded, () => {
       settings.onFontsReloaded();
-    });
-    if (result.isErr()) {
-      // Logged inside onAppFontsLoaded helper if needed; no-op here.
-    }
+    }, (err) => logError("font listener failed:", err));
 
     // Settings live in their own window; replay changes made in any window
     // into this window's store instance so theme/fonts/editor prefs apply
     // everywhere immediately.
-    onSettingsChanged<SettingsSyncPayload>((payload) => {
+    listeners.listen(onSettingsChanged<SettingsSyncPayload>, (payload) => {
       settings.applyExternal(payload);
-    }).mapErr((err) => logError("settings sync listener failed:", err));
+    }, (err) => logError("settings sync listener failed:", err));
 
     // Grammar config is per-window state too, and its settings pane is in the
     // settings window while the underlines it controls are in the main one —
     // so every window loads it and every window replays changes to the others.
     grammar.init().mapErr((err) => logError("grammar init failed:", err));
-    onGrammarConfigChanged((config) => {
+    listeners.listen(onGrammarConfigChanged, (config) => {
       grammar.applyExternal(config);
-    }).mapErr((err) => logError("grammar sync listener failed:", err));
+    }, (err) => logError("grammar sync listener failed:", err));
 
     // Snippets are authored in the settings window and consumed by the editor's
     // completion list in the main one, so every window replays the others'
     // edits. Neither scope arrives on its own: the app-wide set lives in the
     // settings store, and the project file sits in `.typwriter/`, which the
     // workspace watcher ignores.
-    void snippets.initSync();
+    listeners.listen(onSnippetsChanged, (scope) => {
+      void snippets.reloadScope(scope);
+    }, (err) => logError("snippets sync listener failed:", err));
 
     // Light/dark lives in mode-watcher, not the settings store, so it needs its
     // own replay. Apply locally only — re-emitting would ping-pong.
-    onAppModeChanged((next) => {
+    listeners.listen(onAppModeChanged, (next) => {
       if (next === "system") {
         resetMode();
       } else {
         setMode(next);
       }
       app.setTheme(mode.current === "dark" ? "dark" : "light");
-    }).mapErr((err) => logError("mode sync listener failed:", err));
+    }, (err) => logError("mode sync listener failed:", err));
 
     // Settings › General › Tutorial delegates here: only the main window hosts
     // the page stack the onboarding tutorial lives in.
     const currentWindow = Window.getCurrent();
     if (currentWindow.label === "main") {
-      onShowTutorialRequest(() => {
+      listeners.listen<void>(onShowTutorialRequest, () => {
         page.navigate("onboarding");
         currentWindow.setFocus().catch((err) => logError("main window focus failed:", err));
-      }).mapErr((err) => logError("tutorial request listener failed:", err));
+      }, (err) => logError("tutorial request listener failed:", err));
     }
+    return () => listeners.destroy();
   });
 
   // ── Apply settings to <html> reactively ──────────────────────────────────

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount } from "svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
@@ -14,7 +14,6 @@
 
   const win = getCurrentWindow();
   let isMaximized = $state(false);
-  let unlisten: (() => void) | null = null;
 
   async function refreshMaximized() {
     try {
@@ -24,19 +23,20 @@
     }
   }
 
-  onMount(async () => {
-    await refreshMaximized();
-    try {
-      unlisten = await win.onResized(() => {
-        refreshMaximized();
-      });
-    } catch (err) {
-      logError("titlebar: onResized listener failed:", err);
-    }
-  });
-
-  onDestroy(() => {
-    unlisten?.();
+  onMount(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    void refreshMaximized();
+    win.onResized(() => { if (!disposed) void refreshMaximized(); })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      })
+      .catch((err) => logError("titlebar: onResized listener failed:", err));
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   });
 
   function minimize() {

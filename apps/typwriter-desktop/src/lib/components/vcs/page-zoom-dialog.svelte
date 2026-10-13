@@ -132,6 +132,9 @@
         loading = false;
       }
     );
+    // Closing the dialog or changing its target invalidates an IPC render
+    // even when the next effect run has no page to request.
+    return () => { generation++; };
   });
 
   function step(delta: number) {

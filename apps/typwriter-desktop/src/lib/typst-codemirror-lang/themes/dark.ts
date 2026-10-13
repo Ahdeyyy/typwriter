@@ -11,7 +11,8 @@ const MD = {
     bg:          "#1e1e2e",
     bgDark:      "#181825",
     bgHighlight: "#2a2a3c",
-    bgSelection: "#4895ef28",
+    bgSelection: "#cba6f760",
+    bgActiveLine: "#4895ef28",
     border:      "#313244",
 
     fg:          "#cdd6f4",
@@ -52,7 +53,17 @@ export const darkTheme = EditorView.theme(
         ".cm-panels.cm-panels-top": { borderBottom: "2px solid var(--border)" },
         ".cm-panels.cm-panels-bottom": { borderTop: "2px solid var(--border)" },
         ".cm-activeLine": {
-            backgroundColor: MD.bgSelection,
+            position: "relative",
+            backgroundColor: "transparent",
+        },
+        ".cm-activeLine::before": {
+            content: '""',
+            position: "absolute",
+            inset: "0",
+            // CodeMirror's selection layer is at -2, below the text.
+            zIndex: "-3",
+            pointerEvents: "none",
+            backgroundColor: MD.bgActiveLine,
         },
         ".cm-searchMatch": {
             backgroundColor: "#fde047",
