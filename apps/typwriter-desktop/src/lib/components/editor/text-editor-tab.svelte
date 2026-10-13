@@ -23,13 +23,7 @@
     closeBracketsKeymap,
     closeCompletion,
     completionStatus,
-    completeFromList,
-    snippet,
     startCompletion,
-    type Completion,
-    type CompletionContext,
-    type CompletionResult,
-    type CompletionSource,
   } from "@codemirror/autocomplete";
   import {
     foldGutter,
@@ -55,7 +49,7 @@
     mergeLabels,
     referenceCompletionSource,
   } from "$lib/codemirror/reference-completion";
-  import { refPrefixAt } from "$lib/references";
+  import { typstCompletionSource } from "$lib/codemirror/typst-completion";
   import { bibliography } from "$lib/stores/bibliography.svelte";
   import { documentScope } from "$lib/stores/document-scope.svelte";
   import { ui } from "$lib/stores/ui.svelte";
@@ -285,14 +279,16 @@
       ];
     }
 
+    const builtInCompletions = typstCompletionsForTab(tabId);
     return [
-      autocompletion({
-        override: [
-          mergedTypstCompletionsForTab(tabId),
-          referenceCompletions,
-          snippetCompletions,
-        ],
-      }),
+      autocompletion(),
+      // Each source owns its replacement range and filtering rules, including
+      // native languages mounted in raw blocks.
+      EditorState.languageData.of(() => [
+        { autocomplete: builtInCompletions },
+        { autocomplete: referenceCompletions },
+        { autocomplete: snippetCompletions },
+      ]),
       hoverTooltip(
         async (_view, pos) => {
           const t = editor.tabs.find((tab) => tab.id === tabId);
@@ -318,190 +314,13 @@
     ];
   }
 
-  /**
-   * Convert a typst-ide completion `apply` string into a CodeMirror snippet
-   * template. typst-ide marks placeholders as `${name}` (default text, e.g.
-   * `${body}`) or `${}` (empty). CodeMirror's snippet parser treats `${…}` and
-   * `#{…}` as fields and only honors `\{` / `\}` as escapes — so we escape every
-   * literal brace. That neutralizes Typst's own `#{…}` code blocks and stray
-   * braces while leaving real placeholders as tabstops (the first is selected on
-   * accept; Tab/Escape jump through the rest, empty ones land the cursor only).
-   */
-  function typstApplyToSnippet(apply: string): string {
-    let out = "";
-    for (let i = 0; i < apply.length; i++) {
-      const ch = apply[i];
-      if (ch === "$" && apply[i + 1] === "{") {
-        const end = apply.indexOf("}", i + 2);
-        if (end !== -1) {
-          const inner = apply.slice(i + 2, end);
-          out += "${" + inner.replace(/[{}]/g, "\\$&") + "}";
-          i = end; // for-loop ++ advances past the closing brace
-          continue;
-        }
-      }
-      out += ch === "{" || ch === "}" ? "\\" + ch : ch;
-    }
-    return out;
-  }
-
-  /**
-   * Map a backend completion kind onto a CodeMirror completion `type`, which is
-   * what picks the icon (see `themes/completion-icons.ts`).
-   *
-   * The backend sends `format!("{:?}", CompletionKind)`, so the variant name
-   * arrives verbatim — and `Symbol(…)` carries the symbol itself, which is why
-   * this matches on the variant *prefix* rather than searching the whole string
-   * (`Symbol("func")` would otherwise come back as a function).
-   */
-  function mapBackendCompletionKind(kind: string): Completion["type"] {
-    const variant = kind.split("(")[0].trim().toLowerCase();
-    switch (variant) {
-      case "syntax":
-        return "syntax";
-      case "func":
-        return "function";
-      case "type":
-        return "type";
-      case "param":
-        return "property";
-      case "constant":
-        return "constant";
-      case "path":
-        return "path";
-      case "package":
-        return "package";
-      case "label":
-        return "label";
-      case "font":
-        return "font";
-      case "symbol":
-        return "symbol";
-    }
-    // Anything else (a future variant, or a kind coming from elsewhere) still
-    // gets a sensible icon from a loose match.
-    if (variant.includes("func")) return "function";
-    if (variant.includes("type")) return "type";
-    if (variant.includes("param") || variant.includes("field"))
-      return "property";
-    if (variant.includes("var")) return "variable";
-    if (variant.includes("module") || variant.includes("namespace"))
-      return "namespace";
-    if (variant.includes("constant")) return "constant";
-    if (variant.includes("keyword")) return "keyword";
-    return "text";
-  }
-
-  async function getLanguageCompletionResults(
-    context: CompletionContext,
-  ): Promise<CompletionResult[]> {
-    const rawSources = context.state.languageDataAt<unknown>(
-      "autocomplete",
-      context.pos,
-    );
-    const completionSources: CompletionSource[] = rawSources
-      .map((source): CompletionSource | null => {
-        if (typeof source === "function") {
-          return source as CompletionSource;
-        }
-        if (Array.isArray(source)) {
-          return completeFromList(source as readonly Completion[]);
-        }
-        return null;
-      })
-      .filter((source): source is CompletionSource => source !== null);
-
-    const results: CompletionResult[] = [];
-    for (const source of completionSources) {
-      const result = await source(context);
-
-      if (result) {
-        results.push(result);
-      }
-    }
-    return results;
-  }
-
-  function mergedTypstCompletionsForTab(tabId: string): CompletionSource {
-    return async (context: CompletionContext) => {
-      const hasWordBeforeCursor = context.matchBefore(/[\w-]+/);
-      if (
-        !context.explicit &&
-        (!hasWordBeforeCursor ||
-          hasWordBeforeCursor.from === hasWordBeforeCursor.to)
-      ) {
-        return null;
-      }
-
+  function typstCompletionsForTab(tabId: string) {
+    return typstCompletionSource(async (text, pos, explicit) => {
       const tab = editor.tabs.find((t) => t.id === tabId);
       if (!tab || tab.viewMode !== "text") return null;
-
-      // Inside an `@…`, the reference source owns the list. Two sources
-      // answering the same position with different `from` offsets produces a
-      // list CodeMirror cannot filter coherently.
-      if (refPrefixAt(context.state.doc.toString(), context.pos)) return null;
-
-      const [languageResults, backendResult] = await Promise.all([
-        getLanguageCompletionResults(context),
-        getCompletions(tab.absPath, context.pos, context.explicit),
-      ]);
-
-      const languageOptions = languageResults.flatMap(
-        (result) => result.options ?? [],
-      );
-      const backendPayload = backendResult.isOk() ? backendResult.value : null;
-      // Keep the raw apply string for the dedup key: typst-ide's `${…}`
-      // placeholders are turned into a CodeMirror snippet (a function apply), so
-      // the option itself no longer carries a stable string to key on.
-      const backendOptions: { option: Completion; key: string }[] =
-        backendPayload
-          ? backendPayload.completions.map((item) => {
-              const rawApply = item.apply ?? item.label;
-              const type = mapBackendCompletionKind(item.kind);
-              return {
-                option: {
-                  label: item.label,
-                  type,
-                  apply: rawApply.includes("${")
-                    ? snippet(typstApplyToSnippet(rawApply))
-                    : rawApply,
-                  detail: item.detail ?? undefined,
-                },
-                key: `${item.label}::${rawApply}::${type ?? ""}`,
-              };
-            })
-          : [];
-
-      const seenKeys = new Set<string>();
-      const mergedOptions: Completion[] = [];
-      const pushUnique = (option: Completion, key: string) => {
-        if (seenKeys.has(key)) return;
-        seenKeys.add(key);
-        mergedOptions.push(option);
-      };
-
-      backendOptions.forEach(({ option, key }) => pushUnique(option, key));
-      languageOptions.forEach((option) =>
-        pushUnique(
-          option,
-          `${option.label}::${option.apply ?? ""}::${option.type ?? ""}`,
-        ),
-      );
-
-      if (mergedOptions.length === 0) return null;
-
-      const fromCandidates = [
-        ...languageResults.map((result) => result.from),
-        ...(backendPayload ? [backendPayload.from] : []),
-      ];
-      const from =
-        fromCandidates.length > 0 ? Math.min(...fromCandidates) : context.pos;
-
-      return {
-        from,
-        options: mergedOptions,
-      };
-    };
+      const result = await getCompletions(tab.absPath, pos, explicit, text);
+      return result.isOk() ? result.value : null;
+    });
   }
 
   function toCMDiagnostic(

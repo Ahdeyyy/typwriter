@@ -9,6 +9,8 @@ import { snippet as cmSnippet, type CompletionContext, type CompletionResult } f
 
 import { refPrefixAt } from '$lib/references';
 import type { Snippet } from '$lib/snippets';
+import { completionScope, completionTree } from './completion-context';
+import type { Tree } from '@lezer/common';
 
 /** Characters that can precede the caret and still be a snippet name. */
 const NAME_CHARS = /[\p{L}\p{N}_-]/u;
@@ -29,35 +31,16 @@ export function wordBefore(text: string, pos: number): { from: number; word: str
 /**
  * Whether `pos` sits somewhere a snippet makes sense.
  *
- * Snippets insert markup, so offering them inside a raw block or a comment
- * would be actively wrong. This is a cheap textual test rather than a parse:
- * the completion path runs per keystroke, and a false negative merely withholds
- * a suggestion.
+ * Snippets insert markup, so only offer them in markup and content blocks.
+ * The syntax tree handles strings, nested comments, raw delimiters and math.
  */
-export function inInsertableContext(text: string, pos: number): boolean {
+export function inInsertableContext(text: string, pos: number, tree?: Tree): boolean {
     // Mid-reference: `@fig` is a reference being typed, and the reference source
     // owns that position. Two sources answering it with different `from` offsets
     // gives CodeMirror a list it cannot filter coherently.
     if (refPrefixAt(text, pos)) return false;
 
-    const before = text.slice(0, pos);
-
-    // Inside a fenced raw block when an odd number of fences precede us.
-    const fences = (before.match(/```/g) ?? []).length;
-    if (fences % 2 === 1) return false;
-
-    // Inside a line comment.
-    const lineStart = before.lastIndexOf('\n') + 1;
-    const line = before.slice(lineStart);
-    const comment = line.indexOf('//');
-    if (comment !== -1) return false;
-
-    // Inside a block comment.
-    const opens = (before.match(/\/\*/g) ?? []).length;
-    const closes = (before.match(/\*\//g) ?? []).length;
-    if (opens > closes) return false;
-
-    return true;
+    return completionScope(text, pos, tree) === 'markup';
 }
 
 /**
@@ -70,7 +53,7 @@ export function inInsertableContext(text: string, pos: number): boolean {
 export function snippetCompletionSource(snippetsOf: () => readonly Snippet[]) {
     return (context: CompletionContext): CompletionResult | null => {
         const text = context.state.doc.toString();
-        if (!inInsertableContext(text, context.pos)) return null;
+        if (!inInsertableContext(text, context.pos, completionTree(context.state))) return null;
 
         const hit = wordBefore(text, context.pos);
         if (!hit && !context.explicit) return null;
@@ -87,7 +70,9 @@ export function snippetCompletionSource(snippetsOf: () => readonly Snippet[]) {
                 detail: entry.description,
                 apply: cmSnippet(entry.body),
             })),
-            validFor: /^[\p{L}\p{N}_-]*$/u,
+            validFor: (word, _from, to, state) =>
+                /^[\p{L}\p{N}_-]*$/u.test(word) &&
+                inInsertableContext(state.doc.toString(), to, completionTree(state)),
         };
     };
 }

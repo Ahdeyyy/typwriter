@@ -25,6 +25,34 @@ function contextAt(doc: string, pos = doc.length, explicit = false): CompletionC
 const labelsFrom = (files: Record<string, string>) => () =>
     Object.entries(files).flatMap(([path, text]) => extractLabels(text, path));
 
+describe('reference completion context', () => {
+    const source = referenceCompletionSource(labelsFrom({ 'main.typ': '<fig>' }), () => [bibEntry('key', 'refs.bib')]);
+
+    it.each([
+        '// @fig', '/* @fig', '`@fig', '```\n@fig',
+        '#let name = "@fig', '#import "@preview/pkg',
+        '// #cite(', '`#cite(', '#let x = "#cite(',
+        '#set text(font: /* #cite(', '#set text(font: // #cite(',
+        '\\@fig', '\\#cite(',
+    ])('does not complete references in %s', (doc) => {
+        expect(source(contextAt(doc, doc.length, true))).toBeNull();
+    });
+
+    it('completes references inside content nested in code', () => {
+        const doc = '#figure[See @fi';
+        expect(source(contextAt(doc))?.options.map((o) => o.label)).toContain('fig');
+    });
+
+    it('invalidates cached references when their surrounding syntax changes', () => {
+        const doc = 'See @fi';
+        const result = source(contextAt(doc))!;
+        expect(typeof result.validFor).toBe('function');
+        if (typeof result.validFor !== 'function') throw new Error('Expected a context guard');
+        const state = EditorState.create({ doc: '#let x = "See @fi' });
+        expect(result.validFor('fi', state.doc.length - 2, state.doc.length, state)).toBe(false);
+    });
+});
+
 describe('createLabelIndex', () => {
     it('collects labels from every buffer', () => {
         const index = createLabelIndex({
@@ -140,9 +168,10 @@ describe('referenceCompletionSource', () => {
     it('keeps the completion open as the name is typed', () => {
         const result = source(contextAt('See @'))!;
         expect(result.validFor).toBeDefined();
-        const re = result.validFor as RegExp;
-        expect(re.test('fig-one')).toBe(true);
-        expect(re.test('fig one')).toBe(false);
+        if (typeof result.validFor !== 'function') throw new Error('Expected a context guard');
+        const state = EditorState.create({ doc: 'See @fig-one' });
+        expect(result.validFor('fig-one', 5, state.doc.length, state)).toBe(true);
+        expect(result.validFor('fig one', 5, state.doc.length, state)).toBe(false);
     });
 });
 

@@ -1,6 +1,7 @@
 import { expect, test, describe } from "bun:test";
 import {
   autoTriggerApplies,
+  completionAnchor,
   rankCompletions,
   scoreCompletion,
   toStripItem,
@@ -120,6 +121,14 @@ describe("rankCompletions", () => {
 });
 
 describe("wordStartBefore", () => {
+  test("supports non-ASCII identifiers and combining marks", () => {
+    expect(wordStartBefore("#café", 0, 5)).toBe(1);
+    expect(wordStartBefore("#中文", 0, 3)).toBe(1);
+    const word = '#a\u0301';
+    expect(wordStartBefore(word, 0, word.length)).toBe(1);
+    const astral = '#\u{10400}name';
+    expect(wordStartBefore(astral, 0, astral.length)).toBe(1);
+  });
   test("walks back over the identifier only", () => {
     //            0123456789
     expect(wordStartBefore("set image", 0, 9)).toBe(4);
@@ -132,6 +141,19 @@ describe("wordStartBefore", () => {
 
   test("returns a doc offset, not a line offset", () => {
     expect(wordStartBefore("set image", 100, 109)).toBe(104);
+  });
+});
+
+describe("completionAnchor", () => {
+  test("replaces the typed word for an explicit markup snippet", () => {
+    expect(completionAnchor('head', 4, 4, 'markup', items('heading'))).toBe(0);
+    expect(completionAnchor('prose', 5, 5, 'markup', items('heading'))).toBe(5);
+  });
+
+  test("never rewrites the IDE anchor in argument or string contexts", () => {
+    const doc = '#set text(font: "Times N';
+    expect(completionAnchor(doc, doc.length, 17, 'string', items('Times New Roman'))).toBe(17);
+    expect(completionAnchor('#text(bo', 8, 8, 'code', items('body'))).toBe(8);
   });
 });
 

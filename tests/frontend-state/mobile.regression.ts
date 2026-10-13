@@ -299,10 +299,7 @@ test("clearing completions cancels the queued request", async () => {
   text = "#im";
   completions.onCursorActivity({
     docChanged: true,
-    state: {
-      selection: { main: { head: 3, empty: true } },
-      doc: { lineAt: () => ({ from: 0 }), sliceString: () => "#im" },
-    },
+    state: EditorState.create({ doc: "#im", selection: { anchor: 3 } }),
     view,
   } as never);
   completions.clear();
@@ -323,4 +320,124 @@ test("clearing completions invalidates a response already in flight", async () =
   response.resolve({ from: 1, completions: [{ kind: "func", label: "image", apply: "image()", detail: null } as never] });
   await new Promise((done) => setTimeout(done, 0));
   expect(completions.items).toEqual([]);
+});
+
+function completionViewFor(doc: string, head = doc.length) {
+  const completionView = { state: EditorState.create({ doc, selection: { anchor: head } }) } as EditorView;
+  editor.view = completionView;
+  return completionView;
+}
+
+function completionActivity(completionView: EditorView, docChanged = true, selectionSet = false) {
+  completions.onCursorActivity({ docChanged, selectionSet, state: completionView.state, view: completionView } as never);
+}
+
+function completionResponse(from: number, labels: string[], kind = "Font") {
+  return ResultAsync.fromSafePromise(Promise.resolve({
+    from, completions: labels.map((label) => ({ kind, label, apply: label, detail: null })),
+  })) as ReturnType<typeof getCompletions>;
+}
+
+test("mobile completions trigger on an opening quote and rank candidates beyond 256", async () => {
+  const doc = '#set text(font: "';
+  const completionView = completionViewFor(doc);
+  getCompletions.mockImplementationOnce(() => completionResponse(doc.length,
+    [...Array.from({ length: 300 }, (_, i) => `Font ${i}`), 'Zebra Sans']));
+  completionActivity(completionView);
+  await new Promise((done) => setTimeout(done, 175));
+  expect(getCompletions).toHaveBeenCalledWith('main.typ', doc, doc.length, false);
+  (completionView as { state: EditorState }).state = EditorState.create({ doc: doc + 'Zebra', selection: { anchor: doc.length + 5 } });
+  completionActivity(completionView);
+  expect(completions.items.map((item) => item.label)).toEqual(['Zebra Sans']);
+});
+
+test("mobile completions preserve a multiword font anchor and reuse across spaces", async () => {
+  const doc = '#set text(font: "Times N';
+  const from = doc.indexOf('"');
+  const completionView = completionViewFor(doc);
+  getCompletions.mockImplementationOnce(() => completionResponse(from, ['"Times New Roman"', '"Noto Sans"']));
+  completionActivity(completionView);
+  await new Promise((done) => setTimeout(done, 175));
+  expect(completions.from).toBe(from);
+  expect(completions.items.map((item) => item.label)).toEqual(['"Times New Roman"']);
+  const next = doc + 'e ';
+  (completionView as { state: EditorState }).state = EditorState.create({ doc: next, selection: { anchor: next.length } });
+  completionActivity(completionView);
+  expect(completions.items.map((item) => item.label)).toEqual(['"Times New Roman"']);
+});
+
+test.each(['view', 'path'])("cached mobile completions belong to the requesting %s", async (owner) => {
+  const original = completionViewFor('#im');
+  getCompletions.mockImplementationOnce(() => completionResponse(1, ['image'], 'Func'));
+  completionActivity(original);
+  await new Promise((done) => setTimeout(done, 175));
+  const item = completions.items[0];
+  const active = owner === 'view' ? completionViewFor('#im') : original;
+  if (owner === 'path') editor.relPath = 'chapter.typ';
+  const focus = mock(() => {});
+  const dispatch = mock(() => {});
+  Object.assign(active, { focus, dispatch });
+  completions.accept(active, item);
+  expect(focus).not.toHaveBeenCalled();
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(completions.items).toEqual([]);
+});
+
+test("accepts a cached quoted font immediately after typing a space", async () => {
+  const doc = '#set text(font: "Noto';
+  const completionView = completionViewFor(doc);
+  getCompletions.mockImplementationOnce(() => completionResponse(doc.indexOf('"'), ['"Noto Sans"']));
+  completionActivity(completionView);
+  await new Promise((done) => setTimeout(done, 175));
+  const next = doc + ' ';
+  (completionView as { state: EditorState }).state = EditorState.create({ doc: next, selection: { anchor: next.length } });
+  completionActivity(completionView);
+  const focus = mock(() => {});
+  const dispatch = mock(() => {});
+  Object.assign(completionView, { focus, dispatch });
+  expect(completions.items).toHaveLength(1);
+  completions.accept(completionView, completions.items[0]);
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  expect(dispatch.mock.calls[0][0].changes.apply(completionView.state.doc).toString()).toBe('#set text(font: "Noto Sans"');
+});
+
+test("changing an argument clears cached values at the same cursor offset", async () => {
+  const doc = '#set text(font: "No';
+  const completionView = completionViewFor(doc);
+  getCompletions.mockImplementationOnce(() => completionResponse(doc.indexOf('No'), ['Noto Sans']));
+  completionActivity(completionView);
+  await new Promise((done) => setTimeout(done, 175));
+  expect(completions.items).toHaveLength(1);
+  const next = doc.replace('font:', 'fill:');
+  (completionView as { state: EditorState }).state = EditorState.create({ doc: next, selection: { anchor: next.length } });
+  completionActivity(completionView);
+  expect(completions.items).toEqual([]);
+});
+
+test("moving away and back invalidates an in-flight mobile completion response", async () => {
+  const response = pending<{ from: number; completions: never[] }>();
+  getCompletions.mockImplementationOnce(() => response.result);
+  const completionView = completionViewFor('#im');
+  completionActivity(completionView);
+  await new Promise((done) => setTimeout(done, 175));
+  (completionView as { state: EditorState }).state = EditorState.create({ doc: '#im', selection: { anchor: 0 } });
+  completionActivity(completionView, false, true);
+  (completionView as { state: EditorState }).state = EditorState.create({ doc: '#im', selection: { anchor: 3 } });
+  completionActivity(completionView, false, true);
+  response.resolve({ from: 1, completions: [{ kind: 'Func', label: 'image', apply: 'image()', detail: null } as never] });
+  await new Promise((done) => setTimeout(done, 0));
+  expect(completions.items).toEqual([]);
+});
+
+test("raw blocks, comments, selections and non-Typst files never queue mobile completions", async () => {
+  for (const doc of ['`#im', '// #im', '/* #im', '```\n#im']) {
+    completionActivity(completionViewFor(doc));
+  }
+  const selected = completionViewFor('#im');
+  (selected as { state: EditorState }).state = EditorState.create({ doc: '#im', selection: { anchor: 1, head: 3 } });
+  completionActivity(selected);
+  editor.relPath = 'notes.md';
+  completionActivity(completionViewFor('#im'));
+  await new Promise((done) => setTimeout(done, 175));
+  expect(getCompletions).not.toHaveBeenCalled();
 });

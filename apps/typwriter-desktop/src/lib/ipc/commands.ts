@@ -263,9 +263,9 @@ export function discardShadow(path: string) {
     return ResultAsync.fromPromise(invoke<void>('discard_shadow', { path }), toErrString);
 }
 
-export function getCompletions(path: string, cursor: number, explicit: boolean) {
+export function getCompletions(path: string, cursor: number, explicit: boolean, text: string) {
     return ResultAsync.fromPromise(
-        invoke<CompletionsResponse>('get_completions', { path, cursor, explicit }),
+        invoke<CompletionsResponse>('get_completions', { path, cursor, explicit, text }),
         toErrString
     );
 }

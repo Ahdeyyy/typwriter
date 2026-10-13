@@ -29,17 +29,31 @@ use crate::{
     world::EditorWorld,
 };
 
-/// `World` proxy that resolves IDE queries as if `main()` were `query_main`.
-/// This avoids mutating the shared global main file while enabling file-agnostic
-/// hover behavior for non-main tabs.
+/// Request-local IDE world with an optional main-file and source override.
+/// Neither hover nor completion queries mutate the shared compiler world.
 struct MainOverrideWorld<'a> {
-    inner: &'a EditorWorld,
+    inner: &'a dyn IdeWorld,
     query_main: FileId,
+    query_source: Option<Source>,
 }
 
 impl<'a> MainOverrideWorld<'a> {
-    fn new(inner: &'a EditorWorld, query_main: FileId) -> Self {
-        Self { inner, query_main }
+    fn new(inner: &'a dyn IdeWorld, query_main: FileId) -> Self {
+        Self {
+            inner,
+            query_main,
+            query_source: None,
+        }
+    }
+
+    // A request-local overlay keeps evaluation and cursor offsets tied to the
+    // same live buffer without overwriting the compiler's throttled shadow.
+    fn with_source(inner: &'a dyn IdeWorld, source: Source) -> Self {
+        Self {
+            inner,
+            query_main: inner.main(),
+            query_source: Some(source),
+        }
     }
 }
 
@@ -57,10 +71,20 @@ impl World for MainOverrideWorld<'_> {
     }
 
     fn source(&self, id: FileId) -> typst::diag::FileResult<Source> {
+        if let Some(source) = &self.query_source {
+            if source.id() == id {
+                return Ok(source.clone());
+            }
+        }
         self.inner.source(id)
     }
 
     fn file(&self, id: FileId) -> typst::diag::FileResult<Bytes> {
+        if let Some(source) = &self.query_source {
+            if source.id() == id {
+                return Ok(Bytes::from_string(source.text().to_owned()));
+            }
+        }
         self.inner.file(id)
     }
 
@@ -549,7 +573,7 @@ fn ide_world_ready(world: &Arc<EditorWorld>) -> bool {
     false
 }
 
-/// Auto-complete at the given byte offset inside a source file.
+/// Auto-complete at a UTF-16 cursor offset in the request's live source text.
 ///
 /// `explicit` is `true` when the user explicitly requested completions
 /// (Ctrl+Space) and `false` when triggered automatically after typing a
@@ -559,6 +583,7 @@ pub fn get_completions(
     path: String,
     cursor: usize,
     explicit: bool,
+    text: String,
     world: State<'_, Arc<EditorWorld>>,
     pipeline: State<'_, Arc<PreviewPipeline>>,
 ) -> Result<CompletionsResponse, String> {
@@ -582,13 +607,8 @@ pub fn get_completions(
         e.to_string()
     })?;
 
-    let source = world.source(id).map_err(|e| {
-        error!(
-            "get_completions: source error path={path:?} err=\"{e}\" ({:.1}ms)",
-            t.elapsed().as_secs_f64() * 1000.0
-        );
-        e.to_string()
-    })?;
+    let source = Source::new(id, text);
+    let query_world = MainOverrideWorld::with_source(&**world, source.clone());
 
     let text = source.text();
     let byte_cursor = utf16_to_byte(text, cursor);
@@ -599,7 +619,7 @@ pub fn get_completions(
     let doc = pipeline.last_document.lock().clone();
     let doc_ref: Option<&PagedDocument> = doc.as_deref();
 
-    let result = typst_ide::autocomplete(&**world, doc_ref, &source, byte_cursor, explicit);
+    let result = typst_ide::autocomplete(&query_world, doc_ref, &source, byte_cursor, explicit);
 
     match result {
         Some((from, items)) => {
@@ -684,7 +704,7 @@ pub fn get_tooltip(
     // If still unresolved and this is not the configured main file, retry with
     // an override world where `main()` points to the queried file.
     if tooltip.is_none() && id != world.main() {
-        let local_world = MainOverrideWorld::new(&world, id);
+        let local_world = MainOverrideWorld::new(&**world, id);
         tooltip = typst_ide::tooltip(&local_world, None::<&PagedDocument>, &source, byte_cursor, Side::Before)
             .or_else(|| typst_ide::tooltip(&local_world, None::<&PagedDocument>, &source, byte_cursor, Side::After));
     }
@@ -868,7 +888,103 @@ pub(crate) fn serialize_definition(
 
 #[cfg(test)]
 mod tests {
-    use super::{byte_to_utf16, utf16_to_byte};
+    use super::*;
+    use typst::LibraryExt;
+
+    struct CompletionTestWorld {
+        source: Source,
+        library: LazyHash<Library>,
+        book: LazyHash<FontBook>,
+    }
+
+    impl CompletionTestWorld {
+        fn new(text: &str) -> Self {
+            Self {
+                source: Source::detached(text),
+                library: LazyHash::new(Library::default()),
+                book: LazyHash::new(FontBook::new()),
+            }
+        }
+    }
+
+    impl World for CompletionTestWorld {
+        fn library(&self) -> &LazyHash<Library> {
+            &self.library
+        }
+        fn book(&self) -> &LazyHash<FontBook> {
+            &self.book
+        }
+        fn main(&self) -> FileId {
+            self.source.id()
+        }
+        fn source(&self, _id: FileId) -> typst::diag::FileResult<Source> {
+            Ok(self.source.clone())
+        }
+        fn file(&self, _id: FileId) -> typst::diag::FileResult<Bytes> {
+            Ok(Bytes::from_string(self.source.text().to_owned()))
+        }
+        fn font(&self, _index: usize) -> Option<Font> {
+            None
+        }
+        fn today(
+            &self,
+            _offset: Option<typst::foundations::Duration>,
+        ) -> Option<typst::foundations::Datetime> {
+            None
+        }
+    }
+
+    impl IdeWorld for CompletionTestWorld {
+        fn upcast(&self) -> &dyn World {
+            self
+        }
+    }
+
+    #[test]
+    fn completion_overlay_uses_live_source_without_changing_shared_buffer() {
+        let shared = CompletionTestWorld::new("#let old = 1\n#ol");
+        let live = Source::new(shared.main(), "#let current = 1\n#cur".into());
+        let query = MainOverrideWorld::with_source(&shared, live.clone());
+        assert_eq!(
+            query.source(live.id()).expect("live source").text(),
+            live.text()
+        );
+        assert_eq!(
+            query.file(live.id()).expect("live bytes").as_slice(),
+            live.text().as_bytes()
+        );
+        assert_eq!(shared.source.text(), "#let old = 1\n#ol");
+        let (_, items) = typst_ide::autocomplete(
+            &query,
+            None::<&PagedDocument>,
+            &live,
+            live.text().len(),
+            false,
+        )
+        .expect("local binding completions");
+        assert!(items.iter().any(|item| item.label == "current"));
+        assert!(!items.iter().any(|item| item.label == "old"));
+    }
+
+    #[test]
+    fn semantic_completions_follow_argument_types_in_the_live_buffer() {
+        let shared = CompletionTestWorld::new("#set text(font: \"stale\")");
+        for (text, expected) in [
+            ("#set par(justify: )", "true"),
+            ("#set text(weight: )", "\"bold\""),
+            ("#set text(style: )", "\"italic\""),
+        ] {
+            let live = Source::new(shared.main(), text.into());
+            let query = MainOverrideWorld::with_source(&shared, live.clone());
+            let (_, items) =
+                typst_ide::autocomplete(&query, None::<&PagedDocument>, &live, text.len() - 1, false)
+                    .expect("argument value completions");
+            assert!(
+                items.iter().any(|item| item.label == expected),
+                "missing {expected} for {text}"
+            );
+        }
+    }
 
     // ─── ASCII fast path ────────────────────────────────────────────────────
     //

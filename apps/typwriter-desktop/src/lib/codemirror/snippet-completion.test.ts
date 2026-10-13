@@ -86,9 +86,43 @@ describe('inInsertableContext', () => {
         const src = 'see @fig and ';
         expect(inInsertableContext(src, src.length)).toBe(true);
     });
+
+    it.each([
+        '#set text(font: "',
+        '#set text(font: "fi',
+        '#set text(font: ("Arial", "fi',
+        '#image("fig',
+        '#let name = "escaped \\" fig',
+        '`fig',
+        '$fig',
+        '#set text(font: fi',
+        '#figure',
+        'https://example.com/fig',
+        '/* outer /* inner */ fig',
+    ])('refuses snippets in %s', (doc) => {
+        expect(source(contextAt(doc, doc.length, true))).toBeNull();
+    });
+
+    it.each([
+        '#figure[fig',
+        'A "quoted" fig',
+        '`// /*` fig',
+        '/* ``` */ fig',
+        'https://example.com fig',
+    ])('allows markup snippets in %s', (doc) => {
+        expect(source(contextAt(doc))?.options).toHaveLength(2);
+    });
 });
 
 describe('snippetCompletionSource', () => {
+    it('invalidates cached snippets when markup becomes a string', () => {
+        const result = source(contextAt('fi'))!;
+        expect(typeof result.validFor).toBe('function');
+        if (typeof result.validFor !== 'function') throw new Error('Expected a context guard');
+        const state = EditorState.create({ doc: '#set text(font: "fi' });
+        expect(result.validFor('fi', state.doc.length - 2, state.doc.length, state)).toBe(false);
+    });
+
     it('offers snippets once two characters are typed', () => {
         const result = source(contextAt('fi'));
         expect(result?.options.map((o) => o.label).sort()).toEqual(['figure', 'table']);
