@@ -567,13 +567,21 @@
       </Button>
     </div>
 
-    <!-- Grid of Slides (Deck Cascade with always-visible numbers and hover lift) -->
+    <!-- Keep cards in deck order so hovering never covers later slide targets. -->
     <div class="grid flex-1 grid-cols-2 [grid-auto-rows:48px] gap-x-4 gap-y-0 overflow-y-auto px-6 pt-10 pb-20 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 scrollbar-thin scrollbar-thumb-neutral-700">
       {#each preview.pages as fp, idx (idx)}
         <button
           type="button"
           style="aspect-ratio: {slideAspectRatio};"
-          class="group relative flex flex-col items-center justify-center overflow-hidden rounded-lg border text-left transition-[transform,box-shadow,border-color] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-8 hover:z-30 hover:shadow-2xl hover:shadow-black/70 hover:will-change-transform active:scale-[0.98] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950 focus-visible:-translate-y-8 focus-visible:z-30 {idx === currentPageIndex ? 'border-primary ring-2 ring-primary ring-offset-2 ring-offset-neutral-950 shadow-xl' : 'border-neutral-800 hover:border-neutral-400 bg-neutral-900/90 shadow-md'}"
+          class={[
+            "group relative z-0 flex flex-col items-center justify-center overflow-hidden rounded-lg border text-left",
+            "transition-[translate,scale,box-shadow,border-color] duration-250 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
+            "hover:-translate-y-8 hover:shadow-2xl hover:shadow-black/70 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]",
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950 focus-visible:-translate-y-8 motion-safe:focus-visible:scale-[1.02]",
+            idx === currentPageIndex
+              ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-neutral-950 shadow-xl"
+              : "border-neutral-800 hover:border-neutral-400 bg-neutral-900/90 shadow-md",
+          ]}
           onclick={() => {
             goToSlide(idx);
             showAllSlidesModal = false;
