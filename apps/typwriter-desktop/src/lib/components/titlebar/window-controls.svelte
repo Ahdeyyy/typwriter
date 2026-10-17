@@ -15,6 +15,16 @@
   const win = getCurrentWindow();
   let isMaximized = $state(false);
 
+  const trafficLightClasses = [
+    "flex size-3 shrink-0 appearance-none items-center justify-center rounded-full border-0 p-0",
+    "text-black/60 ring-1 ring-inset ring-black/10",
+    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+  ];
+  const trafficLightIconClasses = [
+    "pointer-events-none size-2 shrink-0 opacity-0",
+    "group-hover/traffic:opacity-100 group-focus-within/traffic:opacity-100",
+  ].join(" ");
+
   async function refreshMaximized() {
     try {
       isMaximized = await win.isMaximized();
@@ -53,39 +63,48 @@
 </script>
 
 {#if platform.isMac}
-  <!-- Traffic-light style buttons (left side) -->
+  <!-- Keep traffic lights independent of Button's responsive height/padding. -->
   <div class="group/traffic flex items-center gap-2 px-1">
-    <Button
+    <button
+      type="button"
       aria-label="Close window"
       onclick={close}
-      class="flex size-3 items-center justify-center rounded-full bg-[#ff5f57] text-black/60 ring-1 ring-inset ring-black/10 transition-colors hover:bg-destructive [&_svg:not([class*='size-'])]:size-2"
+      class={[trafficLightClasses, "bg-[#ff5f57]"]}
     >
       <HugeiconsIcon
         icon={MultiplicationSignIcon}
-        class="size-2 opacity-0 group-hover/traffic:opacity-100"
+        class={trafficLightIconClasses}
       />
-    </Button>
-    <Button
+    </button>
+    <button
+      type="button"
       aria-label="Minimize window"
       onclick={minimize}
-      class="flex size-3 items-center justify-center rounded-full bg-[#febc2e] text-black/60 ring-1 ring-inset ring-black/10 transition-colors hover:bg-[#febc2e] [&_svg:not([class*='size-'])]:size-2"
+      class={[trafficLightClasses, "bg-[#febc2e]"]}
     >
       <HugeiconsIcon
         icon={MinusSignIcon}
-        class="size-2 opacity-0 group-hover/traffic:opacity-100"
+        class={trafficLightIconClasses}
       />
-    </Button>
-    <Button
+    </button>
+    <button
+      type="button"
       aria-label={isMaximized ? "Restore window" : "Maximize window"}
       onclick={toggleMax}
-      class="flex size-3 items-center justify-center rounded-full bg-[#28c840] text-black/60 ring-1 ring-inset ring-black/10 transition-colors hover:bg-[#28c840] [&_svg:not([class*='size-'])]:size-2"
+      class={[trafficLightClasses, "bg-[#28c840]"]}
     >
       {#if !isMaximized}
-        <HugeiconsIcon icon={SquareIcon} class="size-2" />
+        <HugeiconsIcon
+          icon={SquareIcon}
+          class={trafficLightIconClasses}
+        />
       {:else}
-        <HugeiconsIcon icon={CopyIcon} class="size-2 rotate-180" />
+        <HugeiconsIcon
+          icon={CopyIcon}
+          class={`${trafficLightIconClasses} rotate-180`}
+        />
       {/if}
-    </Button>
+    </button>
   </div>
 {:else}
   <!-- Windows / Linux style buttons (right side) -->
