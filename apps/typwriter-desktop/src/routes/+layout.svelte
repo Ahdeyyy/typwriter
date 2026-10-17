@@ -26,6 +26,16 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { logError } from "$lib/logger";
   import { hasExternalFiles } from "$lib/services/drop-import";
+  import { toast } from "svelte-sonner";
+  import { chooseDocument, initializeDocumentOpening, destroyDocumentOpening } from "$lib/services/document-opening";
+  import { matchesCommand } from "$lib/keybindings";
+
+  function handleGlobalKeydown(event: KeyboardEvent) {
+    if (Window.getCurrent().label === "main" && matchesCommand(event, "global.openDocument")) {
+      event.preventDefault();
+      void chooseDocument();
+    }
+  }
 
   const { children } = $props();
   let appliedTheme: string | undefined;
@@ -98,6 +108,7 @@
     if (typeof document === "undefined") return;
 
     const flush = () => {
+      if (Window.getCurrent().label !== "main") return;
       // Force CodeMirror to commit any in-progress IME composition (an IME
       // composes a word before it lands in the document) so the latest
       // keystrokes are mirrored into the store before we persist. Found
@@ -185,12 +196,23 @@
     // the page stack the onboarding tutorial lives in.
     const currentWindow = Window.getCurrent();
     if (currentWindow.label === "main") {
-      listeners.listen<void>(onShowTutorialRequest, () => {
+      void initializeDocumentOpening();
+      listeners.listen<void>(onShowTutorialRequest, async () => {
+        if (workspace.rootPath) {
+          const left = await workspace.leave();
+          if (left.isErr()) {
+            toast.error(`Could not preserve the current session: ${left.error}`);
+            return;
+          }
+        }
         page.navigate("onboarding");
         currentWindow.setFocus().catch((err) => logError("main window focus failed:", err));
       }, (err) => logError("tutorial request listener failed:", err));
     }
-    return () => listeners.destroy();
+    return () => {
+      listeners.destroy();
+      if (currentWindow.label === "main") destroyDocumentOpening();
+    };
   });
 
   // ── Apply settings to <html> reactively ──────────────────────────────────
@@ -219,6 +241,8 @@
     root.style.setProperty("--editor-font-size", `${settings.editorFontSize}px`);
   });
 </script>
+
+<svelte:window onkeydown={handleGlobalKeydown} />
 
 <Toaster position="top-right" />
 <ModeWatcher />

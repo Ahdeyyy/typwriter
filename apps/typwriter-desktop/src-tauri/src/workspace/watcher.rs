@@ -22,11 +22,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use log::info;
+use log::{info, warn};
 use notify::{
     event::{EventKind, ModifyKind, RenameMode},
     Event, RecommendedWatcher, RecursiveMode, Watcher,
 };
+use parking_lot::{Mutex, RwLock};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -79,6 +80,154 @@ const IGNORED_DIRS: &[&str] = &[
     ".svelte-kit",
 ];
 
+/// A standalone session watches only directories needed by actual file reads.
+/// Parent directories survive atomic saves and let missing dependencies appear.
+pub struct DocumentWatcher {
+    root: PathBuf,
+    paths: Arc<RwLock<BTreeSet<PathBuf>>>,
+    watcher: Mutex<RecommendedWatcher>,
+    receiver: Mutex<Option<mpsc::Receiver<notify::Result<Event>>>>,
+    directories: Mutex<BTreeSet<PathBuf>>,
+    app_handle: AppHandle,
+}
+
+struct WatchScope {
+    document_paths: Option<Arc<RwLock<BTreeSet<PathBuf>>>>,
+    generation: u64,
+}
+
+impl DocumentWatcher {
+    pub fn prepare(root: PathBuf, app_handle: AppHandle) -> notify::Result<Arc<Self>> {
+        let (tx, rx) = mpsc::channel();
+        let mut watcher = notify::recommended_watcher(tx)?;
+        watcher.watch(&root, RecursiveMode::NonRecursive)?;
+        let mut directories = BTreeSet::from([root.clone()]);
+        // Keep observing the root itself if it is removed and later recreated.
+        if let Some(parent) = root.parent() {
+            if watcher.watch(parent, RecursiveMode::NonRecursive).is_ok() {
+                directories.insert(parent.to_path_buf());
+            }
+        }
+        let paths = Arc::new(RwLock::new(BTreeSet::new()));
+        let watched = Arc::new(Self {
+            root: root.clone(),
+            paths: paths.clone(),
+            watcher: Mutex::new(watcher),
+            receiver: Mutex::new(Some(rx)),
+            directories: Mutex::new(directories),
+            app_handle: app_handle.clone(),
+        });
+        Ok(watched)
+    }
+
+    pub fn start(
+        &self,
+        world: Arc<EditorWorld>,
+        pipeline: Arc<PreviewPipeline>,
+        self_writes: Arc<SelfWriteLog>,
+    ) {
+        let Some(rx) = self.receiver.lock().take() else {
+            return;
+        };
+        let root = self.root.clone();
+        let paths = self.paths.clone();
+        let app_handle = self.app_handle.clone();
+        let generation = world.session_generation();
+        thread::spawn(move || {
+            dispatch_loop(
+                root,
+                rx,
+                world,
+                pipeline,
+                app_handle,
+                self_writes,
+                WatchScope {
+                    document_paths: Some(paths),
+                    generation,
+                },
+            );
+        });
+    }
+
+    pub fn record(&self, path: &Path) {
+        if !path.starts_with(&self.root) {
+            return;
+        }
+        let added = self.paths.write().insert(path.to_path_buf());
+        if added {
+            self.watch_parents(path);
+            let _ = self.app_handle.emit("document:dependencies-changed", ());
+        }
+    }
+
+    fn watch_parents(&self, path: &Path) {
+        let mut directories = self.directories.lock();
+        // A deleted watched directory is no longer registered by all backends.
+        directories.retain(|dir| dir.is_dir());
+        for dir in path
+            .ancestors()
+            .skip(1)
+            .take_while(|p| p.starts_with(&self.root))
+        {
+            if dir.is_dir() && !directories.contains(dir) {
+                match self.watcher.lock().watch(dir, RecursiveMode::NonRecursive) {
+                    Ok(()) => {
+                        directories.insert(dir.to_path_buf());
+                    }
+                    Err(err) => warn!("document watcher: could not watch {dir:?}: {err}"),
+                }
+            }
+        }
+    }
+
+    pub fn paths(&self) -> Vec<PathBuf> {
+        self.paths.read().iter().cloned().collect()
+    }
+
+    pub fn refresh(&self, changed: &[PathBuf]) {
+        {
+            let mut directories = self.directories.lock();
+            let replaced = directories
+                .iter()
+                .filter(|dir| changed.iter().any(|path| contains_path(path, dir)))
+                .cloned()
+                .collect::<Vec<_>>();
+            for dir in replaced {
+                // Re-creation in the same batch may leave the old inode watch
+                // dead even though the directory already exists again.
+                let _ = self.watcher.lock().unwatch(&dir);
+                directories.remove(&dir);
+            }
+        }
+        for path in self.paths() {
+            self.watch_parents(&path);
+        }
+    }
+}
+
+fn touches_dependency(change: &FileChange, paths: &BTreeSet<PathBuf>) -> bool {
+    change_paths(change).any(|changed| paths.iter().any(|path| contains_path(changed, path)))
+}
+
+fn contains_path(parent: &Path, path: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        let parent = dunce::simplified(parent)
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_lowercase();
+        let path = dunce::simplified(path)
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_lowercase();
+        path == parent || path.starts_with(&format!("{}/", parent.trim_end_matches('/')))
+    }
+    #[cfg(not(windows))]
+    {
+        path.starts_with(parent)
+    }
+}
+
 pub fn start_watcher(
     root: PathBuf,
     world: Arc<EditorWorld>,
@@ -98,8 +247,20 @@ pub fn start_watcher(
         t.elapsed().as_secs_f64() * 1000.0
     );
 
+    let generation = world.session_generation();
     thread::spawn(move || {
-        dispatch_loop(root, rx, world, pipeline, app_handle, self_writes);
+        dispatch_loop(
+            root,
+            rx,
+            world,
+            pipeline,
+            app_handle,
+            self_writes,
+            WatchScope {
+                document_paths: None,
+                generation,
+            },
+        );
     });
 
     Ok(watcher)
@@ -112,15 +273,15 @@ fn dispatch_loop(
     pipeline: Arc<PreviewPipeline>,
     app_handle: AppHandle,
     self_writes: Arc<SelfWriteLog>,
+    scope: WatchScope,
 ) {
+    let WatchScope {
+        document_paths,
+        generation,
+    } = scope;
     let debounce = Duration::from_millis(100);
 
-    loop {
-        let first = match rx.recv() {
-            Ok(ev) => ev,
-            Err(_) => break,
-        };
-
+    while let Ok(first) = rx.recv() {
         let mut batch: Vec<notify::Result<Event>> = vec![first];
         loop {
             match rx.recv_timeout(debounce) {
@@ -131,10 +292,24 @@ fn dispatch_loop(
         }
 
         let t_batch = Instant::now();
+        let _session = world.session_gate.read();
+        if generation != world.session_generation() {
+            return;
+        }
         let events: Vec<Event> = batch
             .into_iter()
             .flatten()
-            .filter(|ev| is_relevant(ev))
+            .filter(is_relevant)
+            .map(|mut ev| {
+                if document_paths.is_some() {
+                    ev.paths = ev
+                        .paths
+                        .into_iter()
+                        .map(|path| dunce::simplified(&path).to_path_buf())
+                        .collect();
+                }
+                ev
+            })
             .collect();
 
         // Settling create/modify/remove against the *current* filesystem is
@@ -149,7 +324,30 @@ fn dispatch_loop(
         // discard a good parse tree and make the app re-walk and re-read a
         // workspace that is already in the state it expects. External edits to
         // other files in the same batch survive.
-        let changes = scope_changes(&root, changes, |path| self_writes.is_recent(path));
+        let mut changes = scope_changes(&root, changes, |path| self_writes.is_recent(path));
+        if let Some(paths) = &document_paths {
+            changes.retain(|change| touches_dependency(change, &paths.read()));
+            let changed = changes
+                .iter()
+                .flat_map(change_paths)
+                .map(Path::to_path_buf)
+                .collect::<Vec<_>>();
+            world.refresh_document_watches(&changed);
+            // A standalone document retains its original on-disk identity.
+            // Report its rename as removal instead of moving the editor buffer
+            // while the compiler still targets the old name.
+            if let Some(main) = world.main_id().and_then(|id| world.id_to_path(id).ok()) {
+                for change in &mut changes {
+                    if change.kind == ChangeKind::Renamed
+                        && contains_path(Path::new(&change.path), &main)
+                    {
+                        change.kind = ChangeKind::Removed;
+                        change.to = None;
+                        change.is_dir = false;
+                    }
+                }
+            }
+        }
 
         if changes.is_empty() {
             continue;
@@ -157,13 +355,26 @@ fn dispatch_loop(
 
         for change in &changes {
             for path in change_paths(change) {
-                if let Some(id) = world.path_to_id(path) {
-                    // A file with a live shadow is an open buffer with unsaved
-                    // edits. Disk is not the authority for it until the user
-                    // decides — the frontend prompts, and dropping the shadow
-                    // here would throw those edits away behind their back.
-                    if !world.has_shadow(id) {
-                        world.invalidate_file(id);
+                let affected = document_paths
+                    .as_ref()
+                    .map(|paths| {
+                        paths
+                            .read()
+                            .iter()
+                            .filter(|dep| contains_path(path, dep))
+                            .cloned()
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_else(|| vec![path.to_path_buf()]);
+                for affected in affected {
+                    if let Some(id) = world.path_to_id(&affected) {
+                        // A file with a live shadow is an open buffer with unsaved
+                        // edits. Disk is not the authority for it until the user
+                        // decides — the frontend prompts, and dropping the shadow
+                        // here would throw those edits away behind their back.
+                        if !world.has_shadow(id) {
+                            world.invalidate_file(id);
+                        }
                     }
                 }
             }
@@ -353,8 +564,7 @@ fn scope_changes(
     changes: Vec<FileChange>,
     is_self_write: impl Fn(&Path) -> bool,
 ) -> Vec<FileChange> {
-    let out_of_scope =
-        |path: &Path| is_ignored_path(root, path) || is_self_write(path);
+    let out_of_scope = |path: &Path| is_ignored_path(root, path) || is_self_write(path);
 
     changes
         .into_iter()
@@ -400,13 +610,45 @@ fn is_ignored_path(root: &Path, path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify, scope_changes, ChangeKind, FileChange, Probe};
+    use super::{classify, scope_changes, touches_dependency, ChangeKind, FileChange, Probe};
     use notify::event::{
         CreateKind, DataChange, EventAttributes, EventKind, ModifyKind, RemoveKind, RenameMode,
     };
     use notify::Event;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn standalone_changes_match_dependencies_and_their_parent_directories_only() {
+        let paths = std::collections::BTreeSet::from([
+            PathBuf::from("/w/main.typ"),
+            PathBuf::from("/w/assets/missing.png"),
+        ]);
+        let change = |path: &str, to: Option<&str>| FileChange {
+            path: path.into(),
+            kind: if to.is_some() {
+                ChangeKind::Renamed
+            } else {
+                ChangeKind::Modified
+            },
+            to: to.map(String::from),
+            is_dir: false,
+        };
+        assert!(touches_dependency(&change("/w/main.typ", None), &paths));
+        assert!(touches_dependency(&change("/w/assets", None), &paths));
+        assert!(touches_dependency(
+            &change("/w/tmp", Some("/w/main.typ")),
+            &paths
+        ));
+        assert!(!touches_dependency(
+            &change("/w/unrelated.typ", None),
+            &paths
+        ));
+        assert!(!touches_dependency(
+            &change("/w/assets-other", None),
+            &paths
+        ));
+    }
 
     /// A stand-in filesystem: names present in `dirs` probe as directories,
     /// names in `files` as files, everything else as gone.
@@ -660,9 +902,7 @@ mod tests {
             change("/w/mine.typ", ChangeKind::Modified, None),
             change("/w/theirs.typ", ChangeKind::Modified, None),
         ];
-        let kept = scope_changes(Path::new("/w"), changes, |p| {
-            p == Path::new("/w/mine.typ")
-        });
+        let kept = scope_changes(Path::new("/w"), changes, |p| p == Path::new("/w/mine.typ"));
         assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].path, "/w/theirs.typ");
     }

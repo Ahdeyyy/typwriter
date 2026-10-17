@@ -63,7 +63,7 @@ export function imageDrop() {
         dragover(event) {
             // `getAsFile` is unavailable mid-drag, so the decision is made off
             // the item types alone — which is all `hasImageItems` reads.
-            if (!hasImageItems(event.dataTransfer) || !workspace.rootPath) return false;
+            if (!hasImageItems(event.dataTransfer) || !workspace.rootPath || workspace.isStandalone) return false;
             event.preventDefault();
             // Keep the window-level backstop (see +layout.svelte) from
             // downgrading the cursor back to "no drop" behind us.
@@ -72,7 +72,7 @@ export function imageDrop() {
             return true;
         },
         drop(event, view) {
-            if (!workspace.rootPath) return false;
+            if (!workspace.rootPath || workspace.isStandalone) return false;
             const files = imageFilesFrom(event.dataTransfer);
             if (files.length === 0) return false;
             event.preventDefault();

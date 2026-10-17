@@ -25,6 +25,63 @@ const MAX_RECENT: usize = 10;
 const KEY_RECENT_WORKSPACES: &str = "recent_workspaces";
 const KEY_WORKSPACE_MAIN_FILES: &str = "workspace_main_files";
 const KEY_WORKSPACE_OPEN_TABS: &str = "workspace_open_tabs";
+const KEY_RECENT_DOCUMENTS: &str = "recent_documents";
+const KEY_DOCUMENT_ROOTS: &str = "document_roots";
+static TABS_WRITE_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
+/// Recent standalone files are separate from folders and never create sidecars.
+pub fn recent_documents(handle: &AppHandle) -> Vec<String> {
+    handle
+        .store(STORE_FILE)
+        .ok()
+        .and_then(|store| store.get(KEY_RECENT_DOCUMENTS))
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default()
+}
+
+pub fn remember_document(handle: &AppHandle, path: &Path, root: &Path) {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        return;
+    };
+    let path = path.to_string_lossy().replace('\\', "/");
+    let mut recent = recent_documents(handle);
+    recent.retain(|entry| entry != &path);
+    recent.insert(0, path.clone());
+    recent.truncate(MAX_RECENT);
+    store.set(KEY_RECENT_DOCUMENTS, json!(recent));
+    let mut roots = store
+        .get(KEY_DOCUMENT_ROOTS)
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+    roots.insert(path, json!(root.to_string_lossy().replace('\\', "/")));
+    store.set(KEY_DOCUMENT_ROOTS, json!(roots));
+    if let Err(err) = store.save() {
+        warn!("Could not remember document: {err}");
+    }
+}
+
+pub fn document_root(handle: &AppHandle, path: &Path) -> Option<std::path::PathBuf> {
+    let key = path.to_string_lossy().replace('\\', "/");
+    handle
+        .store(STORE_FILE)
+        .ok()?
+        .get(KEY_DOCUMENT_ROOTS)?
+        .get(&key)?
+        .as_str()
+        .map(std::path::PathBuf::from)
+}
+
+pub fn remove_recent_document(handle: &AppHandle, path: &str) {
+    let Ok(store) = handle.store(STORE_FILE) else {
+        return;
+    };
+    let mut recent = recent_documents(handle);
+    recent.retain(|entry| entry != path);
+    store.set(KEY_RECENT_DOCUMENTS, json!(recent));
+    if let Err(err) = store.save() {
+        warn!("Could not remove recent document: {err}");
+    }
+}
 
 // ─── Recent workspaces ────────────────────────────────────────────────────────
 
@@ -190,12 +247,14 @@ pub fn save_workspace_tabs(
     active_tab_id: Option<String>,
     unsaved: HashMap<String, String>,
     cursor: Option<usize>,
-) {
+) -> Result<(), String> {
+    // Visibility/autosave and a session switch can persist concurrently. Keep
+    // the read-modify-write map update intact across different document keys.
+    let _write = TABS_WRITE_LOCK.lock();
     let t = Instant::now();
-    let Ok(store) = handle.store(STORE_FILE) else {
-        warn!("store: could not open {STORE_FILE}");
-        return;
-    };
+    let store = handle
+        .store(STORE_FILE)
+        .map_err(|e| format!("Cannot open session storage: {e}"))?;
 
     let root_key = root.to_string_lossy().to_string();
 
@@ -221,11 +280,14 @@ pub fn save_workspace_tabs(
     );
 
     store.set(KEY_WORKSPACE_OPEN_TABS, JsonValue::Object(map));
-    let _ = store.save();
+    store
+        .save()
+        .map_err(|e| format!("Cannot save session recovery data: {e}"))?;
     info!(
         "store: saved workspace tabs ({:.1}ms)",
         t.elapsed().as_secs_f64() * 1000.0
     );
+    Ok(())
 }
 
 /// Look up the persisted open tabs for the workspace rooted at `root`.

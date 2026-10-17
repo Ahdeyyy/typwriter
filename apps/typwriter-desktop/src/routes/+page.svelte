@@ -81,6 +81,10 @@
       return "Typwriter";
     }
 
+    if (workspace.documentPath) {
+      return `${workspace.documentPath.split("/").pop()} - Typwriter`;
+    }
+
     const workspaceName = workspace.rootPath ? workspace.rootPath.split("/").slice(-1)[0] : "";
     const openFileName = workspace.activeFilePath ? workspace.activeFilePath.split("/").slice(-1)[0] : "";
     return `${openFileName ? openFileName + " - " : ""}${workspaceName ? workspaceName + " - " : ""} Typwriter`;

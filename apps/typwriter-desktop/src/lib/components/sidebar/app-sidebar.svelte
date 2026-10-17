@@ -23,6 +23,8 @@
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
   import FileTree from "$lib/components/sidebar/filetree.svelte";
+  import StandaloneDocument from "$lib/components/sidebar/standalone-document.svelte";
+  import { chooseDocument } from "$lib/services/document-opening";
   import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
   import GrammarPane from "$lib/components/editor/grammar-pane.svelte";
   import OutlinePane from "$lib/components/sidebar/outline-pane.svelte";
@@ -64,7 +66,10 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
   // The active section lives in the ui store, not here: the command palette
   // ("Show outline", "Go to heading") has to be able to reveal a section from
   // outside the sidebar.
-  const activeSection = $derived(ui.sidebarSection);
+  const activeSection = $derived(
+    workspace.isStandalone && (ui.sidebarSection === "history" || ui.sidebarSection === "search")
+      ? "files" : ui.sidebarSection
+  );
 
   // `sectionRequest` is bumped by anything outside the sidebar that asks for a
   // section. Reading it here is what makes this effect re-run; opening the
@@ -79,7 +84,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
   const hasErrors = $derived(diagnostics.errors.length > 0);
   const grammarCount = $derived(grammar.totalLints);
   const workspaceName = $derived(
-    workspace.rootPath?.split(/[/\\]/).pop() ?? "Workspace"
+    (workspace.documentPath ?? workspace.rootPath)?.split(/[/\\]/).pop() ?? "Workspace"
   );
 
   onMount(async () => {
@@ -113,7 +118,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
   }
 
   async function handleOpenRecent(path: string) {
-    if (workspace.rootPath === path) return;
+    if (!workspace.isStandalone && workspace.rootPath === path) return;
     const result = await workspace.init(path);
     result.mapErr((err) => {
       logError("Failed to open workspace:", err);
@@ -156,6 +161,8 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
             {/snippet}
           </DropdownMenu.Trigger>
           <DropdownMenu.Content align="start" class="w-60">
+            <DropdownMenu.Item onclick={() => void chooseDocument()}>Open File…</DropdownMenu.Item>
+            <DropdownMenu.Separator />
             <DropdownMenu.Label>Recent projects</DropdownMenu.Label>
             <DropdownMenu.Separator />
             {#if recentWorkspaces.length === 0}
@@ -182,7 +189,11 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
   <!-- ─── Content: file tree or diagnostics ─────────────────────────────────── -->
   <Sidebar.Content class="group-data-[collapsible=icon]:hidden">
     {#if activeSection === "files"}
-      <FileTree />
+      {#if workspace.isStandalone}
+        <StandaloneDocument />
+      {:else}
+        <FileTree />
+      {/if}
     {:else if activeSection === "search"}
       <SearchPane onclose={() => sidebarCtx.setOpen(false)} />
     {:else if activeSection === "outline"}
@@ -221,6 +232,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
       </Tooltip.Root>
 
       <!-- Search toggle -->
+      {#if !workspace.isStandalone}
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
@@ -236,6 +248,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
         </Tooltip.Trigger>
         <Tooltip.Content side="top">Search</Tooltip.Content>
       </Tooltip.Root>
+      {/if}
 
       <!-- Outline toggle -->
       <Tooltip.Root>
@@ -314,6 +327,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
       </Tooltip.Root>
 
       <!-- History toggle -->
+      {#if !workspace.isStandalone}
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
@@ -329,6 +343,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
         </Tooltip.Trigger>
         <Tooltip.Content side="top">History</Tooltip.Content>
       </Tooltip.Root>
+      {/if}
 
       <!-- Settings -->
       <Tooltip.Root>

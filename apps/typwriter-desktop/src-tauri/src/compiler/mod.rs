@@ -498,10 +498,7 @@ impl PreviewPipeline {
         // pane (which missed the original Started event fired before it
         // listened) reflects an in-flight compile and shows "Compiling".
         let compile_state = *self.last_compile_state.lock();
-        if let Err(err) = self
-            .app_handle
-            .emit("preview:compile-state", compile_state)
-        {
+        if let Err(err) = self.app_handle.emit("preview:compile-state", compile_state) {
             error!("emit preview:compile-state (current state) failed err=\"{err}\"");
         }
     }
@@ -603,9 +600,7 @@ impl PreviewPipeline {
                 self.compile_and_emit(revision, reason, request_mark);
             }));
             if outcome.is_err() {
-                error!(
-                    "compile revision={revision} reason={reason:?} panicked; worker continuing"
-                );
+                error!("compile revision={revision} reason={reason:?} panicked; worker continuing");
             }
 
             match rx.try_recv() {
@@ -658,6 +653,7 @@ impl PreviewPipeline {
     }
 
     fn compile_and_emit(&self, revision: u64, reason: CompileReason, request_mark: u64) {
+        let _session = self.world.session_gate.read();
         let t = Instant::now();
         info!("request_compile: starting revision={revision} reason={reason:?}");
 
@@ -713,7 +709,9 @@ impl PreviewPipeline {
         // Recomputing this fully recompiles every other file, so we only do it
         // for reasons that can change those files; Typing/Zoom reuse the cache
         // so the emitted set stays complete without per-keystroke cost.
-        let (extra_errors, extra_warnings) = if refreshes_workspace_diags(reason) {
+        let (extra_errors, extra_warnings) = if self.world.is_standalone() {
+            (Vec::new(), Vec::new())
+        } else if refreshes_workspace_diags(reason) {
             info!("compile revision={revision} reason={reason:?} refreshing workspace diagnostics");
             let fresh = collect_workspace_diagnostics(&*self.world, &self.workspace_diag_cache);
             *self.workspace_diags.lock() = fresh.clone();

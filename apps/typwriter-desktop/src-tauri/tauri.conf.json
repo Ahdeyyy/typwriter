@@ -36,6 +36,15 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "fileAssociations": [
+      {
+        "ext": ["typ"],
+        "name": "Typst document",
+        "description": "Typst source document",
+        "role": "Editor",
+        "mimeType": "text/vnd.typst"
+      }
+    ],
     "resources": {
       "./assets/fonts/": "fonts/"
     },

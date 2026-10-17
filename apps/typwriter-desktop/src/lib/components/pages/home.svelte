@@ -10,6 +10,8 @@
     listPackages,
     removeRecentWorkspace,
     clearRecentWorkspaces,
+    listRecentDocuments,
+    removeRecentDocument,
   } from "$lib/ipc/commands";
   import type { RecentWorkspaceEntry, PackageEntry } from "$lib/types";
   import { fuzzyRank } from "$lib/fuzzy";
@@ -34,8 +36,11 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import { openSettingsWindow } from "$lib/windows";
+  import { chooseDocument, openDocumentPath, initializeDocumentOpening } from "$lib/services/document-opening";
+  import { basename } from "$lib/paths";
 
   let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
+  let recentDocuments = $state<string[]>([]);
   let loading = $state(true);
 
   // New workspace dialog state
@@ -112,7 +117,7 @@
     if (onboardingChecked) return;
     onboardingChecked = true;
     const result = await onboarding.shouldAutoShow();
-    if (result.isOk() && result.value) {
+    if (result.isOk() && result.value && page.current.name === "home" && !workspace.opening && !workspace.rootPath) {
       page.navigate("onboarding");
     } else if (result.isErr()) {
       logError("Failed to read onboarding flag:", result.error);
@@ -121,7 +126,9 @@
 
   onMount(() => {
     loadRecent();
-    maybeAutoShowOnboarding();
+    void initializeDocumentOpening().then((opened) => {
+      if (!opened) void maybeAutoShowOnboarding();
+    });
     // The workspace ships as its own chunk now, so warm it while the user is
     // still reading this screen — opening a project should not wait on a fetch.
     page.preload("workspace");
@@ -131,6 +138,8 @@
 
   async function loadRecent() {
     loading = true;
+    const documents = await listRecentDocuments();
+    if (documents.isOk()) recentDocuments = documents.value;
     const result = await getRecentWorkspaces({ includeThumbnails: true });
     result.match(
       (entries) => {
@@ -142,6 +151,12 @@
       },
     );
     loading = false;
+  }
+
+  async function forgetDocument(path: string) {
+    const result = await removeRecentDocument(path);
+    if (result.isOk()) recentDocuments = recentDocuments.filter((entry) => entry !== path);
+    else toast.error(`Could not remove recent document: ${result.error}`);
   }
 
   /** Enter a workspace optimistically: navigate right away so the editor
@@ -323,6 +338,28 @@
 
 {#snippet homeContent()}
   <section class="flex min-h-0 w-full max-w-3xl flex-col">
+    {#if recentDocuments.length > 0}
+      <h2 class="mb-2 text-sm font-medium text-muted-foreground">Recent Documents</h2>
+      <ul class="mb-4 max-h-36 shrink-0 overflow-y-auto rounded-md border border-border">
+        {#each recentDocuments.slice(0, 6) as path (path)}
+          <li class="flex items-center gap-2 px-3 py-1">
+            <button
+              class="min-w-0 flex-1 cursor-pointer py-1 text-left disabled:opacity-50"
+              disabled={workspace.opening}
+              title={path}
+              onclick={() => void openDocumentPath(path)}
+            >
+              <p class="truncate text-sm">{basename(path)}</p>
+              <p class="truncate text-xs text-muted-foreground">{path}</p>
+            </button>
+            <Button variant="ghost" size="icon" aria-label="Remove {basename(path)} from recents"
+              disabled={workspace.opening} onclick={() => void forgetDocument(path)}>
+              <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
+            </Button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
     <div class="mb-4 flex shrink-0 items-center justify-between gap-3">
       <h2 class="text-sm font-medium text-muted-foreground">
         Recent Workspaces
@@ -356,7 +393,7 @@
         class="flex items-center justify-center rounded-md border border-dashed border-border py-12"
       >
         <p class="text-sm text-muted-foreground">
-          No recent workspaces. Open a folder to get started.
+          Open a Typst document or a folder to get started.
         </p>
       </div>
     {:else}
@@ -414,6 +451,9 @@
   </section>
 
   <div class="flex gap-2">
+    <Button class="gap-2" disabled={workspace.opening} onclick={() => void chooseDocument()}>
+      Open File
+    </Button>
     <Dialog.Root bind:open={newWorkspaceOpen}>
       <Dialog.Trigger>
         {#snippet child({ props })}

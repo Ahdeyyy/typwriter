@@ -81,6 +81,13 @@ export const KEY_SECTIONS: KeySection[] = [
 ];
 
 export const KEY_COMMANDS: KeyCommandDef[] = [
+    {
+        id: 'global.openDocument',
+        label: 'Open Typst document',
+        description: 'Open a .typ file without creating a workspace.',
+        scope: 'global',
+        defaults: ['Mod-o'],
+    },
     // ── Global ──────────────────────────────────────────────────────────
     {
         id: 'global.toggleSidebar',

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Typwriter — recents layout preview</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #e8e9ec; color: #202127; font: 13px system-ui, sans-serif; }
+      header { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 16px; background: #fff; border-bottom: 1px solid #ccc; }
+      label { display: flex; align-items: center; gap: 6px; }
+      select, button { padding: 5px 8px; font: inherit; }
+      p { margin: 0; color: #5b5f69; }
+      main { padding: 24px; overflow: auto; }
+      iframe { box-sizing: content-box; display: block; margin: 0 auto; border: 1px solid #bfc1c8; box-shadow: 0 8px 32px #0002; background: white; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>Recents preview</strong>
+      <label>History <select id="scenario">
+        <option value="full">Full (10 documents + 10 workspaces)</option>
+        <option value="documents">Documents only</option>
+        <option value="workspaces">Workspaces only</option>
+        <option value="single">One of each</option>
+        <option value="empty">Empty</option>
+      </select></label>
+      <label>Window <select id="size">
+        <option>1280 × 800</option><option>1200 × 640</option><option>1366 × 768</option>
+        <option>1440 × 900</option><option>1920 × 1080</option><option>1024 × 600</option>
+        <option>800 × 600</option><option>640 × 480</option><option>480 × 400</option>
+      </select></label>
+      <label>Theme <select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select></label>
+      <label>Chrome <select id="platform"><option value="windows">Windows / Linux</option><option value="mac">macOS</option></select></label>
+      <button id="reset" type="button">Reset fixture</button>
+      <p>In-memory fixtures · six visible entries per section · desktop minimum: 1200 × 640 · smaller sizes test overflow</p>
+    </header>
+    <main><iframe title="Typwriter home at selected window size"></iframe></main>
+    <script type="module">
+      const frame = document.querySelector("iframe");
+      function update() {
+        const [width, height] = document.getElementById("size").value.split(" × ");
+        frame.width = width;
+        frame.height = height;
+        const query = new URLSearchParams();
+        for (const key of ["scenario", "theme", "platform"]) query.set(key, document.getElementById(key).value);
+        frame.src = `./canvas.html?${query}`;
+      }
+      document.querySelectorAll("select").forEach((select) => select.addEventListener("change", update));
+      document.getElementById("reset").addEventListener("click", update);
+      update();
+    </script>
+  </body>
+</html>

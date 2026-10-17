@@ -27,6 +27,7 @@
   const DOCS_URL = "https://typst.app/docs/";
 
   let entering = $state(true);
+  let destroyed = false;
 
   onMount(async () => {
     // Preview listeners must be live before the scratch workspace starts
@@ -38,7 +39,9 @@
       logError("onboarding: preview init failed:", err);
     }
 
+    if (destroyed) return;
     const result = await onboarding.enter();
+    if (destroyed) return;
     entering = false;
     result.mapErr((err) => {
       logError("onboarding: enter failed:", err);
@@ -47,6 +50,7 @@
   });
 
   onDestroy(() => {
+    destroyed = true;
     preview.destroy();
     // Safety net: if the page is torn down without going through Finish/Skip,
     // still mark the tutorial as dismissed.

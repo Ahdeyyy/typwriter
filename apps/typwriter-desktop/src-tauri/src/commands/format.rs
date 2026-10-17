@@ -213,6 +213,7 @@ pub fn format_workspace_typ_files(
     workspace: State<'_, Arc<WorkspaceState>>,
     config: State<'_, FormatterConfig>,
 ) -> Result<FormatWorkspaceReport, String> {
+    workspace.require_workspace()?;
     let config = snapshot(&config);
     let t = Instant::now();
     info!("format_workspace_typ_files");
@@ -674,7 +675,11 @@ mod tests {
         let s = "a🦀b";
         assert_eq!(floor_char_boundary(s, 1), 1);
         for mid in 2..=4 {
-            assert_eq!(floor_char_boundary(s, mid), 1, "byte {mid} should floor to 1");
+            assert_eq!(
+                floor_char_boundary(s, mid),
+                1,
+                "byte {mid} should floor to 1"
+            );
         }
         assert_eq!(floor_char_boundary(s, 5), 5);
     }
@@ -775,7 +780,7 @@ mod tests {
         assert_eq!(map_cursor_by_affix(old, new, 2), 2); // end of prefix
         assert_eq!(map_cursor_by_affix(old, new, 5), 6); // end of string
         assert_eq!(map_cursor_by_affix(old, new, 4), 5); // inside suffix ("b")
-        // Inside the changed middle: clamps within the middle of `new`.
+                                                         // Inside the changed middle: clamps within the middle of `new`.
         let m = map_cursor_by_affix(old, new, 3);
         assert!((2..=4).contains(&m), "middle position clamped, got {m}");
     }
@@ -800,7 +805,10 @@ mod tests {
         let new = "aè z";
         for (i, _) in old.char_indices() {
             let m = map_cursor_by_affix(old, new, i);
-            assert!(new.is_char_boundary(m), "offset {i} mapped to non-boundary {m}");
+            assert!(
+                new.is_char_boundary(m),
+                "offset {i} mapped to non-boundary {m}"
+            );
         }
         assert_eq!(map_cursor_by_affix(old, new, old.len()), new.len());
     }
@@ -1046,9 +1054,11 @@ mod tests {
 
     fn assert_idempotent(source: &str) {
         let once = format_typst_source(source.to_string()).expect("first format should succeed");
-        let twice =
-            format_typst_source(once.clone()).expect("reformatting output should succeed");
-        assert_eq!(once, twice, "formatting is not idempotent for source:\n{source}");
+        let twice = format_typst_source(once.clone()).expect("reformatting output should succeed");
+        assert_eq!(
+            once, twice,
+            "formatting is not idempotent for source:\n{source}"
+        );
     }
 
     /// A realistic mixed document: front-matter set rules, headings, prose with
@@ -1140,7 +1150,10 @@ $ integral_0^1 x^2 dif x = 1 / 3 $
         assert!(
             second.formatted[byte..].starts_with("SENTINEL"),
             "cursor should still track SENTINEL after a second pass; got tail {:?}",
-            &second.formatted[byte..].chars().take(20).collect::<String>()
+            &second.formatted[byte..]
+                .chars()
+                .take(20)
+                .collect::<String>()
         );
         // The second pass is a no-op on the text itself.
         assert_eq!(
@@ -1270,7 +1283,10 @@ Body paragraph with a SENTINEL anchor and /* inline */ a comment.
         // must format to something that is itself idempotent.
         let messy = "=    Messy    Heading\n\n\n\nParagraph   with     gaps.\n\n\n#let    x=1\n";
         let once = format_typst_source(messy.to_string()).expect("format should succeed");
-        assert!(!once.contains("=    Messy"), "heading spacing should be normalized");
+        assert!(
+            !once.contains("=    Messy"),
+            "heading spacing should be normalized"
+        );
         assert_idempotent(&once);
     }
 
@@ -1343,7 +1359,7 @@ Body paragraph with a SENTINEL anchor and /* inline */ a comment.
         assert_eq!(utf16_to_byte_offset(s, 0), Some(0));
         assert_eq!(utf16_to_byte_offset(s, 2), Some(4)); // after the crab
         assert_eq!(utf16_to_byte_offset(s, 4), Some(8)); // after the party
-        // Offsets landing mid-surrogate round forward to the next boundary.
+                                                         // Offsets landing mid-surrogate round forward to the next boundary.
         assert_eq!(utf16_to_byte_offset(s, 1), Some(4));
         assert_eq!(utf16_to_byte_offset(s, 3), Some(8));
     }
@@ -1394,7 +1410,10 @@ Body paragraph with a SENTINEL anchor and /* inline */ a comment.
         // "/*tw_cursor_" + 16 hex digits + "*/"
         assert_eq!(marker.len(), "/*tw_cursor_".len() + 16 + "*/".len());
         let hex = &marker["/*tw_cursor_".len()..marker.len() - "*/".len()];
-        assert!(hex.chars().all(|c| c.is_ascii_hexdigit()), "non-hex body: {hex}");
+        assert!(
+            hex.chars().all(|c| c.is_ascii_hexdigit()),
+            "non-hex body: {hex}"
+        );
     }
 
     #[test]
@@ -1660,7 +1679,11 @@ by others @jones2021 in a follow-up study.
         assert!(
             res.formatted[..byte].trim_end().ends_with("here."),
             "cursor should follow the final sentence; got prefix tail {:?}",
-            res.formatted[..byte].chars().rev().take(12).collect::<String>()
+            res.formatted[..byte]
+                .chars()
+                .rev()
+                .take(12)
+                .collect::<String>()
         );
     }
 

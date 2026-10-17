@@ -59,10 +59,12 @@
   });
 
   const workspaceName = $derived(
-    workspace.rootPath ? basename(workspace.rootPath) : "Typwriter"
+    workspace.documentPath ? basename(workspace.documentPath) : workspace.rootPath ? basename(workspace.rootPath) : "Typwriter"
   );
   const openedName = $derived(
-    workspace.activeFilePath ? workspace.activeFilePath.replaceAll("/", "  /  ") : undefined
+    workspace.isStandalone && workspace.activeFilePath === workspace.mainFile
+      ? undefined
+      : workspace.activeFilePath ? workspace.activeFilePath.replaceAll("/", "  /  ") : undefined
   );
 
   let popoutCloseUnlisten: (() => void) | null = null;
@@ -73,7 +75,7 @@
   // is idempotent and handles both toggling and root changes (tear down before
   // reconnecting).
   $effect(() => {
-    lspClient.reconcile(settings.useLsp, workspace.rootPath);
+    lspClient.reconcile(settings.useLsp, workspace.rootPath, workspace.documentPath);
   });
 
   async function openPreviewPopout(presentAfterOpen = false) {
@@ -258,6 +260,7 @@
     // reloaded after — the restore live in this window's stores. The outcome
     // goes back over the event bus so the diff window can toast + reload.
     onVcsRestoreFileRequest(async ({ pointId, path }) => {
+      if (workspace.isStandalone) return;
       const result = await vcs.restoreSingleFile(pointId, path);
       emitVcsRestoreFileResult({
         path,

@@ -22,6 +22,7 @@ import { ui } from '$lib/stores/ui.svelte';
 import { snippets } from '$lib/stores/snippets.svelte';
 import { openSettingsWindow } from '$lib/windows';
 import { logError } from '$lib/logger';
+import { chooseDocument } from '$lib/services/document-opening';
 import {
     insertCodeBlock,
     insertImage,
@@ -95,6 +96,14 @@ function hasTextBuffer(): boolean {
 
 export function buildCommands(ctx: CommandContext): AppCommand[] {
     const commands: AppCommand[] = [
+        {
+            id: 'file.openDocument',
+            title: 'Open Typst document…',
+            group: 'File',
+            shortcut: 'global.openDocument',
+            keywords: ['standalone', 'file'],
+            run: chooseDocument,
+        },
         // ── File ────────────────────────────────────────────────────────────
         {
             id: 'file.save',
@@ -137,7 +146,7 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
             title: 'Set as main file',
             group: 'File',
             keywords: ['entry', 'root', 'compile target'],
-            enabled: () => hasTypstBuffer() && workspace.mainFile !== workspace.activeFilePath,
+            enabled: () => !workspace.isStandalone && hasTypstBuffer() && workspace.mainFile !== workspace.activeFilePath,
             run: () => {
                 const path = workspace.activeFilePath;
                 if (!path) return;
@@ -151,7 +160,7 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
             title: 'Edit project snippets…',
             group: 'File',
             keywords: ['template', 'boilerplate', 'scaffold'],
-            enabled: () => !!workspace.rootPath,
+            enabled: () => !!workspace.rootPath && !workspace.isStandalone,
             run: async () => {
                 // Writes the current project set first, so opening the file
                 // never lands on a missing path or stale content.
@@ -167,7 +176,7 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
             title: 'Reload project snippets',
             group: 'File',
             keywords: ['template', 'refresh'],
-            enabled: () => !!workspace.rootPath,
+            enabled: () => !!workspace.rootPath && !workspace.isStandalone,
             run: () => void snippets.refresh(),
         },
         {
@@ -338,6 +347,7 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
             title: 'Search across the project',
             group: 'View',
             keywords: ['find in files', 'grep', 'replace everywhere', 'rename'],
+            enabled: () => !workspace.isStandalone,
             run: () => ui.showSection('search'),
         },
         {
@@ -366,6 +376,7 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
             title: 'Show history',
             group: 'View',
             keywords: ['vcs', 'snapshots', 'restore'],
+            enabled: () => !workspace.isStandalone,
             run: () => ui.showSection('history'),
         },
         {
@@ -463,7 +474,7 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
         },
         {
             id: 'app.home',
-            title: 'Close workspace and return home',
+            title: 'Close document or workspace and return home',
             group: 'Application',
             keywords: ['leave', 'exit', 'project'],
             run: () => ctx.returnHome(),

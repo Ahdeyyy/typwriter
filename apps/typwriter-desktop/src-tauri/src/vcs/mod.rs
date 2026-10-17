@@ -140,6 +140,12 @@ impl VcsState {
         *self.last_auto_snapshot.lock() = None;
     }
 
+    /// Standalone documents do not snapshot the surrounding source folder.
+    pub fn detach(&self) {
+        *self.root.write() = None;
+        *self.last_auto_snapshot.lock() = None;
+    }
+
     /// Seed the timeline with an initial snapshot on a background thread, if
     /// there's no history yet. Errors are logged and swallowed — versioning
     /// failing must never block opening a workspace.
@@ -235,8 +241,7 @@ impl VcsState {
         let Some(root) = self.workspace_root() else {
             return Ok(None);
         };
-        let result =
-            self.commit_if_changed_for_root(&root, trigger, message, &policy.retention)?;
+        let result = self.commit_if_changed_for_root(&root, trigger, message, &policy.retention)?;
         if result.is_some() {
             *self.last_auto_snapshot.lock() = Some(Instant::now());
         }

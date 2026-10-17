@@ -2,6 +2,7 @@
 
 mod commands;
 mod compiler;
+mod file_open;
 mod grammar;
 mod lsp;
 mod vcs;
@@ -49,20 +50,27 @@ use commands::{
     },
     vcs::{
         vcs_create_restore_point, vcs_current_id, vcs_diff_between, vcs_diff_vs_current,
-        vcs_list_history, vcs_page_diff_cancel, vcs_page_diff_render_page,
-        vcs_page_diff_request, vcs_restore_file, vcs_restore_workspace,
+        vcs_list_history, vcs_page_diff_cancel, vcs_page_diff_render_page, vcs_page_diff_request,
+        vcs_restore_file, vcs_restore_workspace,
     },
     workspace::{
-        clear_recent_workspaces, create_file, create_folder, create_workspace, delete_file,
-        delete_folder, get_file_tree, get_project_snippets, get_recent_workspaces,
-        get_workspace_tabs, import_dropped, import_files, move_file, move_folder, open_folder,
-        remove_recent_workspace, rename_file, save_workspace_tabs, set_main_file,
-        set_project_snippets,
+        clear_recent_workspaces, close_session, create_file, create_folder, create_workspace,
+        delete_file, delete_folder, get_file_tree, get_project_snippets, get_recent_workspaces,
+        get_workspace_tabs, import_dropped, import_files, list_recent_documents, move_file,
+        move_folder, open_document, open_folder, remove_recent_document, remove_recent_workspace,
+        rename_file, save_workspace_tabs, set_main_file, set_project_snippets,
     },
 };
 
 pub fn run() {
     tauri::Builder::default()
+        .manage(file_open::OpenRequests::default())
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            file_open::enqueue(
+                app,
+                file_open::paths_from_args(args, std::path::Path::new(&cwd)),
+            );
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .register_asynchronous_uri_scheme_protocol("previewimg", |ctx, request, responder| {
@@ -260,6 +268,17 @@ pub fn run() {
             // built on the first actual check.
             app.manage(commands::grammar::init_engine(&handle));
 
+            #[cfg(any(windows, target_os = "linux"))]
+            if let Ok(cwd) = std::env::current_dir() {
+                file_open::enqueue(
+                    &handle,
+                    file_open::paths_from_args(
+                        std::env::args_os().map(|arg| arg.to_string_lossy().into_owned()),
+                        &cwd,
+                    ),
+                );
+            }
+
             // Fonts are loaded lazily: the first workspace open (and, as a
             // safety net, the first compile) calls `EditorWorld::ensure_fonts_loading`,
             // so the system font scan overlaps the rest of the open path instead
@@ -273,6 +292,11 @@ pub fn run() {
             get_typst_version,
             prepare_onboarding_workspace,
             // workspace / file-system
+            open_document,
+            close_session,
+            list_recent_documents,
+            remove_recent_document,
+            file_open::take_open_requests,
             open_folder,
             create_workspace,
             set_main_file,
@@ -369,9 +393,23 @@ pub fn run() {
             vcs_page_diff_cancel,
             vcs_page_diff_render_page,
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .unwrap_or_else(|err| {
             eprintln!("fatal: tauri application exited with error: {err:?}");
             std::process::exit(1);
+        })
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                file_open::enqueue(
+                    _app,
+                    urls.into_iter()
+                        .filter_map(|url| url.to_file_path().ok())
+                        .filter(|path| {
+                            path.extension()
+                                .is_some_and(|ext| ext.eq_ignore_ascii_case("typ"))
+                        }),
+                );
+            }
         });
 }

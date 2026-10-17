@@ -7,6 +7,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
+    "preview:recents": "vite build --config tests/recents-preview/vite.config.ts && vite preview --config tests/recents-preview/vite.config.ts --host 127.0.0.1 --port 4178 --strictPort",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check-types": "bun run check",
     "lint": "eslint .",

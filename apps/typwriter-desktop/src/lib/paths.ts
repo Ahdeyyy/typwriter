@@ -13,6 +13,8 @@ export function basename(path: string): string {
 export function dirname(path: string): string {
     const normalized = normalize(path);
     const idx = normalized.lastIndexOf('/');
+    if (idx === 0) return '/';
+    if (idx === 2 && /^[A-Za-z]:\//.test(normalized)) return normalized.slice(0, 3);
     return idx >= 0 ? normalized.slice(0, idx) : '';
 }
 

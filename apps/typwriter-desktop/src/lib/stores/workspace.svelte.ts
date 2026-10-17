@@ -9,12 +9,15 @@ import {
     moveFile,
     moveFolder,
     openFolder,
+    openDocument,
+    closeSession,
     renameFile,
     saveWorkspaceTabs,
     setMainFile,
     triggerPreview,
+    syncPreview,
 } from '$lib/ipc/commands';
-import { onWorkspaceFilesChanged, type UnlistenFn } from '$lib/ipc/events';
+import { onWorkspaceFilesChanged, onDocumentDependenciesChanged, type UnlistenFn } from '$lib/ipc/events';
 import type { FileTreeEntry, WorkspaceFileChange } from '$lib/types';
 import { logError } from '$lib/logger';
 import { bibliography } from '$lib/stores/bibliography.svelte';
@@ -148,6 +151,11 @@ class WorkspaceStore {
     private _mainFile = crossWindowState<string | null>('workspace:mainFile', null);
     get mainFile(): string | null { return this._mainFile.value; }
     set mainFile(v: string | null) { this._mainFile.set(v); }
+    private _documentPath = crossWindowState<string | null>('workspace:documentPath', null);
+    get documentPath(): string | null { return this._documentPath.value; }
+    set documentPath(v: string | null) { this._documentPath.set(v); }
+    get isStandalone(): boolean { return this.documentPath !== null; }
+    get sessionKey(): string | null { return this.documentPath ?? this.rootPath; }
     activeFilePath = $state<string | null>(null);
     searchQuery = $state('');
     dragSrcPath = $state<string | null>(null);
@@ -167,6 +175,8 @@ class WorkspaceStore {
     anyFolderExpanded = $derived(hasExpandedFolder(this.tree));
 
     private _filesChangedUnlisten: UnlistenFn | null = null;
+    private _dependenciesUnlisten: UnlistenFn | null = null;
+    private _generation = 0;
     private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
     private _persistTabsTimer: ReturnType<typeof setTimeout> | null = null;
     private _opQueue = new SerialQueue();
@@ -179,7 +189,7 @@ class WorkspaceStore {
         if (/^([A-Za-z]:\/|\/)/.test(normalized)) {
             return normalized;
         }
-        return `${this.rootPath}/${normalized}`;
+        return `${this.rootPath.replace(/\/$/, '')}/${normalized}`;
     }
 
     toRel(absPath: string): string {
@@ -187,7 +197,7 @@ class WorkspaceStore {
             return absPath;
         }
         const normalized = normalize(absPath);
-        const prefix = `${this.rootPath}/`;
+        const prefix = this.rootPath.endsWith('/') ? this.rootPath : `${this.rootPath}/`;
         return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized;
     }
 
@@ -201,10 +211,83 @@ class WorkspaceStore {
     }
 
     leave(): ResultAsync<void, string> {
+        this.hydrating = true;
         return ResultAsync.fromPromise(
-            this._opQueue.run(() => this._leave()),
+            this._opQueue.run(async () => {
+                this.hydrating = true;
+                try { await this._leave(); }
+                finally { this.hydrating = false; }
+            }),
             (err) => String(err),
         );
+    }
+
+    openDocument(path: string, root?: string): ResultAsync<void, string> {
+        this.opening = true;
+        this.hydrating = true;
+        return ResultAsync.fromPromise(this._opQueue.run(async () => {
+            this.opening = true;
+            this.hydrating = true;
+            try {
+                if (this.documentPath === normalize(path) && (!root || this.rootPath === normalize(root))) return;
+                await this._persistTabsNow();
+                await editor.flushAllTabs();
+                await this._persistTabsNow();
+                const previousDocument = this.documentPath;
+                const previousRoot = this.rootPath;
+                const result = await openDocument(path, root);
+                if (result.isErr()) throw new Error(result.error);
+                await editor.reset();
+                this._generation++;
+                this._disposeFilesChangedListener();
+                this._clearRefreshTimer();
+                this._clearPersistTabsTimer();
+                preview.clear();
+                bibliography.clear();
+                documentScope.clear();
+                snippets.reset();
+                this.tree = [];
+                this.documentPath = normalize(result.value.path);
+                this.rootPath = normalize(result.value.root);
+                this.mainFile = normalize(result.value.mainFile);
+                this.activeFilePath = null;
+                this.searchQuery = '';
+                await this._listenForChanges();
+                // Changing the root changes relative tab paths. Their contents
+                // were saved above, so reopen the main source in its new root.
+                if (previousDocument !== this.documentPath || previousRoot === this.rootPath) {
+                    await this._restoreTabs(result.value.sessionKey);
+                }
+                if (!editor.tabs.length && this.mainFile) {
+                    const opened = await this.openFile(this.mainFile);
+                    if (opened.isErr()) throw new Error(opened.error);
+                }
+                await this._persistTabsNow();
+                await this.refreshTree();
+                const compile = await triggerPreview('main_file');
+                if (compile.isErr()) logError('Starting document preview failed:', compile.error);
+                await syncPreview();
+            } finally {
+                this.opening = false;
+                this.hydrating = false;
+            }
+        }), (error) => String(error));
+    }
+
+    private async _listenForChanges(): Promise<void> {
+        const generation = this._generation;
+        const result = await onWorkspaceFilesChanged((payload) => {
+            if (generation === this._generation) void this._applyExternalChanges(payload.changes);
+        });
+        if (result.isOk()) this._filesChangedUnlisten = result.value;
+        else logError('onWorkspaceFilesChanged listener failed:', result.error);
+        if (this.isStandalone) {
+            const dependencies = await onDocumentDependenciesChanged(() => {
+                if (generation === this._generation) this._scheduleTreeRefresh();
+            });
+            if (dependencies.isOk()) this._dependenciesUnlisten = dependencies.value;
+            else logError('document dependencies listener failed:', dependencies.error);
+        }
     }
 
     /// Open flow, split so navigation never waits on hydration. The home
@@ -218,6 +301,8 @@ class WorkspaceStore {
     ///    after the critical phase *through the same serial queue*, so a fast
     ///    `leave()` or re-open can never interleave with it.
     private async _init(root: string): Promise<void> {
+        this.opening = true;
+        this.hydrating = true;
         try {
             await this._initCriticalPhase(root);
             void this._opQueue
@@ -232,25 +317,26 @@ class WorkspaceStore {
     }
 
     private async _initCriticalPhase(root: string): Promise<void> {
+        await this._persistTabsNow();
         await editor.flushAllTabs();
+        await this._persistTabsNow();
         await editor.reset();
+        this._generation++;
+        this._clearPersistTabsTimer();
+        bibliography.clear();
+        documentScope.clear();
+        snippets.reset();
         preview.clear();
         this._disposeFilesChangedListener();
         this._clearRefreshTimer();
 
+        this.documentPath = null;
         this.rootPath = normalize(root);
         this.tree = [];
         this.mainFile = null;
         this.activeFilePath = null;
 
-        const listenResult = await onWorkspaceFilesChanged((payload) => {
-            void this._applyExternalChanges(payload.changes);
-        });
-        if (listenResult.isOk()) {
-            this._filesChangedUnlisten = listenResult.value;
-        } else {
-            logError('onWorkspaceFilesChanged listener failed:', listenResult.error);
-        }
+        await this._listenForChanges();
 
         const openResult = await openFolder(root);
         if (openResult.isErr()) {
@@ -270,7 +356,7 @@ class WorkspaceStore {
 
     private async _initDeferredPhase(root: string): Promise<void> {
         // The workspace may have been left again while this sat queued.
-        if (this.rootPath !== normalize(root)) return;
+        if (this.rootPath !== normalize(root) || this.isStandalone) return;
 
         // Post-navigation failures are non-fatal by design: an unreadable
         // tree leaves the sidebar empty rather than bouncing the user back
@@ -301,11 +387,15 @@ class WorkspaceStore {
     }
 
     private async _leave(): Promise<void> {
-        this.persistTabs();
+        await this._persistTabsNow();
         await editor.flushAllTabs();
+        await this._persistTabsNow();
         this._disposeFilesChangedListener();
         this._clearRefreshTimer();
         await editor.reset();
+        this._generation++;
+        const closed = await closeSession();
+        if (closed.isErr()) throw new Error(closed.error);
         preview.clear();
         this._clearPersistTabsTimer();
         bibliography.clear();
@@ -313,6 +403,7 @@ class WorkspaceStore {
         snippets.reset();
         this.tree = [];
         this.rootPath = null;
+        this.documentPath = null;
         this.mainFile = null;
         this.activeFilePath = null;
         this.searchQuery = '';
@@ -322,7 +413,9 @@ class WorkspaceStore {
     }
 
     refreshTree(): ResultAsync<void, string> {
+        const generation = this._generation;
         return getFileTree().map((entries) => {
+            if (generation !== this._generation) return;
             const expandedPaths = collectExpandedPaths(this.tree);
             this.tree = entries.map((entry) => entryToNode(entry, expandedPaths));
             // A `.bib`/`.yml`, a `.typ` or `snippets.json` may have been
@@ -558,17 +651,21 @@ class WorkspaceStore {
         this.tree = [...this.tree];
     }
 
-    persistTabs(): void {
+    private async _persistTabsNow(): Promise<void> {
+        this._clearPersistTabsTimer();
         if (!this.rootPath) return;
         const state = editor.getTabState();
-        saveWorkspaceTabs(state.tabs, state.activeTabId, state.unsaved, state.cursor).mapErr(
-            (err) => {
-                logError('saveWorkspaceTabs failed:', err);
-            }
-        );
+        const result = await saveWorkspaceTabs(state.tabs, state.activeTabId, state.unsaved, state.cursor, this.sessionKey);
+        if (result.isErr()) throw new Error(`Could not preserve the current session: ${result.error}`);
+    }
+
+    persistTabs(): void {
+        if (this.hydrating) return;
+        void this._persistTabsNow().catch((error) => logError('saveWorkspaceTabs failed:', error));
     }
 
     schedulePersistTabs(): void {
+        if (this.hydrating) return;
         if (this._persistTabsTimer !== null) {
             clearTimeout(this._persistTabsTimer);
         }
@@ -632,7 +729,7 @@ class WorkspaceStore {
         if (covers(this.activeFilePath)) {
             this.activeFilePath = null;
         }
-        if (covers(this.mainFile)) {
+        if (covers(this.mainFile) && !this.isStandalone) {
             this.mainFile = null;
             // The backend has already cleared its own pointer and dropped the
             // cached document; this repaints the pane to match.
@@ -669,6 +766,8 @@ class WorkspaceStore {
     private _disposeFilesChangedListener(): void {
         this._filesChangedUnlisten?.();
         this._filesChangedUnlisten = null;
+        this._dependenciesUnlisten?.();
+        this._dependenciesUnlisten = null;
     }
 }
 

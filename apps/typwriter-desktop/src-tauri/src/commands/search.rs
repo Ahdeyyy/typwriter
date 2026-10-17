@@ -220,6 +220,7 @@ pub fn search_workspace(
     query: SearchQuery,
     workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Result<SearchResults, String> {
+    workspace.require_workspace()?;
     let t = Instant::now();
     let root = workspace
         .root
@@ -247,7 +248,12 @@ pub fn search_workspace(
         .collect();
 
     // `par_iter` finishes out of order; sort so results read in file order.
-    hits.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)).then(a.match_start.cmp(&b.match_start)));
+    hits.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then(a.line.cmp(&b.line))
+            .then(a.match_start.cmp(&b.match_start))
+    });
 
     let truncated = hits.len() > MAX_HITS;
     hits.truncate(MAX_HITS);
@@ -289,6 +295,7 @@ pub fn replace_in_workspace(
     workspace: State<'_, Arc<WorkspaceState>>,
     vcs: State<'_, Arc<VcsState>>,
 ) -> Result<ReplaceOutcome, String> {
+    workspace.require_workspace()?;
     let t = Instant::now();
     let root = workspace
         .root
@@ -321,7 +328,9 @@ pub fn replace_in_workspace(
         // which is the point of regex replace; for a literal query the
         // replacement is taken literally by escaping it.
         let updated = if query.regex {
-            matcher.replace_all(&text, replacement.as_str()).into_owned()
+            matcher
+                .replace_all(&text, replacement.as_str())
+                .into_owned()
         } else {
             matcher
                 .replace_all(&text, regex::NoExpand(replacement.as_str()))
