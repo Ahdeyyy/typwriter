@@ -143,6 +143,11 @@
         Reload
       </Button>
     </div>
+  {:else if editor.saveError}
+    <div class="bg-destructive/10 flex shrink-0 items-center gap-2 px-3 py-2 text-xs" role="status">
+      <span class="min-w-0 flex-1">Unsaved changes: {editor.saveError}</span>
+      <Button variant="secondary" size="sm" onclick={() => void editor.flush()}>Retry</Button>
+    </div>
   {/if}
 
   <main class="min-h-0 flex-1">

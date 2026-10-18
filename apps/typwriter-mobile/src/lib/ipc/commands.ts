@@ -38,6 +38,10 @@ export const createWorkspace = (name: string) =>
   call<WorkspaceMeta>("create_workspace", { name });
 export const deleteWorkspace = (name: string) => call<null>("delete_workspace", { name });
 export const openWorkspace = (name: string) => call<WorkspaceInfo>("open_workspace", { name });
+export const pickDocument = () => call<string | null>("pick_document");
+export const openDocument = (uri: string) => call<WorkspaceInfo>("open_document", { uri });
+/** Drain the native queue, including requests delivered before the UI loaded. */
+export const takeOpenFiles = () => call<string[]>("take_open_files");
 export const getFileTree = () => call<FileNode>("get_file_tree");
 /** Re-read the workspace from disk, dropping every cached file slot, and
  *  return the fresh tree. Used when the app returns to the foreground, where
@@ -71,8 +75,8 @@ export const deleteEntry = (relPath: string) => call<EntryChange>("delete_entry"
 // ─── Editor ────────────────────────────────────────────────────────────────────
 
 export const readFile = (relPath: string) => call<FileContent>("read_file", { relPath });
-export const saveFile = (relPath: string, content: string) =>
-  call<null>("save_file", { relPath, content });
+export const saveFile = (relPath: string, content: string, overwrite = false) =>
+  call<null>("save_file", { relPath, content, overwrite });
 export const getCompletions = (
   relPath: string,
   text: string,

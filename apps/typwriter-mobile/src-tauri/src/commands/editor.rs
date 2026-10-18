@@ -8,7 +8,7 @@ use base64::Engine;
 use ecow::EcoString;
 use log::info;
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, State};
 use typst::{
     foundations::Bytes,
     syntax::{package::PackageSpec, FileId, Source},
@@ -20,7 +20,10 @@ use typst_ide::IdeWorld;
 use typst_layout::PagedDocument;
 
 use crate::{
-    compiler::CompileState, watcher::WatcherState, workspace::resolve_in_root, world::MobileWorld,
+    compiler::CompileState,
+    watcher::WatcherState,
+    workspace::{resolve_in_root, WorkspaceState},
+    world::MobileWorld,
 };
 
 #[derive(Serialize)]
@@ -111,8 +114,31 @@ fn workspace_root(world: &MobileWorld) -> Result<std::path::PathBuf, String> {
 #[tauri::command]
 pub async fn read_file(
     rel_path: String,
+    app: AppHandle,
+    workspace: State<'_, Arc<WorkspaceState>>,
     world: State<'_, Arc<MobileWorld>>,
 ) -> Result<FileContent, String> {
+    let workspace = workspace.inner().clone();
+    let world = world.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _gate = world.session_gate.write();
+        if let Some(session) = workspace.document.lock().as_ref() {
+            if rel_path != session.name {
+                return Err("Only the opened document is accessible in this session".into());
+            }
+        }
+        crate::document::refresh(&app, &workspace)?;
+        let content = read_file_inner(rel_path, &world)?;
+        if let Some(session) = workspace.document.lock().as_mut() {
+            session.conflicted = false;
+        }
+        Ok(content)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn read_file_inner(rel_path: String, world: &MobileWorld) -> Result<FileContent, String> {
     let t = Instant::now();
     let root = workspace_root(&world)?;
     let abs = resolve_in_root(&root, &rel_path)?;
@@ -170,8 +196,40 @@ pub async fn read_file(
 pub async fn save_file(
     rel_path: String,
     content: String,
+    overwrite: Option<bool>,
+    app: AppHandle,
+    workspace: State<'_, Arc<WorkspaceState>>,
     world: State<'_, Arc<MobileWorld>>,
     watcher: State<'_, Arc<WatcherState>>,
+) -> Result<(), String> {
+    let workspace = workspace.inner().clone();
+    let world = world.inner().clone();
+    let watcher = watcher.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _gate = world.session_gate.write();
+        if crate::document::save(
+            &app,
+            &workspace,
+            &rel_path,
+            &content,
+            overwrite.unwrap_or(false),
+        )? {
+            if let Ok(id) = world.rel_to_id(&rel_path) {
+                world.apply_saved_source(id, &content);
+            }
+            return Ok(());
+        }
+        save_file_inner(rel_path, content, &world, &watcher)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn save_file_inner(
+    rel_path: String,
+    content: String,
+    world: &MobileWorld,
+    watcher: &WatcherState,
 ) -> Result<(), String> {
     let t = Instant::now();
     let root = workspace_root(&world)?;
@@ -225,6 +283,7 @@ pub async fn get_completions(
     // The IDE traversal can take 100ms+ on a big document — keep it off the
     // runtime worker threads.
     tauri::async_runtime::spawn_blocking(move || {
+        let _gate = world.session_gate.read();
         let t = Instant::now();
         let id = world.rel_to_id(&rel_path)?;
         let byte_cursor = utf16_to_byte(&text, cursor);

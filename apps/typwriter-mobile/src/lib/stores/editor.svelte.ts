@@ -22,6 +22,7 @@ class EditorStore {
   imageDataUrl = $state<string | null>(null);
   dirty = $state(false);
   saving = $state(false);
+  saveError = $state<string | null>(null);
   /** The active file was rewritten on disk while this buffer had unsaved edits.
    *  The buffer is untouched — the user picks between it and disk (see
    *  `reloadActiveFromDisk` / `keepMyChanges`). Cleared by any load or save. */
@@ -54,6 +55,7 @@ class EditorStore {
   private liveTimer: ReturnType<typeof setTimeout> | null = null;
   private tabsTimer: ReturnType<typeof setTimeout> | null = null;
   private inflight: ResultAsync<void, string> | null = null;
+  private overwriteOnNextSave = false;
   /** Suppresses the dirty flag while we replace the doc programmatically. */
   private suppressChange = false;
   private loadRequest = 0;
@@ -113,6 +115,7 @@ class EditorStore {
           this.documentVersion++;
           this.newTabOpen = false;
           this.relPath = relPath;
+          this.saveError = null;
           this.imageDataUrl = null;
           if (content.type === "text") {
             this.fileKind = "text";
@@ -420,6 +423,7 @@ class EditorStore {
         return;
       }
       this.externallyChanged = false;
+      this.saveError = null;
       if (content.type === "text") {
         this.fileKind = "text";
         this.applyTextFromDisk(content.content);
@@ -458,6 +462,7 @@ class EditorStore {
    *  overwrites what is on disk. */
   keepMyChanges() {
     this.externallyChanged = false;
+    this.overwriteOnNextSave = true;
     return this.flush();
   }
 
@@ -499,6 +504,8 @@ class EditorStore {
 
   /** Drop the active document (empty-tab / closed-workspace state). */
   private clearFile() {
+    this.overwriteOnNextSave = false;
+    this.saveError = null;
     this.documentVersion++;
     this.loadRequest++;
     this.loading = false;
@@ -522,6 +529,7 @@ class EditorStore {
    * no-op, but leaving live timers armed across a root swap is a trap.
    */
   resetTabs() {
+    this.saveError = null;
     for (const timer of [this.tabsTimer, this.saveTimer, this.liveTimer]) {
       if (timer) clearTimeout(timer);
     }
@@ -630,8 +638,11 @@ class EditorStore {
     const content = this.view?.state.doc.toString() ?? this.buffer;
     this.buffer = content;
     this.saving = true;
-    const run = ipc
-      .saveFile(relPath, content)
+    this.saveError = null;
+    const overwrite = this.overwriteOnNextSave;
+    this.overwriteOnNextSave = false;
+    const saving = overwrite ? ipc.saveFile(relPath, content, true) : ipc.saveFile(relPath, content);
+    const run = saving
       .map(() => {
         // A save acknowledges only the bytes it sent. Keep newer edits dirty
         // and drain them before file/workspace switches are allowed to finish.
@@ -650,6 +661,10 @@ class EditorStore {
       .mapErr((e) => {
         this.saving = false;
         this.inflight = null;
+        if (version === this.documentVersion) {
+          this.saveError = e;
+          if (e.startsWith("File changed on disk.")) this.externallyChanged = true;
+        }
         return e;
       })
       .andThen(() =>

@@ -25,6 +25,7 @@
   import { openedAgo } from "$lib/time";
   import { exportWorkspace } from "$lib/ipc/commands";
   import { scheduleBodyLockRelease } from "$lib/body-lock";
+  import { pickDocument } from "$lib/document-opening";
   import type { WorkspaceMeta } from "$lib/ipc/types";
 
   let loading = $state(true);
@@ -33,6 +34,17 @@
   let menuTarget = $state<WorkspaceMeta | null>(null);
   let confirmingDelete = $state(false);
   let exporting = $state(false);
+  let pickingDocument = $state(false);
+
+  async function openDocument() {
+    if (pickingDocument) return;
+    pickingDocument = true;
+    try {
+      await pickDocument();
+    } finally {
+      pickingDocument = false;
+    }
+  }
 
   const INVALID = /[/\\:*?"<>|]/;
 
@@ -135,6 +147,10 @@
     </Button>
   </header>
 
+  <Button variant="secondary" class="mx-5 my-3" disabled={pickingDocument} onclick={openDocument}>
+    <Icon icon={File02Icon} /> {pickingDocument ? "Opening…" : "Open file"}
+  </Button>
+
   <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 6rem);">
     {#if loading}
       <div class="flex flex-col gap-3">
@@ -149,7 +165,7 @@
         </div>
         <div class="flex flex-col gap-1">
           <p class="text-base font-medium">No workspaces yet</p>
-          <p class="text-muted-foreground text-sm">Your Typst documents live in workspaces. Create your first one to begin.</p>
+          <p class="text-muted-foreground text-sm">Open a .typ file, or create a workspace for documents with multiple files.</p>
         </div>
         <Button class="mt-1 rounded-full px-6" onclick={() => (createOpen = true)}>
           <Icon icon={Add01Icon} /> New workspace

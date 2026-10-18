@@ -9,6 +9,11 @@ export type { UnlistenFn };
 
 const toErrString = (e: unknown): string => String(e);
 
+/** Wakeup only: pending requests live in the native queue. */
+export function onOpenFiles(handler: () => void): ResultAsync<UnlistenFn, string> {
+  return ResultAsync.fromPromise(listen("app:open-files", handler), toErrString);
+}
+
 /** Files in the open workspace changed on disk without the app doing it —
  *  see `src-tauri/src/watcher.rs`. */
 export function onWorkspaceFilesChanged(

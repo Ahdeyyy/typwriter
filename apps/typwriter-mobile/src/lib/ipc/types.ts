@@ -58,6 +58,8 @@ export interface WorkspaceFilesChangedPayload {
 }
 
 export interface WorkspaceInfo {
+  /** Standalone file with a private compilation mirror and original URI. */
+  document?: boolean;
   name: string;
   root: string;
   tree: FileNode;

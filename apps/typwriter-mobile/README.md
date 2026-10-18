@@ -10,6 +10,35 @@ overlay, no per-keystroke IPC (disk is the source of truth; autosave on idle/blu
 preview-open), touch completion strip above the keyboard, and lazy on-demand page
 rendering over the `previewimg://` scheme.
 
+## Opening individual Typst documents
+
+Use **Open file** on the home screen to select a `.typ` document through Android's
+file picker. You can also choose **Typwriter** in a file manager's **Open with**
+menu. Both cold starts and opens delivered to an already running app are queued
+until the editor is ready; unsaved edits must save before switching documents.
+
+Edits save back to the original URI. If another app grants read access only, the
+editor keeps the changes unsaved and shows the provider's error; use **Open file**
+to select the document with write access. External edits are checked on resume,
+reload, compile, and save. Conflicting unsaved edits require **Keep mine** or
+**Reload**.
+
+A standalone session grants access to that file only. Local imports and images
+need a workspace; package imports still work. Compilation uses a private mirror
+under app data and never creates `.typwriter` or scans files beside the original.
+Standalone sessions are not restored automatically after restarting the app.
+
+The Android associations are declared in `src-tauri/tauri.conf.json` and generated
+by Tauri, so they survive `android init`. They cover `text/vnd.typst`, `text/plain`,
+and `application/octet-stream` because file providers report `.typ` inconsistently.
+Android matches these MIME types, so Typwriter can appear for other text/binary
+files too; the app validates the provider's filename and accepts only `.typ`.
+
+On a device, verify opening through the picker, **Open with** from a file manager
+with the app stopped and running, save-back to the original, switching between
+workspaces and documents, cancellation/non-`.typ` rejection, a read-only provider,
+and external edits with both clean and dirty buffers.
+
 ## Dev loop
 
 ```bash

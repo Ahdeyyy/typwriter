@@ -84,6 +84,8 @@ struct CachedFile {
 }
 
 pub struct MobileWorld {
+    /// Root replacement cannot interleave with a compile or document IO.
+    pub session_gate: RwLock<()>,
     /// Workspace root; `None` until a workspace is opened.
     root: RwLock<Option<PathBuf>>,
     /// The main file within the root. `None` when no main file is set.
@@ -166,6 +168,7 @@ impl MobileWorld {
         let embedded = crate::fonts::embedded_store();
 
         Self {
+            session_gate: RwLock::new(()),
             root: RwLock::new(None),
             main: RwLock::new(None),
             library: LazyHash::new(

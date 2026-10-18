@@ -12,6 +12,7 @@
   import { app } from "$lib/stores/app.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { pickDocument } from "$lib/document-opening";
 
   let createOpen = $state(false);
   let newName = $state("");
@@ -37,9 +38,15 @@
     <Button variant="secondary" class="w-full justify-start" onclick={() => app.openOverlay("quickswitcher")}>
       <Icon icon={FolderOpenIcon} /> Open file
     </Button>
-    <Button variant="secondary" class="w-full justify-start" onclick={() => (createOpen = true)}>
-      <Icon icon={FileAddIcon} /> Create new file
-    </Button>
+    {#if workspace.document}
+      <Button variant="secondary" class="w-full justify-start" onclick={() => void pickDocument()}>
+        <Icon icon={FileAddIcon} /> Open another .typ file
+      </Button>
+    {:else}
+      <Button variant="secondary" class="w-full justify-start" onclick={() => (createOpen = true)}>
+        <Icon icon={FileAddIcon} /> Create new file
+      </Button>
+    {/if}
     <Button variant="secondary" class="w-full justify-start" onclick={() => workspace.close()}>
       <Icon icon={FolderLibraryIcon} /> Switch workspace
     </Button>

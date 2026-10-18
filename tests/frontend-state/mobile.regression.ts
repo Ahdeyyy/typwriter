@@ -58,6 +58,30 @@ afterEach(() => {
 });
 
 describe("mobile editor state", () => {
+  test("a provider write failure stays dirty and exposes a retryable save error", async () => {
+    editor.dirty = true;
+    saveFile.mockImplementationOnce(() => errAsync("write permission denied"));
+    expect((await editor.flush()).isErr()).toBe(true);
+    expect(editor.dirty).toBe(true);
+    expect(editor.saveError).toBe("write permission denied");
+    await editor.flush();
+    expect(editor.dirty).toBe(false);
+    expect(editor.saveError).toBeNull();
+  });
+
+  test("a conflict found during a native save blocks further autosaves", async () => {
+    editor.dirty = true;
+    saveFile.mockImplementationOnce(() => errAsync("File changed on disk. Choose Keep mine or Reload before saving."));
+    expect((await editor.flush()).isErr()).toBe(true);
+    expect(editor.externallyChanged).toBe(true);
+    expect((await editor.flush()).isErr()).toBe(true);
+    expect(saveFile).toHaveBeenCalledTimes(1);
+    await editor.keepMyChanges();
+    expect(saveFile.mock.calls.at(-1)).toEqual(["main.typ", "first", true]);
+    expect(editor.dirty).toBe(false);
+    expect(editor.saveError).toBeNull();
+  });
+
   test("closing an active tab keeps it reachable if its save fails", async () => {
     editor.dirty = true;
     saveFile.mockImplementationOnce(() => errAsync("disk full"));
