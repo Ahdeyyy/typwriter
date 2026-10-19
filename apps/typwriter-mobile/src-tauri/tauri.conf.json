@@ -35,7 +35,7 @@
       {
         "ext": ["typ"],
         "name": "Typst document",
-        "mimeType": "application/octet-stream",
+        "mimeType": "*/*",
         "role": "Editor",
         "androidIntentActionFilters": ["view"]
       }

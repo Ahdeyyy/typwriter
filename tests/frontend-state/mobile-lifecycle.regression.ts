@@ -18,6 +18,7 @@ const info = (name: string): WorkspaceInfo => ({
 const getFileTree = mock(() => okAsync<FileNode, string>(tree("default")));
 const rescanWorkspace = mock(() => okAsync<FileNode, string>(tree("rescan")));
 const openWorkspace = mock((name: string) => okAsync<WorkspaceInfo, string>(info(name)));
+const pickDocument = mock(() => okAsync<WorkspaceInfo | null, string>(null));
 const openDocument = mock((uri: string) => okAsync<WorkspaceInfo, string>({
   ...info(uri), name: "notes.typ", mainFile: "notes.typ", document: true,
   openTabs: ["notes.typ"], activeTab: "notes.typ",
@@ -55,7 +56,7 @@ const loadStore = mock(async () => ({
 }));
 
 mock.module("$lib/ipc/commands", () => ({
-  getFileTree, rescanWorkspace, openWorkspace, openDocument, createFile, renameEntry, listWorkspaces, setMainFile,
+  getFileTree, rescanWorkspace, openWorkspace, pickDocument, openDocument, createFile, renameEntry, listWorkspaces, setMainFile,
 }));
 mock.module("$lib/ipc/events", () => ({ onWorkspaceFilesChanged }));
 mock.module("../../apps/typwriter-mobile/src/lib/stores/editor.svelte.ts", () => ({ editor: editorMock }));
@@ -125,7 +126,7 @@ beforeEach(() => {
   documentSurface.body.style.pointerEvents = "";
   documentSurface.body.style.overflow = "";
   documentSurface.body.style.removeProperty.mockClear();
-  for (const fn of [getFileTree, rescanWorkspace, openWorkspace, openDocument, createFile, renameEntry, listWorkspaces,
+  for (const fn of [getFileTree, rescanWorkspace, openWorkspace, pickDocument, openDocument, createFile, renameEntry, listWorkspaces,
     setMainFile, onWorkspaceFilesChanged, loadStore, setLastWorkspace,
     ...Object.values(editorMock).filter((value) => typeof value === "function"),
     ...Object.values(compileMock)]) fn.mockClear();
@@ -148,6 +149,64 @@ afterAll(() => {
 });
 
 describe("workspace request ownership", () => {
+  test("the picker owns navigation before Android returns to the foreground", async () => {
+    workspace.init();
+    const version = workspace.version;
+    const picked = deferred<WorkspaceInfo | null>();
+    pickDocument.mockImplementationOnce(() => picked.result);
+    const opening = workspace.pickDocument();
+    expect(workspace.version).not.toBe(version);
+    expect(workspace.isOpening).toBe(true);
+    await tick();
+    documentSurface.dispatchEvent(new Event("visibilitychange"));
+    await tick();
+    expect(rescanWorkspace).not.toHaveBeenCalled();
+    picked.resolve({ ...info("notes.typ"), mainFile: "notes.typ", document: true,
+      openTabs: ["notes.typ"], activeTab: "notes.typ" });
+    expect((await opening).isOk()).toBe(true);
+    expect(openDocument).not.toHaveBeenCalled();
+    expect(workspace.document).toBe(true);
+    expect(workspace.isOpening).toBe(false);
+    expect(editorMock.seedTabs).toHaveBeenLastCalledWith(["notes.typ"], "notes.typ", null);
+  });
+
+  test("canceling a picker restores tabs without opening the previous workspace", async () => {
+    const root = workspace.root;
+    const result = await workspace.pickDocument();
+    expect(result.isOk() && result.value).toBeNull();
+    expect(workspace.root).toBe(root);
+    expect(workspace.isOpening).toBe(false);
+    expect(openWorkspace).not.toHaveBeenCalled();
+    expect(openDocument).not.toHaveBeenCalled();
+    expect(editorMock.seedTabs).toHaveBeenCalledWith(["main.typ"], "main.typ", null);
+    expect(setLastWorkspace).not.toHaveBeenCalled();
+  });
+
+  test("a picker supersedes a startup workspace open still in flight", async () => {
+    const restored = deferred<WorkspaceInfo>();
+    openWorkspace.mockImplementationOnce(() => restored.result);
+    const restore = workspace.open("old");
+    await tick();
+    pickDocument.mockImplementationOnce(() => okAsync({ ...info("notes.typ"), document: true }));
+    const opening = workspace.pickDocument();
+    restored.resolve(info("old"));
+    expect((await restore).isErr()).toBe(true);
+    await opening;
+    expect(workspace.document).toBe(true);
+    expect(workspace.name).toBe("notes.typ");
+    expect(editorMock.seedTabs).toHaveBeenCalledTimes(1);
+  });
+
+  test("a selected document's failure restores the existing session and returns its error", async () => {
+    pickDocument.mockImplementationOnce(() => errAsync("Cannot read the selected document: permission denied"));
+    const result = await workspace.pickDocument();
+    expect(result.isErr() && result.error).toBe("Cannot read the selected document: permission denied");
+    expect(workspace.root).toBe("/workspaces/a");
+    expect(workspace.isOpening).toBe(false);
+    expect(editorMock.seedTabs).toHaveBeenCalledWith(["main.typ"], "main.typ", null);
+    expect(openWorkspace).not.toHaveBeenCalled();
+  });
+
   test("a rejected document restores the saved editor without replacing the session", async () => {
     openDocument.mockImplementationOnce(() => errAsync("Choose a .typ document"));
     expect((await workspace.openDocument("content://provider/notes.txt")).isErr()).toBe(true);

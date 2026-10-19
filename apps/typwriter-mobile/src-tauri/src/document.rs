@@ -187,8 +187,16 @@ pub async fn take_open_files(state: State<'_, FileOpenState>) -> Result<Vec<Stri
 }
 
 #[tauri::command]
-pub async fn pick_document(app: AppHandle) -> Result<Option<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+pub async fn pick_document(
+    app: AppHandle,
+    workspace: State<'_, Arc<WorkspaceState>>,
+    world: State<'_, Arc<MobileWorld>>,
+    compile: State<'_, Arc<CompileState>>,
+    watcher: State<'_, Arc<WatcherState>>,
+) -> Result<Option<WorkspaceInfo>, String> {
+    let handle = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>, String> {
+        let app = handle;
         #[cfg(target_os = "android")]
         {
             use tauri_plugin_android_fs::AndroidFsExt;
@@ -218,7 +226,15 @@ pub async fn pick_document(app: AppHandle) -> Result<Option<String>, String> {
         }
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+    let Some(uri) = picked else {
+        return Ok(None);
+    };
+    // Complete the native open before returning to the webview. The picker
+    // and its URI handoff must be one session transition, including on resume.
+    open_document(uri, app, workspace, world, compile, watcher)
+        .await
+        .map(Some)
 }
 
 #[tauri::command]
@@ -243,15 +259,18 @@ pub async fn open_document(
         #[cfg(target_os = "android")]
         let name = {
             use tauri_plugin_android_fs::AndroidFsExt;
-            app.android_fs().get_name(&uri).map_err(|e| e.to_string())?
+            app.android_fs()
+                .get_name(&uri)
+                .map_err(|e| format!("Cannot get the selected file's name: {e}"))?
         };
         #[cfg(not(target_os = "android"))]
         let name = local_path(&uri)?
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .ok_or("Invalid document name")?;
-        validate_name(&name)?;
-        let source = read_original(&app, &uri)?;
+        validate_name(&name).map_err(|e| format!("{e} (selected: {name})"))?;
+        let source = read_original(&app, &uri)
+            .map_err(|e| format!("Cannot read the selected document: {e}"))?;
         let mut hasher = DefaultHasher::new();
         uri.uri.hash(&mut hasher);
         let root = app
@@ -260,10 +279,12 @@ pub async fn open_document(
             .map_err(|e| e.to_string())?
             .join("documents")
             .join(format!("{:016x}", hasher.finish()));
-        std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&root)
+            .map_err(|e| format!("Cannot create the document's compilation directory: {e}"))?;
         let id = crate::world::local_file_id(Path::new(&name)).ok_or("Invalid document name")?;
         let _gate = world.session_gate.write();
-        write_mirror(&root, &name, &source)?;
+        write_mirror(&root, &name, &source)
+            .map_err(|e| format!("Cannot prepare the selected document for editing: {e}"))?;
         let session = DocumentSession {
             uri,
             name: name.clone(),

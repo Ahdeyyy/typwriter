@@ -102,10 +102,17 @@ class WorkspaceStore {
     return this.openSession(() => ipc.openDocument(uri), true);
   }
 
-  private openSession(
-    load: () => ResultAsync<WorkspaceInfo, string>,
+  pickDocument(): ResultAsync<WorkspaceInfo | null, string> {
+    // Own navigation before Android hides the webview. Otherwise startup
+    // restore and the foreground rescan can still open/read the old workspace
+    // while the user is choosing its replacement.
+    return this.openSession(() => ipc.pickDocument(), true);
+  }
+
+  private openSession<T extends WorkspaceInfo | null>(
+    load: () => ResultAsync<T, string>,
     preserveOnFailure = false,
-  ): ResultAsync<WorkspaceInfo, string> {
+  ): ResultAsync<T, string> {
     const generation = ++this.generation;
     this.treeRequest++;
     this.changing = true;
@@ -121,14 +128,18 @@ class WorkspaceStore {
       const active = editor.newTabOpen ? null : editor.relPath;
       const cursor = editor.view?.state.selection.main.head ?? null;
       editor.resetTabs();
-      return load().orTee(() => {
+      const restore = () => {
         if (preserveOnFailure && generation === this.generation) {
           this.changing = false;
           editor.seedTabs(tabs, active, cursor);
         }
+      };
+      return load().orTee(restore).andTee((info) => {
+        if (info === null) restore();
       });
     }).andThen((info) => {
       if (generation !== this.generation) return errAsync("Workspace opening was canceled");
+      if (info === null) return okAsync(info);
       this.changing = false;
       this.name = info.name;
       this.root = info.root;

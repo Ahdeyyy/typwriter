@@ -29,9 +29,10 @@ under app data and never creates `.typwriter` or scans files beside the original
 Standalone sessions are not restored automatically after restarting the app.
 
 The Android associations are declared in `src-tauri/tauri.conf.json` and generated
-by Tauri, so they survive `android init`. They cover `text/vnd.typst`, `text/plain`,
-and `application/octet-stream` because file providers report `.typ` inconsistently.
-Android matches these MIME types, so Typwriter can appear for other text/binary
+by Tauri, so they survive `android init`. They include a `*/*` fallback because
+file providers report `.typ` inconsistently, including vendor-specific MIME types
+and opaque content URIs with no extension in the path.
+Android matches these MIME types, so Typwriter can appear for other
 files too; the app validates the provider's filename and accepts only `.typ`.
 
 On a device, verify opening through the picker, **Open with** from a file manager

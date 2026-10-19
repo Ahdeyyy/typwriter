@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeEach, expect, mock, test } from "bun:test";
-import { okAsync, ResultAsync } from "../../apps/typwriter-mobile/node_modules/neverthrow";
+import { errAsync, okAsync, ResultAsync } from "../../apps/typwriter-mobile/node_modules/neverthrow";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -9,7 +9,7 @@ function deferred<T>() {
 
 const tick = () => new Promise<void>((done) => setTimeout(done, 0));
 const takeOpenFiles = mock(() => okAsync<string[], string>([]));
-const pickDocument = mock(() => okAsync<string | null, string>(null));
+const pickDocument = mock(() => okAsync<void | null, string>(null));
 const openDocument = mock((_uri: string) => okAsync<void, string>(undefined));
 const init = mock(() => Promise.resolve());
 const toastError = mock((_message: string) => {});
@@ -23,9 +23,9 @@ const surface = Object.assign(new EventTarget(), { visibilityState: "visible" })
 const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 Object.defineProperty(globalThis, "document", { value: surface, configurable: true });
 
-mock.module("$lib/ipc/commands", () => ({ takeOpenFiles, pickDocument }));
+mock.module("$lib/ipc/commands", () => ({ takeOpenFiles }));
 mock.module("$lib/ipc/events", () => ({ onOpenFiles }));
-mock.module("$lib/stores/workspace.svelte", () => ({ workspace: { openDocument } }));
+mock.module("$lib/stores/workspace.svelte", () => ({ workspace: { openDocument, pickDocument } }));
 mock.module("$lib/stores/settings.svelte", () => ({ settings: { init } }));
 mock.module("svelte-sonner", () => ({ toast: { error: toastError } }));
 
@@ -89,4 +89,13 @@ test("canceling the picker leaves the current session intact", async () => {
   await pick();
   expect(openDocument).not.toHaveBeenCalled();
   expect(toastError).not.toHaveBeenCalled();
+});
+
+test("picker errors stay visible long enough to read after returning to the app", async () => {
+  pickDocument.mockImplementationOnce(() => errAsync("Cannot read selected document: permission denied"));
+  await pick();
+  expect(toastError).toHaveBeenCalledWith(
+    "Failed to open document: Cannot read selected document: permission denied",
+    { duration: 15000 },
+  );
 });

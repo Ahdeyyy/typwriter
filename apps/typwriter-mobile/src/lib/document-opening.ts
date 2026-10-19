@@ -5,14 +5,9 @@ import { settings } from "$lib/stores/settings.svelte";
 import { workspace } from "$lib/stores/workspace.svelte";
 
 export async function pickDocument(): Promise<void> {
-  const picked = await ipc.pickDocument();
-  if (picked.isErr()) {
-    toast.error(`Failed to open file picker: ${picked.error}`);
-  } else if (picked.value) {
-    await settings.init();
-    const result = await workspace.openDocument(picked.value);
-    if (result.isErr()) toast.error(`Failed to open document: ${result.error}`);
-  }
+  await settings.init();
+  const result = await workspace.pickDocument();
+  if (result.isErr()) toast.error(`Failed to open document: ${result.error}`, { duration: 15000 });
 }
 
 /** Subscribe before draining, so cold and warm opens have the same owner. */

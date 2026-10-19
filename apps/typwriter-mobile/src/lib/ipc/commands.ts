@@ -38,7 +38,7 @@ export const createWorkspace = (name: string) =>
   call<WorkspaceMeta>("create_workspace", { name });
 export const deleteWorkspace = (name: string) => call<null>("delete_workspace", { name });
 export const openWorkspace = (name: string) => call<WorkspaceInfo>("open_workspace", { name });
-export const pickDocument = () => call<string | null>("pick_document");
+export const pickDocument = () => call<WorkspaceInfo | null>("pick_document");
 export const openDocument = (uri: string) => call<WorkspaceInfo>("open_document", { uri });
 /** Drain the native queue, including requests delivered before the UI loaded. */
 export const takeOpenFiles = () => call<string[]>("take_open_files");
