@@ -6363,6 +6363,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-opener",
  "tauri-plugin-store",
+ "tauri-utils",
  "thiserror 2.0.18",
  "typst",
  "typst-html",
