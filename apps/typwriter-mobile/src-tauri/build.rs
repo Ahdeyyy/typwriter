@@ -1,23 +1,25 @@
+mod android_file_associations;
+
 fn main() {
     tauri_build::build();
 
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("android") {
-        // MIME filters (even */*) reject intents with no MIME type. Some file
-        // managers send unknown extensions this way. Do not restrict the URI
-        // path: content providers can use opaque IDs, and file:/// has no host.
-        // document::validate_name checks the provider's actual filename.
+        // Own this block: Tauri's generated MIME associations omit scheme/host,
+        // so Android ignores their extension patterns and matches every file.
+        tauri_utils::build::update_android_manifest(
+            "tauri-file-associations",
+            "activity",
+            android_file_associations::intent_filters(),
+        )
+        .expect("failed to register Android Typst document intents");
+
+        // Remove the unrestricted MIME-free filter from existing generated
+        // projects as well as keeping fresh `android init` builds correct.
         tauri_utils::build::update_android_manifest(
             "typwriter-untyped-documents",
             "activity",
-            r#"<intent-filter>
-    <action android:name="android.intent.action.VIEW" />
-    <category android:name="android.intent.category.DEFAULT" />
-    <category android:name="android.intent.category.BROWSABLE" />
-    <data android:scheme="content" />
-    <data android:scheme="file" />
-</intent-filter>"#
-                .into(),
+            String::new(),
         )
-        .expect("failed to register Android document intents without a MIME type");
+        .expect("failed to remove legacy Android document intents");
     }
 }

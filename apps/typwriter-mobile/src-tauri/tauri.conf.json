@@ -17,29 +17,6 @@
   },
   "bundle": {
     "active": true,
-    "fileAssociations": [
-      {
-        "ext": ["typ"],
-        "name": "Typst document",
-        "mimeType": "text/vnd.typst",
-        "role": "Editor",
-        "androidIntentActionFilters": ["view"]
-      },
-      {
-        "ext": ["typ"],
-        "name": "Typst document",
-        "mimeType": "text/plain",
-        "role": "Editor",
-        "androidIntentActionFilters": ["view"]
-      },
-      {
-        "ext": ["typ"],
-        "name": "Typst document",
-        "mimeType": "*/*",
-        "role": "Editor",
-        "androidIntentActionFilters": ["view"]
-      }
-    ],
     "targets": "all",
     "icon": [
       "icons/32x32.png",
