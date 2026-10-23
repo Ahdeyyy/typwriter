@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "bun run licenses:check && vite build",
+    "licenses:generate": "bun scripts/generate-licenses.ts",
+    "licenses:check": "bun scripts/generate-licenses.ts --check",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check-types": "bun run check",
     "lint": "eslint .",

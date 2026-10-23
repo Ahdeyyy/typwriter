@@ -76,6 +76,28 @@ On Windows, large crates (`typst-library`) can crash a full build with
 `STATUS_STACK_BUFFER_OVERRUN`; set `RUST_MIN_STACK=8388608`. Prefer `cargo check` over
 full builds — it's much faster and disk-cheaper.
 
+## Dependency licenses
+
+**Settings → Open-source licenses** contains a searchable, offline catalog of
+third-party licenses and notices. The catalog includes only dependencies declared
+directly in the mobile app's `package.json` and `src-tauri/Cargo.toml`, including
+development/build dependencies and target-specific direct crates. Transitive
+packages are excluded. Long notices are rendered only when expanded.
+
+After updating dependencies, run from this app directory:
+
+```bash
+bun run licenses:generate
+bun run licenses:check
+```
+
+Generation requires `bun install` and internet access to upstream license texts,
+and crate archives. Commit `src/lib/licenses/catalog.json` with dependency
+changes. Ordinary builds verify the catalog against the manifests, lockfiles, and
+generator sources without accessing the network. The check also verifies that
+the catalog contains exactly the direct dependency set, at its installed or
+locked versions.
+
 ## Android manifest note (`adjustResize`)
 
 After `bun tauri android init`, verify
