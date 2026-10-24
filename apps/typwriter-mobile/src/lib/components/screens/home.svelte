@@ -21,6 +21,7 @@
   import { Skeleton } from "$lib/components/ui/skeleton";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { app } from "$lib/stores/app.svelte";
+  import { pathDisplay } from "$lib/stores/path-display.svelte";
   import { longpress } from "$lib/actions/longpress";
   import { openedAgo } from "$lib/time";
   import { exportWorkspace } from "$lib/ipc/commands";
@@ -186,6 +187,7 @@
           <div class="flex items-end justify-between gap-3">
             <div class="min-w-0">
               <div class="truncate text-2xl font-semibold tracking-tight">{r.name}</div>
+              <div class="text-primary-foreground/70 mt-1 truncate text-xs">{pathDisplay.format(r.path)}</div>
               <div class="text-primary-foreground/70 mt-1 flex items-center gap-1.5 text-xs">
                 <Icon icon={Time04Icon} class="size-3.5" />
                 {openedAgo(r.lastOpenedMs)}
@@ -213,6 +215,7 @@
               </div>
               <div class="min-w-0 flex-1">
                 <div class="truncate text-sm font-medium">{meta.name}</div>
+                <div class="text-muted-foreground truncate text-xs">{pathDisplay.format(meta.path)}</div>
                 <div class="text-muted-foreground text-xs">{openedAgo(meta.lastOpenedMs)}</div>
               </div>
               <Icon icon={ArrowRight01Icon} class="text-muted-foreground/50 size-4 shrink-0" />

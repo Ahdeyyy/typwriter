@@ -6,6 +6,22 @@ export function normalize(path: string): string {
     return path.replace(/\\/g, '/');
 }
 
+// Remove only the actual home directory, respecting directory boundaries.
+// Keep the original path when home is unknown or the path is elsewhere.
+export function shortenHomePath(path: string, homePath: string | null): string {
+    if (!homePath) return path;
+    const normalized = normalize(path);
+    const home = normalize(homePath).replace(/\/+$/, '');
+    if (!home) return path;
+    const isWindowsPath = /^[A-Za-z]:\//.test(normalized) || normalized.startsWith('//');
+    const comparedPath = isWindowsPath ? normalized.toLowerCase() : normalized;
+    const comparedHome = isWindowsPath ? home.toLowerCase() : home;
+    if (comparedPath === comparedHome) return '';
+    return comparedPath.startsWith(`${comparedHome}/`)
+        ? normalized.slice(home.length + 1)
+        : path;
+}
+
 export function basename(path: string): string {
     return normalize(path).split('/').pop() ?? path;
 }

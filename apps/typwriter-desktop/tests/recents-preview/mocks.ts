@@ -25,7 +25,7 @@ export const initPackageWorkspace = unsupported;
 export const workspace = { opening: false, rootPath: null, init: unsupported };
 export const onboarding = { shouldAutoShow: () => okAsync(false) };
 export const page = { current: { name: "home" }, preload() {}, navigate() {}, back() {} };
-export const platform = { isMac: params.get("platform") === "mac" };
+export const platform = { isMac: params.get("platform") === "mac", homePath: "C:/Users/Alex" };
 export const settings = { keybindings: {} };
 export const initializeDocumentOpening = async () => false;
 export const openDocumentPath = async () => {};

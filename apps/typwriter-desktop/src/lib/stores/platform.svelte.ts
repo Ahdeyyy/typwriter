@@ -2,12 +2,14 @@
 
 import { platform as tauriPlatform } from "@tauri-apps/plugin-os";
 import { getVersion } from "@tauri-apps/api/app";
+import { homeDir } from "@tauri-apps/api/path";
 
 export type Os = "macos" | "windows" | "linux" | "unknown";
 
 class PlatformStore {
   os = $state<Os>("unknown");
   appVersion = $state("");
+  homePath = $state<string | null>(null);
 
   isMac = $derived(this.os === "macos");
 
@@ -28,6 +30,12 @@ class PlatformStore {
     getVersion()
       .then((version) => {
         this.appVersion = version;
+      })
+      .catch(() => {});
+
+    homeDir()
+      .then((path) => {
+        this.homePath = path;
       })
       .catch(() => {});
   }

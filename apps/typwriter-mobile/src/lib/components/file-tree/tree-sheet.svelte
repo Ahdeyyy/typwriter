@@ -26,6 +26,7 @@
   import { parentDir } from "$lib/paths";
   import { app } from "$lib/stores/app.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { pathDisplay } from "$lib/stores/path-display.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { openedAgo } from "$lib/time";
   import type { FileNode } from "$lib/ipc/types";
@@ -275,6 +276,9 @@
         >
           <div class="min-w-0 flex-1">
             <div class="truncate text-sm font-semibold">{workspace.name ?? "Files"}</div>
+            {#if !workspace.document && workspace.root}
+              <div class="text-muted-foreground truncate text-xs">{pathDisplay.format(workspace.root)}</div>
+            {/if}
             <div class="text-muted-foreground truncate text-xs">
               {#if workspace.document}Single document{:else}{counts.files} file{counts.files === 1 ? "" : "s"}, {counts.folders} folder{counts.folders === 1 ? "" : "s"}{/if}
             </div>
@@ -354,6 +358,9 @@
   <Drawer.Content>
     <div class="px-4 pb-2 pt-1">
       <Drawer.Title class="truncate text-base font-semibold">{workspace.name ?? "Workspace"}</Drawer.Title>
+      {#if !workspace.document && workspace.root}
+        <p class="text-muted-foreground truncate text-xs">{pathDisplay.format(workspace.root)}</p>
+      {/if}
       <Drawer.Description class="text-muted-foreground text-xs">Switch workspace</Drawer.Description>
     </div>
     <div
@@ -371,6 +378,7 @@
               <Icon icon={Folder01Icon} class="text-muted-foreground size-5 shrink-0" />
               <span class="min-w-0 flex-1">
                 <span class="block truncate text-sm">{meta.name}</span>
+                <span class="text-muted-foreground block truncate text-xs">{pathDisplay.format(meta.path)}</span>
                 <span class="text-muted-foreground block truncate text-xs">
                   {openedAgo(meta.lastOpenedMs)}
                 </span>

@@ -10,6 +10,7 @@
     GitCommitIcon,
     LeftToRightListBulletIcon,
     Search01Icon,
+    Tick02Icon,
   } from "@hugeicons/core-free-icons";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -19,6 +20,8 @@
   import { grammar } from "$lib/stores/grammar.svelte";
   import { ui, type SidebarSection } from "$lib/stores/ui.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { platform } from "$lib/stores/platform.svelte";
+  import { normalize, shortenHomePath } from "$lib/paths";
   import { getRecentWorkspaces } from "$lib/ipc/commands";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
@@ -33,33 +36,6 @@
   import { vcs } from "$lib/stores/vcs.svelte";
   import { openDiffWindow, openSettingsWindow } from "$lib/windows";
   import type { RecentWorkspaceEntry } from "$lib/types";
-  import { defaultWindowIcon } from '@tauri-apps/api/app';
-
-function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: number): string {
-    // 1. Wrap the array in a Uint8ClampedArray (required by the ImageData API)
-    const clampedArray = new Uint8ClampedArray(rgbaArray);
-
-    // 2. Create an ImageData object
-    const imageData = new ImageData(clampedArray, width, height);
-
-    // 3. Create an off-screen canvas
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-
-    // 4. Put the image data onto the canvas context
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      console.error("Failed to get 2d context from canvas");
-      return "";
-    }
-    ctx.putImageData(imageData, 0, 0);
-
-    // 5. Export the canvas as a base64 encoded PNG URL
-    return canvas.toDataURL('image/png');
-}
-
-  let iconImage: HTMLImageElement | undefined = $state(undefined);
 
   const sidebarCtx = Sidebar.useSidebar();
 
@@ -88,19 +64,6 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
   );
 
   onMount(async () => {
-    try {
-      const icon = await defaultWindowIcon();
-      if (icon) {
-        const size = await icon.size();
-        const htmlImage = new Image(size.width, size.height);
-        const bytes = await icon.rgba();
-        htmlImage.src = createImageUrlFromRgba(bytes, size.width, size.height);
-        iconImage = htmlImage;
-        await icon.close();
-      }
-    } catch (err) {
-      logError("defaultWindowIcon failed:", err);
-    }
     const result = await getRecentWorkspaces({ includeThumbnails: false });
     result.match(
       (entries) => { recentWorkspaces = entries.slice(0, 3); },
@@ -118,12 +81,21 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
   }
 
   async function handleOpenRecent(path: string) {
-    if (!workspace.isStandalone && workspace.rootPath === path) return;
+    if (isCurrentWorkspace(path)) return;
     const result = await workspace.init(path);
     result.mapErr((err) => {
       logError("Failed to open workspace:", err);
       toast.error(`Failed to open workspace: ${err}`);
     });
+  }
+
+  function isCurrentWorkspace(path: string): boolean {
+    if (workspace.isStandalone || !workspace.rootPath) return false;
+    const current = normalize(workspace.rootPath).replace(/\/+$/, "");
+    const recent = normalize(path).replace(/\/+$/, "");
+    return platform.os === "windows"
+      ? current.toLowerCase() === recent.toLowerCase()
+      : current === recent;
   }
 </script>
 
@@ -140,21 +112,14 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
                 size="lg"
                 {...props}
                 tooltipContent={workspaceName}
+                aria-label={workspaceName}
                 class="md:px-2 px-0"
               >
-                <div
-                  class="bg-sidebar-accent text-sidebar-accent-foreground shadow-lg flex size-8 shrink-0
-                         items-center justify-center rounded-lg"
-                >
-                    {#if iconImage}
-                        <img src={iconImage.src} alt="" class="mx-auto size-8" />
-                    {:else}
-                      <HugeiconsIcon icon={Folder01Icon} class="size-4" />
-                    {/if}
-                </div>
-                <div class="flex min-w-0 flex-col gap-0.5 leading-none">
+                <div class="flex min-w-0 flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
                   <span class="truncate font-semibold">{workspaceName}</span>
-                  <span class="truncate text-[10px] opacity-50">{workspace.rootPath ?? ""}</span>
+                  <span class="truncate text-[10px] opacity-50">
+                    {shortenHomePath(workspace.rootPath ?? "", platform.homePath)}
+                  </span>
                 </div>
                 <HugeiconsIcon icon={ArrowDown01Icon} class="ml-auto size-4 shrink-0 opacity-50" />
               </Sidebar.MenuButton>
@@ -169,14 +134,22 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
               <DropdownMenu.Item disabled>No recent projects</DropdownMenu.Item>
             {:else}
               {#each recentWorkspaces as recent (recent.path)}
+                {@const isCurrent = isCurrentWorkspace(recent.path)}
                 <DropdownMenu.Item
-                  class="flex flex-col items-start gap-0.5 py-2"
+                  class="py-2"
+                  aria-current={isCurrent ? "true" : undefined}
                   onclick={() => handleOpenRecent(recent.path)}
                 >
-                  <span class="font-medium">{recent.name}</span>
-                  <span class="text-muted-foreground max-w-full truncate text-[10px]">
-                    {recent.path}
-                  </span>
+                  <div class="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span class="truncate font-medium">{recent.name}</span>
+                    <span class="text-muted-foreground truncate text-[10px]">
+                      {shortenHomePath(recent.path, platform.homePath)}
+                    </span>
+                  </div>
+                  {#if isCurrent}
+                    <HugeiconsIcon icon={Tick02Icon} class="size-4 shrink-0" aria-hidden="true" />
+                    <span class="sr-only">Current workspace</span>
+                  {/if}
                 </DropdownMenu.Item>
               {/each}
             {/if}
