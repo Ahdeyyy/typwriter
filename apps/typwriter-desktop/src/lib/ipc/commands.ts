@@ -627,6 +627,8 @@ export interface AppSettings {
     editor_font_family: string;
     editor_font_size: number;
     theme: string;
+    light_theme: string | null;
+    dark_theme: string | null;
     auto_check_updates: boolean;
     default_preview_zoom: number;
     default_preview_visible: boolean;

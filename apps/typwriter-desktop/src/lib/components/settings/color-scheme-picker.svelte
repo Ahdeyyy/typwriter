@@ -1,6 +1,6 @@
 <script lang="ts">
   // Colour scheme cards: System / Light / Dark, each with a miniature mockup
-  // of the app painted in the currently selected theme's palette (light values
+  // of the app painted in each mode's selected palette (light values
   // for the Light card, dark values for the Dark card, a hard split for
   // System). Replaces the old segmented mode control.
   //
@@ -41,7 +41,7 @@
   <div
     class="theme-preview flex h-full w-full overflow-hidden"
     class:dark
-    data-theme={settings.theme}
+    data-theme={dark ? settings.darkTheme : settings.lightTheme}
     style="background: var(--tp-underlay, transparent)"
     aria-hidden="true"
   >

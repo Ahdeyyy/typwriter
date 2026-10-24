@@ -94,7 +94,8 @@ export interface PersistedSettings {
     uiFontFamily: string;
     editorFontFamily: string;
     editorFontSize: number;
-    theme: ThemeId;
+    lightTheme: ThemeId;
+    darkTheme: ThemeId;
 
     // Updates
     autoCheckUpdates: boolean;
@@ -166,7 +167,8 @@ const DEFAULTS: PersistedSettings = {
     uiFontFamily: 'IBM Plex Sans Variable',
     editorFontFamily: 'JetBrains Mono Variable',
     editorFontSize: 13,
-    theme: 'default',
+    lightTheme: 'default',
+    darkTheme: 'default',
 
     autoCheckUpdates: true,
 
@@ -236,19 +238,18 @@ function isThemeId(value: unknown): value is ThemeId {
     return typeof value === 'string' && THEME_IDS.has(value as ThemeId);
 }
 
-/** Legacy field names kept readable here so settings saved before themes were
- *  unified (one palette per mode) migrate to the single `theme` instead of
- *  resetting to the default. */
-type RawSettings = Partial<PersistedSettings> & { lightTheme?: unknown; darkTheme?: unknown };
+/** A shared palette from older versions seeds both modes unless a mode has
+ *  its own valid selection. Read the raw values before merging defaults. */
+type RawSettings = Partial<PersistedSettings> & { theme?: unknown };
 
 function normalizeSettings(value: RawSettings): PersistedSettings {
-    const settings = { ...DEFAULTS, ...value } as PersistedSettings & RawSettings;
-    // When the old per-mode palettes disagreed, the dark one wins — it was the
-    // more likely deliberate pick for an app that ships dark by default.
-    const legacyTheme = [settings.theme, settings.darkTheme, settings.lightTheme].find(isThemeId);
+    const { theme, ...current } = value;
+    const settings = { ...DEFAULTS, ...current };
+    const fallback = isThemeId(theme) ? theme : 'default';
     return {
         ...settings,
-        theme: legacyTheme ?? DEFAULTS.theme,
+        lightTheme: isThemeId(value.lightTheme) ? value.lightTheme : fallback,
+        darkTheme: isThemeId(value.darkTheme) ? value.darkTheme : fallback,
         // Existing screen reader users have already made their choice.
         screenReaderModeChosen: settings.screenReaderModeChosen === true || settings.screenReaderMode === true,
         keybindings: normalizeKeybindings(settings.keybindings),
@@ -279,7 +280,8 @@ class SettingsStore {
     uiFontFamily = $state(INITIAL.uiFontFamily);
     editorFontFamily = $state(INITIAL.editorFontFamily);
     editorFontSize = $state(INITIAL.editorFontSize);
-    theme = $state<ThemeId>(INITIAL.theme);
+    lightTheme = $state<ThemeId>(INITIAL.lightTheme);
+    darkTheme = $state<ThemeId>(INITIAL.darkTheme);
 
     autoCheckUpdates = $state(INITIAL.autoCheckUpdates);
 
@@ -326,11 +328,13 @@ class SettingsStore {
         return getAppSettings()
             .map((s) => {
                 this.fontDirectories = s.font_directories;
+                const legacyTheme = isThemeId(s.theme) ? s.theme : undefined;
                 const rustSettings: PersistedSettings = {
                     uiFontFamily: s.ui_font_family,
                     editorFontFamily: s.editor_font_family,
                     editorFontSize: s.editor_font_size,
-                    theme: isThemeId(s.theme) ? s.theme : DEFAULTS.theme,
+                    lightTheme: isThemeId(s.light_theme) ? s.light_theme : (legacyTheme ?? DEFAULTS.lightTheme),
+                    darkTheme: isThemeId(s.dark_theme) ? s.dark_theme : (legacyTheme ?? DEFAULTS.darkTheme),
                     autoCheckUpdates: s.auto_check_updates,
                     defaultPreviewZoom: s.default_preview_zoom,
                     defaultPreviewVisible: s.default_preview_visible,
@@ -385,7 +389,8 @@ class SettingsStore {
             uiFontFamily: this.uiFontFamily,
             editorFontFamily: this.editorFontFamily,
             editorFontSize: this.editorFontSize,
-            theme: this.theme,
+            lightTheme: this.lightTheme,
+            darkTheme: this.darkTheme,
             autoCheckUpdates: this.autoCheckUpdates,
             defaultPreviewZoom: this.defaultPreviewZoom,
             defaultPreviewVisible: this.defaultPreviewVisible,
@@ -421,11 +426,12 @@ class SettingsStore {
     }
 
     private applyPersistedSettings(next: Partial<PersistedSettings>): void {
-        const settings = { ...DEFAULTS, ...next };
+        const settings = normalizeSettings(next);
         this.uiFontFamily = settings.uiFontFamily;
         this.editorFontFamily = settings.editorFontFamily;
         this.editorFontSize = clampEditorFontSize(settings.editorFontSize);
-        this.theme = isThemeId(settings.theme) ? settings.theme : DEFAULTS.theme;
+        this.lightTheme = settings.lightTheme;
+        this.darkTheme = settings.darkTheme;
         this.autoCheckUpdates = settings.autoCheckUpdates;
         this.defaultPreviewZoom = clampPreviewZoom(settings.defaultPreviewZoom);
         this.defaultPreviewVisible = settings.defaultPreviewVisible;
@@ -493,7 +499,10 @@ class SettingsStore {
             ui_font_family: current.uiFontFamily,
             editor_font_family: current.editorFontFamily,
             editor_font_size: current.editorFontSize,
-            theme: current.theme,
+            // Keep the legacy palette readable by older app versions.
+            theme: current.darkTheme,
+            light_theme: current.lightTheme,
+            dark_theme: current.darkTheme,
             auto_check_updates: current.autoCheckUpdates,
             default_preview_zoom: current.defaultPreviewZoom,
             default_preview_visible: current.defaultPreviewVisible,
@@ -541,8 +550,9 @@ class SettingsStore {
         this.persist();
     }
 
-    setTheme(theme: ThemeId) {
-        this.theme = theme;
+    setTheme(theme: ThemeId, mode?: 'light' | 'dark') {
+        if (mode !== 'dark') this.lightTheme = theme;
+        if (mode !== 'light') this.darkTheme = theme;
         this.persist();
     }
 
@@ -730,7 +740,8 @@ class SettingsStore {
         this.uiFontFamily = DEFAULTS.uiFontFamily;
         this.editorFontFamily = DEFAULTS.editorFontFamily;
         this.editorFontSize = DEFAULTS.editorFontSize;
-        this.theme = DEFAULTS.theme;
+        this.lightTheme = DEFAULTS.lightTheme;
+        this.darkTheme = DEFAULTS.darkTheme;
         this.autoCheckUpdates = DEFAULTS.autoCheckUpdates;
         this.defaultPreviewZoom = DEFAULTS.defaultPreviewZoom;
         this.defaultPreviewVisible = DEFAULTS.defaultPreviewVisible;

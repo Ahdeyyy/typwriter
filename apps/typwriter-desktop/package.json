@@ -14,6 +14,7 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "bun test",
     "test:state": "bun test --conditions=browser --preload ../../scripts/register-svelte-runes.ts ../../tests/frontend-state/desktop.regression.ts",
+    "test:themes": "bun test --conditions=browser --preload ../../scripts/register-svelte-runes.ts ../../tests/frontend-state/desktop-themes.regression.ts",
     "tauri": "tauri"
   },
   "license": "MIT",

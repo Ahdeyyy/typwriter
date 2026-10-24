@@ -231,9 +231,8 @@
   $effect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
-    // One palette for both modes: the theme presets in layout.css still ship a
-    // light and a dark variant, keyed off the mode-watcher `dark` class.
-    const activeTheme = settings.theme;
+    // Follow the resolved mode, including changes to the system preference.
+    const activeTheme = mode.current === "dark" ? settings.darkTheme : settings.lightTheme;
     if (activeTheme !== appliedTheme) {
       appliedTheme = activeTheme;
       untrack(() => setTheme(activeTheme));
