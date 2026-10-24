@@ -277,6 +277,8 @@ const INITIAL_LOCAL = loadFromLocalStorage();
 const INITIAL = INITIAL_LOCAL.settings;
 
 class SettingsStore {
+    private appearanceChanged = false;
+
     uiFontFamily = $state(INITIAL.uiFontFamily);
     editorFontFamily = $state(INITIAL.editorFontFamily);
     editorFontSize = $state(INITIAL.editorFontSize);
@@ -369,10 +371,15 @@ class SettingsStore {
                 const nextSettings = INITIAL_LOCAL.hasSettings
                     ? { ...rustSettings, ...INITIAL }
                     : rustSettings;
-                // A first-run answer can arrive while this IPC is pending.
-                // Rust does not own these UI-only preferences.
+                // Setup choices can arrive while this IPC is pending.
                 this.applyPersistedSettings({
                     ...nextSettings,
+                    ...(this.appearanceChanged ? {
+                        uiFontFamily: this.uiFontFamily,
+                        lightTheme: this.lightTheme,
+                        darkTheme: this.darkTheme,
+                    } : {}),
+                    // Rust does not own these UI-only preferences.
                     screenReaderMode: this.screenReaderMode,
                     screenReaderModeChosen: this.screenReaderModeChosen,
                 });
@@ -536,6 +543,7 @@ class SettingsStore {
     }
 
     setUiFontFamily(family: string) {
+        this.appearanceChanged = true;
         this.uiFontFamily = family;
         this.persist();
     }
@@ -551,6 +559,7 @@ class SettingsStore {
     }
 
     setTheme(theme: ThemeId, mode?: 'light' | 'dark') {
+        this.appearanceChanged = true;
         if (mode !== 'dark') this.lightTheme = theme;
         if (mode !== 'light') this.darkTheme = theme;
         this.persist();
@@ -731,6 +740,15 @@ class SettingsStore {
     resetAllKeybindings() {
         if (Object.keys(this.keybindings).length === 0) return;
         this.keybindings = {};
+        this.persist();
+    }
+
+    /** Reset only the controls offered during appearance setup. */
+    resetAppearanceToDefaults() {
+        this.appearanceChanged = true;
+        this.uiFontFamily = DEFAULTS.uiFontFamily;
+        this.lightTheme = DEFAULTS.lightTheme;
+        this.darkTheme = DEFAULTS.darkTheme;
         this.persist();
     }
 

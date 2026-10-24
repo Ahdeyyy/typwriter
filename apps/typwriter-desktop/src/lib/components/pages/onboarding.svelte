@@ -19,7 +19,9 @@
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import OnboardingEditor from "$lib/components/editor/onboarding-editor.svelte";
   import Preview from "$lib/components/sidebar/preview.svelte";
+  import Appearance from "$lib/components/settings/groups/appearance.svelte";
 
+  import { selectColorScheme } from "$lib/appearance";
   import { onboarding } from "$lib/stores/onboarding.svelte";
   import { preview } from "$lib/stores/preview.svelte";
   import { settings } from "$lib/stores/settings.svelte";
@@ -29,21 +31,21 @@
 
   let entering = $state(true);
   let choosingScreenReaderMode = $state(false);
+  let choosingAppearance = $state(false);
   let startingTutorial = false;
   let destroyed = false;
 
   onMount(async () => {
-    if (!settings.screenReaderModeChosen) {
-      const firstRun = await onboarding.shouldAutoShow();
-      if (destroyed) return;
-      if (firstRun.isErr()) {
-        logError("onboarding: checking first run failed:", firstRun.error);
-      }
-      if (firstRun.isErr() || firstRun.value) {
-        choosingScreenReaderMode = true;
-        entering = false;
-        return;
-      }
+    const firstRun = await onboarding.shouldAutoShow();
+    if (destroyed) return;
+    if (firstRun.isErr()) {
+      logError("onboarding: checking first run failed:", firstRun.error);
+    }
+    if (firstRun.isErr() || firstRun.value) {
+      choosingScreenReaderMode = !settings.screenReaderModeChosen;
+      choosingAppearance = settings.screenReaderModeChosen;
+      entering = false;
+      return;
     }
     await startTutorial();
   });
@@ -52,6 +54,16 @@
     if (!choosingScreenReaderMode) return;
     settings.setScreenReaderMode(enabled);
     choosingScreenReaderMode = false;
+    choosingAppearance = true;
+  }
+
+  function finishAppearance(useDefaults: boolean) {
+    if (!choosingAppearance) return;
+    if (useDefaults) {
+      settings.resetAppearanceToDefaults();
+      selectColorScheme("system");
+    }
+    choosingAppearance = false;
     void startTutorial();
   }
 
@@ -138,6 +150,28 @@
           </div>
         </div>
       </div>
+    {:else if choosingAppearance}
+      <div class="min-h-0 flex-1 overflow-auto p-6">
+        <div class="mx-auto flex w-full max-w-2xl flex-col gap-6">
+          <div class="flex flex-col gap-2">
+            <h1
+              class="text-2xl font-semibold text-foreground"
+              tabindex="-1"
+              aria-describedby="onboarding-appearance-description"
+              {@attach (node) => { node.focus(); }}
+            >Make Typwriter yours</h1>
+            <p id="onboarding-appearance-description" class="text-sm leading-relaxed text-muted-foreground">
+              Choose your color scheme, themes, and interface font. Changes appear right away.
+              You can change these anytime in Settings, Appearance.
+            </p>
+          </div>
+          <Appearance />
+        </div>
+      </div>
+      <footer class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-3">
+        <Button variant="ghost" onclick={() => finishAppearance(true)}>Skip and use defaults</Button>
+        <Button onclick={() => finishAppearance(false)}>Continue to tutorial</Button>
+      </footer>
     {:else if entering}
       <div class="flex flex-1 items-center justify-center">
         <h1 class="sr-only">Tutorial</h1>

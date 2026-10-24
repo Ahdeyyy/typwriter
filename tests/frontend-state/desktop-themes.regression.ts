@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test';
-import { errAsync, okAsync } from '../../apps/typwriter-desktop/node_modules/neverthrow';
+import { errAsync, okAsync, ResultAsync } from '../../apps/typwriter-desktop/node_modules/neverthrow';
 import type { AppSettings } from '../../apps/typwriter-desktop/src/lib/ipc/commands';
 import type { SettingsSyncPayload } from '../../apps/typwriter-desktop/src/lib/stores/settings.svelte';
 
@@ -16,9 +16,10 @@ Object.defineProperty(globalThis, 'localStorage', {
 });
 
 const setAppSettings = mock((_settings: AppSettings) => okAsync());
+const getAppSettings = mock((): ResultAsync<AppSettings, string> => errAsync('Backend unavailable'));
 const emitSettingsChanged = mock((_payload: SettingsSyncPayload) => okAsync());
 mock.module('$lib/ipc/commands', () => ({
-  getAppSettings: () => errAsync('Backend unavailable'),
+  getAppSettings,
   setAppSettings,
   setTypstFontDirectories: () => okAsync(),
 }));
@@ -95,6 +96,49 @@ describe('desktop per-mode themes', () => {
     settings.resetToDefaults();
     expect(settings.lightTheme).toBe('default');
     expect(settings.darkTheme).toBe('default');
+  });
+
+  test('skipping appearance restores its defaults and preserves accessibility and editing choices', () => {
+    settings.setTheme('nord', 'light');
+    settings.setTheme('gruvbox', 'dark');
+    settings.setUiFontFamily('Inter Variable');
+    settings.setScreenReaderMode(true);
+    settings.setEditorFontSize(18);
+
+    settings.resetAppearanceToDefaults();
+
+    expect(settings.lightTheme).toBe('default');
+    expect(settings.darkTheme).toBe('default');
+    expect(settings.uiFontFamily).toBe('IBM Plex Sans Variable');
+    expect(settings.screenReaderMode).toBe(true);
+    expect(settings.screenReaderModeChosen).toBe(true);
+    expect(settings.editorFontSize).toBe(18);
+    expect(JSON.parse(storage.get('typwriter:settings:v1')!)).toMatchObject({
+      lightTheme: 'default', darkTheme: 'default', uiFontFamily: 'IBM Plex Sans Variable',
+      screenReaderMode: true, screenReaderModeChosen: true, editorFontSize: 18,
+    });
+    expect(emitSettingsChanged.mock.lastCall?.[0]).toMatchObject({
+      lightTheme: 'default', darkTheme: 'default', uiFontFamily: 'IBM Plex Sans Variable',
+    });
+  });
+
+  test('a delayed settings load preserves appearance choices made during setup', async () => {
+    settings.resetToDefaults();
+    const backend = setAppSettings.mock.lastCall![0];
+    let resolve!: (value: AppSettings) => void;
+    getAppSettings.mockReturnValueOnce(ResultAsync.fromSafePromise(
+      new Promise<AppSettings>((done) => { resolve = done; }),
+    ));
+    const loading = settings.init();
+    settings.setTheme('dracula', 'dark');
+    settings.setTheme('solarized', 'light');
+    settings.setUiFontFamily('Inter Variable');
+
+    resolve(backend);
+    expect((await loading).isOk()).toBe(true);
+    expect(settings.darkTheme).toBe('dracula');
+    expect(settings.lightTheme).toBe('solarized');
+    expect(settings.uiFontFamily).toBe('Inter Variable');
   });
 });
 
