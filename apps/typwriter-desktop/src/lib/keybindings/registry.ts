@@ -82,6 +82,13 @@ export const KEY_SECTIONS: KeySection[] = [
 
 export const KEY_COMMANDS: KeyCommandDef[] = [
     {
+        id: 'global.toggleScreenReaderMode',
+        label: 'Toggle screen reader mode',
+        description: 'Let Tab leave the editor and reserve assistive-technology navigation keys.',
+        scope: 'global',
+        defaults: ['Mod-Shift-F12'],
+    },
+    {
         id: 'global.openDocument',
         label: 'Open Typst document',
         description: 'Open a .typ file without creating a workspace.',

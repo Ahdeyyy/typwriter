@@ -79,9 +79,9 @@
 
 <div class="flex h-full min-h-0 flex-col">
   <div class="flex items-center justify-between px-2 py-1.5">
-    <span class="text-xs font-semibold">Outline</span>
+    <h2 class="text-xs font-semibold">Outline</h2>
     {#if onclose}
-      <Button variant="ghost" size="icon-sm" onclick={onclose}>
+      <Button variant="ghost" size="icon-sm" aria-label="Close outline" onclick={onclose}>
         <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
       </Button>
     {/if}
@@ -99,6 +99,7 @@
     <div class="flex items-center gap-1.5 px-2 pb-1.5">
       <HugeiconsIcon icon={Search01Icon} class="size-3.5 shrink-0 opacity-40" />
       <input
+        aria-label="Filter headings"
         bind:value={query}
         placeholder="Filter headings…"
         spellcheck="false"
@@ -120,6 +121,7 @@
                          py-1 text-left text-xs
                          {heading.index === current ? 'bg-sidebar-accent font-medium' : ''}"
                   style="padding-left: {4 + (heading.level - 1) * 10}px"
+                  aria-current={heading.index === current ? "location" : undefined}
                   onclick={() => jump(heading.from)}
                 >
                   <span class="text-muted-foreground shrink-0 text-[9px] tabular-nums">

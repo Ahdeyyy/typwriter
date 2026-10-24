@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { Switch as SwitchPrimitive } from "bits-ui";
+	import { getSettingControl } from "$lib/components/settings/control-context";
+	const settingControl = getSettingControl();
 	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
 
 	let {
@@ -16,6 +18,8 @@
 <SwitchPrimitive.Root
 	bind:ref
 	bind:checked
+	aria-labelledby={settingControl?.["aria-labelledby"]}
+	aria-describedby={settingControl?.["aria-describedby"]}
 	data-slot="switch"
 	data-size={size}
 	class={cn(

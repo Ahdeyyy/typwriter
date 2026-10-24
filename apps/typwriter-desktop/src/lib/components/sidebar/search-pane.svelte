@@ -148,9 +148,9 @@
 
 <div class="flex h-full min-h-0 flex-col">
   <div class="flex items-center justify-between px-2 py-1.5">
-    <span class="text-xs font-semibold">Search</span>
+    <h2 class="text-xs font-semibold">Search</h2>
     {#if onclose}
-      <Button variant="ghost" size="icon-sm" onclick={onclose}>
+      <Button variant="ghost" size="icon-sm" aria-label="Close project search" onclick={onclose}>
         <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
       </Button>
     {/if}
@@ -178,6 +178,7 @@
         <Tooltip.Content>{showReplace ? "Hide replace" : "Show replace"}</Tooltip.Content>
       </Tooltip.Root>
       <Input
+        aria-label="Search project"
         bind:value={query}
         placeholder="Search the project…"
         spellcheck="false"
@@ -188,6 +189,7 @@
     {#if showReplace}
       <div class="flex items-center gap-1 pl-7">
         <Input
+          aria-label="Replace with"
           bind:value={replacement}
           placeholder="Replace with…"
           spellcheck="false"
@@ -198,6 +200,7 @@
           size="sm"
           class="h-7 shrink-0 text-xs"
           disabled={hits.length === 0 || searching}
+          aria-label="Replace all project matches"
           onclick={replaceAll}
         >
           All
@@ -214,6 +217,7 @@
               variant={caseSensitive ? "default" : "ghost"}
               size="icon-sm"
               aria-label="Match case"
+              aria-pressed={caseSensitive}
               onclick={() => (caseSensitive = !caseSensitive)}
             >
               <span class="text-[10px] font-semibold">Aa</span>
@@ -230,6 +234,7 @@
               variant={wholeWord ? "default" : "ghost"}
               size="icon-sm"
               aria-label="Whole word"
+              aria-pressed={wholeWord}
               onclick={() => (wholeWord = !wholeWord)}
             >
               <span class="text-[10px] font-semibold underline">ab</span>
@@ -246,6 +251,7 @@
               variant={regex ? "default" : "ghost"}
               size="icon-sm"
               aria-label="Regular expression"
+              aria-pressed={regex}
               onclick={() => (regex = !regex)}
             >
               <span class="text-[10px] font-semibold">.*</span>
@@ -291,6 +297,7 @@
             type="button"
             class="hover:bg-sidebar-accent flex w-full items-center gap-1 rounded px-1.5 py-1
                    text-left text-xs"
+            aria-expanded={!isCollapsed}
             onclick={() => toggleGroup(group.path)}
           >
             <HugeiconsIcon

@@ -43,6 +43,7 @@
     setDiagnostics,
     type Diagnostic as CMDiagnostic,
   } from "@codemirror/lint";
+  import { editorAccessibility } from "$lib/codemirror/accessibility";
   import { inlineDiagnostics } from "$lib/codemirror/inline-diagnostics";
   import {
     createLabelIndex,
@@ -158,6 +159,15 @@
   );
   const snippetCompletions = snippetCompletionSource(() => snippets.all);
   let mountedTabId = $state<string | null>(null);
+
+  const accessibilityCompartment = new Compartment();
+  const componentId = $props.id();
+  const accessibilityHelpId = `${componentId}-editor-help`;
+
+  function accessibilityExt(tabId: string) {
+    const tab = editor.tabs.find((tab) => tab.id === tabId);
+    return editorAccessibility(settings.screenReaderMode, `Source editor: ${tab?.relPath ?? tabId}`, accessibilityHelpId);
+  }
 
   const themeCompartment = new Compartment();
   const fontCompartment = new Compartment();
@@ -434,6 +444,7 @@
         onAddToDictionary: (word) => void grammar.addWord(word),
         onDisableRule: (rule) => void grammar.setRuleEnabled(rule, false),
       }),
+      accessibilityCompartment.of(accessibilityExt(tabId)),
       lineNumbersCompartment.of(lineNumbersExt()),
       lineWrapCompartment.of(lineWrapExt()),
       spellcheckCompartment.of(spellcheckExt(isTypst)),
@@ -950,6 +961,11 @@
     build: (tabId: string) => Extension;
   }[] = [
     {
+      compartment: accessibilityCompartment,
+      track: () => { settings.screenReaderMode; editor.tabs.map((tab) => tab.relPath); },
+      build: accessibilityExt,
+    },
+    {
       compartment: fontCompartment,
       track: () => {
         settings.editorFontFamily;
@@ -1103,4 +1119,13 @@
   });
 </script>
 
+<p id={accessibilityHelpId} class="sr-only">
+  {#if settings.screenReaderMode}
+    Tab and Shift+Tab move between controls. Control+Alt navigation is reserved for assistive technology.
+  {:else}
+    Tab indents. Press Escape, then Tab to leave the editor.
+  {/if}
+  Screen reader mode is available in Settings, Accessibility, and the command palette.
+  With NVDA, use NVDA+Space to switch between editing and browse mode.
+</p>
 <div bind:this={editorHost} class="h-full w-full overflow-hidden"></div>

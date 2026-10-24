@@ -22,14 +22,43 @@
 
   import { onboarding } from "$lib/stores/onboarding.svelte";
   import { preview } from "$lib/stores/preview.svelte";
+  import { settings } from "$lib/stores/settings.svelte";
   import { logError } from "$lib/logger";
 
   const DOCS_URL = "https://typst.app/docs/";
 
   let entering = $state(true);
+  let choosingScreenReaderMode = $state(false);
+  let startingTutorial = false;
   let destroyed = false;
 
   onMount(async () => {
+    if (!settings.screenReaderModeChosen) {
+      const firstRun = await onboarding.shouldAutoShow();
+      if (destroyed) return;
+      if (firstRun.isErr()) {
+        logError("onboarding: checking first run failed:", firstRun.error);
+      }
+      if (firstRun.isErr() || firstRun.value) {
+        choosingScreenReaderMode = true;
+        entering = false;
+        return;
+      }
+    }
+    await startTutorial();
+  });
+
+  function chooseScreenReaderMode(enabled: boolean) {
+    if (!choosingScreenReaderMode) return;
+    settings.setScreenReaderMode(enabled);
+    choosingScreenReaderMode = false;
+    void startTutorial();
+  }
+
+  async function startTutorial() {
+    if (startingTutorial || destroyed) return;
+    startingTutorial = true;
+    entering = true;
     // Preview listeners must be live before the scratch workspace starts
     // compiling (enter() triggers the first compile), otherwise the initial
     // page events are missed.
@@ -47,7 +76,7 @@
       logError("onboarding: enter failed:", err);
       toast.error(`Couldn't start the tutorial: ${err}`);
     });
-  });
+  }
 
   onDestroy(() => {
     destroyed = true;
@@ -86,10 +115,33 @@
 <div class="flex h-full w-full flex-col">
   <Titlebar variant="minimal" title="Typwriter — Tutorial" />
 
-  <main class="flex min-h-0 flex-1 flex-col">
-    {#if entering}
+  <main id="main-content" tabindex="-1" class="flex min-h-0 flex-1 flex-col">
+    {#if choosingScreenReaderMode}
+      <div class="flex min-h-0 flex-1 items-center justify-center overflow-auto p-6">
+        <div class="flex w-full max-w-lg flex-col gap-4">
+          <h1
+            class="text-2xl font-semibold text-foreground"
+            tabindex="-1"
+            aria-describedby="onboarding-screen-reader-description"
+            {@attach (node) => { node.focus(); }}
+          >Turn on screen reader mode?</h1>
+          <p id="onboarding-screen-reader-description" class="text-sm leading-relaxed text-muted-foreground">
+            Tab and Shift+Tab will move between controls instead of indenting in the editor.
+            Control+Alt navigation keys will be reserved for assistive technology.
+          </p>
+          <p class="text-sm text-muted-foreground">
+            You can change this anytime in Settings, Accessibility. Other editing features remain available.
+          </p>
+          <div class="flex flex-wrap gap-3">
+            <Button size="lg" onclick={() => chooseScreenReaderMode(true)}>Turn on screen reader mode</Button>
+            <Button variant="outline" size="lg" onclick={() => chooseScreenReaderMode(false)}>Continue without screen reader mode</Button>
+          </div>
+        </div>
+      </div>
+    {:else if entering}
       <div class="flex flex-1 items-center justify-center">
-        <span class="text-sm text-muted-foreground">Preparing the tutorial…</span>
+        <h1 class="sr-only">Tutorial</h1>
+        <span role="status" class="text-sm text-muted-foreground">Preparing the tutorial…</span>
       </div>
     {:else}
       <Resizable.PaneGroup direction="horizontal" class="min-h-0 flex-1">
@@ -103,7 +155,11 @@
                 <span>Step {onboarding.stepIndex + 1} of {onboarding.steps.length}</span>
               </div>
 
-              <h1 class="text-2xl font-semibold text-foreground">
+              <h1
+                class="text-2xl font-semibold text-foreground"
+                tabindex="-1"
+                {@attach (node) => { node.focus(); }}
+              >
                 {onboarding.current.title}
               </h1>
 

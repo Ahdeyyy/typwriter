@@ -130,7 +130,7 @@
   <div class="flex min-h-0 flex-1">
     <SettingsNav active={activeGroup} onselect={selectGroup} />
 
-    <div class="min-w-0 flex-1">
+    <main id="main-content" tabindex="-1" class="min-w-0 flex-1">
       <ScrollArea.Root class="h-full">
         <div class="mx-auto w-full max-w-3xl px-8 py-8">
           {#if search.active}
@@ -162,7 +162,7 @@
           {/if}
         </div>
       </ScrollArea.Root>
-    </div>
+    </main>
   </div>
 </div>
 </Tooltip.Provider>

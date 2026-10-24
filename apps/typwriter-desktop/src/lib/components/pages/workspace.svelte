@@ -323,7 +323,7 @@
      deferred hydration (file tree, tab restore) continues behind it. Opaque
      background so the half-hydrated editor never flashes through. -->
 {#if workspace.hydrating}
-  <div class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background">
+  <div role="status" class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background">
     <HugeiconsIcon icon={Loading03Icon} class="size-6 animate-spin text-muted-foreground" />
     <p class="text-sm text-muted-foreground">Opening {workspaceName}…</p>
   </div>
@@ -355,9 +355,10 @@
       />
     {/if}
 
-    <div class="flex min-h-0 w-full flex-1">
+    <h1 class="sr-only">{workspaceName}</h1>
+    <div inert={workspace.hydrating} class="flex min-h-0 w-full flex-1">
       <AppSidebar />
-      <main class="relative flex h-full min-w-0 flex-1 overflow-hidden">
+      <main id="main-content" tabindex="-1" class="relative flex h-full min-w-0 flex-1 overflow-hidden">
         <Resizable.PaneGroup direction="horizontal" class="h-full w-full">
           <Resizable.Pane defaultSize={paneVisible ? 60 : 100} minSize={30}>
             <EditorPane />

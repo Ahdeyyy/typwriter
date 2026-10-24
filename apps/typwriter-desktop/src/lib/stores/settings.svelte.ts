@@ -120,6 +120,11 @@ export interface PersistedSettings {
      *  and diagnostics. UI-only — not round-tripped through the Rust settings. */
     useLsp: boolean;
 
+    /** UI-only, opt-in keyboard behavior for assistive technology. */
+    screenReaderMode: boolean;
+    /** Records either onboarding answer; retained when preferences are reset. */
+    screenReaderModeChosen: boolean;
+
     // Auto-save
     autoSaveEnabled: boolean;
     autoSaveDelayMs: number;
@@ -177,6 +182,8 @@ const DEFAULTS: PersistedSettings = {
     focusMode: false,
     typewriterScrolling: false,
     useLsp: true,
+    screenReaderMode: false,
+    screenReaderModeChosen: false,
 
     autoSaveEnabled: true,
     autoSaveDelayMs: 1500,
@@ -242,6 +249,8 @@ function normalizeSettings(value: RawSettings): PersistedSettings {
     return {
         ...settings,
         theme: legacyTheme ?? DEFAULTS.theme,
+        // Existing screen reader users have already made their choice.
+        screenReaderModeChosen: settings.screenReaderModeChosen === true || settings.screenReaderMode === true,
         keybindings: normalizeKeybindings(settings.keybindings),
     };
 }
@@ -286,6 +295,8 @@ class SettingsStore {
     focusMode = $state(INITIAL.focusMode);
     typewriterScrolling = $state(INITIAL.typewriterScrolling);
     useLsp = $state(INITIAL.useLsp);
+    screenReaderMode = $state(INITIAL.screenReaderMode);
+    screenReaderModeChosen = $state(INITIAL.screenReaderModeChosen);
 
     autoSaveEnabled = $state(INITIAL.autoSaveEnabled);
     autoSaveDelayMs = $state(INITIAL.autoSaveDelayMs);
@@ -333,6 +344,8 @@ class SettingsStore {
                     typewriterScrolling: s.typewriter_scrolling,
                     // UI-only: Rust has no say — always reseed from the local value.
                     useLsp: INITIAL.useLsp,
+                    screenReaderMode: this.screenReaderMode,
+                    screenReaderModeChosen: this.screenReaderModeChosen,
                     autoSaveEnabled: s.auto_save_enabled,
                     autoSaveDelayMs: s.auto_save_delay_ms,
                     formatBeforeSave: s.format_before_save,
@@ -352,7 +365,13 @@ class SettingsStore {
                 const nextSettings = INITIAL_LOCAL.hasSettings
                     ? { ...rustSettings, ...INITIAL }
                     : rustSettings;
-                this.applyPersistedSettings(nextSettings);
+                // A first-run answer can arrive while this IPC is pending.
+                // Rust does not own these UI-only preferences.
+                this.applyPersistedSettings({
+                    ...nextSettings,
+                    screenReaderMode: this.screenReaderMode,
+                    screenReaderModeChosen: this.screenReaderModeChosen,
+                });
                 this.persist();
             })
             .mapErr((err) => {
@@ -379,6 +398,8 @@ class SettingsStore {
             focusMode: this.focusMode,
             typewriterScrolling: this.typewriterScrolling,
             useLsp: this.useLsp,
+            screenReaderMode: this.screenReaderMode,
+            screenReaderModeChosen: this.screenReaderModeChosen,
             autoSaveEnabled: this.autoSaveEnabled,
             autoSaveDelayMs: this.autoSaveDelayMs,
             formatBeforeSave: this.formatBeforeSave,
@@ -417,6 +438,8 @@ class SettingsStore {
         this.focusMode = settings.focusMode;
         this.typewriterScrolling = settings.typewriterScrolling;
         this.useLsp = settings.useLsp;
+        this.screenReaderMode = settings.screenReaderMode === true;
+        this.screenReaderModeChosen = settings.screenReaderModeChosen === true || this.screenReaderMode;
         this.autoSaveEnabled = settings.autoSaveEnabled;
         this.autoSaveDelayMs = clampAutoSaveDelayMs(settings.autoSaveDelayMs);
         this.formatBeforeSave = settings.formatBeforeSave;
@@ -579,6 +602,12 @@ class SettingsStore {
         this.persist();
     }
 
+    setScreenReaderMode(value: boolean) {
+        this.screenReaderMode = value;
+        this.screenReaderModeChosen = true;
+        this.persist();
+    }
+
     setUseLsp(value: boolean) {
         this.useLsp = value;
         this.persist();
@@ -696,6 +725,8 @@ class SettingsStore {
     }
 
     resetToDefaults() {
+        // Keep screenReaderModeChosen: replaying setup should not ask again
+        // merely because the user reset their editing preferences.
         this.uiFontFamily = DEFAULTS.uiFontFamily;
         this.editorFontFamily = DEFAULTS.editorFontFamily;
         this.editorFontSize = DEFAULTS.editorFontSize;
@@ -711,6 +742,7 @@ class SettingsStore {
         this.focusMode = DEFAULTS.focusMode;
         this.typewriterScrolling = DEFAULTS.typewriterScrolling;
         this.useLsp = DEFAULTS.useLsp;
+        this.screenReaderMode = DEFAULTS.screenReaderMode;
         this.autoSaveEnabled = DEFAULTS.autoSaveEnabled;
         this.autoSaveDelayMs = DEFAULTS.autoSaveDelayMs;
         this.formatBeforeSave = DEFAULTS.formatBeforeSave;

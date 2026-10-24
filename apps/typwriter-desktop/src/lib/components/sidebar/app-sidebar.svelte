@@ -127,7 +127,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
   }
 </script>
 
-<Sidebar.Root collapsible="icon">
+<Sidebar.Root collapsible="icon" role="navigation" aria-label="Workspace">
 
   <!-- ─── Header: recent projects dropdown ──────────────────────────────────── -->
   <Sidebar.Header class="border-b border-sidebar-border">
@@ -147,7 +147,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
                          items-center justify-center rounded-lg"
                 >
                     {#if iconImage}
-                        <img src={iconImage.src} alt="typwriter logo" class="mx-auto size-8" />
+                        <img src={iconImage.src} alt="" class="mx-auto size-8" />
                     {:else}
                       <HugeiconsIcon icon={Folder01Icon} class="size-4" />
                     {/if}
@@ -222,6 +222,8 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
               {...props}
               variant="ghost"
               class="relative size-8 shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground {sidebarCtx.open && activeSection === 'files' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/70'}"
+              aria-label="Files"
+              aria-expanded={sidebarCtx.open && activeSection === 'files'}
               onclick={() => toggleSection("files")}
             >
               <HugeiconsIcon icon={Folder01Icon} class="size-4" />
@@ -240,6 +242,8 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
               {...props}
               variant="ghost"
               class="relative size-8 shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground {sidebarCtx.open && activeSection === 'search' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/70'}"
+              aria-label="Search"
+              aria-expanded={sidebarCtx.open && activeSection === 'search'}
               onclick={() => toggleSection("search")}
             >
               <HugeiconsIcon icon={Search01Icon} class="size-4" />
@@ -258,6 +262,8 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
               {...props}
               variant="ghost"
               class="relative size-8 shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground {sidebarCtx.open && activeSection === 'outline' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/70'}"
+              aria-label="Outline"
+              aria-expanded={sidebarCtx.open && activeSection === 'outline'}
               onclick={() => toggleSection("outline")}
             >
               <HugeiconsIcon icon={LeftToRightListBulletIcon} class="size-4" />
@@ -275,6 +281,8 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
               {...props}
               variant="ghost"
               class="relative size-8 shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground {sidebarCtx.open && activeSection === 'diagnostics' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/70'}"
+              aria-label="Problems"
+              aria-expanded={sidebarCtx.open && activeSection === 'diagnostics'}
               onclick={() => toggleSection("diagnostics")}
             >
               <HugeiconsIcon
@@ -308,6 +316,8 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
               {...props}
               variant="ghost"
               class="relative size-8 shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground {sidebarCtx.open && activeSection === 'grammar' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/70'}"
+              aria-label="Grammar"
+              aria-expanded={sidebarCtx.open && activeSection === 'grammar'}
               onclick={() => toggleSection("grammar")}
             >
               <HugeiconsIcon icon={TextCheckIcon} class="size-4" />
@@ -335,6 +345,8 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
               {...props}
               variant="ghost"
               class="relative size-8 shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground {sidebarCtx.open && activeSection === 'history' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/70'}"
+              aria-label="History"
+              aria-expanded={sidebarCtx.open && activeSection === 'history'}
               onclick={() => toggleSection("history")}
             >
               <HugeiconsIcon icon={GitCommitIcon} class="size-4" />
@@ -353,6 +365,7 @@ function createImageUrlFromRgba(rgbaArray: Uint8Array, width: number, height: nu
               {...props}
               variant="ghost"
               class="size-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              aria-label="Settings"
               onclick={() => openSettingsWindow()}
             >
               <HugeiconsIcon icon={Settings01Icon} class="size-4" />

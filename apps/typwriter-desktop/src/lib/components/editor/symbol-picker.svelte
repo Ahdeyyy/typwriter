@@ -5,6 +5,7 @@
   // character itself, so pasting a `≠` from elsewhere tells you what to type.
 
   import { tick } from "svelte";
+  import { Dialog } from "bits-ui";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Search01Icon } from "@hugeicons/core-free-icons";
 
@@ -77,7 +78,7 @@
       return;
     }
     // Enter takes the top match, so a symbol can be inserted without the mouse.
-    if (event.key === "Enter" && matches.length > 0) {
+    if (event.target === inputEl && event.key === "Enter" && matches.length > 0) {
       event.preventDefault();
       insert(matches[0]);
     }
@@ -90,6 +91,7 @@
       class="hover:bg-accent hover:text-accent-foreground flex aspect-square w-full
              flex-col items-center justify-center rounded-md text-lg
              {isTopMatch ? 'ring-accent-foreground/30 ring-1' : ''}"
+      aria-label={`${symbol.name}: ${symbol.char}`}
       onclick={() => insert(symbol)}
     >
       {symbol.char}
@@ -106,22 +108,19 @@
   <!-- Its own provider: the grid wants a short hover delay of its own, and no
        hoverable content, so sweeping across symbols never traps the pointer. -->
   <Tooltip.Provider delayDuration={200} disableHoverableContent>
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      class="fixed inset-0 z-50 flex justify-center bg-black/40 backdrop-blur-[2px]"
-      onclick={(event) => {
-        if (event.target === event.currentTarget) ui.symbolPickerOpen = false;
-      }}
-      {onkeydown}
-      role="presentation"
-    >
-      <div
-        class="modal-surface bg-popover text-popover-foreground mt-[12vh] flex h-fit max-h-[70vh] w-full
-               max-w-xl flex-col overflow-hidden rounded-xl shadow-2xl"
-      >
+    <Dialog.Root open={ui.symbolPickerOpen} onOpenChange={(open) => { ui.symbolPickerOpen = open; }}>
+      <Dialog.Portal>
+        <Dialog.Overlay class="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]" />
+        <Dialog.Content
+          class="modal-surface bg-popover text-popover-foreground fixed left-1/2 top-[12vh] z-50 flex h-fit max-h-[70vh] w-full max-w-xl -translate-x-1/2 flex-col overflow-hidden rounded-xl shadow-2xl"
+          {onkeydown}
+        >
+          <Dialog.Title class="sr-only">Insert a symbol</Dialog.Title>
+          <Dialog.Description class="sr-only">Search by name or character. Press Enter in search to insert the top match, or Tab to a symbol and press Enter to insert it.</Dialog.Description>
         <div class="flex items-center gap-2 px-4 py-3">
           <HugeiconsIcon icon={Search01Icon} class="size-4 shrink-0 opacity-50" />
           <input
+            aria-label="Search symbols"
             bind:this={inputEl}
             bind:value={query}
             class="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm
@@ -172,7 +171,8 @@
             {matches.length} of {SYMBOLS.length}
           </span>
         </div>
-      </div>
-    </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   </Tooltip.Provider>
 {/if}

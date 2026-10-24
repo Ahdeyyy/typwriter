@@ -67,7 +67,7 @@
   <!-- Header ─────────────────────────────────────────────────────────── -->
   <div class="flex h-8 shrink-0 items-center justify-between border-b border-border px-3">
     <div class="flex items-center gap-2">
-      <span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">History</span>
+      <h2 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">History</h2>
       {#if vcs.history.length > 0}
         <span class="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
           {vcs.history.length}

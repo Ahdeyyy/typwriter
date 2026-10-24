@@ -136,6 +136,8 @@
 {/snippet}
 
 <div class="flex h-full flex-col bg-background text-foreground">
+  <h2 class="sr-only">Preview pages</h2>
+  <p class="sr-only">These are rendered page images. Read and edit the document text in the source editor.</p>
   <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
   {#if !preview.presentationMode}
   <div
@@ -150,6 +152,7 @@
         <Tooltip.Trigger>
           {#snippet child({ props })}
             <Button
+              aria-label="Zoom out"
               {...props}
               variant="ghost"
               size="icon-sm"
@@ -171,6 +174,7 @@
         <Tooltip.Trigger>
           {#snippet child({ props })}
             <Button
+              aria-label="Zoom in"
               {...props}
               variant="ghost"
               size="icon-sm"
@@ -220,6 +224,7 @@
           <Tooltip.Trigger>
             {#snippet child({ props })}
               <Button
+                aria-label="Previous page"
                 {...props}
                 variant="ghost"
                 size="icon-sm"
@@ -245,6 +250,7 @@
           <Tooltip.Trigger>
             {#snippet child({ props })}
               <Button
+                aria-label="Next page"
                 {...props}
                 variant="ghost"
                 size="icon-sm"
@@ -266,6 +272,8 @@
               {...props}
               variant="ghost"
               size="icon-sm"
+              aria-label={preview.paginated ? "Switch to scroll view" : "Switch to paginated view"}
+              aria-pressed={preview.paginated}
               onclick={() => ctrl.togglePaginated()}
               disabled={preview.totalPages === 0}
               class={preview.paginated ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground" : ""}
@@ -281,6 +289,7 @@
         <Tooltip.Trigger>
           {#snippet child({ props })}
             <Button
+              aria-label="Export document"
               {...props}
               variant="ghost"
               size="icon-sm"
@@ -298,6 +307,7 @@
         <Tooltip.Trigger>
           {#snippet child({ props })}
             <Button
+              aria-label="Refresh preview"
               {...props}
               variant="ghost"
               size="icon-sm"
@@ -320,6 +330,7 @@
                 {...props}
                 variant="ghost"
                 size="icon-sm"
+                aria-label={presenting ? "Exit presentation mode" : "Present full-screen"}
                 onclick={() => ctrl.togglePresentation()}
                 disabled={preview.totalPages === 0 && !presenting}
                 class={presenting ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground" : ""}

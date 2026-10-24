@@ -97,6 +97,14 @@ function hasTextBuffer(): boolean {
 export function buildCommands(ctx: CommandContext): AppCommand[] {
     const commands: AppCommand[] = [
         {
+            id: 'application.screenReaderMode',
+            title: settings.screenReaderMode ? 'Turn off screen reader mode' : 'Turn on screen reader mode',
+            group: 'Application',
+            shortcut: 'global.toggleScreenReaderMode',
+            keywords: ['accessibility', 'NVDA', 'keyboard', 'tab focus'],
+            run: () => settings.setScreenReaderMode(!settings.screenReaderMode),
+        },
+        {
             id: 'file.openDocument',
             title: 'Open Typst document…',
             group: 'File',

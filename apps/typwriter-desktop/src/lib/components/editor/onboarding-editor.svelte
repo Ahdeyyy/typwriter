@@ -31,6 +31,7 @@
     typstFormatCommands,
   } from "$lib/typst-codemirror-lang";
   import { keysFor } from "$lib/keybindings";
+  import { editorAccessibility } from "$lib/codemirror/accessibility";
   import { settings } from "$lib/stores/settings.svelte";
 
   /**
@@ -58,6 +59,10 @@
   // so a reseed never echoes back through `onchange`.
   let suppress = false;
 
+  const componentId = $props.id();
+  const accessibilityHelpId = `${componentId}-tutorial-help`;
+  const accessibilityCompartment = new Compartment();
+  const accessibilityExt = () => editorAccessibility(settings.screenReaderMode, "Tutorial source editor", accessibilityHelpId);
   const themeCompartment = new Compartment();
   const fontCompartment = new Compartment();
 
@@ -95,6 +100,7 @@
       state: EditorState.create({
         doc: value,
         extensions: [
+          accessibilityCompartment.of(accessibilityExt()),
           highlightActiveLine(),
           history(),
           drawSelection(),
@@ -159,6 +165,11 @@
     });
   });
 
+  $effect(() => {
+    const ext = accessibilityExt();
+    untrack(() => view?.dispatch({ effects: accessibilityCompartment.reconfigure(ext) }));
+  });
+
   // Reconfigure theme on light/dark change.
   $effect(() => {
     mode.current;
@@ -176,4 +187,9 @@
   });
 </script>
 
+<p id={accessibilityHelpId} class="sr-only">
+  {settings.screenReaderMode ? "Tab and Shift+Tab move between controls." : "Tab indents. Press Escape, then Tab to leave the editor."}
+  Screen reader mode is available in Settings, Accessibility.
+  With NVDA, use NVDA+Space to switch between editing and browse mode.
+</p>
 <div bind:this={host} class="h-full w-full overflow-hidden"></div>

@@ -31,6 +31,13 @@
   import { matchesCommand } from "$lib/keybindings";
 
   function handleGlobalKeydown(event: KeyboardEvent) {
+    if (event.defaultPrevented) return;
+    if (matchesCommand(event, "global.toggleScreenReaderMode")) {
+      event.preventDefault();
+      settings.setScreenReaderMode(!settings.screenReaderMode);
+      toast.info(`Screen reader mode ${settings.screenReaderMode ? "on. Tab moves between controls." : "off. Tab indents in the editor."}`);
+      return;
+    }
     if (Window.getCurrent().label === "main" && matchesCommand(event, "global.openDocument")) {
       event.preventDefault();
       void chooseDocument();
@@ -244,6 +251,14 @@
 
 <svelte:window onkeydown={handleGlobalKeydown} />
 
+<a
+  href="#main-content"
+  class="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[100] focus:rounded focus:bg-background focus:p-3 focus:text-foreground focus:ring-2 focus:ring-ring"
+  onclick={(event) => {
+    const main = document.getElementById("main-content");
+    if (main) { event.preventDefault(); main.focus(); }
+  }}
+>Skip to main content</a>
 <Toaster position="top-right" />
 <ModeWatcher />
 <Tooltip.Provider>

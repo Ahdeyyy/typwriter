@@ -303,7 +303,8 @@
 <Tooltip.Provider>
 <div class="flex h-full w-full flex-col">
   <Titlebar variant="minimal" title="Typwriter" />
-  <main class="relative flex min-h-0 flex-1 flex-col">
+  <main id="main-content" tabindex="-1" class="relative flex min-h-0 flex-1 flex-col">
+    <h1 class="sr-only">Typwriter</h1>
     <!-- Everything that used to be a footer link (docs, tutorial, updates,
          logs) now lives in the settings window, so this is the one entry point
          left on the home screen — it can't move there too. -->

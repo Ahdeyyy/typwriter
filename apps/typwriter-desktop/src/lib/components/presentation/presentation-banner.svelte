@@ -93,6 +93,7 @@
         <Tooltip.Trigger>
           {#snippet child({ props })}
             <Button
+              aria-label="Previous Slide"
               {...props}
               variant="ghost"
               size="icon"
@@ -115,6 +116,7 @@
         <Tooltip.Trigger>
           {#snippet child({ props })}
             <Button
+              aria-label="Next Slide"
               {...props}
               variant="ghost"
               size="icon"
@@ -173,6 +175,7 @@
       <Tooltip.Trigger>
         {#snippet child({ props })}
           <Button
+            aria-label="End presentation"
             {...props}
             variant="ghost"
             size="icon"
