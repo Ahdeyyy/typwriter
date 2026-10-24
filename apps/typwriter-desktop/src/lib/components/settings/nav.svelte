@@ -31,8 +31,8 @@
         <li>
           <button
             type="button"
-            class="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground {current
-              ? 'bg-accent font-medium text-accent-foreground'
+            class="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted hover:text-foreground {current
+              ? 'bg-muted font-medium text-foreground'
               : 'text-muted-foreground'} {hasResults ? '' : 'opacity-40'}"
             aria-current={current ? "page" : undefined}
             onclick={() => onselect(group.id)}
