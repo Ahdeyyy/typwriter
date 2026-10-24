@@ -56,6 +56,17 @@ jobs:
             apps/typwriter-desktop/src/lib/typst-codemirror-lang/lezer-typst \
             apps/typwriter-mobile/src/lib/editor/typst-lang/lezer-typst
       - run: bun install
+      - name: Linux desktop integration dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shared-mime-info desktop-file-utils libglib2.0-bin python3-gi gir1.2-webkit2-4.1 xvfb xauth fonts-dejavu-core
+      - name: Linux file-manager integration
+        run: python3 apps/typwriter-desktop/tests/linux-integration/check.py
+      - name: Symbol picker (system WebKitGTK)
+        working-directory: apps/typwriter-desktop
+        run: |
+          bunx vite build --config tests/symbol-picker-preview/vite.config.ts --logLevel error
+          xvfb-run -a python3 tests/symbol-picker-preview/check-webkit.py
       # Runs svelte-check in all three apps via each one's check-types script.
       - name: typecheck all workspaces
         run: bun run check-types

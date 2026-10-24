@@ -48,6 +48,31 @@
     "resources": {
       "./assets/fonts/": "fonts/"
     },
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/typwriter.desktop",
+        "depends": ["shared-mime-info", "desktop-file-utils"],
+        "files": {
+          "/usr/share/mime/packages/com.ahdey.typwriter.xml": "linux/com.ahdey.typwriter.xml"
+        },
+        "postInstallScript": "linux/update-desktop-databases.sh",
+        "postRemoveScript": "linux/update-desktop-databases.sh"
+      },
+      "rpm": {
+        "desktopTemplate": "linux/typwriter.desktop",
+        "depends": ["shared-mime-info", "desktop-file-utils"],
+        "files": {
+          "/usr/share/mime/packages/com.ahdey.typwriter.xml": "linux/com.ahdey.typwriter.xml"
+        },
+        "postInstallScript": "linux/update-desktop-databases.sh",
+        "postRemoveScript": "linux/update-desktop-databases.sh"
+      },
+      "appimage": {
+        "files": {
+          "/usr/share/mime/packages/com.ahdey.typwriter.xml": "linux/com.ahdey.typwriter.xml"
+        }
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
