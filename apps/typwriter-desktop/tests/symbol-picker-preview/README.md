@@ -26,7 +26,7 @@ xvfb-run -a python3 tests/symbol-picker-preview/check-webkit.py
 
 This loads the static build in a real GTK webview and runs `checks.js` to check
 visible geometry, scrolling, search/empty states, markup/math insertion, and
-focus restoration. CI runs it on Ubuntu 22.04. It needs no browser driver or
+focus restoration. Run it manually on Linux. It needs no browser driver or
 running development server.
 
 The results scroller must have a computed `flex-basis` of `auto`. Chromium can
