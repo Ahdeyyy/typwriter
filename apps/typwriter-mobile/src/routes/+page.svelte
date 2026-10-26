@@ -3,6 +3,7 @@
   import { app } from "$lib/stores/app.svelte";
   import { settings } from "$lib/stores/settings.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { startDocumentOpening } from "$lib/document-opening";
   import HomeScreen from "$lib/components/screens/home.svelte";
   import EditorScreen from "$lib/components/screens/editor.svelte";
   import SettingsOverlay from "$lib/components/screens/settings-overlay.svelte";
@@ -14,8 +15,10 @@
     app.init();
     workspace.init();
     const version = workspace.version;
+    const documentOpening = startDocumentOpening();
     const restoreWorkspace = async () => {
       await settings.init();
+      await documentOpening.ready;
       if (disposed || version !== workspace.version) return;
       // Re-open the previously active workspace on launch. Silently fall back
       // to the home screen if it no longer exists.
@@ -37,6 +40,7 @@
     void restoreWorkspace();
     return () => {
       disposed = true;
+      documentOpening.destroy();
       workspace.destroy();
       app.destroy();
     };

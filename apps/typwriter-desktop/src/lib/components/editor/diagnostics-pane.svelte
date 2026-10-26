@@ -67,7 +67,7 @@
 <div class="flex h-full flex-col border-t border-border bg-background">
   <div class="flex h-8 shrink-0 items-center justify-between border-b border-border px-3">
     <div class="flex items-center gap-2">
-      <span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Problems</span>
+      <h2 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Problems</h2>
       {#if totalCount > 0}
         <span class="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
           {totalCount > 99 ? "99+" : totalCount}

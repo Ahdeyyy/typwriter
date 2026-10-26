@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default)]
 pub struct WorkspaceState {
     pub root: RwLock<Option<PathBuf>>,
+    pub document: Mutex<Option<crate::document::DocumentSession>>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -59,6 +60,7 @@ pub struct WorkspaceInfo {
     pub active_tab: Option<String>,
     /// Caret offset (UTF-16 code units) inside `active_tab`, when one survived.
     pub cursor: Option<usize>,
+    pub document: bool,
 }
 
 /// Per-workspace metadata persisted at `<workspace>/.typwriter/mobile.json`.

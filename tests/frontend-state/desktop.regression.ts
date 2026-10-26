@@ -17,6 +17,7 @@ const vcsPageDiffRequest = mock(() => okAsync<number, string>(1));
 const onCompileDiagnostics = mock(() => okAsync<() => void, string>(() => {}));
 const getProjectSnippets = mock(() => okAsync<string | null, string>(null));
 const saveFile = mock(() => okAsync<void, string>(undefined));
+const updateFileContent = mock(() => okAsync<void, string>(undefined));
 const workspaceState = {
   rootPath: "/workspace",
   mainFile: "main.typ",
@@ -41,7 +42,7 @@ mock.module("$lib/ipc/commands", () => ({
   addGrammarDictionaryWord: () => okAsync(), setGrammarFileEnabled: () => okAsync(),
   discardShadow: () => okAsync(), formatTypstSource: () => okAsync(""),
   formatTypstSourceWithCursor: () => okAsync({ formatted: "", cursor: 0 }),
-  saveFile, triggerPreview: () => okAsync(), updateFileContent: () => okAsync(),
+  saveFile, triggerPreview: () => okAsync(), updateFileContent,
   vcsCreateRestorePoint: () => okAsync(null), vcsCurrentId: () => okAsync(null),
   vcsDiffBetween: () => okAsync({ files: [] }), vcsListHistory: () => okAsync([]),
   vcsPageDiffCancel: () => okAsync(), vcsRestoreFile: () => okAsync(), vcsRestoreWorkspace: () => okAsync(),
@@ -115,6 +116,8 @@ afterEach(async () => {
   reads.length = 0;
   saveFile.mockReset();
   saveFile.mockImplementation(() => okAsync(undefined));
+  updateFileContent.mockReset();
+  updateFileContent.mockImplementation(() => okAsync(undefined));
 });
 
 async function openText(path: string, text = "first") {
@@ -125,6 +128,20 @@ async function openText(path: string, text = "first") {
 }
 
 describe("desktop save ownership", () => {
+  test("hot-exit restoration waits for shadow buffers before the first compile can start", async () => {
+    const shadow = pending<void>();
+    updateFileContent.mockImplementationOnce(() => shadow.result);
+    let restored = false;
+    const restoring = editor.restoreTabs(["recovered.typ"], "recovered.typ", { "recovered.typ": "recovered edits" });
+    void restoring.then(() => { restored = true; });
+    await new Promise((done) => setTimeout(done, 0));
+    expect(restored).toBe(false);
+    expect(updateFileContent).toHaveBeenCalledWith("/workspace/recovered.typ", "recovered edits");
+    shadow.resolve();
+    await restoring;
+    expect(restored).toBe(true);
+    expect(editor.activeTab?.content).toBe("recovered edits");
+  });
   test("workspace reset cancels an open waiting for a save", async () => {
     await openText("main.typ");
     editor.handleTabContentChange("main.typ", "edited");

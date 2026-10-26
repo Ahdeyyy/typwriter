@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { getSettingControl } from "./control-context";
+  const settingControl = getSettingControl();
+
   // Range input + right-aligned readout, the shape every numeric setting uses.
   interface Props {
     min: number;
@@ -27,6 +30,9 @@
 
 <input
   type="range"
+  aria-labelledby={settingControl?.["aria-labelledby"]}
+  aria-describedby={settingControl?.["aria-describedby"]}
+  aria-valuetext={readout}
   {min}
   {max}
   {step}

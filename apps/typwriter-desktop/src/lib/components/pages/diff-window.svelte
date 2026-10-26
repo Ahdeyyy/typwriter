@@ -264,6 +264,8 @@
     </div>
   </div>
 
+  <main id="main-content" tabindex="-1" class="flex min-h-0 flex-1 flex-col">
+  <h1 class="sr-only">Version comparison</h1>
   <!-- Body ───────────────────────────────────────────────────────── -->
   {#if view === "pages"}
     <div class="min-h-0 flex-1">
@@ -329,6 +331,7 @@
     {/if}
   </ScrollArea.Root>
   {/if}
+  </main>
 </div>
 </Tooltip.Provider>
 

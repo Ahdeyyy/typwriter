@@ -2,12 +2,13 @@
 // live FS watcher. All file-system operations funnel through here so the
 // EditorWorld caches stay consistent.
 
-pub mod text_files;
+pub mod document;
 mod error;
-mod path;
+pub(crate) mod path;
 mod self_writes;
 pub mod store;
-mod watcher;
+pub mod text_files;
+pub(crate) mod watcher;
 
 use log::{error, info, warn};
 use parking_lot::{Mutex, RwLock};
@@ -69,6 +70,7 @@ pub struct DroppedFile {
 
 pub struct WorkspaceState {
     pub root: RwLock<Option<PathBuf>>,
+    document_path: RwLock<Option<PathBuf>>,
     pub main_file: RwLock<Option<PathBuf>>,
     pub zoom: Mutex<f32>,
     /// Keeps the watcher alive for the process lifetime.
@@ -94,6 +96,7 @@ impl WorkspaceState {
     ) -> Self {
         Self {
             root: RwLock::new(None),
+            document_path: RwLock::new(None),
             main_file: RwLock::new(None),
             zoom: Mutex::new(1.0),
             _watcher: Mutex::new(None),
@@ -135,6 +138,9 @@ impl WorkspaceState {
             error!("WorkspaceState::open_folder: err=\"{e}\"");
             return Err(e);
         }
+
+        let _session = self.world.session_gate.write();
+        *self.document_path.write() = None;
 
         // Stop any previous watcher.
         *self._watcher.lock() = None;
@@ -229,10 +235,95 @@ impl WorkspaceState {
         Ok(restored_main)
     }
 
+    /// Open a file in place. Only its dependencies are read/watched; the parent
+    /// directory never becomes a workspace or receives `.typwriter` metadata.
+    pub fn open_document(
+        &self,
+        path: PathBuf,
+        root: Option<PathBuf>,
+    ) -> Result<document::DocumentSession, String> {
+        let (path, default_root) = document::resolve_document(&path, None)?;
+        let remembered = store::document_root(&self.app_handle, &path)
+            .filter(|r| r.is_dir() && path.starts_with(r));
+        let chosen_root = root.or(remembered).unwrap_or(default_root);
+        let (path, root) = document::resolve_document(&path, Some(&chosen_root))?;
+        let main = path.strip_prefix(&root).map_err(|e| e.to_string())?;
+        let main_id = local_file_id(main).ok_or("Invalid document path")?;
+        let main_rel = main.to_string_lossy().replace('\\', "/");
+        let cache_root = self
+            .app_handle
+            .path()
+            .app_cache_dir()
+            .map_err(|e| e.to_string())?
+            .join("documents")
+            .join(document::document_id(&path));
+        let watcher = watcher::DocumentWatcher::prepare(root.clone(), self.app_handle.clone())
+            .map_err(|e| format!("Cannot watch document: {e}"))?;
+        let _session = self.world.session_gate.write();
+        *self._watcher.lock() = None;
+        self.world.set_root(root.clone());
+        self.pipeline.invalidate_cache();
+        self.pipeline.attach_disk_cache(&cache_root);
+        self.vcs.detach();
+        *self.root.write() = Some(root.clone());
+        *self.document_path.write() = Some(path.clone());
+        *self.main_file.write() = Some(path.clone());
+        *self.last_thumbnail_at.lock() = None;
+        if let Some(engine) = self
+            .app_handle
+            .try_state::<Arc<crate::compiler::PageDiffEngine>>()
+        {
+            engine.invalidate();
+        }
+        self.world.set_document_watcher(watcher.clone());
+        watcher.start(
+            self.world.clone(),
+            self.pipeline.clone(),
+            self.self_writes.clone(),
+        );
+        watcher.record(&path);
+        self.world.set_main(main_id);
+        self.world.ensure_fonts_loading();
+        store::remember_document(&self.app_handle, &path, &root);
+        // Compilation is requested by the frontend after recovery buffers have
+        // been restored. Never briefly render stale on-disk content first.
+        Ok(document::DocumentSession {
+            path: path.to_string_lossy().replace('\\', "/"),
+            root: root.to_string_lossy().replace('\\', "/"),
+            main_file: main_rel,
+            session_key: path.to_string_lossy().replace('\\', "/"),
+        })
+    }
+
+    pub fn is_standalone(&self) -> bool {
+        self.document_path.read().is_some()
+    }
+
+    /// Stop watching/compiling a session when the editor returns home.
+    pub fn close_session(&self) {
+        let _session = self.world.session_gate.write();
+        *self._watcher.lock() = None;
+        self.world.set_root(PathBuf::new());
+        *self.root.write() = None;
+        *self.document_path.write() = None;
+        *self.main_file.write() = None;
+        self.vcs.detach();
+        self.pipeline.invalidate_cache();
+    }
+
+    pub fn require_workspace(&self) -> Result<(), String> {
+        if self.is_standalone() {
+            Err("Open the containing folder as a workspace to manage project files".into())
+        } else {
+            Ok(())
+        }
+    }
+
     // ─── Main file ─────────────────────────────────────────────────────────
 
     /// Set which .typ file is compiled on preview triggers.
     pub fn set_main_file(&self, path: PathBuf) -> Result<(), String> {
+        self.require_workspace()?;
         let t = Instant::now();
         info!("WorkspaceState::set_main_file: path={path:?}");
 
@@ -297,6 +388,11 @@ impl WorkspaceState {
     /// the frontend: the world has to stay consistent whether or not a window
     /// is listening, and the queued watcher compile runs either way.
     pub(crate) fn reconcile_main_file(&self, changes: &[watcher::FileChange]) {
+        // Preserve the original standalone identity when a file disappears.
+        // Saving can recreate it; recreating it externally retries compilation.
+        if self.is_standalone() {
+            return;
+        }
         for change in changes {
             // Re-read per change: an earlier one in the same batch may have
             // moved or cleared it.
@@ -349,6 +445,9 @@ impl WorkspaceState {
     /// and write it to `.typwriter/thumbnail.png` in the workspace root.
     /// Silently does nothing if there is no compiled document or no workspace.
     pub fn generate_thumbnail(&self) {
+        if self.is_standalone() {
+            return;
+        }
         let root = match self.root.read().clone() {
             Some(r) => r,
             None => return,
@@ -375,6 +474,9 @@ impl WorkspaceState {
     }
 
     pub fn should_generate_thumbnail_for(&self, path: &Path) -> bool {
+        if self.is_standalone() {
+            return false;
+        }
         let is_main = self
             .main_file
             .read()
@@ -446,12 +548,36 @@ impl WorkspaceState {
         active_tab_id: Option<String>,
         unsaved: HashMap<String, String>,
         cursor: Option<usize>,
-    ) {
+        session_key: Option<String>,
+    ) -> Result<(), String> {
+        // A debounced save may finish after switching sessions. Its captured
+        // identity, rather than whichever session is now active, owns the tabs.
+        if let Some(key) = session_key {
+            return store::save_workspace_tabs(
+                &self.app_handle,
+                &PathBuf::from(key.replace('\\', "/")),
+                tabs,
+                active_tab_id,
+                unsaved,
+                cursor,
+            );
+        }
         let root = self.root.read();
         let Some(root) = root.as_ref() else {
-            return;
+            return Ok(());
         };
-        store::save_workspace_tabs(&self.app_handle, root, tabs, active_tab_id, unsaved, cursor);
+        let document = self.document_path.read();
+        let key = document
+            .as_ref()
+            .map(|path| PathBuf::from(path.to_string_lossy().replace('\\', "/")));
+        store::save_workspace_tabs(
+            &self.app_handle,
+            key.as_deref().unwrap_or(root),
+            tabs,
+            active_tab_id,
+            unsaved,
+            cursor,
+        )
     }
 
     pub fn get_workspace_tabs(
@@ -463,7 +589,8 @@ impl WorkspaceState {
         HashMap<String, String>,
         Option<usize>,
     )> {
-        store::get_workspace_tabs(&self.app_handle, &PathBuf::from(root))
+        store::get_workspace_tabs(&self.app_handle, &PathBuf::from(root.replace('\\', "/")))
+            .or_else(|| store::get_workspace_tabs(&self.app_handle, &PathBuf::from(root)))
     }
 
     // ─── Project snippets ──────────────────────────────────────────────────
@@ -481,6 +608,9 @@ impl WorkspaceState {
 
     /// Absolute path of the project snippet file, or `None` with no workspace.
     fn project_snippets_path(&self) -> Option<PathBuf> {
+        if self.is_standalone() {
+            return None;
+        }
         self.root
             .read()
             .as_ref()
@@ -501,13 +631,15 @@ impl WorkspaceState {
             return None;
         }
         match fs.read_file(&path) {
-            Ok(bytes) => match String::from_utf8(bytes) {
-                Ok(contents) => Some(contents),
-                Err(err) => {
-                    warn!("WorkspaceState::project_snippets: not UTF-8 path={path:?} err=\"{err}\"");
-                    None
+            Ok(bytes) => {
+                match String::from_utf8(bytes) {
+                    Ok(contents) => Some(contents),
+                    Err(err) => {
+                        warn!("WorkspaceState::project_snippets: not UTF-8 path={path:?} err=\"{err}\"");
+                        None
+                    }
                 }
-            },
+            }
             Err(err) => {
                 warn!("WorkspaceState::project_snippets: read failed path={path:?} err=\"{err}\"");
                 None
@@ -535,6 +667,7 @@ impl WorkspaceState {
     // ─── File-system helpers ───────────────────────────────────────────────
 
     fn resolve(&self, path: &str) -> Result<PathBuf, String> {
+        self.require_workspace()?;
         let root = {
             let root = self.root.read();
             root.as_ref().ok_or("No workspace open")?.clone()
@@ -1001,6 +1134,27 @@ impl WorkspaceState {
     /// Return a recursive listing of the workspace root suitable for the
     /// sidebar file tree component.
     pub fn get_file_tree(&self) -> Result<Vec<FileTreeEntry>, String> {
+        if self.is_standalone() {
+            let root = self.world.root();
+            return Ok(self
+                .world
+                .document_dependencies()
+                .into_iter()
+                .filter_map(|path| {
+                    let rel = path
+                        .strip_prefix(&root)
+                        .ok()?
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    Some(FileTreeEntry {
+                        name: basename(&rel).to_string(),
+                        path: rel,
+                        is_dir: false,
+                        children: Vec::new(),
+                    })
+                })
+                .collect());
+        }
         let root = {
             let guard = self.root.read();
             guard
@@ -1314,7 +1468,10 @@ mod tests {
     #[test]
     fn free_name_keeps_an_unused_name() {
         let fs = FakeFs::with(&["other.png"]);
-        assert_eq!(free_name(&fs, Path::new("/ws"), "logo.png", &[]), "logo.png");
+        assert_eq!(
+            free_name(&fs, Path::new("/ws"), "logo.png", &[]),
+            "logo.png"
+        );
     }
 
     #[test]
@@ -1329,7 +1486,10 @@ mod tests {
     #[test]
     fn free_name_suffixes_extensionless_names_whole() {
         let fs = FakeFs::with(&["assets", ".gitignore"]);
-        assert_eq!(free_name(&fs, Path::new("/ws"), "assets", &[]), "assets (1)");
+        assert_eq!(
+            free_name(&fs, Path::new("/ws"), "assets", &[]),
+            "assets (1)"
+        );
         assert_eq!(
             free_name(&fs, Path::new("/ws"), ".gitignore", &[]),
             ".gitignore (1)"

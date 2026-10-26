@@ -11,6 +11,9 @@
     TextFontIcon,
     Folder01Icon,
     FavouriteIcon,
+    ArrowLeft01Icon,
+    ArrowRight01Icon,
+    File02Icon,
   } from "@hugeicons/core-free-icons";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import Icon from "$lib/components/icon.svelte";
@@ -21,12 +24,32 @@
   import { app } from "$lib/stores/app.svelte";
   import { settings } from "$lib/stores/settings.svelte";
   import { pickFontsDir, clearFontsDir, getFontsStatus, getTypstVersion } from "$lib/ipc/commands";
+  import LicensesScreen from "./licenses-screen.svelte";
 
   let pickingFonts = $state(false);
   /** Font families the compiler has loaded, or null before we've asked. */
   let fontFamilies = $state<number | null>(null);
   /** True while a background font load is still running. */
   let fontsLoading = $state(false);
+  let viewportHeight = $state("100%");
+  let viewportTop = $state(0);
+
+  onMount(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const resize = () => {
+      const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
+      viewportTop = Math.max(0, Math.round(viewport.offsetTop));
+      viewportHeight = `${Math.min(layoutHeight, Math.round(viewport.height) + viewportTop)}px`;
+    };
+    resize();
+    viewport.addEventListener("resize", resize);
+    viewport.addEventListener("scroll", resize);
+    return () => {
+      viewport.removeEventListener("resize", resize);
+      viewport.removeEventListener("scroll", resize);
+    };
+  });
 
   /** How long to keep following a background load before giving up on it. */
   const FONT_POLL_MS = 500;
@@ -141,16 +164,28 @@
 </script>
 
 <Sheet.Root
-  open={app.overlay === "settings"}
+  open={app.overlay === "settings" || app.overlay === "licenses"}
   onOpenChange={(o) => {
     if (!o) app.closeOverlay();
   }}
 >
-  <Sheet.Content side="right" class="w-full max-w-md p-0 sm:max-w-md">
-    <div class="flex h-full flex-col" style="padding-top: env(safe-area-inset-top);">
-      <div class="flex h-12 items-center border-b px-4">
-        <h2 class="text-base font-semibold">Settings</h2>
+  <Sheet.Content side="right" class="w-full max-w-md p-0 data-[side=right]:w-full sm:max-w-md"
+    showCloseButton={app.overlay !== "licenses"}
+    style={`height: var(--app-height, ${viewportHeight});`}>
+    <div class="flex h-full min-h-0 flex-col"
+      style={`padding-top: calc(${viewportTop}px + env(safe-area-inset-top));`}>
+      <div class="flex h-12 shrink-0 items-center border-b px-4">
+        {#if app.overlay === "licenses"}
+          <Button variant="ghost" size="icon-sm" class="mr-2" aria-label="Back to settings" onclick={() => app.closeOverlay()}>
+            <Icon icon={ArrowLeft01Icon} />
+          </Button>
+        {/if}
+        <Sheet.Title class="text-base font-semibold">{app.overlay === "licenses" ? "Open-source licenses" : "Settings"}</Sheet.Title>
       </div>
+      <Sheet.Description class="sr-only">App preferences and third-party software notices.</Sheet.Description>
+      {#if app.overlay === "licenses"}
+        <LicensesScreen />
+      {:else}
       <ScrollArea class="flex-1">
         <div class="flex flex-col gap-6 p-4">
           <section class="flex flex-col gap-2">
@@ -268,6 +303,15 @@
           </section>
 
           <section class="flex flex-col gap-2 border-t pt-4">
+            <button
+              type="button"
+              class="flex min-h-11 items-center gap-2 rounded-md text-left text-sm focus-visible:outline-ring"
+              onclick={() => app.openOverlay("licenses")}
+            >
+              <Icon icon={File02Icon} class="text-muted-foreground size-4" />
+              <span class="flex-1">Open-source licenses</span>
+              <Icon icon={ArrowRight01Icon} class="text-muted-foreground size-4" />
+            </button>
             <div class="flex items-center justify-between">
               <span class="text-muted-foreground text-sm">Version</span>
               <span class="text-sm tabular-nums">{version || "—"}</span>
@@ -293,6 +337,7 @@
           </section>
         </div>
       </ScrollArea>
+      {/if}
     </div>
   </Sheet.Content>
 </Sheet.Root>

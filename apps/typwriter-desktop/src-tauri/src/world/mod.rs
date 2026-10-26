@@ -5,17 +5,17 @@ use chrono::Datelike;
 use ecow::EcoString;
 use log::{error, info};
 use parking_lot::{Condvar, Mutex, RwLock};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, OnceLock,
     },
     time::Instant,
 };
-use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use typst::{
     diag::{FileError, FileResult},
@@ -43,6 +43,11 @@ pub struct TemplateMetadata {
 pub struct EditorWorld {
     /// Workspace root on disk — updatable when the user opens a new folder.
     root: RwLock<PathBuf>,
+    /// Compilation and session replacement cannot observe a half-rebound world.
+    pub session_gate: RwLock<()>,
+    session_generation: AtomicU64,
+    /// Present only for standalone sessions; dependencies are discovered by reads.
+    document_watcher: RwLock<Option<Arc<crate::workspace::watcher::DocumentWatcher>>>,
 
     /// Filesystem provider. `VcsState` hands back the [`WorkingTreeFs`]
     /// accessor used to read source files, images and other assets.
@@ -169,6 +174,9 @@ impl EditorWorld {
             SystemPackages::from_parts(data_dir, cache_dir, UniversePackages::new(downloader));
         Self {
             root: RwLock::new(root),
+            session_gate: RwLock::new(()),
+            session_generation: AtomicU64::new(0),
+            document_watcher: RwLock::new(None),
             vcs,
             main: RwLock::new(None),
             library: OnceLock::new(),
@@ -329,12 +337,41 @@ impl EditorWorld {
     /// that is already in flight, and forgetting the high-water mark would let
     /// that stale write be accepted afterwards and resurrect old text.
     pub fn set_root(&self, path: PathBuf) {
+        self.session_generation.fetch_add(1, Ordering::AcqRel);
+        self.document_watcher.write().take();
         *self.root.write() = path;
         *self.main.write() = None;
         self.source_cache.lock().clear();
         self.file_cache.lock().clear();
         self.shadow.write().clear();
         self.shadow_versions.write().clear();
+    }
+
+    /// Attach a narrow watcher instead of recursively watching a source folder.
+    pub fn set_document_watcher(&self, watcher: Arc<crate::workspace::watcher::DocumentWatcher>) {
+        *self.document_watcher.write() = Some(watcher);
+    }
+
+    pub fn is_standalone(&self) -> bool {
+        self.document_watcher.read().is_some()
+    }
+
+    pub fn session_generation(&self) -> u64 {
+        self.session_generation.load(Ordering::Acquire)
+    }
+
+    pub fn document_dependencies(&self) -> Vec<PathBuf> {
+        self.document_watcher
+            .read()
+            .as_ref()
+            .map(|w| w.paths())
+            .unwrap_or_default()
+    }
+
+    pub fn refresh_document_watches(&self, changed: &[PathBuf]) {
+        if let Some(watcher) = self.document_watcher.read().as_ref() {
+            watcher.refresh(changed);
+        }
     }
 
     /// Convert an absolute path on disk to a local `FileId`.
@@ -438,6 +475,23 @@ impl EditorWorld {
         })
     }
 
+    fn track_document_file(&self, id: FileId) -> FileResult<()> {
+        if matches!(id.root(), VirtualRoot::Project) {
+            if let Some(watcher) = self.document_watcher.read().as_ref() {
+                let path = self.id_to_path(id)?;
+                crate::workspace::path::WorkspacePath::from_absolute_inside(
+                    &self.root(),
+                    path.clone(),
+                )
+                .map_err(|_| FileError::AccessDenied)?;
+                // Track before cache/shadow lookups and before disk reads. This
+                // includes restored unsaved sources and failed asset lookups.
+                watcher.record(&path);
+            }
+        }
+        Ok(())
+    }
+
     /// Map a FileId back to an absolute path on disk.
     ///
     /// For local files, joins the root with the virtual path.
@@ -464,7 +518,8 @@ impl EditorWorld {
     }
 
     pub fn template_map(&self) -> &HashMap<(EcoString, EcoString), TemplateMetadata> {
-        &self.package_index
+        &self
+            .package_index
             .get_or_init(|| fetch_package_index(&self.index_downloader))
             .1
     }
@@ -501,6 +556,7 @@ impl World for EditorWorld {
     }
 
     fn source(&self, id: FileId) -> FileResult<Source> {
+        self.track_document_file(id)?;
         // 1. Check source cache first
         if let Some(src) = self.source_cache.lock().get(&id) {
             return Ok(src.clone());
@@ -521,6 +577,7 @@ impl World for EditorWorld {
     }
 
     fn file(&self, id: FileId) -> FileResult<Bytes> {
+        self.track_document_file(id)?;
         if let Some(bytes) = self.file_cache.lock().get(&id) {
             return Ok(bytes.clone());
         }
@@ -782,7 +839,10 @@ mod tests {
 
     fn count_kind(node: &SyntaxNode, kind: SyntaxKind) -> usize {
         let here = usize::from(node.kind() == kind);
-        here + node.children().map(|child| count_kind(child, kind)).sum::<usize>()
+        here + node
+            .children()
+            .map(|child| count_kind(child, kind))
+            .sum::<usize>()
     }
 
     /// A document big enough that a full reparse is clearly distinguishable
@@ -887,13 +947,20 @@ mod tests {
 
         apply_edit_to_cache(&mut cache, id, "= One\n\nbody\n\n= Two\n\nbody\n");
         let incremental_headings = {
-            apply_edit_to_cache(&mut cache, id, "= One\n\nbody\n\n= Two\n\nbody\n\n= Three\n\nbody\n");
+            apply_edit_to_cache(
+                &mut cache,
+                id,
+                "= One\n\nbody\n\n= Two\n\nbody\n\n= Three\n\nbody\n",
+            );
             count_kind(cache[&id].root(), SyntaxKind::Heading)
         };
 
         // Compare against a from-scratch parse of the same final text.
         let fresh = Source::new(id, cache[&id].text().to_string());
-        assert_eq!(incremental_headings, count_kind(fresh.root(), SyntaxKind::Heading));
+        assert_eq!(
+            incremental_headings,
+            count_kind(fresh.root(), SyntaxKind::Heading)
+        );
         assert_eq!(incremental_headings, 3);
     }
 
@@ -1029,11 +1096,7 @@ mod tests {
     /// A `Datetime` exposes its components via the typst foundations API; pull
     /// them back out for assertions.
     fn ymd(dt: typst::foundations::Datetime) -> (i32, u8, u8) {
-        (
-            dt.year().unwrap(),
-            dt.month().unwrap(),
-            dt.day().unwrap(),
-        )
+        (dt.year().unwrap(), dt.month().unwrap(), dt.day().unwrap())
     }
 
     #[test]
@@ -1043,9 +1106,15 @@ mod tests {
 
         assert_eq!(ymd(today_from_secs(now, Some(0)).unwrap()), (2026, 6, 11));
         // UTC+1 → 00:30 on June 12 (crosses midnight east).
-        assert_eq!(ymd(today_from_secs(now, Some(HOUR)).unwrap()), (2026, 6, 12));
+        assert_eq!(
+            ymd(today_from_secs(now, Some(HOUR)).unwrap()),
+            (2026, 6, 12)
+        );
         // UTC-1 → 22:30 on June 11.
-        assert_eq!(ymd(today_from_secs(now, Some(-HOUR)).unwrap()), (2026, 6, 11));
+        assert_eq!(
+            ymd(today_from_secs(now, Some(-HOUR)).unwrap()),
+            (2026, 6, 11)
+        );
     }
 
     #[test]

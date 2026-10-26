@@ -91,6 +91,9 @@
     {#if !preview.presentationMode}
       <Titlebar variant="minimal" title="Preview" />
     {/if}
-    <Preview />
+    <main id="main-content" tabindex="-1" class="min-h-0 flex-1">
+      <h1 class="sr-only">Document preview</h1>
+      <Preview />
+    </main>
   </div>
 </Tooltip.Provider>

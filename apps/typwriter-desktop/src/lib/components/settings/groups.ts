@@ -29,8 +29,10 @@ import Grammar from "./groups/grammar.svelte";
 import Snippets from "./groups/snippets.svelte";
 import Keymaps from "./groups/keymaps.svelte";
 import General from "./groups/general.svelte";
+import Accessibility from "./groups/accessibility.svelte";
 
 export type SettingsGroupId =
+  | "accessibility"
   | "appearance"
   | "editor"
   | "formatting"
@@ -51,6 +53,7 @@ export interface SettingsGroup {
 }
 
 export const SETTINGS_GROUPS: SettingsGroup[] = [
+  { id: "accessibility", label: "Accessibility", icon: KeyboardIcon, component: Accessibility },
   {
     id: "appearance",
     label: "Appearance",

@@ -26,6 +26,7 @@
   import { parentDir } from "$lib/paths";
   import { app } from "$lib/stores/app.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { pathDisplay } from "$lib/stores/path-display.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { openedAgo } from "$lib/time";
   import type { FileNode } from "$lib/ipc/types";
@@ -225,6 +226,11 @@
     <div class="flex h-full flex-col" style="padding-top: env(safe-area-inset-top);">
       <ScrollArea class="min-h-0 flex-1">
         <div class="p-1">
+          {#if workspace.document}
+            <p class="text-muted-foreground px-3 py-3 text-xs">
+              Single document. Saves update the original file. Local imports and images require a workspace.
+            </p>
+          {/if}
           {#if workspace.tree}
             {#each workspace.tree.children as child (child.relPath)}
               <TreeNode
@@ -232,7 +238,7 @@
                 {expanded}
                 mainFile={workspace.mainFile}
                 onOpenFile={openFile}
-                onLongpress={(n) => (actionTarget = n)}
+                onLongpress={(n) => { if (!workspace.document) actionTarget = n; }}
               />
             {/each}
           {/if}
@@ -246,10 +252,10 @@
         <Button variant="ghost" size="icon" aria-label="Go to home" onclick={() => app.goHome()}>
           <Icon icon={Home01Icon} />
         </Button>
-        <Button variant="ghost" size="icon" aria-label="New file" onclick={() => startCreate("newFile", "")}>
+        <Button variant="ghost" size="icon" disabled={workspace.document} aria-label="New file" onclick={() => startCreate("newFile", "")}>
           <Icon icon={FileAddIcon} />
         </Button>
-        <Button variant="ghost" size="icon" aria-label="New folder" onclick={() => startCreate("newFolder", "")}>
+        <Button variant="ghost" size="icon" disabled={workspace.document} aria-label="New folder" onclick={() => startCreate("newFolder", "")}>
           <Icon icon={FolderAddIcon} />
         </Button>
         <Button variant="ghost" size="icon" aria-label="Collapse all" onclick={collapseAll}>
@@ -270,8 +276,11 @@
         >
           <div class="min-w-0 flex-1">
             <div class="truncate text-sm font-semibold">{workspace.name ?? "Files"}</div>
+            {#if !workspace.document && workspace.root}
+              <div class="text-muted-foreground truncate text-xs">{pathDisplay.format(workspace.root)}</div>
+            {/if}
             <div class="text-muted-foreground truncate text-xs">
-              {counts.files} file{counts.files === 1 ? "" : "s"}, {counts.folders} folder{counts.folders === 1 ? "" : "s"}
+              {#if workspace.document}Single document{:else}{counts.files} file{counts.files === 1 ? "" : "s"}, {counts.folders} folder{counts.folders === 1 ? "" : "s"}{/if}
             </div>
           </div>
           <Icon icon={UnfoldMoreIcon} class="text-muted-foreground size-4 shrink-0" />
@@ -349,6 +358,9 @@
   <Drawer.Content>
     <div class="px-4 pb-2 pt-1">
       <Drawer.Title class="truncate text-base font-semibold">{workspace.name ?? "Workspace"}</Drawer.Title>
+      {#if !workspace.document && workspace.root}
+        <p class="text-muted-foreground truncate text-xs">{pathDisplay.format(workspace.root)}</p>
+      {/if}
       <Drawer.Description class="text-muted-foreground text-xs">Switch workspace</Drawer.Description>
     </div>
     <div
@@ -366,6 +378,7 @@
               <Icon icon={Folder01Icon} class="text-muted-foreground size-5 shrink-0" />
               <span class="min-w-0 flex-1">
                 <span class="block truncate text-sm">{meta.name}</span>
+                <span class="text-muted-foreground block truncate text-xs">{pathDisplay.format(meta.path)}</span>
                 <span class="text-muted-foreground block truncate text-xs">
                   {openedAgo(meta.lastOpenedMs)}
                 </span>

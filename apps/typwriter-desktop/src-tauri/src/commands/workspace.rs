@@ -7,6 +7,30 @@ use tauri::State;
 use crate::workspace::{DroppedFile, FileTreeEntry, RecentWorkspaceEntry, WorkspaceState};
 
 #[tauri::command(async)]
+pub fn open_document(
+    path: String,
+    root: Option<String>,
+    workspace: State<'_, Arc<WorkspaceState>>,
+) -> Result<crate::workspace::document::DocumentSession, String> {
+    workspace.open_document(PathBuf::from(path), root.map(PathBuf::from))
+}
+
+#[tauri::command(async)]
+pub fn close_session(workspace: State<'_, Arc<WorkspaceState>>) {
+    workspace.close_session();
+}
+
+#[tauri::command(async)]
+pub fn list_recent_documents(workspace: State<'_, Arc<WorkspaceState>>) -> Vec<String> {
+    crate::workspace::store::recent_documents(&workspace.app_handle)
+}
+
+#[tauri::command(async)]
+pub fn remove_recent_document(path: String, workspace: State<'_, Arc<WorkspaceState>>) {
+    crate::workspace::store::remove_recent_document(&workspace.app_handle, &path);
+}
+
+#[tauri::command(async)]
 pub fn open_folder(
     path: String,
     workspace: State<'_, Arc<WorkspaceState>>,
@@ -347,9 +371,10 @@ pub fn save_workspace_tabs(
     active_tab_id: Option<String>,
     unsaved: HashMap<String, String>,
     cursor: Option<usize>,
+    session_key: Option<String>,
     workspace: State<'_, Arc<WorkspaceState>>,
-) {
-    workspace.save_workspace_tabs(tabs, active_tab_id, unsaved, cursor);
+) -> Result<(), String> {
+    workspace.save_workspace_tabs(tabs, active_tab_id, unsaved, cursor, session_key)
 }
 
 #[tauri::command(async)]

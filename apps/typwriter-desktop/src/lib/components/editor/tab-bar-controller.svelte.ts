@@ -1,3 +1,5 @@
+import { tick } from "svelte";
+import { settings } from "$lib/stores/settings.svelte";
 import { editor, type TabInfo } from "$lib/stores/editor.svelte";
 import { workspace } from "$lib/stores/workspace.svelte";
 import { logError } from "$lib/logger";
@@ -42,9 +44,11 @@ export class TabBarController {
   }
 
   async activateTab(tab: TabInfo) {
+    const keepFocus = settings.screenReaderMode && this.tabRefs.get(tab.id) === document.activeElement;
     try {
       await editor.activateTab(tab.id);
       workspace.activeFilePath = tab.relPath;
+      if (keepFocus) { await tick(); this.tabRefs.get(tab.id)?.focus(); }
     } catch (err) {
       logError("activateTab failed:", err);
     }
@@ -52,10 +56,16 @@ export class TabBarController {
 
   async closeTab(tab: TabInfo, e?: Event) {
     e?.stopPropagation();
+    const restoreFocus = !!e && e.currentTarget === document.activeElement;
     try {
       const closed = await editor.closeTab(tab.id);
       if (!closed) return;
       workspace.activeFilePath = editor.activeTab?.relPath ?? null;
+      if (restoreFocus) {
+        await tick();
+        const target = this.tabRefs.get(editor.activeTabId ?? "") ?? document.getElementById("main-content");
+        target?.focus();
+      }
     } catch (err) {
       logError("closeTab failed:", err);
     }

@@ -1,6 +1,6 @@
 # Typwriter
 
-![logo](showcase/app-icon.png)
+[![Fund my work on FLOSSAfrica](https://flossafrica.com/badge.svg)](https://flossafrica.com/m/ahdeyyy?p=typwriter)
 
 **Typwriter** is a flexible, modern editor for [Typst](https://typst.app/), built with Tauri and Svelte. It allows you to write Typst documents, see a live preview of the compiled output, and export your documents directly to PDF, SVG, PNG and HTML.
 
@@ -83,7 +83,5 @@ To run the project locally, follow these steps:
 Typwriter is free, open-source software built and maintained in my spare time. 
 
 If you find Typwriter useful and would like to support its development (and help cover things like an official Apple Developer certificate so macOS users don't have to bypass gatekeeper warnings), consider sponsoring!
-
-[![Fund my work on FLOSSAfrica](https://flossafrica.com/badge.svg)](https://flossafrica.com/m/ahdeyyy?p=typwriter)
 
 **Other ways to support:** You don't have to spend money to help! Giving the repository a star, reporting bugs, or helping solve issues goes a long way.

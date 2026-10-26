@@ -11,7 +11,7 @@ use ecow::EcoString;
 use log::{debug, error, info, warn};
 use parking_lot::RwLock;
 use serde::Serialize;
-use tauri::State;
+use tauri::{Manager, State};
 use typst::{
     foundations::Bytes,
     syntax::{package::PackageSpec, FileId, Side, Source},
@@ -225,9 +225,14 @@ fn unix_millis(time: SystemTime) -> Option<i64> {
 #[tauri::command(async)]
 pub fn read_file(
     path: String,
+    world: State<'_, Arc<EditorWorld>>,
     workspace: State<'_, Arc<WorkspaceState>>,
     vcs: State<'_, Arc<VcsState>>,
 ) -> Result<FileContentResponse, String> {
+    let _session = world.session_gate.read();
+    if workspace.is_standalone() {
+        workspace.resolve_any(&path)?;
+    }
     let t = Instant::now();
     info!("read_file: path={path:?}");
 
@@ -259,6 +264,15 @@ pub fn read_file(
     };
 
     if let Some(mime) = mime {
+        // File associations can open documents outside $HOME. Grant only this
+        // root-validated asset instead of widening the global protocol scope.
+        if workspace.is_standalone() {
+            workspace
+                .app_handle
+                .asset_protocol_scope()
+                .allow_file(abs)
+                .map_err(|e| format!("Cannot display document asset: {e}"))?;
+        }
         // Return a path the frontend turns into an asset URL — cheap, and
         // avoids base64-bloating every image over IPC.
         let metadata = std::fs::metadata(abs).map_err(|e| {
@@ -335,12 +349,50 @@ pub fn read_file(
     // Known binary formats: don't bother sniffing the bytes.
     let is_binary = matches!(
         ext.as_str(),
-        "pdf" | "zip" | "gz" | "tgz" | "bz2" | "xz" | "zst" | "7z" | "rar"
-            | "tar" | "exe" | "dll" | "so" | "dylib" | "bin" | "wasm"
-            | "class" | "jar" | "o" | "a" | "lib" | "obj" | "pdb" | "pyc"
-            | "ttf" | "otf" | "woff" | "woff2" | "eot" | "mp3" | "wav"
-            | "flac" | "ogg" | "m4a" | "mp4" | "mkv" | "mov" | "avi"
-            | "webm" | "db" | "sqlite" | "sqlite3" | "heic" | "psd"
+        "pdf"
+            | "zip"
+            | "gz"
+            | "tgz"
+            | "bz2"
+            | "xz"
+            | "zst"
+            | "7z"
+            | "rar"
+            | "tar"
+            | "exe"
+            | "dll"
+            | "so"
+            | "dylib"
+            | "bin"
+            | "wasm"
+            | "class"
+            | "jar"
+            | "o"
+            | "a"
+            | "lib"
+            | "obj"
+            | "pdb"
+            | "pyc"
+            | "ttf"
+            | "otf"
+            | "woff"
+            | "woff2"
+            | "eot"
+            | "mp3"
+            | "wav"
+            | "flac"
+            | "ogg"
+            | "m4a"
+            | "mp4"
+            | "mkv"
+            | "mov"
+            | "avi"
+            | "webm"
+            | "db"
+            | "sqlite"
+            | "sqlite3"
+            | "heic"
+            | "psd"
     );
 
     // Unknown extension: sniff the bytes. Plenty of text files carry no
@@ -424,6 +476,7 @@ pub fn update_file_content(
     version: u64,
     world: State<'_, Arc<EditorWorld>>,
 ) -> Result<(), String> {
+    let _session = world.session_gate.read();
     let t = Instant::now();
     debug!(
         "update_file_content: path={path:?} content_bytes={}",
@@ -462,6 +515,10 @@ pub fn save_file(
     vcs: State<'_, Arc<VcsState>>,
     snapshot_policy: State<'_, Arc<RwLock<SnapshotPolicy>>>,
 ) -> Result<(), String> {
+    let _session = world.session_gate.read();
+    if workspace.is_standalone() {
+        workspace.resolve_any(&path)?;
+    }
     let t = Instant::now();
     info!("save_file: path={path:?} content_bytes={}", content.len());
 
@@ -535,6 +592,7 @@ pub fn save_file(
 /// and return Ok — the shadow has nothing to do anyway.
 #[tauri::command(async)]
 pub fn discard_shadow(path: String, world: State<'_, Arc<EditorWorld>>) -> Result<(), String> {
+    let _session = world.session_gate.read();
     let t = Instant::now();
     info!("discard_shadow: path={path:?}");
 
@@ -587,6 +645,7 @@ pub fn get_completions(
     world: State<'_, Arc<EditorWorld>>,
     pipeline: State<'_, Arc<PreviewPipeline>>,
 ) -> Result<CompletionsResponse, String> {
+    let _session = world.session_gate.read();
     let t = Instant::now();
     debug!("get_completions: path={path:?} cursor={cursor} explicit={explicit}");
 
@@ -663,6 +722,7 @@ pub fn get_tooltip(
     world: State<'_, Arc<EditorWorld>>,
     pipeline: State<'_, Arc<PreviewPipeline>>,
 ) -> Result<Option<TooltipResponse>, String> {
+    let _session = world.session_gate.read();
     let t = Instant::now();
     debug!("get_tooltip: path={path:?} cursor={cursor}");
 
@@ -697,16 +757,46 @@ pub fn get_tooltip(
     // `None` needs an explicit type since the `output` parameter is now generic
     // (`Option<impl AsOutput>`); `&PagedDocument` is the natural choice.
     let mut tooltip = typst_ide::tooltip(&**world, doc_ref, &source, byte_cursor, Side::Before)
-        .or_else(|| typst_ide::tooltip(&**world, None::<&PagedDocument>, &source, byte_cursor, Side::Before))
+        .or_else(|| {
+            typst_ide::tooltip(
+                &**world,
+                None::<&PagedDocument>,
+                &source,
+                byte_cursor,
+                Side::Before,
+            )
+        })
         .or_else(|| typst_ide::tooltip(&**world, doc_ref, &source, byte_cursor, Side::After))
-        .or_else(|| typst_ide::tooltip(&**world, None::<&PagedDocument>, &source, byte_cursor, Side::After));
+        .or_else(|| {
+            typst_ide::tooltip(
+                &**world,
+                None::<&PagedDocument>,
+                &source,
+                byte_cursor,
+                Side::After,
+            )
+        });
 
     // If still unresolved and this is not the configured main file, retry with
     // an override world where `main()` points to the queried file.
     if tooltip.is_none() && id != world.main() {
         let local_world = MainOverrideWorld::new(&**world, id);
-        tooltip = typst_ide::tooltip(&local_world, None::<&PagedDocument>, &source, byte_cursor, Side::Before)
-            .or_else(|| typst_ide::tooltip(&local_world, None::<&PagedDocument>, &source, byte_cursor, Side::After));
+        tooltip = typst_ide::tooltip(
+            &local_world,
+            None::<&PagedDocument>,
+            &source,
+            byte_cursor,
+            Side::Before,
+        )
+        .or_else(|| {
+            typst_ide::tooltip(
+                &local_world,
+                None::<&PagedDocument>,
+                &source,
+                byte_cursor,
+                Side::After,
+            )
+        });
     }
     let found = tooltip.is_some();
     debug!(
@@ -734,6 +824,7 @@ pub fn get_definitions(
     world: State<'_, Arc<EditorWorld>>,
     pipeline: State<'_, Arc<PreviewPipeline>>,
 ) -> Result<Option<JumpResponse>, String> {
+    let _session = world.session_gate.read();
     let t = Instant::now();
     debug!("get_definitions: path={path:?} cursor={cursor}");
 
@@ -976,9 +1067,14 @@ mod tests {
         ] {
             let live = Source::new(shared.main(), text.into());
             let query = MainOverrideWorld::with_source(&shared, live.clone());
-            let (_, items) =
-                typst_ide::autocomplete(&query, None::<&PagedDocument>, &live, text.len() - 1, false)
-                    .expect("argument value completions");
+            let (_, items) = typst_ide::autocomplete(
+                &query,
+                None::<&PagedDocument>,
+                &live,
+                text.len() - 1,
+                false,
+            )
+            .expect("argument value completions");
             assert!(
                 items.iter().any(|item| item.label == expected),
                 "missing {expected} for {text}"

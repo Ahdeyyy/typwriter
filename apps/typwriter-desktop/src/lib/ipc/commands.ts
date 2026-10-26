@@ -37,6 +37,35 @@ export function openFolder(path: string) {
     return ResultAsync.fromPromise(invoke<string | null>('open_folder', { path }), toErrString);
 }
 
+export interface OpenDocumentResult {
+    path: string;
+    root: string;
+    mainFile: string;
+    sessionKey: string;
+}
+
+export function openDocument(path: string, root?: string) {
+    return ResultAsync.fromPromise(
+        invoke<OpenDocumentResult>('open_document', { path, root: root ?? null }), toErrString,
+    );
+}
+
+export function closeSession() {
+    return ResultAsync.fromPromise(invoke<void>('close_session'), toErrString);
+}
+
+export function listRecentDocuments() {
+    return ResultAsync.fromPromise(invoke<string[]>('list_recent_documents'), toErrString);
+}
+
+export function removeRecentDocument(path: string) {
+    return ResultAsync.fromPromise(invoke<void>('remove_recent_document', { path }), toErrString);
+}
+
+export function takeOpenRequests() {
+    return ResultAsync.fromPromise(invoke<string[]>('take_open_requests'), toErrString);
+}
+
 export function createWorkspace(parentPath: string, name: string) {
     return ResultAsync.fromPromise(invoke<string>('create_workspace', { parentPath, name }), toErrString);
 }
@@ -119,10 +148,11 @@ export function saveWorkspaceTabs(
     tabs: string[],
     activeTabId: string | null,
     unsaved: Record<string, string> = {},
-    cursor: number | null = null
+    cursor: number | null = null,
+    sessionKey: string | null = null,
 ) {
     return ResultAsync.fromPromise(
-        invoke<void>('save_workspace_tabs', { tabs, activeTabId, unsaved, cursor }),
+        invoke<void>('save_workspace_tabs', { tabs, activeTabId, unsaved, cursor, sessionKey }),
         toErrString
     );
 }
@@ -597,6 +627,8 @@ export interface AppSettings {
     editor_font_family: string;
     editor_font_size: number;
     theme: string;
+    light_theme: string | null;
+    dark_theme: string | null;
     auto_check_updates: boolean;
     default_preview_zoom: number;
     default_preview_visible: boolean;

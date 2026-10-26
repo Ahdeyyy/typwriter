@@ -12,6 +12,7 @@ export type Overlay =
   | "preview"
   | "diagnostics"
   | "settings"
+  | "licenses"
   | "quickswitcher"
   | "tabswitcher"
   | "export";

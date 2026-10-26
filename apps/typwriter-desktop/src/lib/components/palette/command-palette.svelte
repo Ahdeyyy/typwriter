@@ -7,6 +7,7 @@
   // Obsidian train. `ui.paletteMode` only decides which prefix we seed.
 
   import { tick } from "svelte";
+  import { Dialog } from "bits-ui";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
     File01Icon,
@@ -50,6 +51,7 @@
     toggleSidebar: () => sidebarCtx.setOpen(!sidebarCtx.open),
   });
 
+  const paletteId = $props.id();
   let query = $state("");
   let selected = $state(0);
   let inputEl = $state<HTMLInputElement | null>(null);
@@ -152,6 +154,7 @@
   }
 
   function onkeydown(event: KeyboardEvent) {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
@@ -193,25 +196,26 @@
   }
 </script>
 
-{#if ui.paletteOpen}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="fixed inset-0 z-50 flex justify-center bg-black/40 backdrop-blur-[2px]"
-    onclick={(event) => {
-      if (event.target === event.currentTarget) ui.closePalette();
-    }}
-    onkeydown={onkeydown}
-    role="presentation"
-  >
-    <div
-      class="modal-surface bg-popover text-popover-foreground mt-[12vh] flex h-fit max-h-[70vh] w-full
-             max-w-2xl flex-col overflow-hidden rounded-xl shadow-2xl"
+<Dialog.Root open={ui.paletteOpen} onOpenChange={(open) => { if (!open) ui.closePalette(); }}>
+  <Dialog.Portal>
+    <Dialog.Overlay class="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]" />
+    <Dialog.Content
+      class="modal-surface bg-popover text-popover-foreground fixed left-1/2 top-[12vh] z-50 flex h-fit max-h-[70vh] w-full max-w-2xl -translate-x-1/2 flex-col overflow-hidden rounded-xl shadow-2xl"
     >
+      <Dialog.Title class="sr-only">Command palette</Dialog.Title>
+      <Dialog.Description class="sr-only">Search files, commands, or headings. Use arrow keys to choose a result and Enter to select it.</Dialog.Description>
       <!-- Input -->
       <div class="flex items-center gap-2 px-4 py-3">
         <HugeiconsIcon icon={MODE_ICONS[mode]} class="size-4 shrink-0 opacity-50" />
         <input
           bind:this={inputEl}
+          role="combobox"
+          aria-label={PLACEHOLDERS[mode]}
+          aria-expanded="true"
+          aria-autocomplete="list"
+          aria-controls={paletteId + '-results'}
+          aria-activedescendant={rows.length ? paletteId + '-option-' + selected : undefined}
+          onkeydown={onkeydown}
           bind:value={query}
           class="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm
                  outline-none"
@@ -225,9 +229,9 @@
       </div>
 
       <!-- Results -->
-      <div bind:this={listEl} class="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <div id={paletteId + '-results'} role="listbox" aria-label="Results" bind:this={listEl} class="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {#if rows.length === 0}
-          <div class="text-muted-foreground px-2 py-8 text-center text-sm">
+          <div role="status" class="text-muted-foreground px-2 py-8 text-center text-sm">
             {#if mode === "outline" && outline.length === 0}
               This file has no headings.
             {:else}
@@ -252,10 +256,15 @@
             <button
               type="button"
               data-row={index}
+              id={paletteId + '-option-' + index}
+              role="option"
+              tabindex="-1"
+              aria-selected={index === selected}
+              aria-disabled={!enabled}
+              onmousedown={(event) => event.preventDefault()}
               class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm
                      {index === selected ? 'bg-accent text-accent-foreground' : ''}
                      {enabled ? '' : 'opacity-40'}"
-              disabled={!enabled}
               onclick={() => run(row)}
               onmousemove={() => (selected = index)}
             >
@@ -325,6 +334,6 @@
           headings
         </span>
       </div>
-    </div>
-  </div>
-{/if}
+    </Dialog.Content>
+  </Dialog.Portal>
+</Dialog.Root>

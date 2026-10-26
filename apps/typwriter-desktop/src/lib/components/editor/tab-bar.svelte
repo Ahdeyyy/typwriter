@@ -14,7 +14,7 @@
 </script>
 
 <div class="tab-strip">
-  <div class="tab-list" bind:this={ctrl.tabListEl}>
+  <div class="tab-list" role="group" aria-label="Open documents" bind:this={ctrl.tabListEl}>
     {#each editor.tabs as tab, i (tab.id)}
       {@const isActive = editor.activeTabId === tab.id}
       {@const isDragging = ctrl.dragTabId === tab.id}
@@ -25,10 +25,8 @@
           <Tooltip.Root>
             <Tooltip.Trigger>
               {#snippet child({ props })}
-          <button
+          <div
             {...props}
-            {@attach (node) => ctrl.registerTab(tab.id, node as HTMLButtonElement)}
-            type="button"
             class="chrome-tab {isActive ? 'active' : ''} {isDragging ? 'dragging' : ''} {isDropTarget && ctrl.dropSide === 'left' ? 'drop-left' : ''} {isDropTarget && ctrl.dropSide === 'right' ? 'drop-right' : ''}"
             draggable="true"
             ondragstart={(e: DragEvent) => ctrl.handleDragStart(e, tab)}
@@ -36,9 +34,16 @@
             ondragleave={() => ctrl.handleDragLeave(tab)}
             ondrop={(e: DragEvent) => ctrl.handleDrop(e, tab)}
             ondragend={() => ctrl.handleDragEnd()}
-            onclick={() => void ctrl.activateTab(tab)}
             onauxclick={(e: MouseEvent) => void ctrl.handleAuxClick(e, tab)}
           >
+            <button
+              {@attach (node) => ctrl.registerTab(tab.id, node as HTMLButtonElement)}
+              type="button"
+              class="tab-activate"
+              aria-pressed={isActive}
+              aria-label={`${tab.relPath}${tab.externallyRemoved ? ', deleted on disk' : tab.externalContent !== null ? ', changed on disk' : tab.hasUnsavedChanges ? ', unsaved changes' : ''}`}
+              onclick={() => void ctrl.activateTab(tab)}
+            >
             {#if diverged}
               <span class="diverged-mark">
                 <HugeiconsIcon icon={Alert01Icon} class="size-3" />
@@ -49,22 +54,21 @@
 
             <span class="tab-name">{ctrl.tabDisplayNames.get(tab.id) ?? tab.name}</span>
 
-            <span
-              role="button"
-              tabindex="-1"
+            </button>
+            <button
+              type="button"
               class="close-btn"
               onclick={(e) => void ctrl.closeTab(tab, e)}
-              onkeydown={(e) => { if (e.key === 'Enter') void ctrl.closeTab(tab, e); }}
               aria-label="Close {tab.name}"
             >
               <HugeiconsIcon icon={Cancel01Icon} class="size-3" />
-            </span>
+            </button>
 
             <!-- Separator between inactive tabs (hidden next to active tab) -->
             {#if i < editor.tabs.length - 1 && !ctrl.isAdjacentToActive(i)}
               <span class="tab-separator"></span>
             {/if}
-          </button>
+          </div>
               {/snippet}
             </Tooltip.Trigger>
             <!-- Block layout lets long paths wrap within the tooltip's width. -->
@@ -151,7 +155,7 @@
     height: 28px;
     min-width: 80px;
     max-width: 220px;
-    padding: 0 12px;
+    padding: 0;
     border-radius: 8px 8px 0 0;
     font-size: 12px;
     cursor: pointer;
@@ -165,6 +169,24 @@
     background-color: transparent;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     z-index: 1;
+  }
+
+  .tab-activate {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding-left: 12px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .tab-activate:focus-visible, .close-btn:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
+    border-radius: 3px;
   }
 
   .chrome-tab:hover {
@@ -228,13 +250,15 @@
     justify-content: center;
     width: 18px;
     height: 18px;
+    margin-right: 12px;
     border-radius: 50%;
     opacity: 0;
     transition: opacity 0.1s ease, background-color 0.1s ease;
   }
 
   .chrome-tab:hover .close-btn,
-  .chrome-tab.active .close-btn {
+  .chrome-tab.active .close-btn,
+  .close-btn:focus-visible {
     opacity: 0.6;
   }
 

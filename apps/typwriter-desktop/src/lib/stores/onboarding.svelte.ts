@@ -231,8 +231,11 @@ class OnboardingStore {
     }
 
     /** Open the scratch workspace and render the first step. */
+    private entering: Promise<void> | null = null;
+
     enter(): ResultAsync<void, string> {
-        return ResultAsync.fromPromise(this._enter(), (err) => String(err));
+        this.entering = this._enter();
+        return ResultAsync.fromPromise(this.entering, (err) => String(err));
     }
 
     private async _enter(): Promise<void> {
@@ -343,6 +346,10 @@ class OnboardingStore {
     }
 
     private async _finish(): Promise<void> {
+        // OS file activation may arrive while the tutorial is still preparing
+        // its world. Finish that transition before another document replaces it.
+        await this.entering?.catch(() => {});
+        this.entering = null;
         // Mark dismissed up front (synchronously) so the safety-net teardown in
         // the page's onDestroy can't re-trigger a second finish, and so the home
         // screen never re-shows the tutorial this session even if the persisted

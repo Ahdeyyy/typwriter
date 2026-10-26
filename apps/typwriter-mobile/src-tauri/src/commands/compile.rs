@@ -10,25 +10,33 @@ use std::{
 };
 
 use log::{info, warn};
-use tauri::State;
+use tauri::{AppHandle, State};
 use typst_layout::PagedDocument;
 
 use crate::{
     compiler::{serialize_diags, CompileResult, CompileState, PageMeta},
+    workspace::WorkspaceState,
     world::MobileWorld,
 };
 
 #[tauri::command]
 pub async fn compile(
+    app: AppHandle,
+    workspace: State<'_, Arc<WorkspaceState>>,
     world: State<'_, Arc<MobileWorld>>,
     compile: State<'_, Arc<CompileState>>,
 ) -> Result<CompileResult, String> {
     let world = world.inner().clone();
     let state = compile.inner().clone();
+    let workspace = workspace.inner().clone();
 
-    tauri::async_runtime::spawn_blocking(move || run_compile(&world, &state))
-        .await
-        .map_err(|e| format!("compile task panicked: {e}"))
+    tauri::async_runtime::spawn_blocking(move || {
+        let _gate = world.session_gate.write();
+        crate::document::refresh(&app, &workspace)?;
+        Ok(run_compile(&world, &state))
+    })
+    .await
+    .map_err(|e| format!("compile task panicked: {e}"))?
 }
 
 fn run_compile(world: &MobileWorld, state: &CompileState) -> CompileResult {

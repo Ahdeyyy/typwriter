@@ -157,7 +157,7 @@ class EditorStore {
         // buffers are only ever captured for editable text tabs, so it's safe
         // to treat the override as text without consulting the backend.
         if (typeof unsavedContent === 'string') {
-            this._seedUnsavedText(tab, unsavedContent);
+            await this._seedUnsavedText(tab, unsavedContent);
             return;
         }
 
@@ -212,7 +212,7 @@ class EditorStore {
             // the unsaved-content branch in `_openFile`.
             const override = unsaved[relPath] ?? unsaved[id];
             if (typeof override === 'string') {
-                this._seedUnsavedText(tab, override);
+                loads.push(this._seedUnsavedText(tab, override));
                 continue;
             }
 
@@ -272,13 +272,13 @@ class EditorStore {
      *  only ever captured for editable text tabs, so we render as text without
      *  a backend round-trip and re-seed the Rust shadow so the next compile
      *  sees the restored content. */
-    private _seedUnsavedText(tab: TabInfo, content: string): void {
+    private async _seedUnsavedText(tab: TabInfo, content: string): Promise<void> {
         tab.viewMode = 'text';
         tab.isEditable = true;
         tab.content = content;
         tab.hasUnsavedChanges = true;
         tab.isLoading = false;
-        updateFileContent(tab.absPath, content).mapErr((err) =>
+        await updateFileContent(tab.absPath, content).mapErr((err) =>
             logError('restore unsaved shadow write failed:', err)
         );
         void grammar.checkNow(tab.relPath, content);

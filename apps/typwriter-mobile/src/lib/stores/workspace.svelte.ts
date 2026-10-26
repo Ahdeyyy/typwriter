@@ -24,6 +24,7 @@ class WorkspaceStore {
   root = $state<string | null>(null);
   tree = $state<FileNode | null>(null);
   mainFile = $state<string | null>(null);
+  document = $state(false);
 
   private filesChangedUnlisten: UnlistenFn | null = null;
   private foregroundUnlisten: (() => void) | null = null;
@@ -92,6 +93,26 @@ class WorkspaceStore {
   }
 
   open(name: string): ResultAsync<WorkspaceInfo, string> {
+    return this.openSession(() => ipc.openWorkspace(name));
+  }
+
+  openDocument(uri: string): ResultAsync<WorkspaceInfo, string> {
+    // Native document validation finishes before it replaces the session, so
+    // rejected names/URIs can safely restore the saved editor tabs.
+    return this.openSession(() => ipc.openDocument(uri), true);
+  }
+
+  pickDocument(): ResultAsync<WorkspaceInfo | null, string> {
+    // Own navigation before Android hides the webview. Otherwise startup
+    // restore and the foreground rescan can still open/read the old workspace
+    // while the user is choosing its replacement.
+    return this.openSession(() => ipc.pickDocument(), true);
+  }
+
+  private openSession<T extends WorkspaceInfo | null>(
+    load: () => ResultAsync<T, string>,
+    preserveOnFailure = false,
+  ): ResultAsync<T, string> {
     const generation = ++this.generation;
     this.treeRequest++;
     this.changing = true;
@@ -103,16 +124,29 @@ class WorkspaceStore {
       return editor.flush();
     }).andThen(() => {
       if (generation !== this.generation) return errAsync("Workspace opening was canceled");
+      const tabs = preserveOnFailure ? [...editor.tabs] : [];
+      const active = editor.newTabOpen ? null : editor.relPath;
+      const cursor = editor.view?.state.selection.main.head ?? null;
       editor.resetTabs();
-      return ipc.openWorkspace(name);
+      const restore = () => {
+        if (preserveOnFailure && generation === this.generation) {
+          this.changing = false;
+          editor.seedTabs(tabs, active, cursor);
+        }
+      };
+      return load().orTee(restore).andTee((info) => {
+        if (info === null) restore();
+      });
     }).andThen((info) => {
       if (generation !== this.generation) return errAsync("Workspace opening was canceled");
+      if (info === null) return okAsync(info);
       this.changing = false;
       this.name = info.name;
       this.root = info.root;
       this.replaceTree(info.tree);
       this.mainFile = info.mainFile;
-      settings.setLastWorkspace(info.name);
+      this.document = info.document ?? false;
+      settings.setLastWorkspace(this.document ? null : info.name);
       app.openEditor();
       // Seed open tabs (persisted), falling back to last/main file.
       const initialTabs = info.openTabs?.length
@@ -145,7 +179,7 @@ class WorkspaceStore {
    * and the tab state is dropped for the same reason.
    */
   switchTo(name: string): ResultAsync<void, string> {
-    if (name === this.name) return okAsync(undefined);
+    if (!this.document && name === this.name) return okAsync(undefined);
     const opening = this.open(name);
     const generation = this.generation;
     return opening

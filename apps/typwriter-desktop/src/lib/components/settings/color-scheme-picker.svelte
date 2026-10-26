@@ -1,16 +1,15 @@
 <script lang="ts">
   // Colour scheme cards: System / Light / Dark, each with a miniature mockup
-  // of the app painted in the currently selected theme's palette (light values
+  // of the app painted in each mode's selected palette (light values
   // for the Light card, dark values for the Dark card, a hard split for
   // System). Replaces the old segmented mode control.
   //
   // mode-watcher keeps its state per webview, so every change is also
   // broadcast over `app:mode-changed` for the other windows to apply.
-  import { setMode, resetMode, userPrefersMode, systemPrefersMode } from "mode-watcher";
-  import { app } from "@tauri-apps/api";
+  import { userPrefersMode } from "mode-watcher";
+  import { selectColorScheme } from "$lib/appearance";
   import { cn } from "$lib/utils";
-  import { emitAppModeChanged, type ModePreference } from "$lib/ipc/events";
-  import { logError } from "$lib/logger";
+  import type { ModePreference } from "$lib/ipc/events";
   import { settings } from "$lib/stores/settings.svelte";
   import "./theme-preview.css";
 
@@ -19,20 +18,6 @@
     { id: "light", label: "Light" },
     { id: "dark", label: "Dark" },
   ];
-
-  function select(next: ModePreference) {
-    if (next === "system") {
-      resetMode();
-    } else {
-      setMode(next);
-    }
-    // Tauri's window chrome follows the *resolved* mode. Derive it from `next`
-    // rather than reading `mode.current` back — that hasn't settled yet in this
-    // tick, so it would apply the previous mode's chrome.
-    const resolved = next === "system" ? (systemPrefersMode.current ?? "light") : next;
-    app.setTheme(resolved === "dark" ? "dark" : "light");
-    emitAppModeChanged(next).mapErr((err) => logError("mode broadcast failed:", err));
-  }
 </script>
 
 {#snippet mockup(dark: boolean)}
@@ -41,7 +26,7 @@
   <div
     class="theme-preview flex h-full w-full overflow-hidden"
     class:dark
-    data-theme={settings.theme}
+    data-theme={dark ? settings.darkTheme : settings.lightTheme}
     style="background: var(--tp-underlay, transparent)"
     aria-hidden="true"
   >
@@ -100,7 +85,7 @@
       class="flex flex-col gap-2 rounded-lg border p-1.5 pb-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary {selected
         ? 'border-primary ring-1 ring-primary'
         : 'border-border hover:border-muted-foreground/40'}"
-      onclick={() => select(option.id)}
+      onclick={() => selectColorScheme(option.id)}
     >
       <div class="relative aspect-[16/10] w-full overflow-hidden rounded-md border border-border">
         {#if option.id === "system"}

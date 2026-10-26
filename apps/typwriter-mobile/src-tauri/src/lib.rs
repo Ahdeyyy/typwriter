@@ -4,6 +4,7 @@
 
 mod commands;
 mod compiler;
+mod document;
 mod fonts;
 mod renderer;
 mod watcher;
@@ -40,6 +41,7 @@ pub(crate) fn packages_dirs(app: &tauri::AppHandle) -> (Option<PathBuf>, Option<
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(document::FileOpenState::default())
         .register_asynchronous_uri_scheme_protocol("previewimg", |ctx, request, responder| {
             // URL: http://previewimg.localhost/{fp}-{bucket}.png (Android/Windows)
             //      previewimg://localhost/{fp}-{bucket}.png (macOS/iOS/Linux)
@@ -113,6 +115,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            document::take_open_files,
+            document::pick_document,
+            document::open_document,
             commands::app::get_typst_version,
             commands::workspace::list_workspaces,
             commands::workspace::create_workspace,
@@ -148,6 +153,21 @@ pub fn run() {
             commands::export::export_pdf_to_cache_file,
             commands::export::export_workspace,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            #[cfg(any(target_os = "android", target_os = "ios", target_os = "macos"))]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                use tauri::Emitter;
+                let state = _app.state::<document::FileOpenState>();
+                let mut pending = state.0.lock();
+                pending.extend(
+                    urls.into_iter()
+                        .filter(|url| matches!(url.scheme(), "content" | "file"))
+                        .map(|url| url.to_string()),
+                );
+                drop(pending);
+                let _ = _app.emit("app:open-files", ());
+            }
+        });
 }

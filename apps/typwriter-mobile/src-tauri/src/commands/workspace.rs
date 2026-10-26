@@ -42,6 +42,9 @@ pub(crate) fn root_dir(app: &AppHandle) -> PathBuf {
 }
 
 fn current_root(workspace: &WorkspaceState) -> Result<PathBuf, String> {
+    if workspace.document.lock().is_some() {
+        return Err("Open a workspace to manage files and folders".into());
+    }
     workspace
         .root
         .read()
@@ -50,6 +53,9 @@ fn current_root(workspace: &WorkspaceState) -> Result<PathBuf, String> {
 }
 
 fn tree_of(workspace: &WorkspaceState) -> Result<FileNode, String> {
+    if let Some(document) = workspace.document.lock().as_ref() {
+        return Ok(document.tree());
+    }
     Ok(build_tree(&current_root(workspace)?))
 }
 
@@ -202,6 +208,7 @@ pub async fn open_workspace(
     compile: State<'_, Arc<CompileState>>,
     watcher: State<'_, Arc<WatcherState>>,
 ) -> Result<WorkspaceInfo, String> {
+    validate_workspace_name(&name)?;
     let t = Instant::now();
     let dir = root_dir(&app).join(&name);
     if !dir.is_dir() {
@@ -216,6 +223,8 @@ pub async fn open_workspace(
         meta.last_opened_ms = Some(now_ms());
     })?;
 
+    let _gate = world.session_gate.write();
+    *workspace.document.lock() = None;
     *workspace.root.write() = Some(dir.clone());
     world.set_root(dir.clone());
     // Follow the new root. This also tears down the previous workspace's
@@ -267,6 +276,7 @@ pub async fn open_workspace(
         open_tabs,
         active_tab,
         cursor,
+        document: false,
     })
 }
 
@@ -286,14 +296,23 @@ pub async fn get_file_tree(workspace: State<'_, Arc<WorkspaceState>>) -> Result<
 /// removes the whole question.
 #[tauri::command]
 pub async fn rescan_workspace(
+    app: AppHandle,
     workspace: State<'_, Arc<WorkspaceState>>,
     world: State<'_, Arc<MobileWorld>>,
 ) -> Result<FileNode, String> {
     // Stamps are compared against disk on every compile anyway, but a slot
     // whose file was replaced with one of the same length and mtime would
     // survive that check; a resume is a cheap moment to be certain.
-    world.clear_cache();
-    tree_of(&workspace)
+    let workspace = workspace.inner().clone();
+    let world = world.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _gate = world.session_gate.write();
+        crate::document::refresh(&app, &workspace)?;
+        world.clear_cache();
+        tree_of(&workspace)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -318,6 +337,9 @@ pub async fn set_last_file(
     rel_path: Option<String>,
     workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Result<(), String> {
+    if workspace.document.lock().is_some() {
+        return Ok(());
+    }
     let root = current_root(&workspace)?;
     update_meta(&root, |meta| meta.last_file = rel_path)?;
     Ok(())
@@ -380,6 +402,9 @@ pub async fn set_open_tabs(
     cursor: Option<usize>,
     workspace: State<'_, Arc<WorkspaceState>>,
 ) -> Result<(), String> {
+    if workspace.document.lock().is_some() {
+        return Ok(());
+    }
     let root = current_root(&workspace)?;
     update_meta(&root, |meta| {
         meta.open_tabs = open_tabs;

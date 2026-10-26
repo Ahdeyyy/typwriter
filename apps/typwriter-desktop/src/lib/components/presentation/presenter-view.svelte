@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Dialog } from "bits-ui";
   import { onMount, onDestroy, untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
@@ -120,10 +121,12 @@
 
   // ── Keyboard Shortcuts ────────────────────────────────────────────────────
   function handleKeydown(e: KeyboardEvent) {
+    if (e.defaultPrevented) return;
     const target = e.target as HTMLElement | null;
     if (target) {
       const tag = target.tagName;
       if (target.isContentEditable || tag === "INPUT" || tag === "TEXTAREA") return;
+      if (target.closest("button, a, select") && (e.key === "Enter" || e.key === " ")) return;
     }
 
     if (showAllSlidesModal) {
@@ -132,6 +135,7 @@
         showAllSlidesModal = false;
         return;
       }
+      return;
     }
 
     if (matchesCommand(e, "preview.exitPresentation")) {
@@ -178,7 +182,8 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <Tooltip.Provider>
-<div class="flex h-full w-full flex-col overflow-hidden bg-neutral-950 text-neutral-100 select-none font-sans">
+<main id="main-content" tabindex="-1" class="flex h-full w-full flex-col overflow-hidden bg-neutral-950 text-neutral-100 select-none font-sans">
+  <h1 class="sr-only">Presentation</h1>
   <!-- ── Top Header Bar ───────────────────────────────────────────────────── -->
   <header
     data-tauri-drag-region
@@ -261,6 +266,7 @@
           <Tooltip.Trigger>
             {#snippet child({ props })}
               <Button
+                aria-label="Reset Timer"
                 {...props}
                 variant="ghost"
                 size="icon"
@@ -359,7 +365,7 @@
               <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
               <line x1="1" y1="1" x2="23" y2="23" />
             </svg>
-            <h3 class="text-lg font-semibold text-white mb-1">Audience Display is Blacked Out</h3>
+            <h2 class="text-lg font-semibold text-white mb-1">Audience Display is Blacked Out</h2>
             <p class="text-xs text-neutral-400 max-w-sm mb-4">
               The audience sees a pure black screen. Click below or press <kbd class="rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-xs text-neutral-300">B</kbd> to resume the slide view.
             </p>
@@ -534,33 +540,24 @@
       {/each}
     </div>
   </footer>
-</div>
+</main>
 
 <!-- ── Full-Screen "See All Slides" Grid Modal ────────────────────────────── -->
-{#if showAllSlidesModal}
-  <div
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-    class="fixed inset-0 z-50 flex flex-col bg-neutral-950/95 backdrop-blur-md p-6 animate-in fade-in duration-150"
-    onkeydown={(e) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        showAllSlidesModal = false;
-      }
-    }}
-  >
+<Dialog.Root bind:open={showAllSlidesModal}>
+  <Dialog.Portal>
+  <Dialog.Content class="fixed inset-0 z-50 flex flex-col bg-neutral-950/95 backdrop-blur-md p-6 animate-in fade-in duration-150">
     <!-- Modal Header -->
     <div class="mb-4 flex items-center justify-between border-b border-neutral-800 pb-3">
       <div>
-        <h2 class="text-lg font-semibold text-white">All Slides</h2>
-        <p class="text-xs text-neutral-400">Select any slide to jump to it directly</p>
+        <Dialog.Title class="text-lg font-semibold text-white">All Slides</Dialog.Title>
+        <Dialog.Description class="text-xs text-neutral-400">Select any slide to jump to it directly</Dialog.Description>
       </div>
 
       <Button
         variant="ghost"
         size="icon"
         class="size-8 rounded-full text-neutral-400 hover:bg-neutral-800 hover:text-white"
+        aria-label="Close all slides"
         onclick={() => (showAllSlidesModal = false)}
       >
         <HugeiconsIcon icon={Cancel01Icon} class="size-4" />
@@ -609,6 +606,7 @@
         </button>
       {/each}
     </div>
-  </div>
-{/if}
+  </Dialog.Content>
+  </Dialog.Portal>
+</Dialog.Root>
 </Tooltip.Provider>

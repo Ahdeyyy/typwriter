@@ -62,7 +62,7 @@ class SnippetStore {
 
     /** Whether a project file can be written at all. */
     get hasProject(): boolean {
-        return !!workspace.rootPath;
+        return !!workspace.rootPath && !workspace.isStandalone;
     }
 
     snippetsIn(scope: WritableScope): Snippet[] {
@@ -112,7 +112,7 @@ class SnippetStore {
     async refreshProject(): Promise<void> {
         const request = ++this.projectRequest;
         const root = workspace.rootPath;
-        if (!root) {
+        if (!root || workspace.isStandalone) {
             this.reset();
             return;
         }
@@ -191,6 +191,7 @@ class SnippetStore {
      * is durable rather than silently reverting on the next load.
      */
     private async persistProject(): Promise<void> {
+        if (!this.hasProject) return;
         const result = await setProjectSnippets(serializeSnippets(this.projectSnippets));
         result.match(
             () => void emitSnippetsChanged('project'),
@@ -200,7 +201,7 @@ class SnippetStore {
 
     /** Path of the project file, creating it if needed, for opening in a tab. */
     async ensureProjectFile(): Promise<string | null> {
-        if (!workspace.rootPath) return null;
+        if (!this.hasProject) return null;
         await this.persistProject();
         return SNIPPETS_REL_PATH;
     }

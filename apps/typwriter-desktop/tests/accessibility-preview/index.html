@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Editor accessibility regression</title></head>
+  <body>
+    <h1>Editor accessibility regression</h1>
+    <p id="help">Tab indents with the mode off and moves focus with it on.</p>
+    <button id="before">Before editor</button>
+    <label><input id="mode" type="checkbox" /> Screen reader mode</label>
+    <div id="editor"></div>
+    <button id="after">After editor</button>
+    <pre id="results" role="status"></pre>
+    <script type="module" src="./entry.ts"></script>
+  </body>
+</html>

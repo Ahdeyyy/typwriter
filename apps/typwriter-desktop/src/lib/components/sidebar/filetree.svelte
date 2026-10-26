@@ -86,6 +86,7 @@
 </script>
 
 <!-- ─── Toolbar ────────────────────────────────────────────────────── -->
+<h2 class="sr-only">Files</h2>
 <div
   class="flex h-9 shrink-0 items-center justify-between border-b border-sidebar-border px-2 mb-1.5"
 >
@@ -97,6 +98,7 @@
             {...props}
             variant="ghost"
             size="icon"
+            aria-label={controller.anyFolderExpanded ? "Collapse all folders" : "Expand all folders"}
             onclick={() => (controller.anyFolderExpanded ? controller.collapseAll() : controller.expandAll())}
           >
             {#if controller.anyFolderExpanded}
@@ -113,6 +115,7 @@
       <Tooltip.Trigger>
         {#snippet child({ props })}
           <Button
+            aria-label="New file"
             {...props}
             variant="ghost"
             size="icon"
@@ -128,6 +131,7 @@
       <Tooltip.Trigger>
         {#snippet child({ props })}
           <Button
+            aria-label="New folder"
             {...props}
             variant="ghost"
             size="icon"
@@ -143,6 +147,7 @@
       <Tooltip.Trigger>
         {#snippet child({ props })}
           <Button
+            aria-label="Import files to root"
             {...props}
             variant="ghost"
             size="icon"
@@ -176,6 +181,7 @@
         class="size-4 shrink-0 text-muted-foreground"
       />
       <input
+        aria-label={creatingRoot === "folder" ? "New folder name" : "New file name"}
         bind:this={rootCreateInputEl}
         class="h-full w-full min-w-0 bg-transparent text-[13px] text-sidebar-accent-foreground outline-none placeholder:text-muted-foreground"
         placeholder={creatingRoot === "folder" ? "folder-name" : "file.typ"}

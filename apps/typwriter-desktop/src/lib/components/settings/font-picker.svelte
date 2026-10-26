@@ -6,6 +6,9 @@
   // Families arrive pre-grouped ("Typwriter fonts", "Installed on this
   // device", …) so bundled and system fonts stay distinguishable while the
   // search box filters across all of them.
+  import { getSettingControl } from "./control-context";
+  const settingControl = getSettingControl();
+  const valueId = $props.id();
   import Button from "$lib/components/ui/button/button.svelte";
   import { Input } from "$lib/components/ui/input/index.js";
   import * as Popover from "$lib/components/ui/popover/index.js";
@@ -56,14 +59,14 @@
 <Popover.Root bind:open>
   <Popover.Trigger>
     {#snippet child({ props })}
-      <Button {...props} variant="outline" size="sm" class="min-w-44 justify-between">
-        <span class="truncate" style={fontStack(value)}>{value}</span>
+      <Button {...props} aria-labelledby={settingControl ? `${settingControl["aria-labelledby"]} ${valueId}` : undefined} aria-describedby={settingControl?.["aria-describedby"]} variant="outline" size="sm" class="min-w-44 justify-between">
+        <span id={valueId} class="truncate" style={fontStack(value)}>{value}</span>
       </Button>
     {/snippet}
   </Popover.Trigger>
   <Popover.Content align="end" class="w-72 p-0">
     <div class="border-b border-border p-2">
-      <Input placeholder="Search fonts…" bind:value={filter} class="h-8" />
+      <Input aria-label="Search fonts" placeholder="Search fonts…" bind:value={filter} class="h-8" />
     </div>
     <!-- No top padding: the sticky group header pins to the very top of the
          scroll area, flush under the search box. Any gap there would let rows

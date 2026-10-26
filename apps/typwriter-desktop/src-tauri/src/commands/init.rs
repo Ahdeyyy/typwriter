@@ -137,7 +137,7 @@ pub fn init_package_workspace(
         Some(entrypoint_rel.clone()),
         HashMap::new(),
         Some(0),
-    );
+    )?;
 
     let path_str = workspace_path.to_string_lossy().into_owned();
     info!(

@@ -1,18 +1,20 @@
 {
   "name": "typwriter",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "",
   "type": "module",
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
+    "preview:recents": "vite build --config tests/recents-preview/vite.config.ts && vite preview --config tests/recents-preview/vite.config.ts --host 127.0.0.1 --port 4178 --strictPort",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check-types": "bun run check",
     "lint": "eslint .",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "bun test",
     "test:state": "bun test --conditions=browser --preload ../../scripts/register-svelte-runes.ts ../../tests/frontend-state/desktop.regression.ts",
+    "test:themes": "bun test --conditions=browser --preload ../../scripts/register-svelte-runes.ts ../../tests/frontend-state/desktop-themes.regression.ts",
     "tauri": "tauri"
   },
   "license": "MIT",

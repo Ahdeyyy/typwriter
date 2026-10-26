@@ -9,6 +9,7 @@
   import type { Snippet } from "svelte";
   import { cn } from "$lib/utils";
   import Highlight from "./highlight.svelte";
+  import { setSettingControl } from "./control-context";
   import { getForcedVisible, getSettingsSearch, reportSettingHit } from "./search.svelte";
 
   interface Props {
@@ -40,6 +41,12 @@
     children,
   }: Props = $props();
 
+  const rowId = $props.id();
+  setSettingControl({
+    get "aria-labelledby"() { return rowId + "-title"; },
+    get "aria-describedby"() { return description ? rowId + "-description" : undefined; },
+  });
+
   const search = getSettingsSearch();
   const forcedVisible = getForcedVisible();
 
@@ -64,11 +71,11 @@
 
 {#snippet body()}
   <div class="min-w-0">
-    <p class="text-sm font-medium"><Highlight text={title} /></p>
+    <p id="{rowId}-title" class="text-sm font-medium"><Highlight text={title} /></p>
     {#if typeof description === "string"}
-      <p class="text-xs text-muted-foreground"><Highlight text={description} /></p>
+      <p id="{rowId}-description" class="text-xs text-muted-foreground"><Highlight text={description} /></p>
     {:else if description}
-      <p class="text-xs text-muted-foreground">{@render description()}</p>
+      <p id="{rowId}-description" class="text-xs text-muted-foreground">{@render description()}</p>
     {/if}
     {@render children?.()}
   </div>

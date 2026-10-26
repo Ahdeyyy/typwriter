@@ -303,6 +303,14 @@ Remaining guardrails (no decision needed, just noted):
 
 ## 8b. Implementation notes (as built)
 
+First-run setup precedes the tutorial: accessibility choice, then an optional
+appearance screen using the same color scheme, per-mode theme, and UI font
+controls as Settings. Appearance changes apply immediately; Continue keeps them.
+**Skip and use defaults** restores the system color scheme, Default themes, and
+default UI font without changing accessibility or editor preferences. The
+tutorial workspace starts only after appearance setup. Replaying a completed
+tutorial goes straight to the lesson.
+
 Deviations from the draft above, all for correctness:
 
 - **Flag lives under its own store key, not in `AppSettings`.** The Settings page

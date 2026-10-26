@@ -21,10 +21,12 @@
   import { Skeleton } from "$lib/components/ui/skeleton";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { app } from "$lib/stores/app.svelte";
+  import { pathDisplay } from "$lib/stores/path-display.svelte";
   import { longpress } from "$lib/actions/longpress";
   import { openedAgo } from "$lib/time";
   import { exportWorkspace } from "$lib/ipc/commands";
   import { scheduleBodyLockRelease } from "$lib/body-lock";
+  import { pickDocument } from "$lib/document-opening";
   import type { WorkspaceMeta } from "$lib/ipc/types";
 
   let loading = $state(true);
@@ -33,6 +35,17 @@
   let menuTarget = $state<WorkspaceMeta | null>(null);
   let confirmingDelete = $state(false);
   let exporting = $state(false);
+  let pickingDocument = $state(false);
+
+  async function openDocument() {
+    if (pickingDocument) return;
+    pickingDocument = true;
+    try {
+      await pickDocument();
+    } finally {
+      pickingDocument = false;
+    }
+  }
 
   const INVALID = /[/\\:*?"<>|]/;
 
@@ -135,6 +148,10 @@
     </Button>
   </header>
 
+  <Button variant="secondary" class="mx-5 my-3" disabled={pickingDocument} onclick={openDocument}>
+    <Icon icon={File02Icon} /> {pickingDocument ? "Opening…" : "Open file"}
+  </Button>
+
   <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 6rem);">
     {#if loading}
       <div class="flex flex-col gap-3">
@@ -149,7 +166,7 @@
         </div>
         <div class="flex flex-col gap-1">
           <p class="text-base font-medium">No workspaces yet</p>
-          <p class="text-muted-foreground text-sm">Your Typst documents live in workspaces. Create your first one to begin.</p>
+          <p class="text-muted-foreground text-sm">Open a .typ file, or create a workspace for documents with multiple files.</p>
         </div>
         <Button class="mt-1 rounded-full px-6" onclick={() => (createOpen = true)}>
           <Icon icon={Add01Icon} /> New workspace
@@ -170,6 +187,7 @@
           <div class="flex items-end justify-between gap-3">
             <div class="min-w-0">
               <div class="truncate text-2xl font-semibold tracking-tight">{r.name}</div>
+              <div class="text-primary-foreground/70 mt-1 truncate text-xs">{pathDisplay.format(r.path)}</div>
               <div class="text-primary-foreground/70 mt-1 flex items-center gap-1.5 text-xs">
                 <Icon icon={Time04Icon} class="size-3.5" />
                 {openedAgo(r.lastOpenedMs)}
@@ -197,6 +215,7 @@
               </div>
               <div class="min-w-0 flex-1">
                 <div class="truncate text-sm font-medium">{meta.name}</div>
+                <div class="text-muted-foreground truncate text-xs">{pathDisplay.format(meta.path)}</div>
                 <div class="text-muted-foreground text-xs">{openedAgo(meta.lastOpenedMs)}</div>
               </div>
               <Icon icon={ArrowRight01Icon} class="text-muted-foreground/50 size-4 shrink-0" />

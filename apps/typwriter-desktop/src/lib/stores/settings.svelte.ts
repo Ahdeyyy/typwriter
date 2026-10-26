@@ -94,7 +94,8 @@ export interface PersistedSettings {
     uiFontFamily: string;
     editorFontFamily: string;
     editorFontSize: number;
-    theme: ThemeId;
+    lightTheme: ThemeId;
+    darkTheme: ThemeId;
 
     // Updates
     autoCheckUpdates: boolean;
@@ -119,6 +120,11 @@ export interface PersistedSettings {
     /** Use the tinymist language server (when installed) for completion, hover,
      *  and diagnostics. UI-only — not round-tripped through the Rust settings. */
     useLsp: boolean;
+
+    /** UI-only, opt-in keyboard behavior for assistive technology. */
+    screenReaderMode: boolean;
+    /** Records either onboarding answer; retained when preferences are reset. */
+    screenReaderModeChosen: boolean;
 
     // Auto-save
     autoSaveEnabled: boolean;
@@ -161,7 +167,8 @@ const DEFAULTS: PersistedSettings = {
     uiFontFamily: 'IBM Plex Sans Variable',
     editorFontFamily: 'JetBrains Mono Variable',
     editorFontSize: 13,
-    theme: 'default',
+    lightTheme: 'default',
+    darkTheme: 'default',
 
     autoCheckUpdates: true,
 
@@ -177,6 +184,8 @@ const DEFAULTS: PersistedSettings = {
     focusMode: false,
     typewriterScrolling: false,
     useLsp: true,
+    screenReaderMode: false,
+    screenReaderModeChosen: false,
 
     autoSaveEnabled: true,
     autoSaveDelayMs: 1500,
@@ -229,19 +238,20 @@ function isThemeId(value: unknown): value is ThemeId {
     return typeof value === 'string' && THEME_IDS.has(value as ThemeId);
 }
 
-/** Legacy field names kept readable here so settings saved before themes were
- *  unified (one palette per mode) migrate to the single `theme` instead of
- *  resetting to the default. */
-type RawSettings = Partial<PersistedSettings> & { lightTheme?: unknown; darkTheme?: unknown };
+/** A shared palette from older versions seeds both modes unless a mode has
+ *  its own valid selection. Read the raw values before merging defaults. */
+type RawSettings = Partial<PersistedSettings> & { theme?: unknown };
 
 function normalizeSettings(value: RawSettings): PersistedSettings {
-    const settings = { ...DEFAULTS, ...value } as PersistedSettings & RawSettings;
-    // When the old per-mode palettes disagreed, the dark one wins — it was the
-    // more likely deliberate pick for an app that ships dark by default.
-    const legacyTheme = [settings.theme, settings.darkTheme, settings.lightTheme].find(isThemeId);
+    const { theme, ...current } = value;
+    const settings = { ...DEFAULTS, ...current };
+    const fallback = isThemeId(theme) ? theme : 'default';
     return {
         ...settings,
-        theme: legacyTheme ?? DEFAULTS.theme,
+        lightTheme: isThemeId(value.lightTheme) ? value.lightTheme : fallback,
+        darkTheme: isThemeId(value.darkTheme) ? value.darkTheme : fallback,
+        // Existing screen reader users have already made their choice.
+        screenReaderModeChosen: settings.screenReaderModeChosen === true || settings.screenReaderMode === true,
         keybindings: normalizeKeybindings(settings.keybindings),
     };
 }
@@ -267,10 +277,13 @@ const INITIAL_LOCAL = loadFromLocalStorage();
 const INITIAL = INITIAL_LOCAL.settings;
 
 class SettingsStore {
+    private appearanceChanged = false;
+
     uiFontFamily = $state(INITIAL.uiFontFamily);
     editorFontFamily = $state(INITIAL.editorFontFamily);
     editorFontSize = $state(INITIAL.editorFontSize);
-    theme = $state<ThemeId>(INITIAL.theme);
+    lightTheme = $state<ThemeId>(INITIAL.lightTheme);
+    darkTheme = $state<ThemeId>(INITIAL.darkTheme);
 
     autoCheckUpdates = $state(INITIAL.autoCheckUpdates);
 
@@ -286,6 +299,8 @@ class SettingsStore {
     focusMode = $state(INITIAL.focusMode);
     typewriterScrolling = $state(INITIAL.typewriterScrolling);
     useLsp = $state(INITIAL.useLsp);
+    screenReaderMode = $state(INITIAL.screenReaderMode);
+    screenReaderModeChosen = $state(INITIAL.screenReaderModeChosen);
 
     autoSaveEnabled = $state(INITIAL.autoSaveEnabled);
     autoSaveDelayMs = $state(INITIAL.autoSaveDelayMs);
@@ -315,11 +330,13 @@ class SettingsStore {
         return getAppSettings()
             .map((s) => {
                 this.fontDirectories = s.font_directories;
+                const legacyTheme = isThemeId(s.theme) ? s.theme : undefined;
                 const rustSettings: PersistedSettings = {
                     uiFontFamily: s.ui_font_family,
                     editorFontFamily: s.editor_font_family,
                     editorFontSize: s.editor_font_size,
-                    theme: isThemeId(s.theme) ? s.theme : DEFAULTS.theme,
+                    lightTheme: isThemeId(s.light_theme) ? s.light_theme : (legacyTheme ?? DEFAULTS.lightTheme),
+                    darkTheme: isThemeId(s.dark_theme) ? s.dark_theme : (legacyTheme ?? DEFAULTS.darkTheme),
                     autoCheckUpdates: s.auto_check_updates,
                     defaultPreviewZoom: s.default_preview_zoom,
                     defaultPreviewVisible: s.default_preview_visible,
@@ -333,6 +350,8 @@ class SettingsStore {
                     typewriterScrolling: s.typewriter_scrolling,
                     // UI-only: Rust has no say — always reseed from the local value.
                     useLsp: INITIAL.useLsp,
+                    screenReaderMode: this.screenReaderMode,
+                    screenReaderModeChosen: this.screenReaderModeChosen,
                     autoSaveEnabled: s.auto_save_enabled,
                     autoSaveDelayMs: s.auto_save_delay_ms,
                     formatBeforeSave: s.format_before_save,
@@ -352,7 +371,18 @@ class SettingsStore {
                 const nextSettings = INITIAL_LOCAL.hasSettings
                     ? { ...rustSettings, ...INITIAL }
                     : rustSettings;
-                this.applyPersistedSettings(nextSettings);
+                // Setup choices can arrive while this IPC is pending.
+                this.applyPersistedSettings({
+                    ...nextSettings,
+                    ...(this.appearanceChanged ? {
+                        uiFontFamily: this.uiFontFamily,
+                        lightTheme: this.lightTheme,
+                        darkTheme: this.darkTheme,
+                    } : {}),
+                    // Rust does not own these UI-only preferences.
+                    screenReaderMode: this.screenReaderMode,
+                    screenReaderModeChosen: this.screenReaderModeChosen,
+                });
                 this.persist();
             })
             .mapErr((err) => {
@@ -366,7 +396,8 @@ class SettingsStore {
             uiFontFamily: this.uiFontFamily,
             editorFontFamily: this.editorFontFamily,
             editorFontSize: this.editorFontSize,
-            theme: this.theme,
+            lightTheme: this.lightTheme,
+            darkTheme: this.darkTheme,
             autoCheckUpdates: this.autoCheckUpdates,
             defaultPreviewZoom: this.defaultPreviewZoom,
             defaultPreviewVisible: this.defaultPreviewVisible,
@@ -379,6 +410,8 @@ class SettingsStore {
             focusMode: this.focusMode,
             typewriterScrolling: this.typewriterScrolling,
             useLsp: this.useLsp,
+            screenReaderMode: this.screenReaderMode,
+            screenReaderModeChosen: this.screenReaderModeChosen,
             autoSaveEnabled: this.autoSaveEnabled,
             autoSaveDelayMs: this.autoSaveDelayMs,
             formatBeforeSave: this.formatBeforeSave,
@@ -400,11 +433,12 @@ class SettingsStore {
     }
 
     private applyPersistedSettings(next: Partial<PersistedSettings>): void {
-        const settings = { ...DEFAULTS, ...next };
+        const settings = normalizeSettings(next);
         this.uiFontFamily = settings.uiFontFamily;
         this.editorFontFamily = settings.editorFontFamily;
         this.editorFontSize = clampEditorFontSize(settings.editorFontSize);
-        this.theme = isThemeId(settings.theme) ? settings.theme : DEFAULTS.theme;
+        this.lightTheme = settings.lightTheme;
+        this.darkTheme = settings.darkTheme;
         this.autoCheckUpdates = settings.autoCheckUpdates;
         this.defaultPreviewZoom = clampPreviewZoom(settings.defaultPreviewZoom);
         this.defaultPreviewVisible = settings.defaultPreviewVisible;
@@ -417,6 +451,8 @@ class SettingsStore {
         this.focusMode = settings.focusMode;
         this.typewriterScrolling = settings.typewriterScrolling;
         this.useLsp = settings.useLsp;
+        this.screenReaderMode = settings.screenReaderMode === true;
+        this.screenReaderModeChosen = settings.screenReaderModeChosen === true || this.screenReaderMode;
         this.autoSaveEnabled = settings.autoSaveEnabled;
         this.autoSaveDelayMs = clampAutoSaveDelayMs(settings.autoSaveDelayMs);
         this.formatBeforeSave = settings.formatBeforeSave;
@@ -470,7 +506,10 @@ class SettingsStore {
             ui_font_family: current.uiFontFamily,
             editor_font_family: current.editorFontFamily,
             editor_font_size: current.editorFontSize,
-            theme: current.theme,
+            // Keep the legacy palette readable by older app versions.
+            theme: current.darkTheme,
+            light_theme: current.lightTheme,
+            dark_theme: current.darkTheme,
             auto_check_updates: current.autoCheckUpdates,
             default_preview_zoom: current.defaultPreviewZoom,
             default_preview_visible: current.defaultPreviewVisible,
@@ -504,6 +543,7 @@ class SettingsStore {
     }
 
     setUiFontFamily(family: string) {
+        this.appearanceChanged = true;
         this.uiFontFamily = family;
         this.persist();
     }
@@ -518,8 +558,10 @@ class SettingsStore {
         this.persist();
     }
 
-    setTheme(theme: ThemeId) {
-        this.theme = theme;
+    setTheme(theme: ThemeId, mode?: 'light' | 'dark') {
+        this.appearanceChanged = true;
+        if (mode !== 'dark') this.lightTheme = theme;
+        if (mode !== 'light') this.darkTheme = theme;
         this.persist();
     }
 
@@ -576,6 +618,12 @@ class SettingsStore {
 
     setTypewriterScrolling(value: boolean) {
         this.typewriterScrolling = value;
+        this.persist();
+    }
+
+    setScreenReaderMode(value: boolean) {
+        this.screenReaderMode = value;
+        this.screenReaderModeChosen = true;
         this.persist();
     }
 
@@ -695,11 +743,23 @@ class SettingsStore {
         this.persist();
     }
 
+    /** Reset only the controls offered during appearance setup. */
+    resetAppearanceToDefaults() {
+        this.appearanceChanged = true;
+        this.uiFontFamily = DEFAULTS.uiFontFamily;
+        this.lightTheme = DEFAULTS.lightTheme;
+        this.darkTheme = DEFAULTS.darkTheme;
+        this.persist();
+    }
+
     resetToDefaults() {
+        // Keep screenReaderModeChosen: replaying setup should not ask again
+        // merely because the user reset their editing preferences.
         this.uiFontFamily = DEFAULTS.uiFontFamily;
         this.editorFontFamily = DEFAULTS.editorFontFamily;
         this.editorFontSize = DEFAULTS.editorFontSize;
-        this.theme = DEFAULTS.theme;
+        this.lightTheme = DEFAULTS.lightTheme;
+        this.darkTheme = DEFAULTS.darkTheme;
         this.autoCheckUpdates = DEFAULTS.autoCheckUpdates;
         this.defaultPreviewZoom = DEFAULTS.defaultPreviewZoom;
         this.defaultPreviewVisible = DEFAULTS.defaultPreviewVisible;
@@ -711,6 +771,7 @@ class SettingsStore {
         this.focusMode = DEFAULTS.focusMode;
         this.typewriterScrolling = DEFAULTS.typewriterScrolling;
         this.useLsp = DEFAULTS.useLsp;
+        this.screenReaderMode = DEFAULTS.screenReaderMode;
         this.autoSaveEnabled = DEFAULTS.autoSaveEnabled;
         this.autoSaveDelayMs = DEFAULTS.autoSaveDelayMs;
         this.formatBeforeSave = DEFAULTS.formatBeforeSave;

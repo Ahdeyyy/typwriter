@@ -166,6 +166,7 @@ class LspClientStore {
     // The state we currently want: the target root URI when on, `null` when off.
     // Repeated `reconcile` calls with the same target are no-ops.
     private wantKey: string | null = null;
+    private wantDocument: string | null = null;
     // Bumped on every reconcile so a stale in-flight connect can detect it's been
     // superseded and bail cleanly.
     private token = 0;
@@ -184,12 +185,14 @@ class LspClientStore {
     /** Re-run on every change of the `useLsp` setting or the workspace root.
      *  Idempotent: tears down and reconnects only when the desired state or root
      *  actually changed. */
-    reconcile(enabled: boolean, root: string | null): void {
+    reconcile(enabled: boolean, root: string | null, documentPath: string | null = null): void {
         const desired = enabled && !platform.isMobile && !!root;
         const wantKey = desired && root ? pathToUri(root) : null;
-        if (wantKey === this.wantKey) return;
+        const wantDocument = desired ? documentPath : null;
+        if (wantKey === this.wantKey && wantDocument === this.wantDocument) return;
 
         this.wantKey = wantKey;
+        this.wantDocument = wantDocument;
         const myToken = ++this.token;
         this.enqueue(async () => {
             await this.teardown();
@@ -199,6 +202,7 @@ class LspClientStore {
     }
 
     private async connect(root: string, myToken: number, attempt: number): Promise<void> {
+        const documentPath = this.wantDocument;
         const started = await lspStart();
         // A missing binary never becomes present by retrying: fall back for good.
         if (started.isOk() && started.value === false) {
@@ -295,6 +299,26 @@ class LspClientStore {
                 this.retryOrFallback(root, myToken, attempt);
             }
             return;
+        }
+
+        // Pin the opened document so visiting an imported source cannot switch
+        // Tinymist to a different entry point than the preview compiler.
+        // https://myriad-dreamin.github.io/tinymist/frontend/neovim.html
+        if (documentPath) {
+            try {
+                client.notification('workspace/didChangeConfiguration', {
+                    settings: { rootPath: root, projectResolution: 'singleFile' },
+                });
+                await client.request('workspace/executeCommand', {
+                    command: 'tinymist.pinMain', arguments: [documentPath],
+                });
+            } catch (error) {
+                logError('tinymist could not pin the standalone document; using built-in language features:', error);
+                client.disconnect();
+                transport.dispose();
+                if (myToken === this.token) await lspStop();
+                return;
+            }
         }
 
         // tinymist crashed/exited at runtime → tear down and try to reconnect
@@ -414,6 +438,7 @@ class LspClientStore {
     /** Full teardown for the workspace page's `onDestroy`. */
     destroy(): void {
         this.wantKey = null;
+        this.wantDocument = null;
         this.token++;
         this.enqueue(() => this.teardown());
     }

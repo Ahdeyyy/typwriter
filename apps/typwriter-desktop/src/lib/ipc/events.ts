@@ -30,6 +30,14 @@ import type {
 
 export type { UnlistenFn };
 
+export function onAppOpenFiles(handler: () => void) {
+    return ResultAsync.fromPromise(listen<void>('app:open-files', handler), toErrString);
+}
+
+export function onDocumentDependenciesChanged(handler: () => void) {
+    return ResultAsync.fromPromise(listen<void>('document:dependencies-changed', handler), toErrString);
+}
+
 const toErrString = (e: unknown): string => String(e);
 
 // ─── Compile events ───────────────────────────────────────────────────────────

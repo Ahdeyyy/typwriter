@@ -5,9 +5,9 @@
   import Button from "$lib/components/ui/button/button.svelte";
   import { armRevealFallback, revealCurrentWindow } from "$lib/windows";
   import { logError } from "$lib/logger";
+  import { basename } from "$lib/paths";
 
   import { Window } from "@tauri-apps/api/window";
-  import { watch } from "runed";
 
   const win = Window.getCurrent();
 
@@ -78,18 +78,35 @@
       return "Version Diff - Typwriter";
     }
     if (page.current.name === "home") {
-      return "Typwriter";
+      return "Home - Typwriter";
+    }
+    if (page.current.name === "onboarding") {
+      return "Tutorial - Typwriter";
     }
 
-    const workspaceName = workspace.rootPath ? workspace.rootPath.split("/").slice(-1)[0] : "";
-    const openFileName = workspace.activeFilePath ? workspace.activeFilePath.split("/").slice(-1)[0] : "";
-    return `${openFileName ? openFileName + " - " : ""}${workspaceName ? workspaceName + " - " : ""} Typwriter`;
+    if (workspace.documentPath) {
+      const documentName = basename(workspace.documentPath);
+      const activeFile = workspace.activeFilePath;
+      return activeFile && activeFile !== workspace.mainFile
+        ? `${activeFile} - ${documentName} - Typwriter`
+        : `${documentName} - Typwriter`;
+    }
+
+    const workspaceName = workspace.rootPath ? basename(workspace.rootPath) : "Workspace";
+    const openFileName = workspace.activeFilePath;
+    return [openFileName, workspaceName, "Typwriter"].filter(Boolean).join(" - ");
   });
 
-  watch(() => title, (newTitle) => {
-    win.setTitle(newTitle);
+  // Keep the native window and the web document in sync, including the initial
+  // render. Screen readers can announce either title depending on navigation.
+  $effect(() => {
+    win.setTitle(title).catch((err) => logError("updating window title failed:", err));
   });
 </script>
+
+<svelte:head>
+  <title>{title}</title>
+</svelte:head>
 
 <section class="h-full w-full">
   <svelte:boundary>
