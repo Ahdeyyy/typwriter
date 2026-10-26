@@ -1,12 +1,14 @@
 name: "android-build"
 
 on:
+  workflow_call:
+    inputs:
+      release-id:
+        description: Shared release created by the publish workflow
+        required: true
+        type: number
+  # Manual runs build downloadable Actions artifacts without creating a release.
   workflow_dispatch:
-  push:
-    branches:
-      - release
-    paths-ignore:
-      - "apps/typwriter-web/**"
 
 jobs:
   build-android:
@@ -303,6 +305,7 @@ jobs:
 
   publish-android:
     name: Publish Android APKs
+    if: inputs.release-id > 0
     needs: build-android
     runs-on: ubuntu-22.04
     permissions:
@@ -310,12 +313,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Get release version
-        id: version
-        run: |
-          VERSION=$(jq -r .version apps/typwriter-mobile/src-tauri/tauri.conf.json)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Download APK artifacts
         uses: actions/download-artifact@v4
@@ -327,12 +324,20 @@ jobs:
       - name: List APKs
         run: ls -la release-apks/
 
-      - name: Publish APKs to draft release
-        uses: softprops/action-gh-release@v2
+      - name: Publish APKs to the shared release
+        uses: actions/github-script@v7
+        env:
+          RELEASE_ID: ${{ inputs.release-id }}
         with:
-          tag_name: typwriter-v${{ steps.version.outputs.version }}
-          name: typwriter v${{ steps.version.outputs.version }}
-          body: ${{ steps.version.outputs.version }} Release
-          draft: true
-          files: release-apks/*.apk
-          fail_on_unmatched_files: true
+          script: |
+            const fs = require('node:fs');
+            const { uploadAsset } = require('./.github/scripts/release.cjs');
+            const releaseId = Number(process.env.RELEASE_ID);
+            const files = fs.readdirSync('release-apks').filter(name => name.endsWith('.apk'));
+            if (!files.length) throw new Error('No Android APKs found');
+            for (const name of files) {
+              await uploadAsset({
+                github, context, releaseId, name,
+                data: fs.readFileSync(`release-apks/${name}`),
+              });
+            }

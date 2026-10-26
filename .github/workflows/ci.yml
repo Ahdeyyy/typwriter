@@ -44,6 +44,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
+      - name: Release workflow regression tests
+        run: node --test .github/scripts/release.test.cjs
       # The hand-written Typst parser is duplicated in both apps and must stay
       # byte-identical: it is shared by copy, not by package, because a
       # workspace package would resolve its own @lezer/common and two copies
