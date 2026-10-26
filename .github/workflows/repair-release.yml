@@ -1,0 +1,19 @@
+name: Repair v0.9.3 release
+
+on:
+  push:
+    branches: [fix/release-assets]
+    paths: [.github/workflows/repair-release.yml]
+
+jobs:
+  recover:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore and verify release assets and updater metadata
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/recover-release.cjs --apply
