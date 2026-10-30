@@ -1,5 +1,6 @@
 <script lang="ts">
-	import type { PageData } from './$types';
+	import { onMount } from 'svelte';
+	import { getLatestRelease, type Release } from '$lib/releases';
 	import { Button } from '$lib/components/ui/button';
 	import { Separator } from '$lib/components/ui/separator';
 	import Navbar from '$lib/components/Navbar.svelte';
@@ -23,14 +24,20 @@
 		FavouriteIcon
 	} from '@hugeicons/core-free-icons';
 
-	let { data }: { data: PageData } = $props();
+	let release = $state<Release | null>(null);
+
+	onMount(() => {
+		void getLatestRelease().then((latest) => {
+			release = latest;
+		});
+	});
 
 	const GITHUB_URL = 'https://github.com/Ahdeyyy/typwriter';
 	const RELEASES_URL = 'https://github.com/Ahdeyyy/typwriter/releases/latest';
 	const SPONSOR_URL = 'https://github.com/sponsors/Ahdeyyy';
 
-	const assets = $derived(data.release?.assets ?? []);
-	const version = $derived(data.release?.tag_name ?? null);
+	const assets = $derived(release?.assets ?? []);
+	const version = $derived(release?.tag_name ?? null);
 
 	const features = [
 		{
@@ -126,7 +133,7 @@
 					<span
 						class="flex size-1.5 rounded-full bg-primary transition-transform group-hover:scale-125"
 					></span>
-					<span class="font-mono text-[0.6875rem]">Typwriter {version ?? 'v0.9'}</span>
+					<span class="font-mono text-[0.6875rem]">Typwriter{version ? ` ${version}` : ''}</span>
 					<span class="text-border">|</span>
 					<span>Desktop & Mobile Typst Editor</span>
 					<HugeiconsIcon

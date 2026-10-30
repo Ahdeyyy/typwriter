@@ -10,7 +10,7 @@ Landing page for Typwriter — a static SvelteKit site whose job is to advertise
 
 ## Structure (`src/`)
 
-- `routes/+page.server.ts` — server load: fetches the latest GitHub release to populate download links.
+- `routes/+page.ts`: enables prerendering. `+page.svelte` fetches the latest GitHub release after mount via `lib/releases.ts`, with a one-hour localStorage cache so downloads update without a site rebuild. Expired or invalid cache entries trigger a fresh lookup. If GitHub is unavailable or rate limited, download buttons fall back to the latest release page.
 - `routes/+page.svelte` — the single landing page.
 - `routes/+layout.svelte` + `layout.css` — global shell and styles.
 - `lib/components/` — `FeatureCard.svelte` (Hugeicons icon + title + description) and shadcn primitives under `ui/`.
