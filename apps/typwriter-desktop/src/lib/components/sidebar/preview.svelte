@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { ZoomInAreaIcon, ZoomOutAreaIcon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon, ArrowLeft01Icon, ArrowRight01Icon, ArrowDown01Icon, Tick02Icon, Menu01Icon, File01Icon } from "@hugeicons/core-free-icons";
+  import { ZoomInAreaIcon, ZoomOutAreaIcon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon, ArrowLeft01Icon, ArrowRight01Icon, ArrowDown01Icon, Tick02Icon, BookOpen01Icon, ScrollVerticalIcon } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
 
   import { preview } from "$lib/stores/preview.svelte";
@@ -276,9 +276,8 @@
               aria-pressed={preview.paginated}
               onclick={() => ctrl.togglePaginated()}
               disabled={preview.totalPages === 0}
-              class={preview.paginated ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground" : ""}
             >
-              <HugeiconsIcon icon={preview.paginated ? Menu01Icon : File01Icon} class="size-3.5" />
+              <HugeiconsIcon icon={ScrollVerticalIcon} altIcon={BookOpen01Icon} showAlt={preview.paginated} class="size-3.5" />
             </Button>
           {/snippet}
         </Tooltip.Trigger>
@@ -333,9 +332,8 @@
                 aria-label={presenting ? "Exit presentation mode" : "Present full-screen"}
                 onclick={() => ctrl.togglePresentation()}
                 disabled={preview.totalPages === 0 && !presenting}
-                class={presenting ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground" : ""}
               >
-                <HugeiconsIcon icon={presenting ? Cancel01Icon : PresentationBarChart01Icon} class="size-3.5" />
+                <HugeiconsIcon icon={PresentationBarChart01Icon} altIcon={Cancel01Icon} showAlt={presenting} class="size-3.5" />
               </Button>
             {/snippet}
           </Tooltip.Trigger>
