@@ -2,7 +2,7 @@ import { syntaxTree } from '@codemirror/language';
 import type { EditorState } from '@codemirror/state';
 import type { SyntaxNode, Tree } from '@lezer/common';
 
-import { parser } from '$lib/typst-codemirror-lang/lezer-typst';
+import { parser } from 'codemirror-typst';
 import { citePrefixAt, refPrefixAt } from '$lib/references';
 
 export type CompletionScope = 'markup' | 'code' | 'string' | 'raw' | 'raw-language' | 'comment' | 'math' | 'reference';

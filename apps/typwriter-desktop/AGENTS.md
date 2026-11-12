@@ -8,7 +8,7 @@ The Typst editor for desktop. Tauri 2 + SvelteKit (static adapter) + a Rust core
 - Frontend package manager is `bun`; Rust is `cargo`.
 - Validate Rust changes with `cargo check` in `src-tauri/` (full builds are slow and can OOM on Windows — see root memory).
 - Do **not** run the dev server to "view" the app — it's a Tauri shell, not a browser app.
-- The Typst CodeMirror parser is hand-written TypeScript in `src/lib/typst-codemirror-lang/lezer-typst/` (no `typst.grammar`, no codegen) — edit those sources directly.
+- The Typst CodeMirror parser is not in this repo: it is the `codemirror-typst` npm package (repo: `Ahdeyyy/codemirror-typst`, checked out next to this one as `../codemirror-typst`), shared with the mobile app. Parser fixes land there and reach the apps through a version bump.
 
 ## Architecture
 
@@ -38,7 +38,7 @@ The Typst editor for desktop. Tauri 2 + SvelteKit (static adapter) + a Rust core
 - `lib/ipc/` — `commands.ts` (thin wrappers around `invoke`) and `events.ts` (typed Tauri event listeners).
 - `lib/services/` — orchestration on top of IPC (`workspace-file-service`, `export-service`, `drop-import`).
 - `lib/services/document-opening.ts` routes Open File, recent documents, and OS delivery through one serialized flow. Standalone sessions share the editor/preview screen but have a compact document/dependency sidebar. Persist tabs with a captured session key before switching; source root alone cannot identify neighboring documents.
-- `lib/typst-codemirror-lang/` — Typst syntax highlighting for CodeMirror. The parser is **hand-written TypeScript** in `lezer-typst/` (`parser.ts`, `scanner.ts`, `markup.ts`, `math.ts`, `code.ts`, …) built on `@lezer/common` — there is no `typst.grammar` and no codegen step; edit the parser sources directly.
+- `lib/typst-codemirror-lang/` — the desktop-specific layer on top of the `codemirror-typst` npm package: editor themes, formatting commands, spellcheck and comment decorations. `index.ts` re-exports `typst` / `typstLanguage` / `getCodeParser` from the package; import `parser` and `Type` straight from `codemirror-typst`.
 - `lib/hooks/`, `lib/utils.ts`, `lib/async.ts`, `lib/logger.ts`, `lib/preview-url.ts`, `lib/paths.ts` — shared helpers.
 
 ### Tauri config

@@ -6,7 +6,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view"
 import { syntaxTree } from "@codemirror/language"
-import { Type } from "./lezer-typst/types"
+import { Type } from "codemirror-typst"
 import { buildMergedMarks } from "./decoration-utils"
 
 const noSpellcheck = Decoration.mark({

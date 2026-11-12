@@ -7,7 +7,7 @@ import {
 } from "@codemirror/view"
 import { Prec } from "@codemirror/state"
 import { syntaxTree } from "@codemirror/language"
-import { Type } from "./lezer-typst/types"
+import { Type } from "codemirror-typst"
 import { buildMergedMarks } from "./decoration-utils"
 
 const commentDecoration = Decoration.mark({

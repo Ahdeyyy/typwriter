@@ -12,7 +12,7 @@
 // relative to the file containing the call, or workspace-root-relative with a
 // leading `/`.
 
-import { parser } from '$lib/typst-codemirror-lang/lezer-typst';
+import { parser } from 'codemirror-typst';
 import { dirname, normalize } from '$lib/paths';
 import type { SyntaxNode } from '@lezer/common';
 
