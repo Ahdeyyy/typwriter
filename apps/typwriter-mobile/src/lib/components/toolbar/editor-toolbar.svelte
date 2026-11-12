@@ -135,7 +135,7 @@
       <div class="text-muted-foreground border-b px-4 py-2 text-xs font-medium">Heading level</div>
       {#each [1, 2, 3, 4, 5, 6] as level (level)}
         <button
-          class="active:bg-accent active:text-accent-foreground flex w-full items-center gap-3 px-4 py-2.5 text-left"
+          class="active:bg-foreground/10 flex w-full items-center gap-3 px-4 py-2.5 text-left"
           role="menuitem"
           onmousedown={keepEditorFocus}
           onpointerup={(e) => { e.preventDefault(); applyHeading(level); }}
@@ -151,7 +151,7 @@
   <div class="bg-muted flex h-11 items-center gap-0.5 rounded-full border px-1 shadow-lg">
     <!-- Manual completion trigger (replaces Ctrl+Space) -->
     <button
-      class="active:bg-accent active:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
+      class="active:bg-foreground/10 flex size-9 shrink-0 items-center justify-center rounded-full"
       style="touch-action: none;"
       aria-label="Suggestions"
       onmousedown={keepEditorFocus}
@@ -163,7 +163,7 @@
 
     <!-- Symbols ⇄ cursor controls. Shows the mode you'd switch *to*. -->
     <button
-      class="active:bg-accent active:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
+      class="active:bg-foreground/10 flex size-9 shrink-0 items-center justify-center rounded-full"
       style="touch-action: none;"
       aria-label={mode === "symbols" ? "Cursor controls" : "Symbols"}
       onmousedown={keepEditorFocus}
@@ -183,7 +183,7 @@
       <div class="no-scrollbar flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" style="touch-action: pan-x;">
         {#each COMMANDS as cmd (cmd.label)}
           <button
-            class="active:bg-accent active:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
+            class="active:bg-foreground/10 flex size-9 shrink-0 items-center justify-center rounded-full"
             aria-label={cmd.label}
             onmousedown={keepEditorFocus}
             onpointerdown={tapDown}
@@ -194,7 +194,7 @@
         {/each}
         <!-- Heading: opens the level picker instead of toggling directly. -->
         <button
-          class="active:bg-accent active:text-accent-foreground aria-expanded:bg-accent aria-expanded:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full text-base font-semibold"
+          class="active:bg-foreground/10 aria-expanded:bg-foreground/10 flex size-9 shrink-0 items-center justify-center rounded-full text-base font-semibold"
           aria-label="Heading"
           aria-expanded={headingOpen}
           onmousedown={keepEditorFocus}
@@ -205,7 +205,7 @@
         <div class="bg-border mx-1 h-5 w-px shrink-0"></div>
         {#each SYMBOLS as sym (sym)}
           <button
-            class="active:bg-accent active:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full font-mono text-base"
+            class="active:bg-foreground/10 flex size-9 shrink-0 items-center justify-center rounded-full font-mono text-base"
             onmousedown={keepEditorFocus}
             onpointerdown={tapDown}
             onpointerup={tapUp((v) => insertOrWrap(v, sym))}
@@ -219,7 +219,7 @@
     <!-- Pinned controls -->
     <div class="flex shrink-0 items-center gap-0.5">
       <button
-        class="active:bg-accent active:text-accent-foreground flex size-9 items-center justify-center rounded-full"
+        class="active:bg-foreground/10 flex size-9 items-center justify-center rounded-full"
         style="touch-action: none;"
         aria-label="Undo"
         onmousedown={keepEditorFocus}
@@ -229,7 +229,7 @@
         <Icon icon={UndoIcon} class="size-5" />
       </button>
       <button
-        class="active:bg-accent active:text-accent-foreground flex size-9 items-center justify-center rounded-full"
+        class="active:bg-foreground/10 flex size-9 items-center justify-center rounded-full"
         style="touch-action: none;"
         aria-label="Redo"
         onmousedown={keepEditorFocus}
@@ -240,7 +240,7 @@
       </button>
       <!-- No focus guard here: this one blurs the editor on purpose. -->
       <button
-        class="active:bg-accent active:text-accent-foreground flex size-9 items-center justify-center rounded-full"
+        class="active:bg-foreground/10 flex size-9 items-center justify-center rounded-full"
         style="touch-action: none;"
         aria-label="Hide keyboard"
         onpointerdown={tapDown}

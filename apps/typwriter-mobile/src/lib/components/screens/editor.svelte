@@ -20,6 +20,10 @@
   import BottomBar from "$lib/components/toolbar/bottom-bar.svelte";
   import QuickSwitcher from "$lib/components/screens/quick-switcher.svelte";
   import TabSwitcher from "$lib/components/screens/tab-switcher.svelte";
+  import TabBar from "$lib/components/toolbar/tab-bar.svelte";
+  import { layout } from "$lib/stores/layout.svelte";
+  import { fade } from "svelte/transition";
+  import { easeOut } from "$lib/motion";
 
   onMount(() => {
     // Let the history/back integration flush unsaved content when leaving.
@@ -48,6 +52,14 @@
   let previewStartPage = $state<number | null>(null);
 
   async function openPreview() {
+    // Wide tablets toggle the docked pane instead of covering the editor.
+    if (layout.wide) {
+      layout.previewPinned = !layout.previewPinned;
+      if (!layout.previewPinned) return;
+      await editor.flush();
+      if (compileStore.stale) await compileStore.run();
+      return;
+    }
     previewStartPage = null;
     app.openOverlay("preview"); // opens immediately (skeleton / last pages)
     await editor.flush(); // persist current text
@@ -85,6 +97,7 @@
      flexible editor in between as the only thing that resizes. Falls back to a
      full-window box before the keyboard listener publishes the vars. -->
 <div
+  in:fade={{ duration: 200, easing: easeOut }}
   class="fixed inset-x-0 top-0 flex flex-col"
   style="height: var(--app-height, 100svh); padding-top: var(--app-inset-top, 0px);"
 >
@@ -94,36 +107,40 @@
     class="bg-background/70 shrink-0 border-b backdrop-blur-md"
     style="padding-top: calc(env(safe-area-inset-top) + 0.5rem);"
   >
-    <div class="relative flex h-12 items-center justify-between gap-1 px-2">
-      <Button
-        variant="secondary"
-        size="icon"
-        aria-label="Toggle files"
-        onclick={() => (app.overlay === "filetree" ? app.closeOverlay() : app.openOverlay("filetree"))}
-      >
-        <Icon icon={SidebarLeft01Icon} />
-      </Button>
-
-      <!-- Centered file name (disambiguated by parent folder when duplicated). -->
-      {#if editor.displayName}
-        <span
-          class="pointer-events-none absolute left-1/2 max-w-[55%] -translate-x-1/2 truncate text-center text-sm font-bold"
+    {#if layout.tablet}
+      <TabBar onPreview={openPreview} onFormat={formatFile} />
+    {:else}
+      <div class="relative flex h-14 items-center justify-between gap-1 px-2">
+        <Button
+          variant="secondary"
+          size="icon"
+          aria-label="Toggle files"
+          onclick={() => (app.overlay === "filetree" ? app.closeOverlay() : app.openOverlay("filetree"))}
         >
-          {editor.displayName}
-        </span>
-      {/if}
-
-      <div class="flex items-center gap-1">
-        {#if compileStore.errors.length > 0}
-          <Badge variant="destructive" onclick={() => app.openOverlay("diagnostics")}>
-            {compileStore.errors.length}
-          </Badge>
-        {/if}
-        <Button variant="secondary" size="icon" aria-label="Preview" onclick={openPreview}>
-          <Icon icon={EyeIcon} />
+          <Icon icon={SidebarLeft01Icon} />
         </Button>
+
+        <!-- Centered file name (disambiguated by parent folder when duplicated). -->
+        {#if editor.displayName}
+          <span
+            class="pointer-events-none absolute left-1/2 max-w-[55%] -translate-x-1/2 truncate text-center text-base font-semibold tracking-tight"
+          >
+            {editor.displayName}
+          </span>
+        {/if}
+
+        <div class="flex items-center gap-1">
+          {#if compileStore.errors.length > 0}
+            <Badge variant="destructive" onclick={() => app.openOverlay("diagnostics")}>
+              {compileStore.errors.length}
+            </Badge>
+          {/if}
+          <Button variant="secondary" size="icon" aria-label="Preview" onclick={openPreview}>
+            <Icon icon={EyeIcon} />
+          </Button>
+        </div>
       </div>
-    </div>
+    {/if}
   </header>
 
   <!-- The open file was rewritten on disk while this buffer had unsaved edits.
@@ -150,38 +167,59 @@
     </div>
   {/if}
 
-  <main class="min-h-0 flex-1">
-    {#if editor.loading}
-      <div class="flex flex-col gap-2 p-4">
-        {#each [0, 1, 2, 3, 4, 5, 6, 7] as id (id)}
-          <Skeleton class="h-4 w-full" />
-        {/each}
-      </div>
-    {:else if editor.fileKind === "image" && editor.imageDataUrl}
-      <div class="flex h-full items-center justify-center overflow-auto p-4">
-        <img src={editor.imageDataUrl} alt={editor.fileName} class="max-h-full max-w-full" />
-      </div>
-    {:else if editor.fileKind === "unsupported"}
-      <div class="text-muted-foreground flex h-full items-center justify-center p-8 text-center text-sm">
-        This file type can't be opened in the editor.
-      </div>
-    {:else if editor.fileKind === "text"}
-      <EditorHost />
-    {:else}
-      <EmptyTab />
+  <!-- Wide tablets dock the file tree and the preview on either side of the
+       editor; elsewhere both are overlays and the editor has the full width.
+       The keyboard toolbars stay in the editor column, under the text they
+       act on. -->
+  <div class="flex min-h-0 flex-1">
+    {#if layout.sidebarDocked}
+      <TreeSheet docked />
     {/if}
-  </main>
 
-  <!-- Toolbar: keyboard-open form (formatting) vs keyboard-closed dock. -->
-  {#if keyboard.visible && editor.fileKind === "text" && !editor.loading}
-    <CompletionStrip />
-    <EditorToolbar />
-  {:else}
-    <BottomBar onFormat={formatFile} />
-  {/if}
+    <div class="flex min-w-0 flex-1 flex-col">
+      <main class="min-h-0 flex-1">
+        {#if editor.loading}
+          <div class="flex flex-col gap-2 p-4">
+            {#each [0, 1, 2, 3, 4, 5, 6, 7] as id (id)}
+              <Skeleton class="h-4 w-full" />
+            {/each}
+          </div>
+        {:else if editor.fileKind === "image" && editor.imageDataUrl}
+          <div class="flex h-full items-center justify-center overflow-auto p-4">
+            <img src={editor.imageDataUrl} alt={editor.fileName} class="max-h-full max-w-full" />
+          </div>
+        {:else if editor.fileKind === "unsupported"}
+          <div class="text-muted-foreground flex h-full items-center justify-center p-8 text-center text-sm">
+            This file type can't be opened in the editor.
+          </div>
+        {:else if editor.fileKind === "text"}
+          <EditorHost />
+        {:else}
+          <EmptyTab />
+        {/if}
+      </main>
+
+      <!-- Toolbar: keyboard-open form (formatting) vs keyboard-closed dock.
+           Tablets have no dock — the tab bar carries its commands. -->
+      {#if keyboard.visible && editor.fileKind === "text" && !editor.loading}
+        <CompletionStrip />
+        <EditorToolbar />
+      {:else if !layout.tablet}
+        <BottomBar onFormat={formatFile} />
+      {/if}
+    </div>
+
+    {#if layout.previewDocked}
+      <div class="w-[42%] max-w-[40rem] shrink-0">
+        <PreviewOverlay docked />
+      </div>
+    {/if}
+  </div>
 </div>
 
-<TreeSheet />
+{#if !layout.sidebarDocked}
+  <TreeSheet />
+{/if}
 <PreviewOverlay startPage={previewStartPage} />
 <QuickSwitcher />
 <TabSwitcher />

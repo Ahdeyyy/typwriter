@@ -5,6 +5,10 @@
 @import "@fontsource-variable/jetbrains-mono";
 
 @custom-variant dark (&:is(.dark *));
+/* Form factor, set on <html> by `lib/stores/layout.svelte.ts`: `tablet` is a
+   sw600dp screen, `wide` a tablet with room to dock panes beside the editor. */
+@custom-variant tablet (&:is(.tablet *));
+@custom-variant wide (&:is(.wide *));
 
 /* ──────────────────────────────────────────────────────────────────────────
    Design tokens — byte-identical oklch palette to typwriter-desktop. This is
@@ -260,5 +264,48 @@
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Motion. One scale for the whole app — `lib/motion.ts` mirrors these curves
+   for Svelte transitions, so the two must change together.
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Touch ripple (see `lib/ripple.ts`). The host clips it; the wave itself is a
+   currentColor disc so it reads on every surface and in both themes. */
+.ripple-host {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  contain: strict;
+}
+.ripple-wave {
+  position: absolute;
+  border-radius: 9999px;
+  background-color: currentColor;
+  opacity: 0.12;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* Reduced motion keeps fades (they aid comprehension) and drops movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    --tw-enter-translate-x: 0 !important;
+    --tw-enter-translate-y: 0 !important;
+    --tw-exit-translate-x: 0 !important;
+    --tw-exit-translate-y: 0 !important;
+    --tw-enter-scale: 1 !important;
+    --tw-exit-scale: 1 !important;
   }
 }

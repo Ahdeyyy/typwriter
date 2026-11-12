@@ -12,13 +12,18 @@
   import { editor } from "$lib/stores/editor.svelte";
   import { settings } from "$lib/stores/settings.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { layout } from "$lib/stores/layout.svelte";
+  import { screen } from "$lib/motion";
   import PageList from "./page-list.svelte";
 
   let {
     /** 0-based page the editor caret renders on, resolved while the overlay was
      *  opening (null when it couldn't be placed). Scrolled to once per open. */
     startPage = null,
-  }: { startPage?: number | null } = $props();
+    /** Render as a pane beside the editor (wide tablets) instead of a
+     *  full-screen overlay. Shown for as long as it is mounted. */
+    docked = false,
+  }: { startPage?: number | null; docked?: boolean } = $props();
 
   // No pinch-to-zoom: the pinch gesture fought the scroll gesture and made
   // panning through pages miserable. Zoom is double-tap only (fit-width ↔ 2×).
@@ -31,7 +36,7 @@
    *  re-trigger the effect that sets it. */
   let jumpedTo = -1;
 
-  const visible = $derived(app.overlay === "preview");
+  const visible = $derived(docked || app.overlay === "preview");
   const total = $derived(compileStore.pages.length);
 
   // Land on the caret's page. Runs when the pages arrive (the overlay opens
@@ -226,75 +231,88 @@
   });
 </script>
 
-{#if visible}
-  <div class="bg-muted/95 fixed inset-0 z-50 flex flex-col backdrop-blur" style="padding-top: env(safe-area-inset-top);">
-    <div class="flex h-12 shrink-0 items-center gap-1 border-b px-1">
-      <Button variant="ghost" size="icon" aria-label="Close preview" onclick={() => app.closeOverlay()}>
-        <Icon icon={Cancel01Icon} />
-      </Button>
-      <div class="flex-1 text-center text-sm font-medium">
-        {#if total > 0}
-          Page {currentPage + 1} / {total}
-        {:else}
-          Preview
-        {/if}
-      </div>
-
-      {#if compileStore.status === "compiling"}
-        <span class="text-muted-foreground flex items-center gap-1 px-2 text-xs">
-          <Icon icon={Loading03Icon} class="size-4 animate-spin" /> Compiling…
-        </span>
-      {:else if compileStore.status === "error"}
-        <button
-          class="text-destructive flex items-center gap-1 px-2 text-xs"
-          onclick={() => app.openOverlay("diagnostics")}
-        >
-          <Icon icon={Alert02Icon} class="size-4" />
-          {compileStore.errors.length}
-        </button>
-      {/if}
-
-      <Button variant="ghost" size="icon" aria-label="Export document" onclick={() => app.openOverlay("export")}>
-        <Icon icon={Download01Icon} />
-      </Button>
-
-      <Button variant="ghost" size="icon" aria-label="Recompile" onclick={() => void compileStore.run()}>
-        <Icon icon={RefreshIcon} />
-      </Button>
-    </div>
-
-    <!-- Scroller (native pan; double-tap toggles zoom) -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      bind:this={scroller}
-      class="relative flex-1 overflow-auto overscroll-contain"
-      style="padding-bottom: env(safe-area-inset-bottom);"
-      onpointerdown={onPointerDown}
-      onpointerup={onPointerUp}
-      onpointercancel={onPointerCancel}
-    >
-      {#if total === 0 && compileStore.status !== "compiling"}
-        <div class="text-muted-foreground flex h-full items-center justify-center p-8 text-center text-sm">
-          Nothing to preview yet.
-        </div>
-      {:else}
-        <div class="origin-top" style:width={`${committedZoom * 100}%`}>
-          <PageList pages={compileStore.pages} {bucket} onVisible={(i) => (currentPage = i)} />
-        </div>
-        {#if flash}
-          {#key flash.id}
-            <div
-              class="jump-flash bg-primary/40 pointer-events-none absolute z-10 h-6 rounded-sm"
-              style:top={`${flash.top}px`}
-              style:left={`${flash.left}px`}
-              style:width={`${flash.width}px`}
-            ></div>
-          {/key}
-        {/if}
-      {/if}
-    </div>
+{#if docked}
+  <section class="bg-muted/60 flex h-full min-w-0 flex-col border-l" aria-label="Preview">
+    {@render content()}
+  </section>
+{:else if visible}
+  <div transition:screen class="bg-muted/95 fixed inset-0 z-50 flex flex-col backdrop-blur" style="padding-top: env(safe-area-inset-top);">
+    {@render content()}
   </div>
 {/if}
+
+{#snippet content()}
+  <div class="flex shrink-0 items-center gap-1 border-b px-1 {docked ? 'h-12' : 'h-14'}">
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Close preview"
+      onclick={() => (docked ? (layout.previewPinned = false) : app.closeOverlay())}
+    >
+      <Icon icon={Cancel01Icon} />
+    </Button>
+    <div class="flex-1 text-center text-sm font-medium">
+      {#if total > 0}
+        Page {currentPage + 1} / {total}
+      {:else}
+        Preview
+      {/if}
+    </div>
+
+    {#if compileStore.status === "compiling"}
+      <span class="text-muted-foreground flex items-center gap-1 px-2 text-xs">
+        <Icon icon={Loading03Icon} class="size-[18px] animate-spin" /> Compiling…
+      </span>
+    {:else if compileStore.status === "error"}
+      <button
+        class="text-destructive flex h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium tabular-nums"
+        onclick={() => app.openOverlay("diagnostics")}
+      >
+        <Icon icon={Alert02Icon} class="size-5" />
+        {compileStore.errors.length}
+      </button>
+    {/if}
+
+    <Button variant="ghost" size="icon" aria-label="Export document" onclick={() => app.openOverlay("export")}>
+      <Icon icon={Download01Icon} />
+    </Button>
+
+    <Button variant="ghost" size="icon" aria-label="Recompile" onclick={() => void compileStore.run()}>
+      <Icon icon={RefreshIcon} />
+    </Button>
+  </div>
+
+  <!-- Scroller (native pan; double-tap toggles zoom) -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    bind:this={scroller}
+    class="relative flex-1 overflow-auto overscroll-contain"
+    style="padding-bottom: env(safe-area-inset-bottom);"
+    onpointerdown={onPointerDown}
+    onpointerup={onPointerUp}
+    onpointercancel={onPointerCancel}
+  >
+    {#if total === 0 && compileStore.status !== "compiling"}
+      <div class="text-muted-foreground flex h-full items-center justify-center p-8 text-center text-sm">
+        Nothing to preview yet.
+      </div>
+    {:else}
+      <div class="origin-top" style:width={`${committedZoom * 100}%`}>
+        <PageList pages={compileStore.pages} {bucket} onVisible={(i) => (currentPage = i)} />
+      </div>
+      {#if flash}
+        {#key flash.id}
+          <div
+            class="jump-flash bg-primary/40 pointer-events-none absolute z-10 h-6 rounded-sm"
+            style:top={`${flash.top}px`}
+            style:left={`${flash.left}px`}
+            style:width={`${flash.width}px`}
+          ></div>
+        {/key}
+      {/if}
+    {/if}
+  </div>
+{/snippet}
 
 <style>
   /* Marks where an internal link landed, then gets out of the way. */

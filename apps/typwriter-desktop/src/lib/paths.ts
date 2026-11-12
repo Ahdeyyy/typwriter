@@ -22,6 +22,20 @@ export function shortenHomePath(path: string, homePath: string | null): string {
         : path;
 }
 
+// Where a workspace sits — the subtitle under its name in the workspace
+// switcher and on the home screen. The name line already says which workspace
+// it is, so this is the parent folder, relative to home (`~/Documents`): short,
+// but always unique, so two `notes` never look alike. Folders outside home keep
+// their full path, and a drive root reads as its letter (`D:`).
+export function workspaceLocation(path: string, homePath: string | null): string {
+    const parent = dirname(normalize(path).replace(/(.)\/+$/, '$1'));
+    if (!parent) return '';
+    if (/^[A-Za-z]:\/$/.test(parent)) return parent.slice(0, 2);
+    const relative = shortenHomePath(parent, homePath);
+    if (relative === '') return '~';
+    return relative === parent ? parent : `~/${relative}`;
+}
+
 export function basename(path: string): string {
     return normalize(path).split('/').pop() ?? path;
 }

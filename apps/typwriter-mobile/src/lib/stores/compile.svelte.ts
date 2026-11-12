@@ -2,13 +2,15 @@
 // document. Compiles are never driven per keystroke (that froze the app on
 // device) — they are triggered by the hooks below, which fire on save, on a
 // main-file change, and on workspace open. `onSaved` only recompiles eagerly
-// while the preview overlay is open; otherwise the document is marked stale
-// and the compile waits until the user opens the preview.
+// while a preview is on screen (the overlay, or the pane docked beside the
+// editor on a wide tablet); otherwise the document is marked stale and the
+// compile waits until the user opens the preview.
 
 import { ResultAsync } from "neverthrow";
 import type { Diagnostic, PageMeta } from "$lib/ipc/types";
 import * as ipc from "$lib/ipc/commands";
 import { app } from "./app.svelte";
+import { layout } from "./layout.svelte";
 
 export type CompileStatus = "idle" | "compiling" | "ok" | "error";
 
@@ -38,9 +40,9 @@ class CompileStore {
     this.request++;
     this.stale = true;
     if (this.status === "compiling") this.status = this.pages.length ? "ok" : "idle";
-    // Background-refresh only while the preview is open (reading); otherwise
-    // wait until the user opens the preview.
-    if (app.overlay === "preview") void this.run();
+    // Background-refresh only while a preview is showing; otherwise wait until
+    // the user opens one.
+    if (app.overlay === "preview" || layout.previewDocked) void this.run();
   }
 
   /**

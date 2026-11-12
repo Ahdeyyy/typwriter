@@ -89,11 +89,15 @@ class EditorStore {
    */
   get displayName(): string | null {
     if (this.newTabOpen || !this.relPath) return null;
-    const name = this.fileName;
-    if (!name) return null;
+    return this.tabLabel(this.relPath);
+  }
+
+  /** Label for any open tab, disambiguated the same way as `displayName`. */
+  tabLabel(relPath: string): string {
+    const name = basename(relPath);
     const duplicated = this.tabs.filter((t) => basename(t) === name).length > 1;
     if (!duplicated) return name;
-    const parts = this.relPath.split("/");
+    const parts = relPath.split("/");
     return parts.length > 1 ? `${parts[parts.length - 2]}/${name}` : name;
   }
 

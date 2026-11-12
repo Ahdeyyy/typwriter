@@ -21,7 +21,7 @@
   import { ui, type SidebarSection } from "$lib/stores/ui.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { platform } from "$lib/stores/platform.svelte";
-  import { normalize, shortenHomePath } from "$lib/paths";
+  import { normalize, workspaceLocation } from "$lib/paths";
   import { getRecentWorkspaces } from "$lib/ipc/commands";
   import { toast } from "svelte-sonner";
   import { logError } from "$lib/logger";
@@ -36,6 +36,8 @@
   import { vcs } from "$lib/stores/vcs.svelte";
   import { openDiffWindow, openSettingsWindow } from "$lib/windows";
   import type { RecentWorkspaceEntry } from "$lib/types";
+  import { fixtureCurrentPath, fixtureHome, fixtureRecents } from "$lib/dev/workspace-fixtures";
+  import FixtureToggle from "$lib/dev/fixture-toggle.svelte";
 
   const sidebarCtx = Sidebar.useSidebar();
 
@@ -59,9 +61,14 @@
   const diagCount = $derived(diagnostics.errors.length + diagnostics.warnings.length);
   const hasErrors = $derived(diagnostics.errors.length > 0);
   const grammarCount = $derived(grammar.totalLints);
-  const workspaceName = $derived(
-    (workspace.documentPath ?? workspace.rootPath)?.split(/[/\\]/).pop() ?? "Workspace"
-  );
+  // Dev builds can swap fixture data in here (see `lib/dev/`).
+  const workspacePath = $derived(fixtureCurrentPath(workspace.documentPath ?? workspace.rootPath ?? ""));
+  const homePath = $derived(fixtureHome(platform.homePath));
+  const shownRecents = $derived(fixtureRecents(recentWorkspaces));
+  const workspaceName = $derived(workspacePath.split(/[/\\]/).pop() || "Workspace");
+  // The subtitle is the containing folder relative to home (the name line
+  // already says which workspace this is); the full path is the tooltip.
+  const workspaceSubtitle = $derived(workspacePath ? workspaceLocation(workspacePath, homePath) : "");
 
   onMount(async () => {
     const result = await getRecentWorkspaces({ includeThumbnails: false });
@@ -117,11 +124,11 @@
               >
                 <div class="flex min-w-0 flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
                   <span class="truncate font-semibold">{workspaceName}</span>
-                  <span class="truncate text-[10px] opacity-50">
-                    {shortenHomePath(workspace.rootPath ?? "", platform.homePath)}
+                  <span class="truncate text-[11px] opacity-60" title={workspacePath}>
+                    {workspaceSubtitle}
                   </span>
                 </div>
-                <HugeiconsIcon icon={ArrowDown01Icon} class="ml-auto size-4 shrink-0 opacity-50" />
+                <HugeiconsIcon icon={ArrowDown01Icon} class="ml-auto size-4 shrink-0 opacity-50 transition-transform duration-200 ease-(--ease-out) group-data-[state=open]/menu-button:rotate-180" />
               </Sidebar.MenuButton>
             {/snippet}
           </DropdownMenu.Trigger>
@@ -130,10 +137,10 @@
             <DropdownMenu.Separator />
             <DropdownMenu.Label>Recent projects</DropdownMenu.Label>
             <DropdownMenu.Separator />
-            {#if recentWorkspaces.length === 0}
+            {#if shownRecents.length === 0}
               <DropdownMenu.Item disabled>No recent projects</DropdownMenu.Item>
             {:else}
-              {#each recentWorkspaces as recent (recent.path)}
+              {#each shownRecents as recent (recent.path)}
                 {@const isCurrent = isCurrentWorkspace(recent.path)}
                 <DropdownMenu.Item
                   class="py-2"
@@ -142,8 +149,8 @@
                 >
                   <div class="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span class="truncate font-medium">{recent.name}</span>
-                    <span class="text-muted-foreground truncate text-[10px]">
-                      {shortenHomePath(recent.path, platform.homePath)}
+                    <span class="text-muted-foreground truncate text-[11px]" title={recent.path}>
+                      {workspaceLocation(recent.path, homePath)}
                     </span>
                   </div>
                   {#if isCurrent}
@@ -353,3 +360,7 @@
 
   <Sidebar.Rail />
 </Sidebar.Root>
+
+{#if import.meta.env.DEV}
+  <FixtureToggle />
+{/if}

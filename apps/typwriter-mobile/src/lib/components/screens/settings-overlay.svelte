@@ -266,7 +266,7 @@
 
           <section class="flex flex-col gap-2">
             <div class="flex items-center gap-2">
-              <Icon icon={TextFontIcon} class="text-muted-foreground size-4" />
+              <Icon icon={TextFontIcon} class="text-muted-foreground size-5" />
               <span class="text-sm font-medium">Fonts folder</span>
             </div>
             <p class="text-muted-foreground text-xs">
@@ -275,7 +275,7 @@
             </p>
             {#if settings.fontsDir}
               <div class="bg-muted/50 flex items-center gap-2 rounded-md px-2.5 py-1.5">
-                <Icon icon={Folder01Icon} class="text-muted-foreground size-4 shrink-0" />
+                <Icon icon={Folder01Icon} class="text-muted-foreground size-5 shrink-0" />
                 <span class="truncate text-xs">{settings.fontsDir}</span>
               </div>
             {/if}
@@ -308,9 +308,9 @@
               class="flex min-h-11 items-center gap-2 rounded-md text-left text-sm focus-visible:outline-ring"
               onclick={() => app.openOverlay("licenses")}
             >
-              <Icon icon={File02Icon} class="text-muted-foreground size-4" />
+              <Icon icon={File02Icon} class="text-muted-foreground size-5" />
               <span class="flex-1">Open-source licenses</span>
-              <Icon icon={ArrowRight01Icon} class="text-muted-foreground size-4" />
+              <Icon icon={ArrowRight01Icon} class="text-muted-foreground size-5" />
             </button>
             <div class="flex items-center justify-between">
               <span class="text-muted-foreground text-sm">Version</span>
@@ -325,14 +325,14 @@
               class="text-muted-foreground active:text-foreground flex items-center gap-2 text-sm"
               onclick={() => openExternal(REPO_URL)}
             >
-              <Icon icon={GithubIcon} class="size-4" /> GitHub repository
+              <Icon icon={GithubIcon} class="size-5" /> GitHub repository
             </button>
             <button
               type="button"
               class="text-muted-foreground active:text-foreground flex items-center gap-2 text-sm"
               onclick={() => openExternal(SPONSOR_URL)}
             >
-              <Icon icon={FavouriteIcon} class="size-4" /> Sponsor Typwriter
+              <Icon icon={FavouriteIcon} class="size-5" /> Sponsor Typwriter
             </button>
           </section>
         </div>

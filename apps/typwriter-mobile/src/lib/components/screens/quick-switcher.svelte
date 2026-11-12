@@ -1,7 +1,9 @@
 <script lang="ts">
   import { toast } from "svelte-sonner";
-  import { Cancel01Icon, Add01Icon } from "@hugeicons/core-free-icons";
+  import { Cancel01Icon, Add01Icon, File01Icon, File02Icon } from "@hugeicons/core-free-icons";
   import Icon from "$lib/components/icon.svelte";
+  import { basename, parentDir } from "$lib/paths";
+  import { screen } from "$lib/motion";
   import { app } from "$lib/stores/app.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
@@ -65,32 +67,47 @@
 
 {#if open}
   <div
+    transition:screen={{ duration: 200, scale: 0.98 }}
     class="bg-background fixed inset-x-0 top-0 z-50 flex flex-col overflow-hidden"
     style="height: var(--app-height, 100svh); padding-top: calc(var(--app-inset-top, 0px) + env(safe-area-inset-top));"
     role="presentation"
   >
     <!-- Results — list on top, most relevant nearest the input below. -->
-    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3">
+    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3 tablet:px-[max(0.5rem,calc(50%-21rem))]">
       {#if results.length === 0 && !canCreate}
         <p class="text-muted-foreground p-8 text-center text-sm">No matching notes.</p>
       {:else}
         {#each results as entry, i (entry.relPath)}
+          {@const dir = parentDir(entry.relPath)}
+          <!-- The top hit (what Enter opens) gets a neutral state layer, not
+               an inverted fill: it is a hint, not a selection. -->
           <button
-            class="flex w-full items-center rounded-xl px-4 py-3 text-left text-[15px] {i === 0
-              ? 'bg-accent text-accent-foreground'
-              : 'text-foreground'}"
+            class="text-foreground flex min-h-14 w-full items-center gap-3.5 rounded-2xl px-4 py-2 text-left {i === 0
+              ? 'bg-foreground/[0.07]'
+              : ''}"
             onclick={() => pick(entry.relPath)}
           >
-            <span class="min-w-0 flex-1 truncate">{displayName(entry.relPath)}</span>
+            <Icon
+              icon={entry.relPath.endsWith(".typ") ? File02Icon : File01Icon}
+              class="text-muted-foreground size-6 shrink-0"
+            />
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-[15px] {i === 0 ? 'font-medium' : ''}">
+                {displayName(basename(entry.relPath))}
+              </span>
+              {#if dir !== "/"}
+                <span class="text-muted-foreground block truncate text-xs">{dir}</span>
+              {/if}
+            </span>
           </button>
         {/each}
 
         {#if canCreate}
           <button
-            class="text-muted-foreground flex w-full items-center gap-2.5 rounded-xl px-4 py-3 text-left text-[15px]"
+            class="text-muted-foreground flex min-h-14 w-full items-center gap-3.5 rounded-2xl px-4 py-2.5 text-left text-[15px]"
             onclick={create}
           >
-            <Icon icon={Add01Icon} class="size-4 shrink-0" />
+            <Icon icon={Add01Icon} class="size-6 shrink-0" />
             <span class="min-w-0 flex-1 truncate">Create <span class="text-foreground">{trimmed}</span></span>
           </button>
         {/if}
@@ -99,7 +116,7 @@
 
     <!-- Search input, pinned to the bottom above the keyboard. -->
     <div
-      class="shrink-0 px-3 pt-2"
+      class="shrink-0 px-3 pt-2 tablet:px-[max(0.75rem,calc(50%-21rem))]"
       style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);"
     >
       <div class="bg-muted flex items-center gap-2 rounded-full py-1 pl-5 pr-2">
@@ -115,11 +132,11 @@
           enterkeyhint="go"
         />
         <button
-          class="text-muted-foreground flex size-8 shrink-0 items-center justify-center rounded-full"
+          class="text-muted-foreground flex size-10 shrink-0 items-center justify-center rounded-full"
           aria-label={query ? "Clear" : "Close"}
           onclick={() => (query ? (query = "") : app.closeOverlay())}
         >
-          <Icon icon={Cancel01Icon} class="size-5" />
+          <Icon icon={Cancel01Icon} class="size-6" />
         </button>
       </div>
     </div>

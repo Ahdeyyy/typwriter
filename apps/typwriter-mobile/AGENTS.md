@@ -43,8 +43,9 @@ These are the ones that cost real debugging time. Violating any of them breaks t
 ### Frontend (`src/`)
 
 - `lib/components/screens/` — `home`, `editor`, `tab-switcher`, `quick-switcher`, `settings-overlay`.
-- `lib/components/` — `file-tree/` (left sheet), `preview/` (full-screen overlay), `toolbar/` (two-mode editor toolbar + completion strip), `diagnostics/`, `editor/`, `sidebar/`, `ui/`.
-- `lib/stores/` — `app`, `workspace`, `editor`, `compile`, `settings`. Settings persistence is frontend-owned via `tauri-plugin-store`; there are no Rust settings commands.
+- `lib/components/` — `file-tree/` (left sheet, or docked), `preview/` (full-screen overlay, or docked), `toolbar/` (two-mode editor toolbar + completion strip, the phone dock, the tablet `tab-bar`), `diagnostics/`, `editor/`, `sidebar/`, `ui/`.
+- `lib/stores/` — `app`, `workspace`, `editor`, `compile`, `settings`, `layout`. Settings persistence is frontend-owned via `tauri-plugin-store`; there are no Rust settings commands.
+- **Tablets.** `layout` sets `tablet` (sw600dp: the screen's smallest side ≥ 600 and the window ≥ 600 wide) and `wide` (≥ 1000px) as classes on `<html>`, backing the `tablet:` / `wide:` Tailwind variants. Tablets swap the centered title and bottom dock for a tab strip header; `wide` also docks the file tree and the preview beside the editor. Never key the layout on window *height* — the keyboard shrinks it (`adjustResize`) and the layout would flip mid-typing. A docked preview counts as "open" for `compileStore.onSaved`.
 - `lib/editor/` — CodeMirror setup (`create-editor.ts`), the touch completion strip (`completion-controller.svelte.ts`, `completion-logic.ts`), keyboard/caret handling (`keyboard-visibility.svelte.ts`, `caret-visibility.ts`, `scroll-pin.ts`), and `typst-lang/`.
 - `lib/editor/typst-lang/lezer-typst/` — the Typst parser: **hand-written TypeScript** built on `@lezer/common`, no `typst.grammar` and no codegen. It is currently a byte-identical copy of the desktop app's `src/lib/typst-codemirror-lang/lezer-typst/` and must stay that way — every parser fix lands in both.
 - `lib/ipc/`, `lib/paths.ts`, `lib/body-lock.ts`, `lib/preview-url.ts`, `lib/actions/`, `lib/hooks/` — shared helpers.

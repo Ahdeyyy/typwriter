@@ -65,7 +65,7 @@
 >
   {#each completions.items as item, i (item.label + i)}
     <button
-      class="bg-muted active:bg-accent active:text-accent-foreground flex shrink-0 items-center gap-1 rounded-full border px-3 font-mono text-sm whitespace-nowrap shadow-sm {i === 0 ? 'border-foreground/40' : ''}"
+      class="bg-muted active:bg-foreground/10 flex shrink-0 items-center gap-1 rounded-full border px-3 font-mono text-sm whitespace-nowrap shadow-sm {i === 0 ? 'border-foreground/40' : ''}"
       onmousedown={keepEditorFocus}
       onpointerdown={onPointerDown}
       onpointerup={(e) => onPointerUp(e, item)}

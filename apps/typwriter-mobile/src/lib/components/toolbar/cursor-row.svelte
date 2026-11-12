@@ -207,7 +207,7 @@
        step of a hold are the same action. The hold itself starts on pointerdown,
        which is why a drag has to disown it explicitly (see tapMove). -->
   <button
-    class="active:bg-accent active:text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
+    class="active:bg-foreground/10 flex size-9 shrink-0 items-center justify-center rounded-full"
     aria-label={label}
     onmousedown={keepEditorFocus}
     onpointerdown={(e) => {
@@ -233,7 +233,7 @@
 <div class="no-scrollbar flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" style="touch-action: pan-x;">
   <!-- Extend toggle: the same controls, building a selection instead of moving. -->
   <button
-    class="active:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground flex h-9 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-medium"
+    class="active:bg-foreground/10 aria-pressed:bg-primary aria-pressed:text-primary-foreground flex h-9 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-medium"
     aria-label="Extend selection"
     aria-pressed={extend}
     onmousedown={keepEditorFocus}
@@ -259,7 +259,7 @@
        The one control that keeps `touch-action: none`: a drag here is the
        gesture, so the row must not pan out from under it. -->
   <button
-    class="bg-background/60 active:bg-accent flex h-9 w-14 shrink-0 items-center justify-center rounded-full"
+    class="bg-background/60 active:bg-foreground/10 flex h-9 w-14 shrink-0 items-center justify-center rounded-full"
     style="touch-action: none;"
     aria-label="Drag to move the cursor"
     onmousedown={keepEditorFocus}
@@ -287,7 +287,7 @@
        by character with the arrows rather than aiming two handles by hand. -->
   {#each [{ label: "Word", run: selectWordAtCursor }, { label: "Line", run: selectCurrentLine }, { label: "All", run: selectWholeDoc }] as s (s.label)}
     <button
-      class="active:bg-accent active:text-accent-foreground flex h-9 shrink-0 items-center rounded-full px-3 text-xs font-medium"
+      class="active:bg-foreground/10 flex h-9 shrink-0 items-center rounded-full px-3 text-xs font-medium"
       onmousedown={keepEditorFocus}
       onpointerdown={tapDown}
       onpointermove={tapMove}

@@ -37,7 +37,7 @@
   import Titlebar from "$lib/components/titlebar/titlebar.svelte";
   import { openSettingsWindow } from "$lib/windows";
   import { chooseDocument, openDocumentPath, initializeDocumentOpening } from "$lib/services/document-opening";
-  import { basename, shortenHomePath } from "$lib/paths";
+  import { basename, workspaceLocation } from "$lib/paths";
   import { platform } from "$lib/stores/platform.svelte";
 
   let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
@@ -423,8 +423,8 @@
                            <p class="truncate text-sm font-medium text-foreground group-hover/card:text-accent-foreground">
                              {entry.name}
                            </p>
-                           <p class="truncate text-xs text-muted-foreground group-hover/card:text-accent-foreground/70">
-                             {shortenHomePath(entry.path, platform.homePath)}
+                           <p class="truncate text-xs text-muted-foreground group-hover/card:text-accent-foreground/70" title={entry.path}>
+                             {workspaceLocation(entry.path, platform.homePath)}
                            </p>
                          </div>
                        </button>

@@ -27,6 +27,7 @@
   import { app } from "$lib/stores/app.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { pathDisplay } from "$lib/stores/path-display.svelte";
+  import { fixtureCurrent, fixtureWorkspaces } from "$lib/dev/workspace-fixtures";
   import { editor } from "$lib/stores/editor.svelte";
   import { openedAgo } from "$lib/time";
   import type { FileNode } from "$lib/ipc/types";
@@ -34,7 +35,12 @@
 
   const expanded = new SvelteSet<string>([""]); // root expanded by default
 
+  // Phones (and portrait tablets) slide the tree in as a left sheet; a wide
+  // tablet docks the same panel beside the editor, always mounted.
+  let { docked = false }: { docked?: boolean } = $props();
+
   const sheetOpen = $derived(app.overlay === "filetree");
+  const visible = $derived(docked || sheetOpen);
 
   // Long-press action drawer.
   let actionTarget = $state<FileNode | null>(null);
@@ -49,7 +55,7 @@
 
   function openFile(relPath: string) {
     editor.loadFile(relPath).mapErr((e) => toast.error(`Failed to open: ${e}`));
-    app.closeOverlay();
+    if (!docked) app.closeOverlay();
   }
 
   function startCreate(mode: "newFile" | "newFolder", parentRel: string) {
@@ -150,7 +156,7 @@
   // entries, so an Android back press pops the sheet and would otherwise leave
   // them floating over the editor. Tie their lifetime to the sheet's.
   $effect(() => {
-    if (!sheetOpen) {
+    if (!visible) {
       actionTarget = null;
       switcherOpen = false;
       dialogMode = null;
@@ -160,8 +166,8 @@
   /** Other user workspaces, most recently opened first (backend order, re-sorted
    *  defensively), capped at three. */
   const recentOthers = $derived(
-    workspace.workspaces
-      .filter((w) => !w.system && w.name !== workspace.name)
+    fixtureWorkspaces(workspace.workspaces)
+      .filter((w) => !w.system && w.name !== current.name)
       .sort((a, b) => (b.lastOpenedMs ?? 0) - (a.lastOpenedMs ?? 0))
       .slice(0, 3),
   );
@@ -198,6 +204,19 @@
     return { files, folders };
   });
 
+  /** The open workspace as the footer and switcher show it. Dev builds can
+   *  swap in a fixture here (see `lib/dev/`). */
+  const current = $derived(
+    fixtureCurrent({
+      name: workspace.name,
+      root: workspace.document ? null : workspace.root,
+      files: counts.files,
+      folders: counts.folders,
+    }),
+  );
+  /** Its containing folder — hidden for managed workspaces, which all share one. */
+  const currentLocation = $derived(current.root ? pathDisplay.location(current.root) : null);
+
   const dialogTitle = $derived.by(() => {
     switch (dialogMode) {
       case "newFile":
@@ -216,82 +235,94 @@
   });
 </script>
 
-<Sheet.Root
-  open={sheetOpen}
-  onOpenChange={(o) => {
-    if (!o) app.closeOverlay();
-  }}
->
-  <Sheet.Content side="left" class="w-[85vw] max-w-80 p-0" showCloseButton={false}>
-    <div class="flex h-full flex-col" style="padding-top: env(safe-area-inset-top);">
-      <ScrollArea class="min-h-0 flex-1">
-        <div class="p-1">
-          {#if workspace.document}
-            <p class="text-muted-foreground px-3 py-3 text-xs">
-              Single document. Saves update the original file. Local imports and images require a workspace.
-            </p>
-          {/if}
-          {#if workspace.tree}
-            {#each workspace.tree.children as child (child.relPath)}
-              <TreeNode
-                node={child}
-                {expanded}
-                mainFile={workspace.mainFile}
-                onOpenFile={openFile}
-                onLongpress={(n) => { if (!workspace.document) actionTarget = n; }}
-              />
-            {/each}
-          {/if}
-        </div>
-      </ScrollArea>
-
-      <!-- Action toolbar. `icon` rather than `icon-sm`: these are the sheet's
-           only always-visible commands and they are aimed at with a thumb, so
-           they carry the full 20px glyph and touch target. -->
-      <div class="border-border/60 flex items-center gap-1 border-t px-2 py-1.5">
-        <Button variant="ghost" size="icon" aria-label="Go to home" onclick={() => app.goHome()}>
-          <Icon icon={Home01Icon} />
-        </Button>
-        <Button variant="ghost" size="icon" disabled={workspace.document} aria-label="New file" onclick={() => startCreate("newFile", "")}>
-          <Icon icon={FileAddIcon} />
-        </Button>
-        <Button variant="ghost" size="icon" disabled={workspace.document} aria-label="New folder" onclick={() => startCreate("newFolder", "")}>
-          <Icon icon={FolderAddIcon} />
-        </Button>
-        <Button variant="ghost" size="icon" aria-label="Collapse all" onclick={collapseAll}>
-          <Icon icon={ArrowShrink01Icon} />
-        </Button>
+{#if docked}
+  <aside class="bg-sidebar flex h-full w-72 shrink-0 flex-col overflow-hidden border-r" aria-label="Files">
+    {@render panel()}
+  </aside>
+{:else}
+  <Sheet.Root
+    open={sheetOpen}
+    onOpenChange={(o) => {
+      if (!o) app.closeOverlay();
+    }}
+  >
+    <Sheet.Content side="left" class="w-[85vw] max-w-80 overflow-hidden rounded-r-2xl p-0" showCloseButton={false}>
+      <div class="flex h-full flex-col" style="padding-top: env(safe-area-inset-top);">
+        {@render panel()}
       </div>
+    </Sheet.Content>
+  </Sheet.Root>
+{/if}
 
-      <!-- Footer: vault name, counts, settings -->
-      <div
-        class="border-border/60 flex items-center gap-2 border-t px-3 py-2.5"
-        style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.625rem);"
-      >
-        <button
-          type="button"
-          class="active:bg-accent -mx-1.5 flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left transition-colors"
-          aria-label="Switch workspace"
-          onclick={openSwitcher}
-        >
-          <div class="min-w-0 flex-1">
-            <div class="truncate text-sm font-semibold">{workspace.name ?? "Files"}</div>
-            {#if !workspace.document && workspace.root}
-              <div class="text-muted-foreground truncate text-xs">{pathDisplay.format(workspace.root)}</div>
-            {/if}
-            <div class="text-muted-foreground truncate text-xs">
-              {#if workspace.document}Single document{:else}{counts.files} file{counts.files === 1 ? "" : "s"}, {counts.folders} folder{counts.folders === 1 ? "" : "s"}{/if}
-            </div>
-          </div>
-          <Icon icon={UnfoldMoreIcon} class="text-muted-foreground size-4 shrink-0" />
-        </button>
-        <Button variant="ghost" size="icon" aria-label="Settings" onclick={openSettings}>
-          <Icon icon={Settings01Icon} />
-        </Button>
-      </div>
+<!-- The tree, its action toolbar and the workspace footer — the same panel in
+     the sheet and docked. -->
+{#snippet panel()}
+  <ScrollArea class="min-h-0 flex-1">
+    <div class="p-1">
+      {#if workspace.document}
+        <p class="text-muted-foreground px-3 py-3 text-xs">
+          Single document. Saves update the original file. Local imports and images require a workspace.
+        </p>
+      {/if}
+      {#if workspace.tree}
+        {#each workspace.tree.children as child (child.relPath)}
+          <TreeNode
+            node={child}
+            {expanded}
+            mainFile={workspace.mainFile}
+            onOpenFile={openFile}
+            onLongpress={(n) => { if (!workspace.document) actionTarget = n; }}
+          />
+        {/each}
+      {/if}
     </div>
-  </Sheet.Content>
-</Sheet.Root>
+  </ScrollArea>
+
+  <!-- Action toolbar. `icon` rather than `icon-sm`: these are the sheet's
+       only always-visible commands and they are aimed at with a thumb, so
+       they carry the full 20px glyph and touch target. -->
+  <div class="border-border/60 flex items-center gap-1 border-t px-2 py-1.5">
+    <Button variant="ghost" size="icon" aria-label="Go to home" onclick={() => app.goHome()}>
+      <Icon icon={Home01Icon} />
+    </Button>
+    <Button variant="ghost" size="icon" disabled={workspace.document} aria-label="New file" onclick={() => startCreate("newFile", "")}>
+      <Icon icon={FileAddIcon} />
+    </Button>
+    <Button variant="ghost" size="icon" disabled={workspace.document} aria-label="New folder" onclick={() => startCreate("newFolder", "")}>
+      <Icon icon={FolderAddIcon} />
+    </Button>
+    <Button variant="ghost" size="icon" aria-label="Collapse all" onclick={collapseAll}>
+      <Icon icon={ArrowShrink01Icon} />
+    </Button>
+  </div>
+
+  <!-- Footer: vault name, counts, settings -->
+  <div
+    class="border-border/60 flex items-center gap-2 border-t px-3 py-2.5"
+    style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.625rem);"
+  >
+    <button
+      type="button"
+      class="-mx-1.5 flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left transition-colors"
+      aria-label="Switch workspace"
+      onclick={openSwitcher}
+    >
+      <div class="min-w-0 flex-1">
+        <div class="truncate text-[15px] font-semibold">{current.name ?? "Files"}</div>
+        {#if currentLocation}
+          <div class="text-muted-foreground truncate text-xs" title={current.root}>{currentLocation}</div>
+        {/if}
+        <div class="text-muted-foreground truncate text-xs">
+          {#if workspace.document}Single document{:else}{current.files} file{current.files === 1 ? "" : "s"}, {current.folders} folder{current.folders === 1 ? "" : "s"}{/if}
+        </div>
+      </div>
+      <Icon icon={UnfoldMoreIcon} class="text-muted-foreground size-5 shrink-0" />
+    </button>
+    <Button variant="ghost" size="icon" aria-label="Settings" onclick={openSettings}>
+      <Icon icon={Settings01Icon} />
+    </Button>
+  </div>
+{/snippet}
 
 <!-- A single tappable row inside a grouped action card. -->
 {#snippet actionRow(
@@ -303,11 +334,11 @@
   <button
     type="button"
     {onclick}
-    class="active:bg-accent flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm transition-colors {destructive
+    class="flex min-h-14 w-full items-center gap-4 px-4 py-3 text-left text-[15px] {destructive
       ? 'text-destructive'
       : ''}"
   >
-    <Icon icon={icon} class="size-5 shrink-0 {destructive ? '' : 'text-muted-foreground'}" />
+    <Icon icon={icon} class="size-6 shrink-0 {destructive ? '' : 'text-muted-foreground'}" />
     <span class="min-w-0 flex-1 truncate">{label}</span>
   </button>
 {/snippet}
@@ -357,9 +388,9 @@
 <Drawer.Root open={switcherOpen} onOpenChange={(o) => (switcherOpen = o)}>
   <Drawer.Content>
     <div class="px-4 pb-2 pt-1">
-      <Drawer.Title class="truncate text-base font-semibold">{workspace.name ?? "Workspace"}</Drawer.Title>
-      {#if !workspace.document && workspace.root}
-        <p class="text-muted-foreground truncate text-xs">{pathDisplay.format(workspace.root)}</p>
+      <Drawer.Title class="truncate text-base font-semibold">{current.name ?? "Workspace"}</Drawer.Title>
+      {#if currentLocation}
+        <p class="text-muted-foreground truncate text-xs">{currentLocation}</p>
       {/if}
       <Drawer.Description class="text-muted-foreground text-xs">Switch workspace</Drawer.Description>
     </div>
@@ -370,17 +401,17 @@
       {#if recentOthers.length > 0}
         <div class="bg-muted/40 divide-border/60 divide-y overflow-hidden rounded-xl">
           {#each recentOthers as meta (meta.path)}
+            {@const location = pathDisplay.location(meta.path)}
             <button
               type="button"
-              class="active:bg-accent flex w-full items-center gap-3 px-4 py-3 text-left transition-colors"
+              class="flex min-h-16 w-full items-center gap-4 px-4 py-2.5 text-left"
               onclick={() => void switchTo(meta.name)}
             >
-              <Icon icon={Folder01Icon} class="text-muted-foreground size-5 shrink-0" />
+              <Icon icon={Folder01Icon} class="text-muted-foreground size-6 shrink-0" />
               <span class="min-w-0 flex-1">
-                <span class="block truncate text-sm">{meta.name}</span>
-                <span class="text-muted-foreground block truncate text-xs">{pathDisplay.format(meta.path)}</span>
+                <span class="block truncate text-[15px] font-medium">{meta.name}</span>
                 <span class="text-muted-foreground block truncate text-xs">
-                  {openedAgo(meta.lastOpenedMs)}
+                  {location ? `${location} · ` : ""}{openedAgo(meta.lastOpenedMs)}
                 </span>
               </span>
             </button>

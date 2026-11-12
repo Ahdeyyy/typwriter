@@ -1,30 +1,12 @@
 <script lang="ts">
-  import {
-    Add01Icon,
-    Search01Icon,
-    ArrowLeft01Icon,
-    ArrowRight01Icon,
-    Pdf01Icon,
-    Alert02Icon,
-    Settings01Icon,
-    Logout01Icon,
-    Menu01Icon,
-    MagicWand01Icon,
-    FolderExportIcon,
-  } from "@hugeicons/core-free-icons";
+  import { Add01Icon, Search01Icon, ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
   import { toast } from "svelte-sonner";
   import Icon from "$lib/components/icon.svelte";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import { exportWorkspace } from "$lib/ipc/commands";
   import { app } from "$lib/stores/app.svelte";
   import { editor } from "$lib/stores/editor.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { compileStore } from "$lib/stores/compile.svelte";
+  import ActionsMenu from "./actions-menu.svelte";
 
   let { onFormat }: { onFormat: () => void } = $props();
-
-  // Only typst buffers can be formatted; disable otherwise.
-  const canFormat = $derived(editor.fileKind === "text" && !!editor.relPath?.endsWith(".typ"));
 
   // Number shown in the tab-switcher button (open tabs + a pending new tab).
   const tabCount = $derived(editor.tabs.length + (editor.newTabOpen ? 1 : 0));
@@ -42,37 +24,6 @@
       editor.loadFile(rel).mapErr((e) => toast.error(`Failed to open: ${e}`));
     }
   }
-
-  // Copy the whole open workspace to a user-chosen folder. Flush pending edits
-  // first so the copy contains what's on screen.
-  let exportingWorkspace = $state(false);
-  async function exportWorkspaceCopy() {
-    const name = workspace.name;
-    if (!name || exportingWorkspace) return;
-    exportingWorkspace = true;
-    const version = workspace.version;
-    try {
-      const saved = await editor.flush();
-      if (saved.isErr()) {
-        toast.error(`Export failed: ${saved.error}`);
-        return;
-      }
-      if (version !== workspace.version || workspace.isOpening) return;
-      const result = await exportWorkspace(name);
-      result.match(
-        (count) => toast.success(`Exported ${count} file${count === 1 ? "" : "s"}`),
-        (e) => {
-          if (e !== "Export cancelled") toast.error(`Export failed: ${e}`);
-        },
-      );
-    } finally {
-      exportingWorkspace = false;
-    }
-  }
-
-  // Larger touch targets than the default dropdown item (which is sized for a
-  // mouse): taller rows, bigger gap/icon, readable text.
-  const itemClass = "min-h-11 gap-3 px-3 text-sm [&_svg:not([class*='size-'])]:size-5";
 </script>
 
 <!-- Floating pill dock (browser-style). Transparent wrapper keeps the pill off
@@ -81,37 +32,37 @@
   class="shrink-0 px-3 pt-1 pb-2"
   style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);"
 >
-  <div class="bg-muted/70 flex h-12 items-center justify-between gap-1 rounded-full border px-2 shadow-lg backdrop-blur-md">
+  <div class="bg-muted/70 flex h-14 items-center justify-between gap-1 rounded-full border px-1.5 shadow-lg backdrop-blur-md">
     <button
-      class="active:bg-accent active:text-accent-foreground text-foreground flex size-10 shrink-0 items-center justify-center rounded-full"
+      class="text-foreground flex size-11 shrink-0 items-center justify-center rounded-full"
       aria-label="Previous tab"
       onclick={() => cycleTab(-1)}
     >
-      <Icon icon={ArrowLeft01Icon} class="size-5" />
+      <Icon icon={ArrowLeft01Icon} class="size-6" />
     </button>
     <button
-      class="active:bg-accent active:text-accent-foreground text-foreground flex size-10 shrink-0 items-center justify-center rounded-full"
+      class="text-foreground flex size-11 shrink-0 items-center justify-center rounded-full"
       aria-label="Next tab"
       onclick={() => cycleTab(1)}
     >
-      <Icon icon={ArrowRight01Icon} class="size-5" />
+      <Icon icon={ArrowRight01Icon} class="size-6" />
     </button>
     <button
-      class="active:bg-accent active:text-accent-foreground text-foreground flex size-10 shrink-0 items-center justify-center rounded-full"
+      class="text-foreground flex size-11 shrink-0 items-center justify-center rounded-full"
       aria-label="Search files"
       onclick={() => app.openOverlay("quickswitcher")}
     >
-      <Icon icon={Search01Icon} class="size-5" />
+      <Icon icon={Search01Icon} class="size-6" />
     </button>
     <button
-      class="active:bg-accent active:text-accent-foreground text-foreground flex size-10 shrink-0 items-center justify-center rounded-full"
+      class="text-foreground flex size-11 shrink-0 items-center justify-center rounded-full"
       aria-label="New tab"
       onclick={() => editor.openNewTab()}
     >
-      <Icon icon={Add01Icon} class="size-5" />
+      <Icon icon={Add01Icon} class="size-6" />
     </button>
     <button
-      class="active:bg-accent active:text-accent-foreground text-foreground flex size-10 shrink-0 items-center justify-center rounded-full"
+      class="text-foreground flex size-11 shrink-0 items-center justify-center rounded-full"
       aria-label="Show tabs"
       onclick={() => app.openOverlay("tabswitcher")}
     >
@@ -120,46 +71,6 @@
       </span>
     </button>
 
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger>
-        {#snippet child({ props })}
-          <button
-            class="active:bg-accent active:text-accent-foreground aria-expanded:bg-accent aria-expanded:text-accent-foreground text-foreground flex size-10 shrink-0 items-center justify-center rounded-full"
-            aria-label="Quick actions"
-            {...props}
-          >
-            <Icon icon={Menu01Icon} class="size-5" />
-          </button>
-        {/snippet}
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Content align="end" side="top" class="w-56">
-        <DropdownMenu.Item class={itemClass} disabled={!canFormat} onclick={onFormat}>
-          <Icon icon={MagicWand01Icon} /> Format file
-        </DropdownMenu.Item>
-        <DropdownMenu.Item class={itemClass} onclick={() => app.openOverlay("export")}>
-          <Icon icon={Pdf01Icon} /> Export…
-        </DropdownMenu.Item>
-        <DropdownMenu.Item
-          class={itemClass}
-          disabled={exportingWorkspace}
-          onclick={() => void exportWorkspaceCopy()}
-        >
-          <Icon icon={FolderExportIcon} /> Export workspace…
-        </DropdownMenu.Item>
-        <DropdownMenu.Item class={itemClass} onclick={() => app.openOverlay("diagnostics")}>
-          <Icon icon={Alert02Icon} /> Diagnostics
-          {#if compileStore.errors.length > 0}
-            <span class="text-destructive ml-auto text-xs">{compileStore.errors.length}</span>
-          {/if}
-        </DropdownMenu.Item>
-        <DropdownMenu.Item class={itemClass} onclick={() => app.openOverlay("settings")}>
-          <Icon icon={Settings01Icon} /> Settings
-        </DropdownMenu.Item>
-        <DropdownMenu.Separator />
-        <DropdownMenu.Item class={itemClass} onclick={() => workspace.close()}>
-          <Icon icon={Logout01Icon} /> Close workspace
-        </DropdownMenu.Item>
-      </DropdownMenu.Content>
-    </DropdownMenu.Root>
+    <ActionsMenu {onFormat} />
   </div>
 </div>

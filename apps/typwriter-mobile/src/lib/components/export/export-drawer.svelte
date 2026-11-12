@@ -249,7 +249,7 @@
         <!-- Error warning banner -->
         {#if compileStore.errors.length > 0}
           <div class="border-amber-500/30 bg-amber-500/10 flex items-start gap-2.5 rounded-lg border p-3">
-            <Icon icon={Alert02Icon} class="mt-0.5 size-4 shrink-0 text-amber-500" />
+            <Icon icon={Alert02Icon} class="mt-px size-5 shrink-0 text-amber-500" />
             <div class="min-w-0 flex-1">
               <p class="text-xs font-medium text-amber-500">Document has compile errors</p>
               <p class="text-muted-foreground mt-0.5 text-xs">
@@ -275,28 +275,28 @@
               class="flex flex-col items-center gap-1 rounded-md py-2 text-xs font-medium transition-colors {format === 'pdf' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
               onclick={() => selectFormat("pdf")}
             >
-              <Icon icon={Pdf01Icon} class="size-4" />
+              <Icon icon={Pdf01Icon} class="size-[18px]" />
               <span>PDF</span>
             </button>
             <button
               class="flex flex-col items-center gap-1 rounded-md py-2 text-xs font-medium transition-colors {format === 'png' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
               onclick={() => selectFormat("png")}
             >
-              <Icon icon={ImageIcon} class="size-4" />
+              <Icon icon={ImageIcon} class="size-[18px]" />
               <span>PNG</span>
             </button>
             <button
               class="flex flex-col items-center gap-1 rounded-md py-2 text-xs font-medium transition-colors {format === 'svg' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
               onclick={() => selectFormat("svg")}
             >
-              <Icon icon={FileCodeIcon} class="size-4" />
+              <Icon icon={FileCodeIcon} class="size-[18px]" />
               <span>SVG</span>
             </button>
             <button
               class="flex flex-col items-center gap-1 rounded-md py-2 text-xs font-medium transition-colors {format === 'html' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
               onclick={() => selectFormat("html")}
             >
-              <Icon icon={CodeIcon} class="size-4" />
+              <Icon icon={CodeIcon} class="size-[18px]" />
               <span>HTML</span>
             </button>
           </div>
@@ -417,14 +417,14 @@
                     class="border-input flex items-center justify-center gap-1.5 rounded-lg border p-2 text-xs font-medium transition-colors {packageMode === 'zip' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground hover:bg-muted'}"
                     onclick={() => selectPackageMode("zip")}
                   >
-                    <Icon icon={Package01Icon} class="size-4" />
+                    <Icon icon={Package01Icon} class="size-[18px]" />
                     ZIP archive
                   </button>
                   <button
                     class="border-input flex items-center justify-center gap-1.5 rounded-lg border p-2 text-xs font-medium transition-colors {packageMode === 'folder' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground hover:bg-muted'}"
                     onclick={() => selectPackageMode("folder")}
                   >
-                    <Icon icon={FolderExportIcon} class="size-4" />
+                    <Icon icon={FolderExportIcon} class="size-[18px]" />
                     Save to folder
                   </button>
                 </div>
@@ -444,14 +444,14 @@
                     class="border-input flex items-center justify-center gap-1.5 rounded-lg border p-2 text-xs font-medium transition-colors {packageMode === 'zip' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground hover:bg-muted'}"
                     onclick={() => selectPackageMode("zip")}
                   >
-                    <Icon icon={Package01Icon} class="size-4" />
+                    <Icon icon={Package01Icon} class="size-[18px]" />
                     ZIP archive
                   </button>
                   <button
                     class="border-input flex items-center justify-center gap-1.5 rounded-lg border p-2 text-xs font-medium transition-colors {packageMode === 'folder' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground hover:bg-muted'}"
                     onclick={() => selectPackageMode("folder")}
                   >
-                    <Icon icon={FolderExportIcon} class="size-4" />
+                    <Icon icon={FolderExportIcon} class="size-[18px]" />
                     Save to folder
                   </button>
                 </div>
@@ -485,10 +485,10 @@
           onclick={handleShare}
         >
           {#if sharing}
-            <Icon icon={Loading03Icon} class="size-4 animate-spin" />
+            <Icon icon={Loading03Icon} class="size-[18px] animate-spin" />
             <span>Sharing…</span>
           {:else}
-            <Icon icon={Share01Icon} class="size-4" />
+            <Icon icon={Share01Icon} class="size-[18px]" />
             <span>Share</span>
           {/if}
         </Button>
@@ -498,10 +498,10 @@
           onclick={handleSave}
         >
           {#if saving}
-            <Icon icon={Loading03Icon} class="size-4 animate-spin" />
+            <Icon icon={Loading03Icon} class="size-[18px] animate-spin" />
             <span>Saving…</span>
           {:else}
-            <Icon icon={Download01Icon} class="size-4" />
+            <Icon icon={Download01Icon} class="size-[18px]" />
             <span>Save</span>
           {/if}
         </Button>

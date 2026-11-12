@@ -61,14 +61,14 @@
         <div class="flex flex-col gap-1 pb-2">
           {#each items as diag, i (i)}
             <button
-              class="active:bg-accent flex w-full flex-col gap-1 rounded-md p-2 text-left"
+              class="flex w-full flex-col gap-1 rounded-md p-2 text-left"
               onclick={() => goto(diag)}
             >
               <div class="flex items-start gap-2">
                 {#if diag.severity === "error"}
-                  <Icon icon={CancelCircleIcon} class="text-destructive mt-0.5 size-4 shrink-0" />
+                  <Icon icon={CancelCircleIcon} class="text-destructive mt-px size-5 shrink-0" />
                 {:else}
-                  <Icon icon={Alert02Icon} class="mt-0.5 size-4 shrink-0 text-amber-500" />
+                  <Icon icon={Alert02Icon} class="mt-px size-5 shrink-0 text-amber-500" />
                 {/if}
                 <span class="min-w-0 flex-1 font-mono text-xs break-words">{diag.message}</span>
               </div>

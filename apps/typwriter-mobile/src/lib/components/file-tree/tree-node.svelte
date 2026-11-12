@@ -66,7 +66,7 @@
 
 <div class="select-none">
   <button
-    class="active:bg-accent active:text-accent-foreground flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors"
+    class="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[15px]"
     onpointerdown={onPointerDown}
     onpointerup={onPointerUp}
     use:longpress={{
@@ -79,21 +79,21 @@
     {#if node.isDir}
       <Icon
         icon={ArrowRight01Icon}
-        class="text-muted-foreground size-3.5 shrink-0 transition-transform {isOpen ? 'rotate-90' : ''}"
+        class="text-muted-foreground size-4 shrink-0 transition-transform duration-200 ease-(--ease-out) {isOpen ? 'rotate-90' : ''}"
       />
       {#if isOpen}
-        <Icon icon={FolderOpenIcon} class="text-muted-foreground size-4 shrink-0" />
+        <Icon icon={FolderOpenIcon} class="text-muted-foreground size-5 shrink-0" />
       {:else}
-        <Icon icon={Folder01Icon} class="text-muted-foreground size-4 shrink-0" />
+        <Icon icon={Folder01Icon} class="text-muted-foreground size-5 shrink-0" />
       {/if}
     {:else}
-      <span class="w-3.5 shrink-0"></span>
+      <span class="w-4 shrink-0"></span>
       {#if imageExt(node.name)}
-        <Icon icon={Image01Icon} class="text-muted-foreground size-4 shrink-0" />
+        <Icon icon={Image01Icon} class="text-muted-foreground size-5 shrink-0" />
       {:else if node.name.endsWith(".typ")}
-        <Icon icon={File02Icon} class="text-muted-foreground size-4 shrink-0" />
+        <Icon icon={File02Icon} class="text-muted-foreground size-5 shrink-0" />
       {:else}
-        <Icon icon={File01Icon} class="text-muted-foreground size-4 shrink-0" />
+        <Icon icon={File01Icon} class="text-muted-foreground size-5 shrink-0" />
       {/if}
     {/if}
     <span class="min-w-0 flex-1 truncate">{node.name}</span>
