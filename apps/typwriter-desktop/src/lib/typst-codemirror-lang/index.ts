@@ -1,4 +1,4 @@
-export { typst, typstLanguage, getCodeParser } from "./typst"
+export { typst, typstLanguage, getCodeParser } from "codemirror-typst"
 export { light, lightTheme, lightHighlightStyle } from "./themes/light"
 export { dark, darkTheme, darkHighlightStyle } from "./themes/dark"
 export { typstSpellcheck } from "./spellcheck"

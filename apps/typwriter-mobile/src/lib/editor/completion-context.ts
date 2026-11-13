@@ -1,7 +1,7 @@
 import { syntaxTree } from "@codemirror/language";
 import type { EditorState } from "@codemirror/state";
 import type { SyntaxNode, Tree } from "@lezer/common";
-import { parser } from "./typst-lang/lezer-typst";
+import { parser } from "codemirror-typst";
 
 export type CompletionScope = "markup" | "code" | "string" | "raw" | "raw-language" | "comment" | "math" | "reference";
 

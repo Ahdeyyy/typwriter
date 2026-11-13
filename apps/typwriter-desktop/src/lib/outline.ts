@@ -8,7 +8,7 @@
 // Free of Svelte and CodeMirror so it can be unit-tested and reused by both the
 // sidebar panel and the palette's `@` mode.
 
-import { parser } from '$lib/typst-codemirror-lang/lezer-typst';
+import { parser } from 'codemirror-typst';
 import { lineAt, lineStarts } from '$lib/text-position';
 
 export interface OutlineItem {
