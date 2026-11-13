@@ -5,7 +5,6 @@
   import { Toaster } from "$lib/components/ui/sonner";
   import { installRipple } from "$lib/ripple";
   import { layout } from "$lib/stores/layout.svelte";
-  import FixtureToggle from "$lib/dev/fixture-toggle.svelte";
   let { children } = $props();
 
   onMount(() => {
@@ -21,6 +20,3 @@
 <ModeWatcher />
 <Toaster position="top-center" />
 {@render children?.()}
-{#if import.meta.env.DEV}
-  <FixtureToggle />
-{/if}

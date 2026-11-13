@@ -36,8 +36,6 @@
   import { vcs } from "$lib/stores/vcs.svelte";
   import { openDiffWindow, openSettingsWindow } from "$lib/windows";
   import type { RecentWorkspaceEntry } from "$lib/types";
-  import { fixtureCurrentPath, fixtureHome, fixtureRecents } from "$lib/dev/workspace-fixtures";
-  import FixtureToggle from "$lib/dev/fixture-toggle.svelte";
 
   const sidebarCtx = Sidebar.useSidebar();
 
@@ -61,10 +59,9 @@
   const diagCount = $derived(diagnostics.errors.length + diagnostics.warnings.length);
   const hasErrors = $derived(diagnostics.errors.length > 0);
   const grammarCount = $derived(grammar.totalLints);
-  // Dev builds can swap fixture data in here (see `lib/dev/`).
-  const workspacePath = $derived(fixtureCurrentPath(workspace.documentPath ?? workspace.rootPath ?? ""));
-  const homePath = $derived(fixtureHome(platform.homePath));
-  const shownRecents = $derived(fixtureRecents(recentWorkspaces));
+  const workspacePath = $derived(workspace.documentPath ?? workspace.rootPath ?? "");
+  const homePath = $derived(platform.homePath);
+  const shownRecents = $derived(recentWorkspaces);
   const workspaceName = $derived(workspacePath.split(/[/\\]/).pop() || "Workspace");
   // The subtitle is the containing folder relative to home (the name line
   // already says which workspace this is); the full path is the tooltip.
@@ -361,6 +358,3 @@
   <Sidebar.Rail />
 </Sidebar.Root>
 
-{#if import.meta.env.DEV}
-  <FixtureToggle />
-{/if}

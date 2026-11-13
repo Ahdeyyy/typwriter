@@ -31,7 +31,6 @@
   import { pickDocument } from "$lib/document-opening";
   import type { WorkspaceMeta } from "$lib/ipc/types";
   import { screen } from "$lib/motion";
-  import { fixtureWorkspaces } from "$lib/dev/workspace-fixtures";
 
   let loading = $state(true);
   let createOpen = $state(false);
@@ -62,16 +61,14 @@
   // User workspaces only, most-recent first ("Jump back in" surfaces the
   // freshest one). App-managed entries (the Typst package store) are rendered
   // in their own section below.
-  // Dev builds can swap in a fixture list here (see `lib/dev/`).
-  const workspaces = $derived(fixtureWorkspaces(workspace.workspaces));
   const sorted = $derived(
-    workspaces
+    workspace.workspaces
       .filter((w) => !w.system)
       .sort((a, b) => (b.lastOpenedMs ?? 0) - (a.lastOpenedMs ?? 0)),
   );
   const recent = $derived<WorkspaceMeta | null>(sorted[0] ?? null);
   const rest = $derived(sorted.slice(1));
-  const systemEntries = $derived(workspaces.filter((w) => w.system));
+  const systemEntries = $derived(workspace.workspaces.filter((w) => w.system));
   const userCount = $derived(sorted.length);
 
   onMount(() => {

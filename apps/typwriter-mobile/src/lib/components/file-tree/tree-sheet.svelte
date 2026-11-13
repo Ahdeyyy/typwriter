@@ -27,7 +27,6 @@
   import { app } from "$lib/stores/app.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { pathDisplay } from "$lib/stores/path-display.svelte";
-  import { fixtureCurrent, fixtureWorkspaces } from "$lib/dev/workspace-fixtures";
   import { editor } from "$lib/stores/editor.svelte";
   import { openedAgo } from "$lib/time";
   import type { FileNode } from "$lib/ipc/types";
@@ -166,7 +165,7 @@
   /** Other user workspaces, most recently opened first (backend order, re-sorted
    *  defensively), capped at three. */
   const recentOthers = $derived(
-    fixtureWorkspaces(workspace.workspaces)
+    workspace.workspaces
       .filter((w) => !w.system && w.name !== current.name)
       .sort((a, b) => (b.lastOpenedMs ?? 0) - (a.lastOpenedMs ?? 0))
       .slice(0, 3),
@@ -204,16 +203,13 @@
     return { files, folders };
   });
 
-  /** The open workspace as the footer and switcher show it. Dev builds can
-   *  swap in a fixture here (see `lib/dev/`). */
-  const current = $derived(
-    fixtureCurrent({
-      name: workspace.name,
-      root: workspace.document ? null : workspace.root,
-      files: counts.files,
-      folders: counts.folders,
-    }),
-  );
+  /** The open workspace as the footer and switcher show it. */
+  const current = $derived({
+    name: workspace.name,
+    root: workspace.document ? null : workspace.root,
+    files: counts.files,
+    folders: counts.folders,
+  });
   /** Its containing folder — hidden for managed workspaces, which all share one. */
   const currentLocation = $derived(current.root ? pathDisplay.location(current.root) : null);
 
