@@ -44,6 +44,30 @@
   let recentDocuments = $state<string[]>([]);
   let loading = $state(true);
 
+  /** Cards shown inline; the rest are reachable through the "View all" dialog. */
+  const RECENT_CARD_LIMIT = 6;
+
+  // "All recent workspaces" dialog state
+  let allRecentOpen = $state(false);
+  let recentQuery = $state("");
+
+  // An empty query keeps the store's newest-first order; fuzzy ranking would
+  // reshuffle it.
+  const recentMatches = $derived(
+    recentQuery.trim()
+      ? fuzzyRank(
+          recentWorkspaces,
+          recentQuery,
+          (entry) => entry.name,
+          (entry) => entry.path,
+        ).map(({ item }) => item)
+      : recentWorkspaces,
+  );
+
+  watch(() => allRecentOpen, (open) => {
+    if (!open) recentQuery = "";
+  });
+
   // New workspace dialog state
   let newWorkspaceOpen = $state(false);
   let newWorkspaceType = $state<"blank" | "template">("blank");
@@ -177,7 +201,15 @@
 
   function handleOpenRecent(path: string) {
     if (workspace.opening) return;
+    allRecentOpen = false;
     enterWorkspace(() => workspace.init(path));
+  }
+
+  function handleRecentSearchKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter" && recentMatches.length > 0) {
+      e.preventDefault();
+      handleOpenRecent(recentMatches[0].path);
+    }
   }
 
   async function handleRemoveRecent(e: MouseEvent, path: string) {
@@ -367,6 +399,16 @@
         Recent Workspaces
       </h2>
       <div class="flex items-center gap-2">
+        {#if recentWorkspaces.length > RECENT_CARD_LIMIT}
+          <Button
+            variant="ghost"
+            size="sm"
+            onclick={() => (allRecentOpen = true)}
+            disabled={workspace.opening}
+          >
+            View all ({recentWorkspaces.length})
+          </Button>
+        {/if}
         {#if recentWorkspaces.length > 0}
           <Button
             variant="ghost"
@@ -400,7 +442,7 @@
       </div>
     {:else}
       <ul class="grid grid-cols-2 gap-2">
-        {#each recentWorkspaces.slice(0, 6) as entry (entry.path)}
+        {#each recentWorkspaces.slice(0, RECENT_CARD_LIMIT) as entry (entry.path)}
             <li class="group relative">
                        <button
                          class="group/card flex w-full flex-col overflow-hidden rounded-md border border-border bg-card text-left transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none cursor-pointer disabled:opacity-50"
@@ -451,6 +493,75 @@
     {/if}
     </div>
   </section>
+
+  <Dialog.Root bind:open={allRecentOpen}>
+    <Dialog.Content class="sm:max-w-lg">
+      <Dialog.Header>
+        <Dialog.Title>Recent Workspaces</Dialog.Title>
+        <Dialog.Description>Pick a workspace to open.</Dialog.Description>
+      </Dialog.Header>
+
+      <div class="relative flex items-center">
+        <HugeiconsIcon icon={Search01Icon} class="absolute left-2.5 size-3.5 text-muted-foreground" />
+        <Input
+          placeholder="Search by name or location…"
+          aria-label="Search recent workspaces"
+          bind:value={recentQuery}
+          onkeydown={handleRecentSearchKeydown}
+          class="pl-8"
+          disabled={workspace.opening}
+        />
+      </div>
+
+      <div class="max-h-[min(24rem,60vh)] min-h-24 overflow-y-auto rounded-md border border-border bg-card p-1">
+        {#if recentMatches.length === 0}
+          <p class="py-6 text-center text-xs text-muted-foreground">No workspaces match</p>
+        {:else}
+          <ul class="flex flex-col gap-0.5">
+            {#each recentMatches as entry (entry.path)}
+              <li class="group relative">
+                <button
+                  type="button"
+                  class="flex w-full cursor-pointer items-center gap-3 rounded px-2 py-1.5 pr-9 text-left transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+                  disabled={workspace.opening}
+                  title={entry.path}
+                  onclick={() => handleOpenRecent(entry.path)}
+                >
+                  <div class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-muted">
+                    {#if entry.thumbnail}
+                      <img
+                        src="data:image/png;base64,{entry.thumbnail}"
+                        alt=""
+                        class="h-full w-full object-cover object-top"
+                      />
+                    {:else}
+                      <HugeiconsIcon icon={Folder01Icon} class="size-5 text-muted-foreground" />
+                    {/if}
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-sm font-medium">{entry.name}</p>
+                    <p class="truncate text-xs text-muted-foreground">
+                      {workspaceLocation(entry.path, platform.homePath)}
+                    </p>
+                  </div>
+                </button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="absolute right-1 top-1/2 size-7 -translate-y-1/2 opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+                  aria-label="Remove {entry.name} from recents"
+                  disabled={workspace.opening}
+                  onclick={(e: MouseEvent) => handleRemoveRecent(e, entry.path)}
+                >
+                  <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
+                </Button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    </Dialog.Content>
+  </Dialog.Root>
 
   <div class="flex gap-2">
     <Button class="gap-2" disabled={workspace.opening} onclick={() => void chooseDocument()}>
