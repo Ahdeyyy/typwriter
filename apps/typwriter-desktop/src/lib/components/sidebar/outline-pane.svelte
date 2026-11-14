@@ -124,7 +124,7 @@
                   aria-current={heading.index === current ? "location" : undefined}
                   onclick={() => jump(heading.from)}
                 >
-                  <span class="text-muted-foreground shrink-0 text-[9px] tabular-nums">
+                  <span class="text-muted-foreground shrink-0 text-[0.5625rem] tabular-nums">
                     H{heading.level}
                   </span>
                   <span class="truncate">

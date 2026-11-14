@@ -143,7 +143,7 @@
             aria-label="Find"
           />
           <span
-            class="counter shrink-0 px-1.5 text-[11px] tabular-nums text-muted-foreground select-none"
+            class="counter shrink-0 px-1.5 text-[0.6875rem] tabular-nums text-muted-foreground select-none"
           >
             {counterText}
           </span>
@@ -324,7 +324,7 @@
     height: 1.125rem;
     min-width: 1.25rem;
     padding: 0 0.25rem;
-    font-size: 10.5px;
+    font-size: 0.65625rem;
     font-family: var(--font-mono, monospace);
     line-height: 1;
     border-radius: 2px;
@@ -350,7 +350,7 @@
     flex-shrink: 0;
     height: 1.5rem;
     width: 1.5rem;
-    border-radius: 4px;
+    border-radius: 0.25rem;
     color: var(--foreground);
     transition: background-color 120ms;
   }

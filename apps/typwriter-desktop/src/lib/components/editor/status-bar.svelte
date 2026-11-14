@@ -74,7 +74,7 @@
 
 {#if isTypst}
   <div
-    class="text-muted-foreground flex shrink-0 items-center gap-3 px-3 py-1 text-[11px]
+    class="text-muted-foreground flex shrink-0 items-center gap-3 px-3 py-1 text-[0.6875rem]
            tabular-nums select-none"
   >
     {#if breadcrumb}

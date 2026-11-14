@@ -69,7 +69,7 @@
       </h2>
       {#if totalCount > 0}
         <span
-          class="flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1 text-[9px] font-bold text-muted-foreground"
+          class="flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1 text-[0.5625rem] font-bold text-muted-foreground"
         >
           {totalCount > 99 ? "99+" : totalCount}
         </span>
@@ -100,7 +100,7 @@
         <span class="block truncate text-xs font-medium">
           Check {activeTab.name}
         </span>
-        <span class="block text-[10px] text-muted-foreground">
+        <span class="block text-[0.625rem] text-muted-foreground">
           Read as {activeReport.formatLabel}
         </span>
       </span>
@@ -148,7 +148,7 @@
               <Tooltip.Content>{filePath}</Tooltip.Content>
             </Tooltip.Root>
             <span
-              class="min-w-0 flex-1 truncate text-left text-[10px] text-muted-foreground"
+              class="min-w-0 flex-1 truncate text-left text-[0.625rem] text-muted-foreground"
             >
               {filePath}
             </span>
@@ -179,7 +179,7 @@
                          stay in the foreground family: `accent-foreground` is
                          near-black in dark themes and vanishes against it. -->
                     <span
-                      class="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground group-hover:bg-foreground/10 group-hover:text-foreground"
+                      class="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold text-muted-foreground group-hover:bg-foreground/10 group-hover:text-foreground"
                     >
                       {lint.text.length > 16
                         ? `${lint.text.slice(0, 15)}…`

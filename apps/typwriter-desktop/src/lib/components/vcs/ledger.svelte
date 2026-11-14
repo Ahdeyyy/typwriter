@@ -69,7 +69,7 @@
     <div class="flex items-center gap-2">
       <h2 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">History</h2>
       {#if vcs.history.length > 0}
-        <span class="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
+        <span class="rounded-full bg-muted px-1.5 text-[0.625rem] tabular-nums text-muted-foreground">
           {vcs.history.length}
         </span>
       {/if}
@@ -101,7 +101,7 @@
 
   <!-- Compare strip: only when a selection exists ─────────────────────── -->
   {#if vcs.primaryId}
-    <div class="flex items-center gap-1.5 border-b border-border bg-muted/30 px-3 py-1.5 text-[10px]">
+    <div class="flex items-center gap-1.5 border-b border-border bg-muted/30 px-3 py-1.5 text-[0.625rem]">
       <span
         class="rounded-sm px-1 py-0.5 font-mono leading-none"
         style:background-color="color-mix(in srgb, {vcs.colorForCommit(vcs.primaryId)} 20%, transparent)"
@@ -167,7 +167,7 @@
       <div class="pb-1">
         {#each buckets as bucket (bucket.label)}
           <div
-            class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-border/40 bg-background/95 px-3 py-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70 backdrop-blur-sm"
+            class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-border/40 bg-background/95 px-3 py-1 text-[0.5625rem] font-semibold uppercase tracking-wider text-muted-foreground/70 backdrop-blur-sm"
           >
             {bucket.label}
             <span class="ml-auto tabular-nums font-normal">{bucket.entries.length}</span>
@@ -216,12 +216,12 @@
                       <span class="truncate text-xs leading-none {isCurrent ? 'font-medium' : ''}">
                         {entry.message}
                       </span>
-                      <span class="shrink-0 text-[9px] tabular-nums text-muted-foreground/50">
+                      <span class="shrink-0 text-[0.5625rem] tabular-nums text-muted-foreground/50">
                         {entry.changed_files.length}f
                       </span>
                       {#if sel !== "none"}
                         <span
-                          class="shrink-0 rounded-sm px-1 text-[9px] font-semibold leading-4"
+                          class="shrink-0 rounded-sm px-1 text-[0.5625rem] font-semibold leading-4"
                           style:background-color="color-mix(in srgb, {swatch} 20%, transparent)"
                           style:color={swatch}
                         >
@@ -236,7 +236,7 @@
 
               <!-- Time ↔ actions swap on hover -->
               <span
-                class="shrink-0 text-[10px] tabular-nums text-muted-foreground group-hover:hidden group-focus-within:hidden"
+                class="shrink-0 text-[0.625rem] tabular-nums text-muted-foreground group-hover:hidden group-focus-within:hidden"
               >
                 {clockTime(entry.timestamp_seconds)}
               </span>

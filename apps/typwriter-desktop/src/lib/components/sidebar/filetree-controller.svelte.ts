@@ -6,7 +6,7 @@
 // workspace action handlers.
 
 import { tick } from 'svelte';
-import { FileTree } from '@pierre/trees';
+import { FILE_TREE_DEFAULT_ITEM_HEIGHT, FileTree } from '@pierre/trees';
 import type {
     ContextMenuAnchorRect,
     ContextMenuItem,
@@ -138,13 +138,18 @@ export class FiletreeController {
 
     // ─── Tree lifecycle ──────────────────────────────────────────────────
 
-    mount(container: HTMLDivElement): void {
+    /** `scale` is the interface font size relative to the 16px the layout was
+     *  designed at. Pierre virtualizes on a fixed pixel row height, so the
+     *  tree has to be told the size up front and remounted when it changes. */
+    mount(container: HTMLDivElement, scale = 1): void {
         const initialPaths = flattenPaths(workspace.tree);
         this.currentPaths = initialPaths;
 
         this.tree = new FileTree({
             paths: initialPaths,
             icons: { set: 'complete', colored: true },
+            density: scale,
+            itemHeight: Math.round(FILE_TREE_DEFAULT_ITEM_HEIGHT * scale),
             search: true,
             initialSelectedPaths: workspace.activeFilePath ? [workspace.activeFilePath] : [],
             initialExpandedPaths: initialExpandedFromTabs(),
@@ -192,7 +197,7 @@ export class FiletreeController {
                     display: inline-flex;
                     align-items: center;
                     justify-content: center;
-                    font-size: 16px;
+                    font-size: 1rem;
                     line-height: 1;
                     color: #f59e0b;
                 }
@@ -229,11 +234,13 @@ export class FiletreeController {
             this.treeMount.removeEventListener('dragover', this.onExternalDragOver);
             this.treeMount.removeEventListener('dragleave', this.onExternalDragLeave);
             this.treeMount.removeEventListener('drop', this.onExternalDrop);
-            this.treeMount = null;
         }
         this.clearExternalDropTarget();
         this.tree?.cleanUp();
         this.tree = null;
+        // Pierre leaves its host element behind; a remount would stack a second.
+        this.treeMount?.replaceChildren();
+        this.treeMount = null;
     }
 
     // ─── Reactive sync ───────────────────────────────────────────────────

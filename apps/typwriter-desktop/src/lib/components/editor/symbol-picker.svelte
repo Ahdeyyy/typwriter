@@ -129,7 +129,7 @@
             spellcheck="false"
             autocomplete="off"
           />
-          <span class="text-muted-foreground shrink-0 text-[10px]">
+          <span class="text-muted-foreground shrink-0 text-[0.625rem]">
             {inMath ? "math mode" : "markup"}
           </span>
         </div>
@@ -144,7 +144,7 @@
           {:else if grouped}
             {#each grouped as group (group.category)}
               <div
-                class="text-muted-foreground px-2 pb-1 pt-3 text-[10px] font-semibold uppercase
+                class="text-muted-foreground px-2 pb-1 pt-3 text-[0.625rem] font-semibold uppercase
                        tracking-wider first:pt-1"
               >
                 {group.category}
@@ -165,7 +165,7 @@
         </div>
 
         <div
-          class="text-muted-foreground bg-muted/40 flex shrink-0 items-center gap-3 px-4 py-2 text-[10px]"
+          class="text-muted-foreground bg-muted/40 flex shrink-0 items-center gap-3 px-4 py-2 text-[0.625rem]"
         >
           <span><kbd class="font-semibold">↵</kbd> insert top match</span>
           <span><kbd class="font-semibold">esc</kbd> close</span>

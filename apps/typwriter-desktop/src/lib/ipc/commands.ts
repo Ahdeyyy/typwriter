@@ -624,6 +624,7 @@ export function setOnboardingCompleted(completed: boolean) {
 export interface AppSettings {
     font_directories: string[];
     ui_font_family: string;
+    ui_font_size: number;
     editor_font_family: string;
     editor_font_size: number;
     theme: string;

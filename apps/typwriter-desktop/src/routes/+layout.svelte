@@ -238,6 +238,9 @@
       untrack(() => setTheme(activeTheme));
     }
     root.setAttribute("data-theme", activeTheme);
+    // The interface is sized in rem, so the root font size scales text, icons,
+    // and spacing together.
+    root.style.fontSize = `${settings.uiFontSize}px`;
     root.style.setProperty("--app-font-sans", `${quote(settings.uiFontFamily)}, sans-serif`);
     root.style.setProperty("--font-heading", `${quote(settings.uiFontFamily)}, sans-serif`);
     root.style.setProperty(

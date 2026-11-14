@@ -51,6 +51,8 @@ const KEY_SNIPPETS: &str = "settings.snippets";
 pub struct AppSettings {
     pub font_directories: Vec<String>,
     pub ui_font_family: String,
+    /// Root font size of the interface, in pixels. The frontend clamps it.
+    pub ui_font_size: u8,
     pub editor_font_family: String,
     pub editor_font_size: u8,
     /// Legacy shared palette, used when a per-mode selection is absent.
@@ -121,6 +123,7 @@ impl Default for AppSettings {
         Self {
             font_directories: Vec::new(),
             ui_font_family: "IBM Plex Sans Variable".to_string(),
+            ui_font_size: 16,
             editor_font_family: "monospace".to_string(),
             editor_font_size: 13,
             theme: "default".to_string(),

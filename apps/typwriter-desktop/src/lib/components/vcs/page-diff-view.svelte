@@ -117,7 +117,7 @@
     <div class="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
       <HugeiconsIcon icon={Loading03Icon} class="size-5 animate-spin" />
       <p class="text-sm">Compiling that restore point…</p>
-      <p class="max-w-xs text-center text-[11px] text-muted-foreground/70">
+      <p class="max-w-xs text-center text-[0.6875rem] text-muted-foreground/70">
         Page-level comparison needs the old version of the document laid out, so this
         takes about as long as a normal compile.
       </p>
@@ -144,7 +144,7 @@
   {:else}
     <!-- Summary strip ─────────────────────────────────────────────────── -->
     <div
-      class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-muted/30 px-3 py-1.5 text-[11px]"
+      class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-muted/30 px-3 py-1.5 text-[0.6875rem]"
     >
       <span class="tabular-nums text-muted-foreground">
         {diff.before_pages} → {diff.after_pages} pages
@@ -183,7 +183,7 @@
     </div>
 
     {#if diff.truncated}
-      <p class="shrink-0 bg-amber-500-15 px-3 py-1 text-[11px] text-amber-600 dark:text-amber-400">
+      <p class="shrink-0 bg-amber-500-15 px-3 py-1 text-[0.6875rem] text-amber-600 dark:text-amber-400">
         This document is long enough that some thumbnails were skipped. The page
         statuses are still complete, and any page still opens full size on click.
       </p>
@@ -244,7 +244,7 @@
                              Still clickable — the full-size view doesn't depend on
                              a thumbnail having been made. -->
                         <div
-                          class="flex aspect-[1/1.414] items-center justify-center bg-muted px-2 text-center text-[10px] text-muted-foreground"
+                          class="flex aspect-[1/1.414] items-center justify-center bg-muted px-2 text-center text-[0.625rem] text-muted-foreground"
                         >
                           click to render
                         </div>
@@ -261,14 +261,14 @@
                           draggable="false"
                         />
                         <span
-                          class="absolute bottom-1 left-1 rounded-sm bg-black/70 px-1 text-[9px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                          class="absolute bottom-1 left-1 rounded-sm bg-black/70 px-1 text-[0.5625rem] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
                         >
                           before
                         </span>
                       {/if}
                     </div>
 
-                    <div class="flex items-center gap-1 text-[10px]">
+                    <div class="flex items-center gap-1 text-[0.625rem]">
                       <span class="tabular-nums text-muted-foreground">{pageLabel(entry)}</span>
                       {#if entry.kind !== "unchanged"}
                         <span class="rounded-sm px-1 leading-4 {chipClass[entry.kind]}">

@@ -121,7 +121,7 @@
               >
                 <div class="flex min-w-0 flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
                   <span class="truncate font-semibold">{workspaceName}</span>
-                  <span class="truncate text-[11px] opacity-60" title={workspacePath}>
+                  <span class="truncate text-[0.6875rem] opacity-60" title={workspacePath}>
                     {workspaceSubtitle}
                   </span>
                 </div>
@@ -146,7 +146,7 @@
                 >
                   <div class="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span class="truncate font-medium">{recent.name}</span>
-                    <span class="text-muted-foreground truncate text-[11px]" title={recent.path}>
+                    <span class="text-muted-foreground truncate text-[0.6875rem]" title={recent.path}>
                       {workspaceLocation(recent.path, homePath)}
                     </span>
                   </div>
@@ -274,7 +274,7 @@
                 <span
                   class="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5
                          items-center justify-center rounded-full bg-destructive
-                         text-[9px] font-bold leading-none text-destructive-foreground"
+                         text-[0.5625rem] font-bold leading-none text-destructive-foreground"
                 >
                   {diagCount > 9 ? "9+" : diagCount}
                 </span>
@@ -302,7 +302,7 @@
                 <span
                   class="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5
                          items-center justify-center rounded-full bg-muted-foreground
-                         text-[9px] font-bold leading-none text-background"
+                         text-[0.5625rem] font-bold leading-none text-background"
                 >
                   {grammarCount > 9 ? "9+" : grammarCount}
                 </span>

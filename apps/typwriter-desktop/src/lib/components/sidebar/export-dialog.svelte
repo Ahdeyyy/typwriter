@@ -260,7 +260,7 @@
         <div class="flex items-baseline justify-between">
           <p class="text-sm font-medium text-foreground">Preset</p>
           {#if presetDirty}
-            <span class="text-[10px] text-muted-foreground">modified</span>
+            <span class="text-[0.625rem] text-muted-foreground">modified</span>
           {/if}
         </div>
 

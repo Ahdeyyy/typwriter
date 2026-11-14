@@ -526,7 +526,7 @@
                     }
                   }}
                 />
-                <p class="text-[11px] text-muted-foreground">
+                <p class="text-[0.6875rem] text-muted-foreground">
                   Specify any Typst Universe package spec (e.g. <code>@preview/touying</code>).
                 </p>
               {:else}
@@ -558,10 +558,10 @@
                           >
                             <div class="flex items-center justify-between">
                               <span class="font-mono text-xs font-medium">{item.name}</span>
-                              <span class="text-[10px] text-muted-foreground tabular-nums">{item.version}</span>
+                              <span class="text-[0.625rem] text-muted-foreground tabular-nums">{item.version}</span>
                             </div>
                             {#if item.description}
-                              <p class="line-clamp-1 text-[11px] text-muted-foreground">
+                              <p class="line-clamp-1 text-[0.6875rem] text-muted-foreground">
                                 {item.description}
                               </p>
                             {/if}

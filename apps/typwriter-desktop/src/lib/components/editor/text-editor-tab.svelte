@@ -592,7 +592,7 @@
         ".cm-typwriter-hover-tooltip": {
           padding: "0.5rem 0.625rem",
           fontFamily: "var(--font-sans)",
-          fontSize: "12px",
+          fontSize: "0.75rem",
           lineHeight: "1.45",
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
@@ -617,7 +617,7 @@
           color: "var(--popover-foreground)",
           padding: "0.375rem 0.5rem",
           fontFamily: "var(--font-sans)",
-          fontSize: "12px",
+          fontSize: "0.75rem",
           lineHeight: "1.45",
           borderLeft: "3px solid transparent",
         },

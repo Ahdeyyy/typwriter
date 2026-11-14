@@ -26,7 +26,7 @@
         />
         {#if diagCount > 0}
           <span
-            class="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-destructive text-[9px] font-bold leading-none text-destructive-foreground"
+            class="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-destructive text-[0.5625rem] font-bold leading-none text-destructive-foreground"
           >
             {diagCount > 9 ? "9+" : diagCount}
           </span>

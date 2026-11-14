@@ -171,7 +171,7 @@
       <Dialog.Title class="flex items-center gap-2 text-sm">
         {heading}
         {#if entry && entry.kind !== "unchanged"}
-          <span class="rounded-sm px-1.5 text-[10px] leading-4 {chipClass[entry.kind]}">
+          <span class="rounded-sm px-1.5 text-[0.625rem] leading-4 {chipClass[entry.kind]}">
             {kindLabel[entry.kind]}
           </span>
         {/if}
@@ -193,7 +193,7 @@
           </span>
         {/if}
       </Dialog.Title>
-      <Dialog.Description class="text-[11px] text-muted-foreground">
+      <Dialog.Description class="text-[0.6875rem] text-muted-foreground">
         {#if rows.length > 1}
           {position + 1} of {rows.length} · <kbd class="font-sans">←</kbd>
           <kbd class="font-sans">→</kbd> to move

@@ -92,6 +92,10 @@ export const THEMES: { id: ThemeId; label: string; description: string }[] = [
 
 export interface PersistedSettings {
     uiFontFamily: string;
+    /** Root font size in pixels. The interface is sized in `rem`, so this
+     *  scales text, icons, and spacing together; the editor and the preview
+     *  keep their own size controls. */
+    uiFontSize: number;
     editorFontFamily: string;
     editorFontSize: number;
     lightTheme: ThemeId;
@@ -165,6 +169,7 @@ export type SettingsSyncPayload = PersistedSettings & { fontDirectories: string[
 
 const DEFAULTS: PersistedSettings = {
     uiFontFamily: 'IBM Plex Sans Variable',
+    uiFontSize: 16,
     editorFontFamily: 'JetBrains Mono Variable',
     editorFontSize: 13,
     lightTheme: 'default',
@@ -217,6 +222,10 @@ export const FORMAT_LIMITS = {
     blankLines: { min: 0, max: 8 },
 } as const;
 
+/** Range for the interface font size, in pixels. 16 is the size the layout
+ *  was designed at. */
+export const UI_FONT_SIZE_LIMITS = { min: 12, max: 24 } as const;
+
 function clampInt(value: number, { min, max }: { min: number; max: number }): number {
     return Math.max(min, Math.min(max, Math.round(value)));
 }
@@ -224,6 +233,8 @@ function clampInt(value: number, { min, max }: { min: number; max: number }): nu
 /** Bounds for the numeric settings that are clamped in two places — once when
  *  loading persisted values, once in the setter. Naming each one keeps the two
  *  call sites from drifting apart. */
+const clampUiFontSize = (v: number) =>
+    Math.max(UI_FONT_SIZE_LIMITS.min, Math.min(UI_FONT_SIZE_LIMITS.max, Math.round(v)));
 const clampEditorFontSize = (v: number) => Math.max(8, Math.min(32, Math.round(v)));
 const clampPreviewZoom = (v: number) => Math.max(0.25, Math.min(8, v));
 const clampTabWidth = (v: number) => Math.max(1, Math.min(8, Math.round(v)));
@@ -280,6 +291,7 @@ class SettingsStore {
     private appearanceChanged = false;
 
     uiFontFamily = $state(INITIAL.uiFontFamily);
+    uiFontSize = $state(clampUiFontSize(INITIAL.uiFontSize));
     editorFontFamily = $state(INITIAL.editorFontFamily);
     editorFontSize = $state(INITIAL.editorFontSize);
     lightTheme = $state<ThemeId>(INITIAL.lightTheme);
@@ -333,6 +345,7 @@ class SettingsStore {
                 const legacyTheme = isThemeId(s.theme) ? s.theme : undefined;
                 const rustSettings: PersistedSettings = {
                     uiFontFamily: s.ui_font_family,
+                    uiFontSize: s.ui_font_size,
                     editorFontFamily: s.editor_font_family,
                     editorFontSize: s.editor_font_size,
                     lightTheme: isThemeId(s.light_theme) ? s.light_theme : (legacyTheme ?? DEFAULTS.lightTheme),
@@ -394,6 +407,7 @@ class SettingsStore {
     private currentSettings(): PersistedSettings {
         return {
             uiFontFamily: this.uiFontFamily,
+            uiFontSize: this.uiFontSize,
             editorFontFamily: this.editorFontFamily,
             editorFontSize: this.editorFontSize,
             lightTheme: this.lightTheme,
@@ -435,6 +449,7 @@ class SettingsStore {
     private applyPersistedSettings(next: Partial<PersistedSettings>): void {
         const settings = normalizeSettings(next);
         this.uiFontFamily = settings.uiFontFamily;
+        this.uiFontSize = clampUiFontSize(settings.uiFontSize);
         this.editorFontFamily = settings.editorFontFamily;
         this.editorFontSize = clampEditorFontSize(settings.editorFontSize);
         this.lightTheme = settings.lightTheme;
@@ -504,6 +519,7 @@ class SettingsStore {
         setAppSettings({
             font_directories: this.fontDirectories,
             ui_font_family: current.uiFontFamily,
+            ui_font_size: current.uiFontSize,
             editor_font_family: current.editorFontFamily,
             editor_font_size: current.editorFontSize,
             // Keep the legacy palette readable by older app versions.
@@ -545,6 +561,11 @@ class SettingsStore {
     setUiFontFamily(family: string) {
         this.appearanceChanged = true;
         this.uiFontFamily = family;
+        this.persist();
+    }
+
+    setUiFontSize(size: number) {
+        this.uiFontSize = clampUiFontSize(size);
         this.persist();
     }
 
@@ -756,6 +777,7 @@ class SettingsStore {
         // Keep screenReaderModeChosen: replaying setup should not ask again
         // merely because the user reset their editing preferences.
         this.uiFontFamily = DEFAULTS.uiFontFamily;
+        this.uiFontSize = DEFAULTS.uiFontSize;
         this.editorFontFamily = DEFAULTS.editorFontFamily;
         this.editorFontSize = DEFAULTS.editorFontSize;
         this.lightTheme = DEFAULTS.lightTheme;

@@ -1,6 +1,6 @@
 <script lang="ts">
   // File tree. Shared logic lives in filetree-controller.svelte.ts.
-  import { onMount, onDestroy, tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
     FilePlusIcon,
@@ -14,6 +14,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { settings } from "$lib/stores/settings.svelte";
   import { FiletreeController } from "./filetree-controller.svelte";
 
   const controller = new FiletreeController({
@@ -23,11 +24,15 @@
 
   let treeMount = $state<HTMLDivElement | null>(null);
 
-  onMount(() => {
-    if (treeMount) controller.mount(treeMount);
+  // Remounts when the UI font size changes: the tree's row height is fixed
+  // at creation.
+  $effect(() => {
+    const mountEl = treeMount;
+    if (!mountEl) return;
+    const scale = settings.uiFontSize / 16;
+    untrack(() => controller.mount(mountEl, scale));
+    return () => controller.destroy();
   });
-
-  onDestroy(() => controller.destroy());
 
   // Reactive sync between workspace state and the Pierre tree instance.
   $effect(() => {
@@ -174,7 +179,7 @@
 {#if creatingRoot}
   <div class="shrink-0 px-4 mb-1.5">
     <div
-      class="flex h-[26px] items-center gap-1.5 rounded-md bg-sidebar-accent px-2 ring-1 ring-transparent focus-within:ring-sidebar-ring"
+      class="flex h-[1.625rem] items-center gap-1.5 rounded-md bg-sidebar-accent px-2 ring-1 ring-transparent focus-within:ring-sidebar-ring"
     >
       <HugeiconsIcon
         icon={creatingRoot === "folder" ? Folder01Icon : File01Icon}
@@ -183,7 +188,7 @@
       <input
         aria-label={creatingRoot === "folder" ? "New folder name" : "New file name"}
         bind:this={rootCreateInputEl}
-        class="h-full w-full min-w-0 bg-transparent text-[13px] text-sidebar-accent-foreground outline-none placeholder:text-muted-foreground"
+        class="h-full w-full min-w-0 bg-transparent text-[0.8125rem] text-sidebar-accent-foreground outline-none placeholder:text-muted-foreground"
         placeholder={creatingRoot === "folder" ? "folder-name" : "file.typ"}
         bind:value={newRootName}
         onkeydown={handleRootCreateKey}
@@ -212,6 +217,8 @@
   style:--trees-theme-focus-ring="var(--sidebar-ring)"
   style:--trees-theme-input-bg="var(--background)"
   style:--trees-font-size="12px"
+  style:--trees-font-size-override="0.8125rem"
+  style:--trees-icon-width-override="1rem"
   style:--trees-item-height="26px"
   style:--trees-padding-inline="8px"
   style:--trees-item-padding-x="6px"

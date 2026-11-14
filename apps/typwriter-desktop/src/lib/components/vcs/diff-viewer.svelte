@@ -160,7 +160,7 @@
     /* @pierre/diffs renders its own <pre> + theme styles; we just give it a
        scrollable host. font-feature-settings forwarded for ligatures-off look
        in line numbers. */
-    font-size: 12px;
+    font-size: 0.75rem;
     overflow: auto;
     border: 1px solid var(--border, #2b2b2b);
     border-radius: 4px;

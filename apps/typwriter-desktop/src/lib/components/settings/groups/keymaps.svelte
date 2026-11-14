@@ -181,10 +181,10 @@
                     <!-- Unkeyed: a chord can legitimately repeat a token. -->
                     {#each chordTokens(chord, platform.isMac) as token, i (i)}
                       {#if i > 0 && !platform.isMac}
-                        <span class="text-[10px] text-muted-foreground">+</span>
+                        <span class="text-[0.625rem] text-muted-foreground">+</span>
                       {/if}
                       <kbd
-                        class="inline-flex h-5 min-w-5 items-center justify-center rounded px-1 font-mono text-[11px] text-foreground"
+                        class="inline-flex h-5 min-w-5 items-center justify-center rounded px-1 font-mono text-[0.6875rem] text-foreground"
                       >
                         {token}
                       </kbd>
@@ -258,10 +258,10 @@
         <span class="flex shrink-0 items-center gap-1">
           {#each chordTokens(binding.keys, platform.isMac) as token, i (i)}
             {#if i > 0 && !platform.isMac}
-              <span class="text-[10px] text-muted-foreground">+</span>
+              <span class="text-[0.625rem] text-muted-foreground">+</span>
             {/if}
             <kbd
-              class="inline-flex h-6 min-w-6 items-center justify-center rounded border border-border bg-muted px-1.5 font-mono text-[11px] text-muted-foreground"
+              class="inline-flex h-6 min-w-6 items-center justify-center rounded border border-border bg-muted px-1.5 font-mono text-[0.6875rem] text-muted-foreground"
             >
               {token}
             </kbd>

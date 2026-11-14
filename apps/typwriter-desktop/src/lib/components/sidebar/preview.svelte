@@ -196,7 +196,7 @@
     <!-- Status + actions -->
     <div class={ctrl.isNarrow ? "flex items-center gap-0.5 w-full" : "flex items-center gap-0.5"}>
       {#if preview.isCompiling}
-        <span class="mr-2 text-[11px] uppercase tracking-wide text-muted-foreground animate-pulse">
+        <span class="mr-2 text-[0.6875rem] uppercase tracking-wide text-muted-foreground animate-pulse">
           Compiling
         </span>
       {:else if preview.staleRender && preview.totalPages > 0}
@@ -207,7 +207,7 @@
             {#snippet child({ props })}
               <span
                 {...props}
-                class="mr-2 text-[11px] uppercase tracking-wide text-destructive"
+                class="mr-2 text-[0.6875rem] uppercase tracking-wide text-destructive"
               >
                 Stale
               </span>

@@ -41,7 +41,7 @@
             <span class="truncate">{group.label}</span>
             {#if search.active && hits > 0}
               <span
-                class="ml-auto shrink-0 rounded-full bg-primary/15 px-1.5 text-[11px] font-medium tabular-nums text-foreground"
+                class="ml-auto shrink-0 rounded-full bg-primary/15 px-1.5 text-[0.6875rem] font-medium tabular-nums text-foreground"
               >
                 {hits}
               </span>

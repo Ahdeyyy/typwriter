@@ -69,7 +69,7 @@
     <div class="flex items-center gap-2">
       <h2 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Problems</h2>
       {#if totalCount > 0}
-        <span class="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
+        <span class="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.5625rem] font-bold text-destructive-foreground">
           {totalCount > 99 ? "99+" : totalCount}
         </span>
       {/if}
@@ -99,7 +99,7 @@
               <Tooltip.Content>{filePath}</Tooltip.Content>
             </Tooltip.Root>
             <Tooltip.Root>
-              <Tooltip.Trigger class="truncate text-[10px] text-muted-foreground min-w-0 flex-1 text-left">{filePath}</Tooltip.Trigger>
+              <Tooltip.Trigger class="truncate text-[0.625rem] text-muted-foreground min-w-0 flex-1 text-left">{filePath}</Tooltip.Trigger>
               <Tooltip.Content>{filePath}</Tooltip.Content>
             </Tooltip.Root>
             <span class="ml-auto shrink-0 tabular-nums text-xs text-muted-foreground">{errors.length + warnings.length}</span>
@@ -115,7 +115,7 @@
                 <div class="flex items-baseline gap-2">
                   <span class="break-words flex-1 min-w-0">{diag.message}</span>
                   {#if diag.range}
-                    <span class="shrink-0 rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] font-mono font-semibold tabular-nums text-destructive">
+                    <span class="shrink-0 rounded bg-destructive/15 px-1.5 py-0.5 text-[0.625rem] font-mono font-semibold tabular-nums text-destructive">
                       {diag.range.start_line + 1}:{diag.range.start_col + 1}
                     </span>
                   {/if}
@@ -137,7 +137,7 @@
                 <div class="flex items-baseline gap-2">
                   <span class="break-words flex-1 min-w-0">{diag.message}</span>
                   {#if diag.range}
-                    <span class="shrink-0 rounded bg-yellow-500/20 px-1.5 py-0.5 text-[10px] font-mono font-semibold tabular-nums text-yellow-700 dark:text-yellow-400">
+                    <span class="shrink-0 rounded bg-yellow-500/20 px-1.5 py-0.5 text-[0.625rem] font-mono font-semibold tabular-nums text-yellow-700 dark:text-yellow-400">
                       {diag.range.start_line + 1}:{diag.range.start_col + 1}
                     </span>
                   {/if}

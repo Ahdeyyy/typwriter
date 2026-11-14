@@ -116,7 +116,7 @@
           aria-label={action.label}
           aria-pressed={action.active ? isActive : undefined}
         >
-          <HugeiconsIcon icon={action.icon} size={18} />
+          <HugeiconsIcon icon={action.icon} class="size-4.5" />
         </Button>
       {/snippet}
     </Tooltip.Trigger>
@@ -139,9 +139,9 @@
           class="tb-heading"
           aria-label="Paragraph style"
         >
-          <HugeiconsIcon icon={Heading01Icon} size={18} />
+          <HugeiconsIcon icon={Heading01Icon} class="size-4.5" />
           <span class="tb-heading-label">{headingLabel}</span>
-          <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
+          <HugeiconsIcon icon={ArrowDown01Icon} class="size-3.5" />
         </Button>
       {/snippet}
     </DropdownMenu.Trigger>
@@ -181,9 +181,9 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    height: 38px;
+    height: 2.375rem;
     flex-shrink: 0;
-    padding: 0 8px;
+    padding: 0 0.5rem;
     background-color: var(--background);
     border-bottom: 1px solid var(--border);
     overflow-x: auto;
@@ -192,7 +192,7 @@
   }
 
   .typst-toolbar::-webkit-scrollbar {
-    height: 4px;
+    height: 0.25rem;
   }
 
   .typst-toolbar::-webkit-scrollbar-thumb {
@@ -210,9 +210,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 28px;
-    border-radius: 4px;
+    width: 2rem;
+    height: 1.75rem;
+    border-radius: 0.25rem;
     border: none;
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
@@ -245,16 +245,16 @@
 
   /* Heading dropdown trigger */
   :global(.tb-heading) {
-    height: 28px;
-    padding: 0 8px;
-    gap: 4px;
-    border-radius: 4px;
+    height: 1.75rem;
+    padding: 0 0.5rem;
+    gap: 0.25rem;
+    border-radius: 0.25rem;
     color: color-mix(in srgb, var(--foreground) 78%, transparent);
   }
 
   .tb-heading-label {
-    font-size: 12px;
-    min-width: 64px;
+    font-size: 0.75rem;
+    min-width: 4rem;
     text-align: left;
   }
 
@@ -297,8 +297,8 @@
   .separator {
     display: inline-block;
     width: 1px;
-    height: 18px;
-    margin: 0 4px;
+    height: 1.125rem;
+    margin: 0 0.25rem;
     background-color: var(--border);
   }
 </style>

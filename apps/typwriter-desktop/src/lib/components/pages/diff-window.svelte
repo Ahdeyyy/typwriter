@@ -187,7 +187,7 @@
     <HugeiconsIcon icon={GitCompareIcon} class="size-4 text-muted-foreground" />
     <div class="min-w-0 flex-1">
       <div class="truncate text-sm font-medium">{heading}</div>
-      <div class="text-[10px] text-muted-foreground">
+      <div class="text-[0.625rem] text-muted-foreground">
         {#if view === "pages" && vcs.pageDiff}
           {vcs.pageDiff.changed + vcs.pageDiff.added + vcs.pageDiff.removed} page{vcs.pageDiff
             .changed +
@@ -281,7 +281,7 @@
       <div class="space-y-6 p-4">
         {#each vcs.diff.files as entry (entry.path)}
           <section class="space-y-2">
-            <header class="flex items-center gap-2 text-[11px]">
+            <header class="flex items-center gap-2 text-[0.6875rem]">
               <span
                 class="rounded px-1.5 py-0.5 font-mono uppercase"
                 class:bg-emerald-500-15={entry.status === "added"}

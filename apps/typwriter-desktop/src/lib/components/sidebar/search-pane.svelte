@@ -220,7 +220,7 @@
               aria-pressed={caseSensitive}
               onclick={() => (caseSensitive = !caseSensitive)}
             >
-              <span class="text-[10px] font-semibold">Aa</span>
+              <span class="text-[0.625rem] font-semibold">Aa</span>
             </Button>
           {/snippet}
         </Tooltip.Trigger>
@@ -237,7 +237,7 @@
               aria-pressed={wholeWord}
               onclick={() => (wholeWord = !wholeWord)}
             >
-              <span class="text-[10px] font-semibold underline">ab</span>
+              <span class="text-[0.625rem] font-semibold underline">ab</span>
             </Button>
           {/snippet}
         </Tooltip.Trigger>
@@ -254,14 +254,14 @@
               aria-pressed={regex}
               onclick={() => (regex = !regex)}
             >
-              <span class="text-[10px] font-semibold">.*</span>
+              <span class="text-[0.625rem] font-semibold">.*</span>
             </Button>
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content>Regular expression</Tooltip.Content>
       </Tooltip.Root>
 
-      <span class="text-muted-foreground ml-auto text-[10px] tabular-nums">
+      <span class="text-muted-foreground ml-auto text-[0.625rem] tabular-nums">
         {#if searching}
           searching…
         {:else if hits.length > 0}
@@ -274,7 +274,7 @@
   </div>
 
   {#if error}
-    <div class="mx-2 mb-2 flex items-start gap-1.5 rounded bg-destructive/10 p-2 text-[11px]">
+    <div class="mx-2 mb-2 flex items-start gap-1.5 rounded bg-destructive/10 p-2 text-[0.6875rem]">
       <HugeiconsIcon icon={Alert01Icon} class="text-destructive mt-0.5 size-3 shrink-0" />
       <span class="min-w-0 break-words">{error}</span>
     </div>
@@ -305,8 +305,8 @@
               class="size-3 shrink-0 opacity-60"
             />
             <span class="truncate font-medium">{group.name}</span>
-            <span class="text-muted-foreground truncate text-[10px]">{group.dir}</span>
-            <span class="text-muted-foreground ml-auto shrink-0 text-[10px] tabular-nums">
+            <span class="text-muted-foreground truncate text-[0.625rem]">{group.dir}</span>
+            <span class="text-muted-foreground ml-auto shrink-0 text-[0.625rem] tabular-nums">
               {group.hits.length}
             </span>
           </button>
@@ -319,10 +319,10 @@
                        py-0.5 pl-6 pr-1.5 text-left"
                 onclick={() => open(hit)}
               >
-                <span class="text-muted-foreground shrink-0 text-[10px] tabular-nums">
+                <span class="text-muted-foreground shrink-0 text-[0.625rem] tabular-nums">
                   {hit.line}
                 </span>
-                <span class="truncate font-mono text-[11px]">
+                <span class="truncate font-mono text-[0.6875rem]">
                   {hit.preview.slice(0, hit.matchStart)}<mark
                     class="bg-yellow-400/40 text-inherit">{hit.preview.slice(
                       hit.matchStart,
@@ -336,7 +336,7 @@
         {/each}
 
         {#if truncated}
-          <p class="text-muted-foreground px-2 py-2 text-center text-[10px]">
+          <p class="text-muted-foreground px-2 py-2 text-center text-[0.625rem]">
             Showing the first {hits.length} matches. Narrow the search to see the rest.
           </p>
         {/if}

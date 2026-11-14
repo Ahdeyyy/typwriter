@@ -128,11 +128,11 @@
   .tab-strip {
     display: flex;
     align-items: flex-end;
-    height: 38px;
+    height: 2.375rem;
     flex-shrink: 0;
     background-color: var(--muted);
-    padding: 0 4px;
-    padding-top: 6px;
+    padding: 0 0.25rem;
+    padding-top: 0.375rem;
     position: relative;
   }
 
@@ -151,13 +151,13 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 6px;
-    height: 28px;
-    min-width: 80px;
-    max-width: 220px;
+    gap: 0.375rem;
+    height: 1.75rem;
+    min-width: 5rem;
+    max-width: 13.75rem;
     padding: 0;
-    border-radius: 8px 8px 0 0;
-    font-size: 12px;
+    border-radius: 0.5rem 0.5rem 0 0;
+    font-size: 0.75rem;
     cursor: pointer;
     user-select: none;
     flex-shrink: 1;
@@ -174,11 +174,11 @@
   .tab-activate {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 0.375rem;
     flex: 1;
     min-width: 0;
     height: 100%;
-    padding-left: 12px;
+    padding-left: 0.75rem;
     text-align: left;
     cursor: pointer;
   }
@@ -199,7 +199,7 @@
   .chrome-tab.active {
     background-color: var(--background);
     color: var(--foreground);
-    height: 32px;
+    height: 2rem;
     /* Extend below the strip border to visually merge with content */
     margin-bottom: -1px;
     padding-bottom: 1px;
@@ -228,14 +228,14 @@
 
   .unsaved-dot {
     flex-shrink: 0;
-    width: 6px;
-    height: 6px;
+    width: 0.375rem;
+    height: 0.375rem;
     border-radius: 50%;
     background-color: var(--primary);
   }
 
   /* Takes the unsaved dot's slot rather than sitting beside it: a diverged tab
-     is always also unsaved, and two markers on a 28px tab is noise. */
+     is always also unsaved, and two markers on a 1.75rem tab is noise. */
   .diverged-mark {
     flex-shrink: 0;
     display: flex;
@@ -248,9 +248,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
-    margin-right: 12px;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-right: 0.75rem;
     border-radius: 50%;
     opacity: 0;
     transition: opacity 0.1s ease, background-color 0.1s ease;
@@ -274,7 +274,7 @@
     top: 50%;
     transform: translateY(-50%);
     width: 1px;
-    height: 14px;
+    height: 0.875rem;
     background-color: var(--border);
     pointer-events: none;
   }

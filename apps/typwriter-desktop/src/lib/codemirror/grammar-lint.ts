@@ -243,7 +243,7 @@ const grammarTheme = EditorView.baseTheme({
     maxWidth: "22rem",
     padding: "0.5rem 0.625rem",
     fontFamily: "var(--font-sans)",
-    fontSize: "12px",
+    fontSize: "0.75rem",
     lineHeight: "1.45",
     backgroundColor: "var(--popover)",
     color: "var(--popover-foreground)",
@@ -256,7 +256,7 @@ const grammarTheme = EditorView.baseTheme({
     borderTop: "1px solid var(--border)",
   },
   ".cm-grammar-kind": {
-    fontSize: "10px",
+    fontSize: "0.625rem",
     textTransform: "uppercase",
     letterSpacing: "0.06em",
     color: "var(--muted-foreground)",
@@ -290,7 +290,7 @@ const grammarTheme = EditorView.baseTheme({
   ".cm-grammar-action": {
     padding: 0,
     font: "inherit",
-    fontSize: "11px",
+    fontSize: "0.6875rem",
     color: "var(--muted-foreground)",
     background: "none",
     border: "none",

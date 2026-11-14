@@ -229,7 +229,7 @@
             <label class="text-xs font-medium">Name</label>
             <Input bind:value={draftName} placeholder="figure" class="h-8 text-sm" />
             {#if problems.name}
-              <p class="text-destructive text-[11px]">{problems.name}</p>
+              <p class="text-destructive text-[0.6875rem]">{problems.name}</p>
             {/if}
           </div>
           <div class="flex-1 space-y-1">
@@ -261,9 +261,9 @@
                    border px-2 py-1.5 font-mono text-xs outline-none"
           ></textarea>
           {#if problems.body}
-            <p class="text-destructive text-[11px]">{problems.body}</p>
+            <p class="text-destructive text-[0.6875rem]">{problems.body}</p>
           {/if}
-          <p class="text-muted-foreground text-[11px]">
+          <p class="text-muted-foreground text-[0.6875rem]">
             <code>{"${}"}</code> is where the cursor lands, and
             <code>{"${name}"}</code> is a placeholder you tab through.
           </p>

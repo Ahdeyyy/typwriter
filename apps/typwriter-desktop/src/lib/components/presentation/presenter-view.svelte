@@ -296,7 +296,7 @@
             >
               <HugeiconsIcon icon={FileCodeIcon} class="size-3.5 pointer-events-none" />
               <span>Code Editor</span>
-              <kbd class="ml-1 rounded border border-neutral-600 bg-neutral-800 px-1 py-0.5 text-[10px] text-neutral-400">Tab</kbd>
+              <kbd class="ml-1 rounded border border-neutral-600 bg-neutral-800 px-1 py-0.5 text-[0.625rem] text-neutral-400">Tab</kbd>
             </Button>
           {/snippet}
         </Tooltip.Trigger>
@@ -315,7 +315,7 @@
             >
               <HugeiconsIcon icon={Cancel01Icon} class="size-3.5 pointer-events-none" />
               <span>End Show</span>
-              <kbd class="ml-1 rounded border border-red-800 bg-red-950 px-1 py-0.5 text-[10px] text-red-200">Esc</kbd>
+              <kbd class="ml-1 rounded border border-red-800 bg-red-950 px-1 py-0.5 text-[0.625rem] text-red-200">Esc</kbd>
             </Button>
           {/snippet}
         </Tooltip.Trigger>
@@ -426,7 +426,7 @@
                     <line x1="12" y1="17" x2="12" y2="21" />
                   </svg>
                   <span>{preview.blackout ? "Unblank Screen" : "Black Screen"}</span>
-                  <kbd class="ml-1 rounded border border-neutral-700 bg-neutral-800/80 px-1 py-0.2 text-[10px] text-neutral-400">B</kbd>
+                  <kbd class="ml-1 rounded border border-neutral-700 bg-neutral-800/80 px-1 py-0.2 text-[0.625rem] text-neutral-400">B</kbd>
                 </Button>
               {/snippet}
             </Tooltip.Trigger>
@@ -450,7 +450,7 @@
                     <rect x="3" y="14" width="7" height="7" rx="1" />
                   </svg>
                   <span>All Slides</span>
-                  <kbd class="ml-1 rounded border border-neutral-700 bg-neutral-800/80 px-1 py-0.2 text-[10px] text-neutral-400">G</kbd>
+                  <kbd class="ml-1 rounded border border-neutral-700 bg-neutral-800/80 px-1 py-0.2 text-[0.625rem] text-neutral-400">G</kbd>
                 </Button>
               {/snippet}
             </Tooltip.Trigger>
@@ -498,10 +498,10 @@
   <!-- ── Bottom Slide Filmstrip ───────────────────────────────────────────── -->
   <footer class="flex h-32 shrink-0 flex-col border-t border-neutral-800 bg-neutral-900/60 px-4 py-2">
     <div class="mb-1 flex items-center justify-between">
-      <span class="text-[11px] font-semibold tracking-wider text-neutral-400 uppercase">
+      <span class="text-[0.6875rem] font-semibold tracking-wider text-neutral-400 uppercase">
         Slide Navigator ({totalPages} slides)
       </span>
-      <span class="text-[11px] text-neutral-500">
+      <span class="text-[0.6875rem] text-neutral-500">
         Click any slide to jump immediately
       </span>
     </div>
@@ -528,12 +528,12 @@
             />
           {:else}
             <div class="flex h-full w-full items-center justify-center bg-neutral-900 text-neutral-600">
-              <span class="text-[10px]">…</span>
+              <span class="text-[0.625rem]">…</span>
             </div>
           {/if}
 
           <!-- Slide number tag -->
-          <div class="absolute bottom-1.5 left-1.5 z-10 rounded px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums tracking-tight {idx === currentPageIndex ? 'bg-primary text-primary-foreground shadow-xs' : 'bg-neutral-950/90 text-neutral-200 border border-neutral-700/80 shadow-xs backdrop-blur-xs'}">
+          <div class="absolute bottom-1.5 left-1.5 z-10 rounded px-1.5 py-0.5 font-mono text-[0.625rem] font-bold tabular-nums tracking-tight {idx === currentPageIndex ? 'bg-primary text-primary-foreground shadow-xs' : 'bg-neutral-950/90 text-neutral-200 border border-neutral-700/80 shadow-xs backdrop-blur-xs'}">
             {idx + 1}
           </div>
         </button>
