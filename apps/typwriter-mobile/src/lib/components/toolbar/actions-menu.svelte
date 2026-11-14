@@ -13,6 +13,7 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { exportWorkspace } from "$lib/ipc/commands";
   import { app } from "$lib/stores/app.svelte";
+  import { dismissOnBack } from "$lib/back-dismiss.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { compileStore } from "$lib/stores/compile.svelte";
@@ -57,10 +58,13 @@
 
   // Larger touch targets than the default dropdown item (which is sized for a
   // mouse): taller rows, bigger gap/icon, readable text.
+  let menuOpen = $state(false);
+  dismissOnBack(() => menuOpen, () => (menuOpen = false));
+
   const itemClass = "min-h-12 gap-3.5 px-3.5 text-[15px] [&_svg:not([class*='size-'])]:size-6";
 </script>
 
-<DropdownMenu.Root>
+<DropdownMenu.Root bind:open={menuOpen}>
   <DropdownMenu.Trigger>
     {#snippet child({ props })}
       <button

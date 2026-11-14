@@ -10,8 +10,15 @@
   import DiagnosticsDrawer from "$lib/components/diagnostics/diagnostics-drawer.svelte";
   import ExportDrawer from "$lib/components/export/export-drawer.svelte";
 
+  /** Reopening the last workspace on launch used to paint home for a beat and
+   *  then swap to the editor. Hold the first frame on the bare background
+   *  until the restore settles, but never longer than this. */
+  const RESTORE_HOLD_MS = 1500;
+  let restoring = $state(true);
+
   onMount(() => {
     let disposed = false;
+    const holdTimer = setTimeout(() => (restoring = false), RESTORE_HOLD_MS);
     app.init();
     workspace.init();
     const version = workspace.version;
@@ -29,7 +36,7 @@
         if (workspace.workspaces.some((w) => w.name === last)) {
           const opening = workspace.open(last);
           const openVersion = workspace.version;
-          void opening.mapErr(() => {
+          await opening.mapErr(() => {
             if (!disposed && workspace.version === openVersion) settings.setLastWorkspace(null);
           });
         } else {
@@ -37,9 +44,13 @@
         }
       }
     };
-    void restoreWorkspace();
+    void restoreWorkspace().finally(() => {
+      clearTimeout(holdTimer);
+      restoring = false;
+    });
     return () => {
       disposed = true;
+      clearTimeout(holdTimer);
       documentOpening.destroy();
       workspace.destroy();
       app.destroy();
@@ -47,10 +58,10 @@
   });
 </script>
 
-{#if app.screen === "home"}
-  <HomeScreen />
-{:else}
+{#if app.screen === "editor"}
   <EditorScreen />
+{:else if !restoring}
+  <HomeScreen />
 {/if}
 
 <!-- Overlays reachable from both screens. -->

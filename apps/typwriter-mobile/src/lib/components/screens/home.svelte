@@ -23,6 +23,7 @@
   import { Skeleton } from "$lib/components/ui/skeleton";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { app } from "$lib/stores/app.svelte";
+  import { dismissOnBack } from "$lib/back-dismiss.svelte";
   import { pathDisplay } from "$lib/stores/path-display.svelte";
   import { longpress } from "$lib/actions/longpress";
   import { openedAgo } from "$lib/time";
@@ -34,12 +35,15 @@
 
   let loading = $state(true);
   let createOpen = $state(false);
+  dismissOnBack(() => createOpen, () => (createOpen = false));
   let newName = $state("");
   let menuTarget = $state<WorkspaceMeta | null>(null);
+  dismissOnBack(() => menuTarget !== null, () => (menuTarget = null));
   let confirmingDelete = $state(false);
   let exporting = $state(false);
   let pickingDocument = $state(false);
   let createMenuOpen = $state(false);
+  dismissOnBack(() => createMenuOpen, () => (createMenuOpen = false));
 
   const fabClass =
     "bg-primary text-primary-foreground active:scale-95 fixed flex h-14 items-center justify-center gap-2 rounded-2xl shadow-lg transition-transform duration-150 ease-(--ease-out)";

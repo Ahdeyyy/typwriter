@@ -10,11 +10,13 @@
   import { Input } from "$lib/components/ui/input";
   import * as Dialog from "$lib/components/ui/dialog";
   import { app } from "$lib/stores/app.svelte";
+  import { dismissOnBack } from "$lib/back-dismiss.svelte";
   import { editor } from "$lib/stores/editor.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { pickDocument } from "$lib/document-opening";
 
   let createOpen = $state(false);
+  dismissOnBack(() => createOpen, () => (createOpen = false));
   let newName = $state("");
 
   function submitCreate() {

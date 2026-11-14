@@ -163,6 +163,26 @@ pub fn find_snapshot_by_id(
     root: &Path,
     id: &str,
 ) -> Result<SnapshotManifest, String> {
+    // The filename carries the first 8 chars of the id, so the manifest can
+    // normally be found without parsing every snapshot in the history — which
+    // matters because every commit looks up HEAD this way.
+    let dir = snapshots_dir(root);
+    if fs.exists(&dir) {
+        let suffix = format!("_{}.json", &id[..id.len().min(8)]);
+        for entry in fs.read_dir(&dir)? {
+            if !entry.is_file || !entry.name.ends_with(&suffix) {
+                continue;
+            }
+            let Ok(bytes) = fs.read_file(&entry.path) else {
+                continue;
+            };
+            if let Ok(manifest) = serde_json::from_slice::<SnapshotManifest>(&bytes) {
+                if manifest.id == id {
+                    return Ok(manifest);
+                }
+            }
+        }
+    }
     for (_, manifest) in read_all_snapshots(fs, root)? {
         if manifest.id == id {
             return Ok(manifest);

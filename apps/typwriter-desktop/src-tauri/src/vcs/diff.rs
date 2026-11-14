@@ -11,7 +11,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use super::fs::WorkingTreeFs;
-use super::paths::IGNORED_TOP_LEVEL;
+use super::paths::{is_ignored_name, is_ignored_rel};
 use super::store::{find_snapshot_by_id, read_blob};
 
 /// Anything bigger than this we treat as "too large to diff inline". Keeps
@@ -82,6 +82,11 @@ fn load_snapshot_bytes(
 ) -> Result<BTreeMap<String, Vec<u8>>, String> {
     let mut out = BTreeMap::new();
     for (path, hash) in files {
+        // Nested metadata recorded by older snapshots: the working-tree walk
+        // no longer sees it, so loading it would report it all as removed.
+        if is_ignored_rel(path) {
+            continue;
+        }
         let bytes = read_blob(fs, workspace_root, hash)?;
         out.insert(path.clone(), bytes);
     }
@@ -174,7 +179,7 @@ fn collect_into(
 ) -> Result<(), String> {
     let entries = fs.read_dir(dir)?;
     for entry in entries {
-        if dir == workspace_root && IGNORED_TOP_LEVEL.contains(&entry.name.as_str()) {
+        if is_ignored_name(&entry.name) {
             continue;
         }
         if entry.is_dir {

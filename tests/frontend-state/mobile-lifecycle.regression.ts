@@ -511,3 +511,109 @@ describe("application listener ownership", () => {
     expect(documentSurface.body.style.removeProperty).not.toHaveBeenCalled();
   });
 });
+
+describe("back dismisses modal layers", () => {
+  type Entry = typeof historyMock.state & { layer?: number };
+  /** A history stack whose traversals land a task later, like the WebView's. */
+  function simulateHistory() {
+    const entries: Entry[] = [{ ...historyMock.state }];
+    let index = 0;
+    const go = (delta: number) => setTimeout(() => {
+      index = Math.max(0, Math.min(entries.length - 1, index + delta));
+      historyMock.state = entries[index];
+      windowSurface.dispatchEvent(Object.assign(new Event("popstate"), { state: entries[index] }));
+    }, 0);
+    historyMock.pushState.mockImplementation((state: Entry) => {
+      entries.splice(index + 1);
+      entries.push(state);
+      index++;
+      historyMock.state = state;
+    });
+    historyMock.replaceState.mockImplementation((state: Entry) => {
+      entries[index] = state;
+      historyMock.state = state;
+    });
+    historyMock.go.mockImplementation(go);
+    historyMock.back.mockImplementation(() => go(-1));
+    return {
+      entries,
+      get index() { return index; },
+      /** The user's back gesture. */
+      back: () => go(-1),
+    };
+  }
+  const settle = () => new Promise((done) => setTimeout(done, 20));
+
+  afterEach(() => {
+    historyMock.pushState.mockImplementation((state) => { historyMock.state = state; });
+    historyMock.replaceState.mockImplementation((state) => { historyMock.state = state; });
+    historyMock.go.mockImplementation(() => {});
+    historyMock.back.mockImplementation(() => {});
+  });
+
+  test("back closes an open layer instead of leaving the editor", async () => {
+    const history = simulateHistory();
+    app.init();
+    const close = mock(() => {});
+    const release = app.pushLayer(close);
+    expect(history.index).toBe(1);
+    history.back();
+    await settle();
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(app.screen).toBe("editor");
+    release(); // the modal's own cleanup after back closed it
+    await settle();
+    expect(history.index).toBe(0);
+    expect(historyMock.go).not.toHaveBeenCalled();
+  });
+
+  test("a layer closed in the UI retires its entry before the next one is pushed", async () => {
+    const history = simulateHistory();
+    app.init();
+    const releaseDrawer = app.pushLayer(() => {});
+    releaseDrawer();
+    const closeDialog = mock(() => {});
+    app.pushLayer(closeDialog);
+    await settle();
+    expect(history.index).toBe(1);
+    expect(history.entries[1].layer).toBe(1);
+    history.back();
+    await settle();
+    expect(closeDialog).toHaveBeenCalledTimes(1);
+    expect(app.screen).toBe("editor");
+  });
+
+  test("an overlay opened from a menu replaces the menu's entry", async () => {
+    const history = simulateHistory();
+    app.init();
+    const closeMenu = mock(() => {});
+    const releaseMenu = app.pushLayer(closeMenu);
+    app.openOverlay("export");
+    releaseMenu();
+    await settle();
+    expect(closeMenu).toHaveBeenCalledTimes(1);
+    expect(history.index).toBe(1);
+    expect(history.entries[1]).toEqual({ screen: "editor", overlay: "export" });
+    history.back();
+    await settle();
+    expect(app.overlay).toBe("none");
+    expect(app.screen).toBe("editor");
+  });
+
+  test("closing an overlay with a drawer open over it lands on the editor entry", async () => {
+    const history = simulateHistory();
+    app.init();
+    app.openOverlay("filetree");
+    const closeDrawer = mock(() => {});
+    app.pushLayer(closeDrawer);
+    expect(history.index).toBe(2);
+    await app.closeOverlayAsync();
+    expect(closeDrawer).toHaveBeenCalledTimes(1);
+    expect(app.overlay).toBe("none");
+    expect(history.index).toBe(0);
+    app.openEditor(); // a workspace switch replaces the entry it landed on
+    await settle();
+    expect(history.index).toBe(0);
+    expect(history.entries[0]).toEqual({ screen: "editor", overlay: "none" });
+  });
+});

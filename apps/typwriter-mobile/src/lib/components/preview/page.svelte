@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { PageMeta } from "$lib/ipc/types";
   import { previewUrl } from "$lib/preview-url";
   import { compileStore } from "$lib/stores/compile.svelte";
@@ -45,6 +46,31 @@
   });
 
   const src = $derived(previewUrl(meta.fingerprint, bucket));
+
+  // A recompile or a zoom change gives the page a new URL. Swapping it straight
+  // into the <img> blanks the page until the new render decodes, which flashes
+  // every page on every save. Keep the old render up and swap once the new one
+  // is ready to paint.
+  let shown = $state<string | null>(null);
+  $effect(() => {
+    if (!near) return;
+    const next = src;
+    const prev = untrack(() => shown);
+    if (prev === null || prev === next) {
+      shown = next;
+      return;
+    }
+    let current = true;
+    const img = new Image();
+    img.src = next;
+    // A failed decode still swaps, so the <img> reports the error itself.
+    img.decode().catch(() => {}).finally(() => {
+      if (current) shown = next;
+    });
+    return () => {
+      current = false;
+    };
+  });
 </script>
 
 <div
@@ -53,9 +79,9 @@
   class="w-full max-w-[820px] bg-white shadow-md"
   style:aspect-ratio={`${meta.widthPt} / ${meta.heightPt}`}
 >
-  {#if near}
+  {#if shown}
     <img
-      {src}
+      src={shown}
       alt={`Page ${index + 1}`}
       class="block h-full w-full select-none"
       loading="lazy"

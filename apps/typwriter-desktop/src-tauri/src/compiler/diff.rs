@@ -14,17 +14,151 @@
 // fingerprints finds the pages that survived, and the gaps between them are
 // where the real edits are.
 
-use typst_layout::PagedDocument;
+use std::hash::{Hash, Hasher};
 
-/// A 128-bit hash of a page frame, used as a stable content identity.
+use typst::foundations::Smart;
+use typst::layout::{Frame, FrameItem};
+use typst::visualize::{FixedStroke, Paint};
+use typst_layout::{Page, PagedDocument};
+
+/// A 128-bit hash of everything a page *draws*, used as a stable content
+/// identity. Stable means across app runs, not just within one: it names the
+/// PNGs in the on-disk preview cache, so a re-opened, unchanged document has
+/// to arrive at the same value or every page is rendered again.
 pub type PageFingerprint = u128;
+
+/// Mixed into every fingerprint. The disk cache outlives the process, so a
+/// release that draws the same frame differently (a Typst upgrade, say) must
+/// not be handed the previous release's PNGs.
+const FINGERPRINT_SALT: (&str, u32) = (env!("CARGO_PKG_VERSION"), 1);
 
 /// Fingerprint every page in the document.
 pub fn fingerprint_pages(doc: &PagedDocument) -> Vec<PageFingerprint> {
-    doc.pages()
-        .iter()
-        .map(|page| typst::utils::hash128(&page.frame))
-        .collect()
+    doc.pages().iter().map(fingerprint_page).collect()
+}
+
+/// Fingerprint one page. See [`PageFingerprint`].
+pub fn fingerprint_page(page: &Page) -> PageFingerprint {
+    typst::utils::hash128(&(FINGERPRINT_SALT, PaintedPage(page)))
+}
+
+// Typst's own `Hash for Frame` can't be the fingerprint: it covers source
+// spans, introspection tags and labels, which hash interned ids (`FileId`,
+// `PicoStr`) that are handed out in first-use order and so differ from one
+// run to the next. None of that reaches the pixels. These wrappers hash what
+// `typst_render` reads and nothing else.
+
+struct PaintedPage<'a>(&'a Page);
+
+impl Hash for PaintedPage<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // The background is a property of the page, not of its frame.
+        match &self.0.fill {
+            Smart::Auto => 0u8.hash(state),
+            Smart::Custom(fill) => {
+                1u8.hash(state);
+                fill.as_ref().map(PaintedPaint).hash(state);
+            }
+        }
+        PaintedFrame(&self.0.frame).hash(state);
+    }
+}
+
+struct PaintedFrame<'a>(&'a Frame);
+
+impl Hash for PaintedFrame<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let frame = self.0;
+        frame.size().hash(state);
+        // Hard frames are the boundary gradients and tilings resolve against.
+        frame.kind().hash(state);
+        for (pos, item) in frame.items() {
+            match item {
+                FrameItem::Group(group) => {
+                    0u8.hash(state);
+                    pos.hash(state);
+                    group.transform.hash(state);
+                    group.clip.hash(state);
+                    PaintedFrame(&group.frame).hash(state);
+                }
+                FrameItem::Text(text) => {
+                    1u8.hash(state);
+                    pos.hash(state);
+                    text.font.hash(state);
+                    text.size.hash(state);
+                    PaintedPaint(&text.fill).hash(state);
+                    text.stroke.as_ref().map(PaintedStroke).hash(state);
+                    text.glyphs.len().hash(state);
+                    for glyph in &text.glyphs {
+                        glyph.id.hash(state);
+                        glyph.x_advance.hash(state);
+                        glyph.x_offset.hash(state);
+                        glyph.y_advance.hash(state);
+                        glyph.y_offset.hash(state);
+                    }
+                }
+                FrameItem::Shape(shape, _) => {
+                    2u8.hash(state);
+                    pos.hash(state);
+                    shape.geometry.hash(state);
+                    shape.fill.as_ref().map(PaintedPaint).hash(state);
+                    shape.fill_rule.hash(state);
+                    shape.stroke.as_ref().map(PaintedStroke).hash(state);
+                }
+                FrameItem::Image(image, size, _) => {
+                    3u8.hash(state);
+                    pos.hash(state);
+                    image.hash(state);
+                    size.hash(state);
+                }
+                // Links and tags draw nothing.
+                FrameItem::Link(..) | FrameItem::Tag(_) => {}
+            }
+        }
+        // Closes the item list, so a nested frame's items can't be mistaken
+        // for its parent's.
+        u8::MAX.hash(state);
+    }
+}
+
+struct PaintedPaint<'a>(&'a Paint);
+
+impl Hash for PaintedPaint<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self.0 {
+            Paint::Solid(color) => {
+                0u8.hash(state);
+                color.hash(state);
+            }
+            Paint::Gradient(gradient) => {
+                1u8.hash(state);
+                gradient.hash(state);
+            }
+            // A tiling carries a whole frame, spans and all.
+            Paint::Tiling(tiling) => {
+                2u8.hash(state);
+                PaintedFrame(tiling.frame()).hash(state);
+                tiling.size().hash(state);
+                tiling.spacing().hash(state);
+                tiling.offset().hash(state);
+                tiling.relative().hash(state);
+            }
+        }
+    }
+}
+
+struct PaintedStroke<'a>(&'a FixedStroke);
+
+impl Hash for PaintedStroke<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let stroke = self.0;
+        PaintedPaint(&stroke.paint).hash(state);
+        stroke.thickness.hash(state);
+        stroke.cap.hash(state);
+        stroke.join.hash(state);
+        stroke.dash.hash(state);
+        stroke.miter_limit.hash(state);
+    }
 }
 
 /// What happened to one page between the two documents.
@@ -187,6 +321,143 @@ fn align_positional(before: &[PageFingerprint], after: &[PageFingerprint]) -> Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+    use typst::foundations::Content;
+    use typst::layout::{Abs, Point, Sides, Size};
+    use std::num::NonZeroU64;
+    use typst::diag::{FileError, FileResult};
+    use typst::foundations::{Bytes, Datetime, Duration};
+    use typst::syntax::{FileId, RootedPath, Source, Span, VirtualPath, VirtualRoot};
+    use typst::text::{Font, FontBook};
+    use typst::utils::LazyHash;
+    use typst::{Library, LibraryExt, World};
+    use typst_kit::fonts::FontStore;
+    use typst::visualize::{Color, Geometry};
+
+    /// A page with one filled rectangle, attributed to source span `span`.
+    fn page_with_rect(span: u64, width: f64, fill: Color) -> Page {
+        let span = Span::from_raw(NonZeroU64::new(span).unwrap());
+        let size = Size::new(Abs::pt(200.0), Abs::pt(100.0));
+        let rect = Geometry::Rect(Size::new(Abs::pt(width), Abs::pt(20.0))).filled(fill);
+        let mut inner = Frame::soft(size);
+        inner.push(Point::zero(), FrameItem::Shape(rect, span));
+        let mut frame = Frame::hard(size);
+        frame.push_frame(Point::zero(), inner);
+        Page {
+            frame,
+            bleed: Sides::default(),
+            fill: Smart::Auto,
+            numbering: None,
+            supplement: Content::empty(),
+            number: 1,
+        }
+    }
+
+    // What broke the on-disk preview cache: the same page, compiled in another
+    // run, attributes its items to differently-numbered source spans.
+    #[test]
+    fn fingerprint_ignores_where_the_page_came_from() {
+        let a = page_with_rect(7, 50.0, Color::BLACK);
+        let b = page_with_rect(8, 50.0, Color::BLACK);
+        assert_ne!(typst::utils::hash128(&a.frame), typst::utils::hash128(&b.frame));
+        assert_eq!(fingerprint_page(&a), fingerprint_page(&b));
+    }
+
+    /// Just enough of a `World` to compile one in-memory source.
+    struct OneFileWorld {
+        library: LazyHash<Library>,
+        fonts: FontStore,
+        source: Source,
+    }
+
+    impl OneFileWorld {
+        fn new(file: &str, text: &str) -> Self {
+            let id = RootedPath::new(VirtualRoot::Project, VirtualPath::new(file).unwrap()).intern();
+            let mut fonts = FontStore::new();
+            fonts.extend(typst_kit::fonts::embedded());
+            Self {
+                library: LazyHash::new(Library::default()),
+                fonts,
+                source: Source::new(id, text.into()),
+            }
+        }
+    }
+
+    impl World for OneFileWorld {
+        fn library(&self) -> &LazyHash<Library> {
+            &self.library
+        }
+
+        fn book(&self) -> &LazyHash<FontBook> {
+            self.fonts.book()
+        }
+
+        fn main(&self) -> FileId {
+            self.source.id()
+        }
+
+        fn source(&self, id: FileId) -> FileResult<Source> {
+            if id == self.source.id() {
+                Ok(self.source.clone())
+            } else {
+                Err(FileError::AccessDenied)
+            }
+        }
+
+        fn file(&self, _: FileId) -> FileResult<Bytes> {
+            Err(FileError::AccessDenied)
+        }
+
+        fn font(&self, index: usize) -> Option<Font> {
+            self.fonts.font(index)
+        }
+
+        fn today(&self, _: Option<Duration>) -> Option<Datetime> {
+            None
+        }
+    }
+
+    // The real thing, end to end: one document compiled as two differently
+    // named main files gets different `FileId`s, as it would in two runs.
+    #[test]
+    fn recompiling_the_same_document_keeps_its_fingerprints() {
+        const TEXT: &str = "#set page(width: 200pt, height: 120pt, fill: luma(240))
+            #set heading(numbering: \"1.\")
+            = Intro <intro>
+            See @intro and #link(\"https://typst.app\")[the site].
+            #rect(fill: gradient.linear(red, blue), stroke: 2pt + green)
+            $ sum_(i=0)^n i $
+            #pagebreak()
+            Second page.";
+        let compile = |file: &str| {
+            typst::compile::<PagedDocument>(&OneFileWorld::new(file, TEXT))
+                .output
+                .expect("the fixture compiles")
+        };
+        let (a, b) = (compile("a.typ"), compile("nested/b.typ"));
+        assert!(a.pages().len() > 1);
+
+        let (fps_a, fps_b) = (fingerprint_pages(&a), fingerprint_pages(&b));
+        assert_eq!(fps_a, fps_b);
+        assert_ne!(fps_a[0], fps_a[1]);
+        assert_ne!(
+            typst::utils::hash128(&a.pages()[0].frame),
+            typst::utils::hash128(&b.pages()[0].frame)
+        );
+    }
+
+    #[test]
+    fn fingerprint_follows_what_the_page_draws() {
+        let base = page_with_rect(7, 50.0, Color::BLACK);
+        let wider = page_with_rect(7, 51.0, Color::BLACK);
+        let recolored = page_with_rect(7, 50.0, Color::WHITE);
+        let mut filled = page_with_rect(7, 50.0, Color::BLACK);
+        filled.fill = Smart::Custom(Some(Color::BLACK.into()));
+
+        let fp = fingerprint_page(&base);
+        assert_ne!(fp, fingerprint_page(&wider));
+        assert_ne!(fp, fingerprint_page(&recolored));
+        assert_ne!(fp, fingerprint_page(&filled));
+    }
 
     fn kinds(rows: &[PageAlignment]) -> Vec<PageChangeKind> {
         rows.iter().map(|r| r.kind).collect()

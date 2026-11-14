@@ -31,6 +31,7 @@ mod commit;
 mod diff;
 pub(crate) mod fs;
 mod history;
+mod index;
 mod paths;
 mod restore;
 mod retention;
@@ -46,7 +47,8 @@ pub use retention::RetentionPolicy;
 pub type SnapshotFiles = std::collections::BTreeMap<String, String>;
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Weak};
 use std::time::Instant;
 
 use log::{info, warn};
@@ -54,6 +56,17 @@ use parking_lot::{Mutex, RwLock};
 
 use fs::LocalWorkingTreeFs;
 pub use fs::WorkingTreeFs;
+use index::TreeIndex;
+
+/// One queued auto-snapshot. The root is captured when the request is made,
+/// so a snapshot asked for just before a workspace switch still lands in the
+/// workspace it was about.
+struct AutoSnapshotRequest {
+    root: PathBuf,
+    trigger: CommitTrigger,
+    message: String,
+    policy: SnapshotPolicy,
+}
 
 /// User preferences governing automatic snapshot creation. Lives behind an
 /// `Arc<RwLock<_>>` managed by Tauri; refreshed whenever the frontend
@@ -120,7 +133,12 @@ pub struct VcsState {
     /// as separate files, so two racing commits could interleave into a
     /// torn timeline. Holding this lock across `commit_if_changed` makes
     /// commit ordering deterministic.
-    commit_lock: Mutex<()>,
+    ///
+    /// The guarded value is the stat cache for the workspace last committed
+    /// to; it lives here because the walk is the only thing that touches it.
+    commit_lock: Mutex<Option<TreeIndex>>,
+    /// Queue feeding the auto-snapshot worker, which is spawned on first use.
+    auto_tx: Mutex<Option<Sender<AutoSnapshotRequest>>>,
 }
 
 impl VcsState {
@@ -128,8 +146,19 @@ impl VcsState {
         Self {
             root: RwLock::new(None),
             last_auto_snapshot: Mutex::new(None),
-            commit_lock: Mutex::new(()),
+            commit_lock: Mutex::new(None),
+            auto_tx: Mutex::new(None),
         }
+    }
+
+    /// Run `op` with the commit lock held and the stat cache for `root`
+    /// loaded, swapping the cache out if it belonged to another workspace.
+    fn with_index<T>(&self, root: &Path, op: impl FnOnce(&mut TreeIndex) -> T) -> T {
+        let mut guard = self.commit_lock.lock();
+        if guard.as_ref().is_none_or(|index| index.root() != root) {
+            *guard = Some(TreeIndex::load(&LocalWorkingTreeFs, root));
+        }
+        op(guard.as_mut().expect("index loaded above"))
     }
 
     /// Bind the VCS to a workspace root. Cheap and synchronous — call this on
@@ -213,39 +242,93 @@ impl VcsState {
     ) -> Result<Option<String>, String> {
         // Held across the whole walk-hash-write pass so a backgrounded
         // initial snapshot can't interleave with a save/compile commit.
-        let _guard = self.commit_lock.lock();
-        let fs = LocalWorkingTreeFs;
-        commit::commit_if_changed(root, &fs, trigger, message, retention)
+        self.with_index(root, |index| {
+            commit::commit_if_changed(root, &LocalWorkingTreeFs, index, trigger, message, retention)
+        })
     }
 
-    /// Auto-snapshot gated by the user's [`SnapshotPolicy`]. Skips the
-    /// snapshot entirely when the relevant toggle is off, and throttles by
-    /// `min_interval_seconds` against the timestamp of the previous
-    /// successful auto-snapshot.
-    pub fn auto_commit_if_changed(
-        &self,
+    /// Queue an auto-snapshot gated by the user's [`SnapshotPolicy`], and
+    /// return immediately. The snapshot itself is taken on a dedicated worker
+    /// thread: walking the workspace must never sit on the save path or the
+    /// compile worker, where a large tree used to stall both for seconds.
+    ///
+    /// Skips entirely when the relevant toggle is off; the
+    /// `min_interval_seconds` throttle is applied by the worker, against the
+    /// timestamp of the previous successful auto-snapshot.
+    pub fn request_auto_snapshot(
+        self: &Arc<Self>,
         trigger: CommitTrigger,
         message: &str,
         policy: &SnapshotPolicy,
-    ) -> Result<Option<String>, String> {
+    ) {
         if !policy.allows(trigger) {
-            return Ok(None);
+            return;
         }
+        let Some(root) = self.workspace_root() else {
+            return;
+        };
+        let request = AutoSnapshotRequest {
+            root,
+            trigger,
+            message: message.to_string(),
+            policy: policy.clone(),
+        };
+
+        let mut tx = self.auto_tx.lock();
+        if tx.is_none() {
+            let (sender, receiver) = mpsc::channel();
+            // Weak, so the worker never keeps the state alive: once the state
+            // (and with it the sender) is dropped, `recv` fails and it exits.
+            let state = Arc::downgrade(self);
+            let spawned = std::thread::Builder::new()
+                .name("vcs-auto-snapshot".into())
+                .spawn(move || Self::run_auto_snapshot_worker(state, receiver));
+            if let Err(err) = spawned {
+                warn!("vcs::request_auto_snapshot: thread spawn failed err=\"{err}\"");
+                return;
+            }
+            *tx = Some(sender);
+        }
+        if let Some(sender) = tx.as_ref() {
+            if sender.send(request).is_err() {
+                warn!("vcs::request_auto_snapshot: worker is gone, snapshot skipped");
+            }
+        }
+    }
+
+    fn run_auto_snapshot_worker(state: Weak<Self>, rx: Receiver<AutoSnapshotRequest>) {
+        while let Ok(request) = rx.recv() {
+            let Some(state) = state.upgrade() else {
+                return;
+            };
+            if let Err(err) = state.auto_commit(&request) {
+                warn!(
+                    "vcs: {} auto-snapshot failed err=\"{err}\"",
+                    request.trigger.tag()
+                );
+            }
+        }
+    }
+
+    fn auto_commit(&self, request: &AutoSnapshotRequest) -> Result<(), String> {
+        let policy = &request.policy;
         if policy.min_interval_seconds > 0 {
             if let Some(last) = *self.last_auto_snapshot.lock() {
                 if last.elapsed().as_secs() < policy.min_interval_seconds as u64 {
-                    return Ok(None);
+                    return Ok(());
                 }
             }
         }
-        let Some(root) = self.workspace_root() else {
-            return Ok(None);
-        };
-        let result = self.commit_if_changed_for_root(&root, trigger, message, &policy.retention)?;
+        let result = self.commit_if_changed_for_root(
+            &request.root,
+            request.trigger,
+            &request.message,
+            &policy.retention,
+        )?;
         if result.is_some() {
             *self.last_auto_snapshot.lock() = Some(Instant::now());
         }
-        Ok(result)
+        Ok(())
     }
 
     /// User-driven restore-point creation with a custom message.
@@ -312,15 +395,19 @@ impl VcsState {
     /// Restore the entire workspace to a given snapshot.
     pub fn restore_workspace(&self, commit_id: &str) -> Result<(), String> {
         let root = self.workspace_root().ok_or("No workspace open")?;
-        let fs = LocalWorkingTreeFs;
-        restore::restore_workspace(&root, &fs, commit_id)
+        // Under the commit lock, so a queued auto-snapshot can't walk the
+        // tree while it is half restored.
+        self.with_index(&root, |index| {
+            restore::restore_workspace(&root, &LocalWorkingTreeFs, index, commit_id)
+        })
     }
 
     /// Restore a single file from a snapshot, leaving the rest of the
     /// workspace alone.
     pub fn restore_file(&self, commit_id: &str, path: &str) -> Result<(), String> {
         let root = self.workspace_root().ok_or("No workspace open")?;
-        let fs = LocalWorkingTreeFs;
-        restore::restore_file(&root, &fs, commit_id, path)
+        self.with_index(&root, |index| {
+            restore::restore_file(&root, &LocalWorkingTreeFs, index, commit_id, path)
+        })
     }
 }

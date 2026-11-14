@@ -180,6 +180,10 @@ class WorkspaceStore {
     private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
     private _persistTabsTimer: ReturnType<typeof setTimeout> | null = null;
     private _opQueue = new SerialQueue();
+    /** Root of the workspace the backend currently has open, set only once
+     *  `open_folder` has succeeded. Lets a repeated open of that same folder
+     *  be recognised as a no-op. */
+    private _openedRoot: string | null = null;
 
     toAbs(path: string): string {
         if (!this.rootPath) {
@@ -237,6 +241,7 @@ class WorkspaceStore {
                 const previousRoot = this.rootPath;
                 const result = await openDocument(path, root);
                 if (result.isErr()) throw new Error(result.error);
+                this._openedRoot = null;
                 await editor.reset();
                 this._generation++;
                 this._disposeFilesChangedListener();
@@ -304,6 +309,12 @@ class WorkspaceStore {
         this.opening = true;
         this.hydrating = true;
         try {
+            // A second click on the same workspace (a double-click lands the
+            // second one after the first open has already finished) must not
+            // tear the session down and open it again: that throws away the
+            // compile in flight, re-reads every file, and the new
+            // `open_folder` then waits behind the very compile it obsoleted.
+            if (this._openedRoot === normalize(root) && !this.isStandalone) return;
             await this._initCriticalPhase(root);
             void this._opQueue
                 .run(() => this._initDeferredPhase(root))
@@ -330,6 +341,7 @@ class WorkspaceStore {
         this._disposeFilesChangedListener();
         this._clearRefreshTimer();
 
+        this._openedRoot = null;
         this.documentPath = null;
         this.rootPath = normalize(root);
         this.tree = [];
@@ -342,6 +354,7 @@ class WorkspaceStore {
         if (openResult.isErr()) {
             throw new Error(openResult.error);
         }
+        this._openedRoot = normalize(root);
 
         if (openResult.value) {
             this.mainFile = normalize(openResult.value);
@@ -396,6 +409,7 @@ class WorkspaceStore {
         this._generation++;
         const closed = await closeSession();
         if (closed.isErr()) throw new Error(closed.error);
+        this._openedRoot = null;
         preview.clear();
         this._clearPersistTabsTimer();
         bibliography.clear();

@@ -129,10 +129,15 @@ pub type WorkspaceDiagCache = HashMap<FileId, CachedFileDiags>;
 ///
 /// Output order is made deterministic by sorting on the walk order rather than
 /// on completion order, so the diagnostics pane doesn't reshuffle between runs.
+///
+/// `cancelled` is polled before each file's compile. Once it reports `true`
+/// no further compiles start and the result is `None`: a partial set would
+/// read as "those other files are clean now".
 pub fn collect_workspace_diagnostics(
     world: &EditorWorld,
     cache: &Mutex<WorkspaceDiagCache>,
-) -> (Vec<SerializedDiagnostic>, Vec<SerializedDiagnostic>) {
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<(Vec<SerializedDiagnostic>, Vec<SerializedDiagnostic>)> {
     let root = world.root();
     let main_id = world.main_id();
 
@@ -160,8 +165,14 @@ pub fn collect_workspace_diagnostics(
         .par_iter()
         .zip(reused.par_iter())
         .filter(|(_, hit)| hit.is_none())
-        .map(|(&id, _)| (id, compile_one_for_diagnostics(world, id)))
+        .filter_map(|(&id, _)| {
+            (!cancelled()).then(|| (id, compile_one_for_diagnostics(world, id)))
+        })
         .collect();
+
+    if cancelled() {
+        return None;
+    }
 
     {
         let mut cache = cache.lock();
@@ -195,7 +206,7 @@ pub fn collect_workspace_diagnostics(
         }
     }
 
-    (errors, warnings)
+    Some((errors, warnings))
 }
 
 /// Compile one workspace file as its own entry point and record both its

@@ -1,6 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 
 pub struct WorkingEntry {
@@ -10,8 +11,22 @@ pub struct WorkingEntry {
     pub is_file: bool,
 }
 
+/// The cheap-to-read identity of a file's contents: if neither field moved,
+/// the bytes are assumed unchanged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FileStat {
+    pub len: u64,
+    pub modified: SystemTime,
+}
+
 pub trait WorkingTreeFs {
     fn read_dir(&self, dir: &Path) -> Result<Vec<WorkingEntry>, String>;
+    /// Size and modification time, without reading the file. `None` (the
+    /// default) means "unknown", which makes the snapshot walk hash the file.
+    fn stat(&self, path: &Path) -> Option<FileStat> {
+        let _ = path;
+        None
+    }
     fn read_file(&self, path: &Path) -> Result<Vec<u8>, String>;
     fn write_file(&self, path: &Path, bytes: &[u8]) -> Result<(), String>;
     fn create_dir_all(&self, path: &Path) -> Result<(), String>;
@@ -91,6 +106,14 @@ impl WorkingTreeFs for LocalWorkingTreeFs {
             });
         }
         Ok(entries)
+    }
+
+    fn stat(&self, path: &Path) -> Option<FileStat> {
+        let meta = fs::metadata(path).ok()?;
+        Some(FileStat {
+            len: meta.len(),
+            modified: meta.modified().ok()?,
+        })
     }
 
     fn read_file(&self, path: &Path) -> Result<Vec<u8>, String> {

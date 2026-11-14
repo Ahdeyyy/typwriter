@@ -18,6 +18,7 @@
   import { flip } from "svelte/animate";
   import { easeOut, screen } from "$lib/motion";
   import { app } from "$lib/stores/app.svelte";
+  import { dismissOnBack } from "$lib/back-dismiss.svelte";
   import { editor } from "$lib/stores/editor.svelte";
 
   const open = $derived(app.overlay === "tabswitcher");
@@ -25,6 +26,7 @@
 
   // Long-press action drawer for a single tab.
   let actionTarget = $state<string | null>(null);
+  dismissOnBack(() => actionTarget !== null, () => (actionTarget = null));
   /** A long press already opened the drawer — don't also treat the release as a
    *  tap (which would switch to the tab and dismiss the switcher). */
   let longpressed = false;

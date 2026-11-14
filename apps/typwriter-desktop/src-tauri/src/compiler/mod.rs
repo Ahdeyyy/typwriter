@@ -345,6 +345,10 @@ pub struct PreviewPipeline {
     /// render the frontend is showing is stale. Stamped onto every
     /// [`CompileStatePayload`].
     last_compile_failed: AtomicBool,
+    /// Set when a compile's reason calls for recomputing `workspace_diags`,
+    /// cleared once that has actually happened. Only the compile worker
+    /// touches it; see [`Self::refresh_workspace_diags`].
+    workspace_diags_dirty: AtomicBool,
     /// Version-control state. Used to auto-commit a restore point whenever
     /// a compile succeeds (the user's "good known state").
     vcs: Arc<VcsState>,
@@ -376,6 +380,7 @@ impl PreviewPipeline {
                 stale: false,
             }),
             last_compile_failed: AtomicBool::new(false),
+            workspace_diags_dirty: AtomicBool::new(false),
             vcs,
         }
     }
@@ -683,54 +688,63 @@ impl PreviewPipeline {
         // the open path.
         self.world.ensure_fonts_loading();
         self.world.wait_until_fonts_loaded();
+        let font_wait_ms = t.elapsed().as_secs_f64() * 1000.0;
+        if font_wait_ms >= 50.0 {
+            info!("compile revision={revision} reason={reason:?} waited {font_wait_ms:.1}ms for fonts");
+        }
 
         let CompileOutput {
             document,
-            mut errors,
-            mut warnings,
+            errors: main_errors,
+            warnings: main_warnings,
         } = compile_document(&*self.world);
 
         let compile_ms = t.elapsed().as_secs_f64() * 1000.0;
 
-        if !errors.is_empty() {
+        if !main_errors.is_empty() {
             warn!(
                 "compile revision={revision} reason={reason:?} finished with {} error(s), {} warning(s) ({compile_ms:.1}ms)",
-                errors.len(),
-                warnings.len(),
+                main_errors.len(),
+                main_warnings.len(),
             );
         } else {
             info!(
                 "compile revision={revision} reason={reason:?} ok with {} warning(s) ({compile_ms:.1}ms)",
-                warnings.len(),
+                main_warnings.len(),
             );
         }
 
-        // Diagnostics from other .typ files not reachable from the main file.
-        // Recomputing this fully recompiles every other file, so we only do it
-        // for reasons that can change those files; Typing/Zoom reuse the cache
-        // so the emitted set stays complete without per-keystroke cost.
-        let (extra_errors, extra_warnings) = if self.world.is_standalone() {
-            (Vec::new(), Vec::new())
-        } else if refreshes_workspace_diags(reason) {
-            info!("compile revision={revision} reason={reason:?} refreshing workspace diagnostics");
-            let fresh = collect_workspace_diagnostics(&*self.world, &self.workspace_diag_cache);
-            *self.workspace_diags.lock() = fresh.clone();
-            fresh
-        } else {
-            self.workspace_diags.lock().clone()
-        };
-        dedup_merge(&mut errors, &mut warnings, extra_errors, extra_warnings);
-
-        if let Err(err) = self.app_handle.emit(
-            "compile:diagnostics",
-            DiagnosticsPayload { errors, warnings },
-        ) {
-            error!("failed to emit compile:diagnostics err=\"{err}\"");
+        // The session is being replaced (another workspace or document is
+        // opening and is waiting on the gate we hold). Everything below would
+        // be invalidated the moment it gets in, so let it in now.
+        if self.world.session_change_pending() {
+            info!("compile revision={revision} reason={reason:?} abandoned — session is changing");
+            return;
         }
+
+        // Diagnostics from other .typ files not reachable from the main file.
+        // Recomputing this fully recompiles every other file (seconds, cold,
+        // on a workspace with a few large documents), so it is only *marked*
+        // due here — for reasons that can change those files — and done by
+        // `refresh_workspace_diags` once the pages are out. Until then, and
+        // for Typing/Zoom, the main compile's diagnostics go out merged with
+        // the cached extras so the emitted set stays complete.
+        if refreshes_workspace_diags(reason) {
+            self.workspace_diags_dirty.store(true, Ordering::Release);
+        }
+        self.emit_diagnostics(&main_errors, &main_warnings);
 
         let doc = match document {
             Some(doc) => doc,
             None => {
+                // No pages to render, so nothing to keep the refresh behind.
+                self.refresh_workspace_diags(
+                    revision,
+                    reason,
+                    request_mark,
+                    &main_errors,
+                    &main_warnings,
+                );
                 // Deliberately keep the last good render on screen instead of
                 // clearing it. Blanking costs more than the staleness: the
                 // frontend's scroll container collapses to zero height, so the
@@ -963,6 +977,8 @@ impl PreviewPipeline {
             }
         }
 
+        let render_ms = render_t.elapsed().as_secs_f64() * 1000.0;
+
         // Persist the page manifest (best effort) so the next open can paint
         // this preview from disk before the font-blocked recompile finishes.
         if new_emitted.iter().any(Option::is_some) {
@@ -983,7 +999,8 @@ impl PreviewPipeline {
             }
         }
 
-        // Auto-commit a "compile succeeded" restore point. We deliberately
+        // Queue a "compile succeeded" restore point; the snapshot itself is
+        // taken on the VCS worker, never on this thread. We deliberately
         // skip Zoom (purely a render change) and MainFile (just opened the
         // workspace, the initial-commit hook already covered it). The
         // dedupe inside `commit_if_changed` makes this a no-op when the
@@ -1002,24 +1019,97 @@ impl PreviewPipeline {
                 .try_state::<Arc<RwLock<SnapshotPolicy>>>()
                 .map(|s| s.read().clone())
                 .unwrap_or_default();
-            if let Err(err) = self.vcs.auto_commit_if_changed(
+            self.vcs.request_auto_snapshot(
                 CommitTrigger::Compile,
                 "Auto-snapshot after compile",
                 &policy,
-            ) {
-                warn!("compile auto-commit failed err=\"{err}\"");
-            }
+            );
         }
 
+        // Last, now that the preview is up to date.
+        self.refresh_workspace_diags(revision, reason, request_mark, &main_errors, &main_warnings);
+
         info!(
-            "compile revision={revision} reason={reason:?} done ({:.1}ms render, {:.1}ms total)",
-            render_t.elapsed().as_secs_f64() * 1000.0,
+            "compile revision={revision} reason={reason:?} done ({render_ms:.1}ms render, {:.1}ms total)",
             t.elapsed().as_secs_f64() * 1000.0
         );
     }
 
+    /// Emit `compile:diagnostics`: the main compile's own diagnostics merged
+    /// with the cached cross-file ones.
+    fn emit_diagnostics(
+        &self,
+        main_errors: &[SerializedDiagnostic],
+        main_warnings: &[SerializedDiagnostic],
+    ) {
+        let (extra_errors, extra_warnings) = if self.world.is_standalone() {
+            (Vec::new(), Vec::new())
+        } else {
+            self.workspace_diags.lock().clone()
+        };
+        let mut errors = main_errors.to_vec();
+        let mut warnings = main_warnings.to_vec();
+        dedup_merge(&mut errors, &mut warnings, extra_errors, extra_warnings);
+
+        if let Err(err) = self.app_handle.emit(
+            "compile:diagnostics",
+            DiagnosticsPayload { errors, warnings },
+        ) {
+            error!("failed to emit compile:diagnostics err=\"{err}\"");
+        }
+    }
+
+    /// Recompute the cross-file diagnostics if a compile marked them due, and
+    /// re-emit the merged set. Runs after the pages have been emitted so a
+    /// cold workspace-wide recompile never delays the preview.
+    ///
+    /// Skipped while a newer request is waiting — that compile matters more —
+    /// in which case the refresh stays due and the next compile that reaches
+    /// this point un-superseded picks it up, whatever its reason.
+    fn refresh_workspace_diags(
+        &self,
+        revision: u64,
+        reason: CompileReason,
+        request_mark: u64,
+        main_errors: &[SerializedDiagnostic],
+        main_warnings: &[SerializedDiagnostic],
+    ) {
+        if !self.workspace_diags_dirty.load(Ordering::Acquire) {
+            return;
+        }
+        if self.world.is_standalone() {
+            self.workspace_diags_dirty.store(false, Ordering::Release);
+            return;
+        }
+        if self.is_stale_request(request_mark) {
+            return;
+        }
+        let t = Instant::now();
+        info!("compile revision={revision} reason={reason:?} refreshing workspace diagnostics");
+        // Checked between files, so a workspace switch waits for at most the
+        // compiles already running rather than the whole walk.
+        let Some(fresh) = collect_workspace_diagnostics(
+            &*self.world,
+            &self.workspace_diag_cache,
+            &|| self.world.session_change_pending(),
+        ) else {
+            info!("compile revision={revision} reason={reason:?} workspace diagnostics abandoned — session is changing");
+            return;
+        };
+        *self.workspace_diags.lock() = fresh;
+        self.workspace_diags_dirty.store(false, Ordering::Release);
+        self.emit_diagnostics(main_errors, main_warnings);
+        info!(
+            "compile revision={revision} reason={reason:?} workspace diagnostics refreshed ({:.1}ms)",
+            t.elapsed().as_secs_f64() * 1000.0
+        );
+    }
+
+    /// Whether the work in hand has been superseded: a newer compile request
+    /// is queued, or the whole session is about to be replaced.
     fn is_stale_request(&self, request_mark: u64) -> bool {
         self.request_counter.load(Ordering::Acquire) != request_mark
+            || self.world.session_change_pending()
     }
 
     pub fn export_pdf(&self, config: PdfExportConfig) -> Result<(), String> {

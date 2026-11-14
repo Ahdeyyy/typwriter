@@ -139,7 +139,7 @@ impl WorkspaceState {
             return Err(e);
         }
 
-        let _session = self.world.session_gate.write();
+        let _session = self.world.lock_session_for_change();
         *self.document_path.write() = None;
 
         // Stop any previous watcher.
@@ -259,7 +259,7 @@ impl WorkspaceState {
             .join(document::document_id(&path));
         let watcher = watcher::DocumentWatcher::prepare(root.clone(), self.app_handle.clone())
             .map_err(|e| format!("Cannot watch document: {e}"))?;
-        let _session = self.world.session_gate.write();
+        let _session = self.world.lock_session_for_change();
         *self._watcher.lock() = None;
         self.world.set_root(root.clone());
         self.pipeline.invalidate_cache();
@@ -301,7 +301,7 @@ impl WorkspaceState {
 
     /// Stop watching/compiling a session when the editor returns home.
     pub fn close_session(&self) {
-        let _session = self.world.session_gate.write();
+        let _session = self.world.lock_session_for_change();
         *self._watcher.lock() = None;
         self.world.set_root(PathBuf::new());
         *self.root.write() = None;

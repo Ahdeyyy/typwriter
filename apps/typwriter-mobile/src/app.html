@@ -11,6 +11,25 @@
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <title>Typwriter</title>
+    <!-- The shell is an SPA: nothing is styled until the bundle boots and
+         ModeWatcher runs, so a dark-mode launch painted a white frame first.
+         Resolve the mode (same storage key and rules as mode-watcher) and paint
+         the matching background before anything else loads. -->
+    <style>
+      html { background: oklch(1 0 0); }
+      html.dark { background: oklch(0.145 0 0); }
+    </style>
+    <script>
+      (function () {
+        var root = document.documentElement;
+        var mode = null;
+        try { mode = localStorage.getItem("mode-watcher-mode"); } catch (e) {}
+        var light = mode === "light" ||
+          (mode !== "dark" && window.matchMedia("(prefers-color-scheme: light)").matches);
+        root.classList.toggle("dark", !light);
+        root.style.colorScheme = light ? "light" : "dark";
+      })();
+    </script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="tap">

@@ -279,10 +279,12 @@ pub fn run() {
                 );
             }
 
-            // Fonts are loaded lazily: the first workspace open (and, as a
-            // safety net, the first compile) calls `EditorWorld::ensure_fonts_loading`,
-            // so the system font scan overlaps the rest of the open path instead
-            // of blocking startup. See `world::mod`.
+            // Start the system font scan now, on its own thread. It takes
+            // seconds and the first compile blocks on it, so it should overlap
+            // the time spent on the home screen rather than start only once a
+            // workspace is opened. Never blocks startup; workspace open and
+            // the compile worker call this again as a (free) safety net.
+            world.ensure_fonts_loading();
 
             Ok(())
         })

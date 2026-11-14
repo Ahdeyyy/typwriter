@@ -25,6 +25,7 @@
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { parentDir } from "$lib/paths";
   import { app } from "$lib/stores/app.svelte";
+  import { dismissOnBack } from "$lib/back-dismiss.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
   import { pathDisplay } from "$lib/stores/path-display.svelte";
   import { editor } from "$lib/stores/editor.svelte";
@@ -43,11 +44,13 @@
 
   // Long-press action drawer.
   let actionTarget = $state<FileNode | null>(null);
+  dismissOnBack(() => actionTarget !== null, () => (actionTarget = null));
 
   // Shared single-input dialog (rename / new file / new folder).
   type DialogMode = "rename" | "newFile" | "newFolder" | "move" | "delete";
   let dialogMode = $state<DialogMode | null>(null);
   let dialogTarget = $state<FileNode | null>(null);
+  dismissOnBack(() => dialogMode !== null, () => (dialogMode = null));
   /** Parent rel-path for create operations. */
   let createParent = $state("");
   let inputValue = $state("");
@@ -150,10 +153,11 @@
   // workspaces, plus a way back to the full list on home.
 
   let switcherOpen = $state(false);
+  dismissOnBack(() => switcherOpen, () => (switcherOpen = false));
 
-  // The drawers and the dialog live outside `Sheet.Content` and aren't history
-  // entries, so an Android back press pops the sheet and would otherwise leave
-  // them floating over the editor. Tie their lifetime to the sheet's.
+  // The drawers and the dialog live outside `Sheet.Content`, so closing the
+  // sheet by any route would otherwise leave them floating over the editor.
+  // Tie their lifetime to the sheet's.
   $effect(() => {
     if (!visible) {
       actionTarget = null;
