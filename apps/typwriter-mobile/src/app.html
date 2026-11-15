@@ -14,11 +14,12 @@
     <!-- The shell is an SPA: nothing is styled until the bundle boots and
          ModeWatcher runs, so a dark-mode launch painted a white frame first.
          Resolve the mode (same storage key and rules as mode-watcher) and paint
-         the matching background before anything else loads. -->
-    <style>
-      html { background: oklch(1 0 0); }
-      html.dark { background: oklch(0.145 0 0); }
-    </style>
+         the matching background before anything else loads.
+         The colors live in a file, never an inline <style>: Tauri nonces inline
+         styles into the CSP's style-src, which voids 'unsafe-inline' and blocks
+         every <style> CodeMirror injects at runtime (no highlighting, and an
+         unscrollable editor). -->
+    <link rel="stylesheet" href="%sveltekit.assets%/boot.css" />
     <script>
       (function () {
         var root = document.documentElement;

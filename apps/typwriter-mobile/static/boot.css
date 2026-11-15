@@ -1,0 +1,4 @@
+/* Pre-paint background, linked from app.html. See the note there for why this
+   is a file and not an inline <style>. */
+html { background: oklch(1 0 0); }
+html.dark { background: oklch(0.145 0 0); }
