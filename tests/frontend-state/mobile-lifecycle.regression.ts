@@ -616,4 +616,23 @@ describe("back dismisses modal layers", () => {
     expect(history.index).toBe(0);
     expect(history.entries[0]).toEqual({ screen: "editor", overlay: "none" });
   });
+
+  test("a swipe dismiss reporting the close twice steps back only once", async () => {
+    const history = simulateHistory();
+    app.init();
+    app.openOverlay("diagnostics");
+    const backs = historyMock.back.mock.calls.length;
+    // vaul's drag release calls onOpenChange(false) directly and again via `open`.
+    app.closeOverlay();
+    app.closeOverlay();
+    await settle();
+    expect(historyMock.back.mock.calls.length - backs).toBe(1);
+    expect(history.index).toBe(0);
+    expect(app.screen).toBe("editor");
+    expect(app.overlay).toBe("none");
+    app.openOverlay("export");
+    app.closeOverlay();
+    await settle();
+    expect(historyMock.back.mock.calls.length - backs).toBe(2);
+  });
 });

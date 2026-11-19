@@ -11,6 +11,11 @@
   // Number shown in the tab-switcher button (open tabs + a pending new tab).
   const tabCount = $derived(editor.tabs.length + (editor.newTabOpen ? 1 : 0));
 
+  // Cycling only goes somewhere if there's a tab other than the active one.
+  const canCycle = $derived(
+    editor.tabs.length > 1 || (editor.tabs.length === 1 && !editor.isActiveTab(editor.tabs[0])),
+  );
+
   // Step to the previous/next open tab, wrapping. From an empty new tab (no
   // active file), forward lands on the first tab and back on the last.
   function cycleTab(delta: number) {
@@ -34,15 +39,17 @@
 >
   <div class="bg-muted/70 flex h-14 items-center justify-between gap-1 rounded-full border px-1.5 shadow-lg backdrop-blur-md">
     <button
-      class="text-foreground flex size-11 shrink-0 items-center justify-center rounded-full"
+      class="text-foreground flex size-11 shrink-0 items-center justify-center rounded-full transition-opacity disabled:opacity-35"
       aria-label="Previous tab"
+      disabled={!canCycle}
       onclick={() => cycleTab(-1)}
     >
       <Icon icon={ArrowLeft01Icon} class="size-6" />
     </button>
     <button
-      class="text-foreground flex size-11 shrink-0 items-center justify-center rounded-full"
+      class="text-foreground flex size-11 shrink-0 items-center justify-center rounded-full transition-opacity disabled:opacity-35"
       aria-label="Next tab"
+      disabled={!canCycle}
       onclick={() => cycleTab(1)}
     >
       <Icon icon={ArrowRight01Icon} class="size-6" />

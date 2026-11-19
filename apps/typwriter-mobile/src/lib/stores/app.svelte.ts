@@ -65,6 +65,10 @@ class AppStore {
   private selfPops = 0;
   private selfPopTimer: ReturnType<typeof setTimeout> | null = null;
   private deferred: (() => void)[] = [];
+  /** A `history.back()` that closes the current overlay is queued or in
+   *  flight. vaul reports a swipe dismiss through `onOpenChange(false)` twice,
+   *  and a second back would pop the editor entry and land on home. */
+  private closingOverlay = false;
 
   /** Register the popstate listener once (call from the root component). */
   init() {
@@ -105,6 +109,7 @@ class AppStore {
     if (this.selfPopTimer !== null) clearTimeout(this.selfPopTimer);
     this.selfPopTimer = null;
     this.deferred = [];
+    this.closingOverlay = false;
   }
 
   private onPopState(state: HistoryState | null) {
@@ -193,6 +198,7 @@ class AppStore {
     }
     this.screen = nextScreen;
     this.overlay = nextOverlay;
+    this.closingOverlay = false;
     if (nextOverlay === "none") scheduleBodyLockRelease();
   }
 
@@ -204,6 +210,7 @@ class AppStore {
     this.collapseLayers();
     this.screen = "editor";
     this.overlay = "none";
+    this.closingOverlay = false;
     const state = { screen: "editor", overlay: "none" } satisfies HistoryState;
     this.whenSettled(() => {
       if (entering) history.pushState(state, "");
@@ -217,13 +224,15 @@ class AppStore {
   openOverlay(o: Overlay) {
     this.collapseLayers();
     this.overlay = o;
+    this.closingOverlay = false;
     const state = { screen: this.screen, overlay: o } satisfies HistoryState;
     this.whenSettled(() => history.pushState(state, ""));
   }
 
   /** Close the current overlay via history so back behaves natively. */
   closeOverlay() {
-    if (this.overlay === "none") return;
+    if (this.overlay === "none" || this.closingOverlay) return;
+    this.closingOverlay = true;
     this.collapseLayers();
     this.whenSettled(() => history.back());
   }
@@ -234,6 +243,9 @@ class AppStore {
    *  must wait for the popstate or it races with it. */
   closeOverlayAsync(): Promise<void> {
     if (this.overlay === "none") return Promise.resolve();
+    // Already closing: wait for that traversal instead of starting another.
+    const alreadyClosing = this.closingOverlay;
+    this.closingOverlay = true;
     this.collapseLayers();
     return new Promise((resolve) => this.whenSettled(() => {
       // Declared before `done` so the closure can't reach it in its temporal
@@ -258,7 +270,7 @@ class AppStore {
       timer = setTimeout(done, 300);
       this.pendingHistory.add(done);
       target.addEventListener("popstate", done);
-      history.back();
+      if (!alreadyClosing) history.back();
     }));
   }
 
@@ -267,7 +279,8 @@ class AppStore {
     if (this.screen !== "editor") return;
     this.collapseLayers();
     // If an overlay is open, close it first, then the editor entry.
-    const steps = this.overlay !== "none" ? 2 : 1;
+    // A close already in flight has taken care of the overlay entry.
+    const steps = this.overlay !== "none" && !this.closingOverlay ? 2 : 1;
     this.whenSettled(() => history.go(-steps));
   }
 }
