@@ -124,13 +124,21 @@ scaffolds the project with the default Tauri icons, regenerating them is part of
 every fresh Android build:
 
 ```bash
-bun tauri android init      # or: any command that creates src-tauri/gen/android
-bun tauri icon app-icon.png # now lands in gen/android/.../res
+bun tauri android init # or: any command that creates src-tauri/gen/android
+bun run icons          # tauri icon app-icon.png + the adaptive icon below
 ```
 
 Running `tauri icon` before init only refreshes the desktop icons and
 `src-tauri/icons/android/` — the APK still ships the default Tauri icon. CI does
 this in the "Generate app icons" step of `.github/workflows/android.yml`.
+
+**The adaptive icon is not generated from `app-icon.png`.** `tauri icon` puts the
+whole rounded tile into the adaptive foreground, so launchers crop it with their
+mask (circle, squircle, teardrop, …). `bun run icons` overwrites it with the
+vector layers in `src-tauri/android-icon/`: a full-bleed gradient background, the
+T glyph inside the 66dp safe-zone circle, and a monochrome layer for Android 13+
+themed icons. If the logo changes, update those drawables too;
+`src/android-icon.test.ts` checks the glyph stays inside the safe zone.
 
 ## IPC contract
 

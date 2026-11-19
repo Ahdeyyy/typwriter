@@ -4,7 +4,7 @@ The standalone Android Typst editor. Tauri 2 + SvelteKit (static adapter, SPA fa
 
 Android is the only shipping target. `bun tauri dev` opens a desktop window purely as a fast dev loop; nothing may depend on desktop-only behaviour.
 
-See `README.md` for the dev loop, the `adjustResize` manifest note, and the app-icon ordering rule (`tauri icon` must run *after* `android init`, or the APK ships the default Tauri icon).
+See `README.md` for the dev loop, the `adjustResize` manifest note, and the app-icon rule (`bun run icons` must run *after* `android init`, or the APK ships the default Tauri icon; the adaptive icon comes from `src-tauri/android-icon/`, not `app-icon.png`).
 
 ## Conventions
 

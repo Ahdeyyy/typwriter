@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 13+ themed icons: the system tints this silhouette, so only alpha
+     matters. Same geometry as typwriter_icon_foreground. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <path
+      android:fillColor="#FFFFFFFF"
+      android:pathData="M33.77,27.93H74.23V29.85H33.77ZM33.77,32.21H74.23V34.13H33.77ZM33.77,36.5H74.23V38.42H33.77ZM48.83,40.49H50.75V80.07H48.83ZM53.11,40.49H55.03V80.07H53.11ZM57.4,40.49H59.32V80.07H57.4Z"/>
+</vector>
