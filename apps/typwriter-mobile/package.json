@@ -7,6 +7,7 @@
     "dev": "vite dev",
     "build": "bun run licenses:check && vite build",
     "icons": "tauri icon app-icon.png && bun scripts/android-icon.ts",
+    "icons:nightly": "tauri icon app-icon-nightly.png && bun scripts/android-icon.ts nightly",
     "licenses:generate": "bun scripts/generate-licenses.ts",
     "licenses:check": "bun scripts/generate-licenses.ts --check",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",

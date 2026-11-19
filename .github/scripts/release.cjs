@@ -61,6 +61,24 @@ async function uploadAsset({ github, context, releaseId, name, data }) {
   }
 }
 
+// `targets` pairs each updater target with its bundles, default format first.
+async function buildManifest({ repo, tag, version, notes, targets, readSignature }) {
+  const manifest = { version, notes, pub_date: new Date().toISOString(), platforms: {} };
+  for (const [target, bundles] of targets) {
+    for (const [index, [bundle, name]] of bundles.entries()) {
+      const signature = (await readSignature(name)).trim();
+      if (!signature) throw new Error(`Empty updater signature for ${name}`);
+      const entry = {
+        signature,
+        url: `https://github.com/${repo.owner}/${repo.repo}/releases/download/${tag}/${encodeURIComponent(name)}`,
+      };
+      if (index === 0) manifest.platforms[target] = entry;
+      manifest.platforms[`${target}-${bundle}`] = entry;
+    }
+  }
+  return manifest;
+}
+
 async function publishUpdater({ github, context, releaseId, version }) {
   const repo = context.repo;
   const { data: release } = await github.rest.repos.getRelease({
@@ -98,29 +116,18 @@ async function publishUpdater({ github, context, releaseId, version }) {
   const missing = required.filter(name => !byName.has(name) || !byName.get(name).size);
   if (missing.length) throw new Error(`Missing release assets: ${missing.join(', ')}`);
 
-  const manifest = {
-    version,
+  const manifest = await buildManifest({
+    repo, tag, version, targets,
     notes: release.body || `${version} Release`,
-    pub_date: new Date().toISOString(),
-    platforms: {},
-  };
-  for (const [target, bundles] of targets) {
-    for (const [index, [bundle, name]] of bundles.entries()) {
+    readSignature: async name => {
       const { data } = await github.rest.repos.getReleaseAsset({
         ...repo,
         asset_id: byName.get(`${name}.sig`).id,
         headers: { accept: 'application/octet-stream' },
       });
-      const signature = Buffer.from(data).toString('utf8').trim();
-      if (!signature) throw new Error(`Empty updater signature for ${name}`);
-      const entry = {
-        signature,
-        url: `https://github.com/${repo.owner}/${repo.repo}/releases/download/${tag}/${encodeURIComponent(name)}`,
-      };
-      if (index === 0) manifest.platforms[target] = entry;
-      manifest.platforms[`${target}-${bundle}`] = entry;
-    }
-  }
+      return Buffer.from(data).toString('utf8');
+    },
+  });
   await uploadAsset({
     github, context, releaseId, name: 'latest.json',
     data: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`),
@@ -128,4 +135,4 @@ async function publishUpdater({ github, context, releaseId, version }) {
   return manifest;
 }
 
-module.exports = { prepareRelease, publishUpdater, uploadAsset };
+module.exports = { buildManifest, prepareRelease, publishUpdater, uploadAsset };

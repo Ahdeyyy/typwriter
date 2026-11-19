@@ -26,8 +26,18 @@ const inputs = ["package.json", "bun.lock", "apps/typwriter-mobile/package.json"
   "apps/typwriter-mobile/src-tauri/Cargo.toml", "apps/typwriter-mobile/src-tauri/Cargo.lock",
   "apps/typwriter-mobile/scripts/generate-licenses.ts", "apps/typwriter-mobile/scripts/licenses/collect-rust.ts",
   "apps/typwriter-mobile/scripts/licenses/source-text.ts"];
+// Only the dependency fields of a package.json can change the notices, so
+// editing a script (e.g. `icons`) must not make the catalog stale.
+const dependencyFields = ["dependencies", "devDependencies", "optionalDependencies", "overrides", "workspaces"];
 const fingerprint = createHash("sha256");
-for (const input of inputs) fingerprint.update(input).update(readFileSync(join(root, input), "utf8").replace(/\r\n/g, "\n"));
+for (const input of inputs) {
+  let text = readFileSync(join(root, input), "utf8").replace(/\r\n/g, "\n");
+  if (input.endsWith("package.json")) {
+    const manifest = JSON.parse(text);
+    text = JSON.stringify(dependencyFields.map(field => [field, manifest[field] ?? null]));
+  }
+  fingerprint.update(input).update(text);
+}
 const inputHash = fingerprint.digest("hex");
 
 function packageDirectory(name: string): string {

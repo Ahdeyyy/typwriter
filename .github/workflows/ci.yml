@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - name: Release workflow regression tests
-        run: node --test .github/scripts/release.test.cjs
+        run: node --test .github/scripts/*.test.cjs
       - run: bun install
       - name: Verify mobile dependency licenses
         working-directory: apps/typwriter-mobile

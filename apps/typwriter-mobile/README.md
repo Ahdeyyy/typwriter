@@ -140,6 +140,10 @@ T glyph inside the 66dp safe-zone circle, and a monochrome layer for Android 13+
 themed icons. If the logo changes, update those drawables too;
 `src/android-icon.test.ts` checks the glyph stays inside the safe zone.
 
+The nightly app uses `app-icon-nightly.png` and `bun run icons:nightly`, which
+lays `src-tauri/android-icon-nightly/` (the same layers on a dark blue
+background) over the stable adaptive icon.
+
 ## IPC contract
 
 The single source of truth for the Rust ⇄ frontend command contract is
