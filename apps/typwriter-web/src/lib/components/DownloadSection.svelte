@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
+	import * as Tabs from '$lib/components/ui/tabs';
+	import { getRelease, RELEASE_PAGES, type Channel, type Release } from '$lib/releases';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		ComputerIcon,
@@ -7,7 +9,8 @@
 		Apple01Icon,
 		AndroidIcon,
 		Download04Icon,
-		InformationCircleIcon
+		InformationCircleIcon,
+		TestTube01Icon
 	} from '@hugeicons/core-free-icons';
 
 	interface Asset {
@@ -23,7 +26,33 @@
 
 	let { assets, version }: Props = $props();
 
-	const RELEASES_URL = 'https://github.com/Ahdeyyy/typwriter/releases/latest';
+	let channel = $state<Channel>('stable');
+	let nightly = $state<Release | null>(null);
+	let nightlyRequested = false;
+
+	// Most visitors never open the nightly tab, so it is only fetched on demand.
+	function selectChannel(value: string) {
+		channel = value as Channel;
+		if (channel !== 'nightly' || nightlyRequested) return;
+		nightlyRequested = true;
+		void getRelease('nightly').then((release) => {
+			nightly = release;
+			// Let a later visit to the tab retry a failed lookup.
+			if (!release) nightlyRequested = false;
+		});
+	}
+
+	const productName = $derived(channel === 'nightly' ? 'Typwriter Nightly' : 'Typwriter');
+	const releasesUrl = $derived(RELEASE_PAGES[channel]);
+	const activeAssets = $derived(channel === 'nightly' ? (nightly?.assets ?? []) : assets);
+	// The nightly tag never changes, so its build version comes from the files.
+	const activeVersion = $derived(
+		channel === 'nightly'
+			? (nightly?.assets
+					.map((a) => /\d+\.\d+\.\d+-nightly\.\d+/.exec(a.name)?.[0])
+					.find(Boolean) ?? null)
+			: version
+	);
 	const MACOS_UNSIGNED_GUIDE_URL =
 		'https://github.com/st235/macos-unverified-signature-apps-installation';
 
@@ -59,18 +88,18 @@
 	}
 
 	const windowsAssets = $derived(
-		assets.filter((a) => a.name.endsWith('.exe') || a.name.endsWith('.msi'))
+		activeAssets.filter((a) => a.name.endsWith('.exe') || a.name.endsWith('.msi'))
 	);
-	const macosAssets = $derived(assets.filter((a) => a.name.endsWith('.dmg')));
+	const macosAssets = $derived(activeAssets.filter((a) => a.name.endsWith('.dmg')));
 	const linuxAssets = $derived(
-		assets.filter(
+		activeAssets.filter(
 			(a) => a.name.endsWith('.deb') || a.name.endsWith('.rpm') || a.name.endsWith('.AppImage')
 		)
 	);
 
 	const APK_ABI_ORDER = ['arm64', 'arm', 'x86_64', 'x86'];
 	const androidAssets = $derived(
-		assets
+		activeAssets
 			.filter((a) => a.name.endsWith('.apk'))
 			.slice()
 			.sort((a, b) => {
@@ -121,9 +150,9 @@
 			class="mb-3 inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground"
 		>
 			<HugeiconsIcon icon={Download04Icon} size={14} class="text-primary" />
-			<span>Latest Release</span>
-			{#if version}
-				<span class="font-mono text-foreground font-semibold">({version})</span>
+			<span>{channel === 'nightly' ? 'Nightly Build' : 'Latest Release'}</span>
+			{#if activeVersion}
+				<span class="font-mono text-foreground font-semibold">({activeVersion})</span>
 			{/if}
 		</div>
 		<h2 class="mb-3 text-3xl font-bold tracking-tight font-heading sm:text-4xl">
@@ -133,6 +162,38 @@
 			Native builds for Windows, macOS, Linux, and Android. Fast, local-first, zero telemetry.
 		</p>
 	</div>
+
+	<Tabs.Root value={channel} onValueChange={selectChannel} class="items-center gap-6">
+		<Tabs.List aria-label="Release channel" class="group-data-horizontal/tabs:h-9">
+			<Tabs.Trigger value="stable" class="px-4">Stable</Tabs.Trigger>
+			<Tabs.Trigger value="nightly" class="px-4">
+				<HugeiconsIcon icon={TestTube01Icon} size={14} />
+				Nightly
+			</Tabs.Trigger>
+		</Tabs.List>
+		{#each ['stable', 'nightly'] as tab (tab)}
+			<Tabs.Content value={tab} class="w-full">
+				{#if tab === channel}
+					{@render downloads()}
+				{/if}
+			</Tabs.Content>
+		{/each}
+	</Tabs.Root>
+</section>
+
+{#snippet downloads()}
+	{#if channel === 'nightly'}
+		<div
+			class="mb-6 flex items-start gap-2 rounded-xl border border-sky-500/30 bg-sky-500/5 p-4 text-xs text-muted-foreground sm:text-sm"
+		>
+			<HugeiconsIcon icon={InformationCircleIcon} size={16} class="mt-0.5 shrink-0 text-sky-500" />
+			<p>
+				Nightly builds come from the latest changes and may be unstable. They install as a
+				separate app, <span class="font-medium text-foreground">Typwriter Nightly</span>, next to
+				the stable one, with their own settings, and update themselves to the next nightly.
+			</p>
+		</div>
+	{/if}
 
 	<!-- Recommended Platform Banner -->
 	<div
@@ -154,7 +215,7 @@
 				</div>
 				<h3 class="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
 					<HugeiconsIcon icon={detectedPlatform.icon} size={24} class="text-primary" />
-					Typwriter for {detectedPlatform.name}
+					{productName} for {detectedPlatform.name}
 				</h3>
 				<p class="text-xs text-muted-foreground sm:text-sm">
 					{#if userOs === 'windows'}
@@ -182,7 +243,7 @@
 					<Button
 						size="lg"
 						class="h-12 gap-2 px-6"
-						href={RELEASES_URL}
+						href={releasesUrl}
 						target="_blank"
 						rel="noopener noreferrer"
 					>
@@ -352,4 +413,4 @@
 			</div>
 		</div>
 	</div>
-</section>
+{/snippet}

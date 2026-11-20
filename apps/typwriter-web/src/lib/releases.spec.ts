@@ -1,5 +1,5 @@
 ﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getLatestRelease } from './releases';
+import { getLatestRelease, getRelease } from './releases';
 
 const CACHE_KEY = 'typwriter:latest-release:v1';
 const HOUR = 60 * 60 * 1000;
@@ -110,5 +110,29 @@ describe('latest release cache', () => {
 		fetchRelease.mockResolvedValueOnce(Response.json({ message: 'Invalid response' }));
 		expect(await getLatestRelease(fetchRelease)).toBeNull();
 		expect(storage.setItem).not.toHaveBeenCalled();
+	});
+});
+
+describe('nightly release', () => {
+	const NIGHTLY_KEY = 'typwriter:nightly-release:v1';
+	const nightly = { ...release('0.9.4-nightly.12'), tag_name: 'nightly', name: 'Nightly 0.9.4-nightly.12' };
+
+	it('fetches the nightly tag and caches it separately from stable', async () => {
+		entries.set(CACHE_KEY, JSON.stringify({ cachedAt: 10000000, release: release('0.9.3') }));
+		fetchRelease.mockResolvedValueOnce(Response.json(nightly));
+		expect(await getRelease('nightly', fetchRelease)).toEqual(nightly);
+		expect(fetchRelease).toHaveBeenCalledWith(
+			'https://api.github.com/repos/Ahdeyyy/typwriter/releases/tags/nightly',
+			expect.objectContaining({ cache: 'no-cache' })
+		);
+		expect(JSON.parse(entries.get(NIGHTLY_KEY)!).release).toEqual(nightly);
+		expect(JSON.parse(entries.get(CACHE_KEY)!).release).toEqual(release('0.9.3'));
+	});
+
+	it('refreshes within minutes, since each nightly removes the previous downloads', async () => {
+		entries.set(NIGHTLY_KEY, JSON.stringify({ cachedAt: 10000000 - 5 * 60 * 1000, release: nightly }));
+		const next = { ...nightly, name: 'Nightly 0.9.4-nightly.13' };
+		fetchRelease.mockResolvedValueOnce(Response.json(next));
+		expect(await getRelease('nightly', fetchRelease)).toEqual(next);
 	});
 });

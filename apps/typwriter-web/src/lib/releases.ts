@@ -11,8 +11,29 @@ export interface Release {
 	assets: ReleaseAsset[];
 }
 
-const CACHE_KEY = 'typwriter:latest-release:v1';
-const CACHE_TTL = 60 * 60 * 1000;
+export type Channel = 'stable' | 'nightly';
+
+const RELEASES_API = 'https://api.github.com/repos/Ahdeyyy/typwriter/releases';
+
+// Each nightly build deletes the previous one's files, so its download links
+// go stale quickly and are cached for much less time than a stable release.
+const CHANNELS: Record<Channel, { url: string; cacheKey: string; ttl: number }> = {
+	stable: {
+		url: `${RELEASES_API}/latest`,
+		cacheKey: 'typwriter:latest-release:v1',
+		ttl: 60 * 60 * 1000
+	},
+	nightly: {
+		url: `${RELEASES_API}/tags/nightly`,
+		cacheKey: 'typwriter:nightly-release:v1',
+		ttl: 5 * 60 * 1000
+	}
+};
+
+export const RELEASE_PAGES: Record<Channel, string> = {
+	stable: 'https://github.com/Ahdeyyy/typwriter/releases/latest',
+	nightly: 'https://github.com/Ahdeyyy/typwriter/releases/tag/nightly'
+};
 
 function isRelease(value: unknown): value is Release {
 	if (!value || typeof value !== 'object') return false;
@@ -32,11 +53,11 @@ function isRelease(value: unknown): value is Release {
 	);
 }
 
-function readCachedRelease(): Release | null {
+function readCachedRelease(cacheKey: string, ttl: number): Release | null {
 	try {
-		const cached = JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null');
+		const cached = JSON.parse(localStorage.getItem(cacheKey) ?? 'null');
 		const age = Date.now() - cached?.cachedAt;
-		if (age >= 0 && age < CACHE_TTL && isRelease(cached?.release)) {
+		if (age >= 0 && age < ttl && isRelease(cached?.release)) {
 			return cached.release;
 		}
 	} catch {
@@ -45,21 +66,20 @@ function readCachedRelease(): Release | null {
 	return null;
 }
 
-export async function getLatestRelease(
+export async function getRelease(
+	channel: Channel,
 	fetchRelease: typeof fetch = fetch
 ): Promise<Release | null> {
-	const cached = readCachedRelease();
+	const { url, cacheKey, ttl } = CHANNELS[channel];
+	const cached = readCachedRelease(cacheKey, ttl);
 	if (cached) return cached;
 
 	try {
-		const res = await fetchRelease(
-			'https://api.github.com/repos/Ahdeyyy/typwriter/releases/latest',
-			{
-				headers: { Accept: 'application/vnd.github+json' },
-				cache: 'no-cache',
-				signal: AbortSignal.timeout(8000)
-			}
-		);
+		const res = await fetchRelease(url, {
+			headers: { Accept: 'application/vnd.github+json' },
+			cache: 'no-cache',
+			signal: AbortSignal.timeout(8000)
+		});
 		if (!res.ok) return null;
 		const data: unknown = await res.json();
 		if (!isRelease(data)) return null;
@@ -75,7 +95,7 @@ export async function getLatestRelease(
 			}))
 		};
 		try {
-			localStorage.setItem(CACHE_KEY, JSON.stringify({ cachedAt: Date.now(), release }));
+			localStorage.setItem(cacheKey, JSON.stringify({ cachedAt: Date.now(), release }));
 		} catch {
 			// A storage failure must not discard a successful release lookup.
 		}
@@ -83,4 +103,8 @@ export async function getLatestRelease(
 	} catch {
 		return null;
 	}
+}
+
+export function getLatestRelease(fetchRelease: typeof fetch = fetch): Promise<Release | null> {
+	return getRelease('stable', fetchRelease);
 }
