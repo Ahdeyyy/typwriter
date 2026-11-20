@@ -4,14 +4,31 @@
   "mainBinaryName": "typwriter-nightly",
   "identifier": "com.ahdey.typwriter.nightly",
   "bundle": {
+    "fileAssociations": [
+      {
+        "ext": ["typ"],
+        "name": "Typst document (Nightly)",
+        "description": "Typst source document",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/vnd.typst"
+      }
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/nightly-file-association.nsh"
+      }
+    },
     "linux": {
       "deb": {
+        "desktopTemplate": "linux/typwriter-nightly.desktop",
         "files": {
           "/usr/share/mime/packages/com.ahdey.typwriter.xml": null,
           "/usr/share/mime/packages/com.ahdey.typwriter.nightly.xml": "linux/com.ahdey.typwriter.xml"
         }
       },
       "rpm": {
+        "desktopTemplate": "linux/typwriter-nightly.desktop",
         "files": {
           "/usr/share/mime/packages/com.ahdey.typwriter.xml": null,
           "/usr/share/mime/packages/com.ahdey.typwriter.nightly.xml": "linux/com.ahdey.typwriter.xml"

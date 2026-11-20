@@ -148,6 +148,16 @@ export interface AppSettings {
   lastPdfStandard?: string;
   lastPngScale?: number;
   lastPackageMode?: "zip" | "folder";
+  /** When the launch-time update check last reached the server (epoch ms). */
+  lastUpdateCheck?: number;
+}
+
+/** A newer build on this app's release track (`check_for_update`). */
+export interface UpdateInfo {
+  version: string;
+  /** The APK download, opened in the browser to install over this app. */
+  url: string;
+  notes: string;
 }
 
 // ─── Export configuration ──────────────────────────────────────────────────

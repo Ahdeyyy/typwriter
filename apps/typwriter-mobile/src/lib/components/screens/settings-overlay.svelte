@@ -23,6 +23,7 @@
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { app } from "$lib/stores/app.svelte";
   import { settings } from "$lib/stores/settings.svelte";
+  import { updater, type UpdateStatus } from "$lib/stores/updater.svelte";
   import { pickFontsDir, clearFontsDir, getFontsStatus, getTypstVersion } from "$lib/ipc/commands";
   import LicensesScreen from "./licenses-screen.svelte";
 
@@ -131,6 +132,14 @@
 
   let version = $state("");
   let typstVersion = $state("");
+
+  const updateLabel: Record<UpdateStatus, string> = {
+    idle: "Check for updates",
+    checking: "Checking…",
+    "up-to-date": "Up to date · Check again",
+    available: "Check for updates",
+    failed: "Check failed · Retry",
+  };
   onMount(() => {
     getVersion().then((v) => (version = v)).catch(() => {});
     // The Typst release this build compiles with — the same value documents see
@@ -315,6 +324,23 @@
             <div class="flex items-center justify-between">
               <span class="text-muted-foreground text-sm">Version</span>
               <span class="text-sm tabular-nums">{version || "—"}</span>
+            </div>
+            <div class="flex min-h-11 items-center justify-between gap-2">
+              <span class="text-muted-foreground text-sm">Updates</span>
+              {#if updater.status === "available" && updater.update}
+                <Button size="sm" onclick={() => updater.download()}>
+                  Download {updater.update.version}
+                </Button>
+              {:else}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={updater.status === "checking"}
+                  onclick={() => void updater.check()}
+                >
+                  {updateLabel[updater.status]}
+                </Button>
+              {/if}
             </div>
             <div class="flex items-center justify-between">
               <span class="text-muted-foreground text-sm">Typst</span>

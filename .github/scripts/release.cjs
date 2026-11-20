@@ -79,6 +79,19 @@ async function buildManifest({ repo, tag, version, notes, targets, readSignature
   return manifest;
 }
 
+// The Android app's update check (no Tauri updater on mobile): it compares
+// `version` with its own and sends the user to `url` to install over itself.
+function androidManifest({ repo, tag, version, notes, apk }) {
+  return {
+    version,
+    notes,
+    pub_date: new Date().toISOString(),
+    url: `https://github.com/${repo.owner}/${repo.repo}/releases/download/${tag}/${encodeURIComponent(apk)}`,
+  };
+}
+
+const manifestData = manifest => Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
+
 async function publishUpdater({ github, context, releaseId, version }) {
   const repo = context.repo;
   const { data: release } = await github.rest.repos.getRelease({
@@ -129,10 +142,17 @@ async function publishUpdater({ github, context, releaseId, version }) {
     },
   });
   await uploadAsset({
-    github, context, releaseId, name: 'latest.json',
-    data: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`),
+    github, context, releaseId, name: 'latest.json', data: manifestData(manifest),
+  });
+  await uploadAsset({
+    github, context, releaseId, name: 'android.json',
+    data: manifestData(androidManifest({
+      repo, tag, version, notes: manifest.notes, apk: `typwriter_mobile_${version}_arm64.apk`,
+    })),
   });
   return manifest;
 }
 
-module.exports = { buildManifest, prepareRelease, publishUpdater, uploadAsset };
+module.exports = {
+  androidManifest, buildManifest, manifestData, prepareRelease, publishUpdater, uploadAsset,
+};

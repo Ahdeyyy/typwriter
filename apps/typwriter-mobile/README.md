@@ -32,22 +32,29 @@ Standalone sessions are not restored automatically after restarting the app.
 
 `src-tauri/build.rs` installs the Android `VIEW` filters from
 `src-tauri/android_file_associations.rs` on every Android build, including
-after `android init`. Both typed and MIME-free intents require a `content://` or
-`file://` URI whose path ends in `.typ` (case insensitive). A MIME wildcard handles
-providers that report Typst as plain text, binary, or a vendor-specific type, but
-is always constrained by the URI extension, so PNGs and other file types do not
-advertise Typwriter as a handler. Android 12+ uses suffix matching; Android 7–11
-uses legacy patterns supporting up to 32 dots across the URI path.
+after `android init`. There are three, all for `content://` and `file://` URIs:
 
-Android cannot filter on a provider's display name in the **Open with** chooser.
-If a file manager sends an opaque URI such as `content://provider/document/42`,
-use **Open file** inside Typwriter instead. The app checks the provider's actual
-display name before reading any document, including explicit opens.
+1. Any MIME type (`*/*`) when the URI path ends in `.typ` (case insensitive).
+2. No MIME type at all, again only for paths ending in `.typ`.
+3. Any URI, including opaque ones such as `content://provider/document/42`,
+   reported as `application/octet-stream`, `text/vnd.typst`, `text/x-typst` or
+   `application/x-typst`.
+
+Android cannot filter on a provider's display name, and most file managers,
+Downloads and attachment viewers send opaque URIs, which only filter 3 can match.
+Android has no MIME type for `.typ`, so those providers report octet-stream.
+The cost is that Typwriter is also offered for other unrecognised binary files;
+the app checks the provider's actual display name before reading any document
+and rejects anything that isn't `.typ`. Photos, PDFs, archives and plain-text
+files carry their own types and never list Typwriter — keep wildcards,
+`text/*` and `text/plain` out of filter 3. Android 12+ uses suffix matching;
+Android 7–11 uses legacy patterns supporting up to 32 dots across the URI path.
 
 On a device, verify opening through the picker, **Open with** from a file manager
 with the app stopped and running (including unknown/MIME-free types, dotted paths,
-and uppercase extensions), absence from PNG/TXT/PDF choosers, opaque content URIs
-through **Open file**, choosing **Always** and reopening a `.typ` file, save-back to the
+and uppercase extensions), **Open with** from the Downloads app and an email or
+chat attachment (opaque URIs), absence from PNG/TXT/PDF choosers, a non-`.typ`
+binary being rejected with a message, choosing **Always** and reopening a `.typ` file, save-back to the
 original, switching between workspaces and documents, cancellation/non-`.typ`
 rejection, a read-only provider,
 and external edits with both clean and dirty buffers.
@@ -99,6 +106,22 @@ manifests, lockfiles, and generator sources without accessing the network.
 The check also verifies that
 the catalog contains exactly the direct dependency set, at its installed or
 locked versions.
+
+## Updates
+
+Tauri's updater doesn't cover Android, so the app checks for itself:
+`check_for_update` (`src-tauri/src/commands/app.rs`) reads the track's
+`android.json` — `releases/latest/download/android.json` for stable,
+`releases/download/nightly/android.json` for the nightly app (identifier ending
+in `.nightly`) — which CI publishes next to the APK. A newer version shows a
+toast at launch (at most once a day) and a Download button in Settings, which
+opens the APK in the browser; Android installs it over the app, keeping its
+data, because it carries the same signing key and a higher versionCode.
+
+Secondary route: [Obtainium](https://github.com/ImranR98/Obtainium) can track
+`https://github.com/Ahdeyyy/typwriter` directly. For stable, filter APKs by
+`^typwriter_mobile_[0-9].*_arm64\.apk$`; for nightly, enable "Include
+prereleases" and filter by `^typwriter_mobile_nightly_.*_arm64\.apk$`.
 
 ## Android manifest note (`adjustResize`)
 

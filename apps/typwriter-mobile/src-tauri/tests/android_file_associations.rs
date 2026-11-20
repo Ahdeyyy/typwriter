@@ -57,26 +57,52 @@ fn android_simple_glob(pattern: &str, path: &str) -> bool {
     (p == pattern.len() && s == path.len()) || &pattern[p..] == b".*"
 }
 
-#[test]
-fn every_view_filter_requires_a_typ_path_even_with_a_wildcard_mime_type() {
-    let xml = android_file_associations::intent_filters();
-    let filters: Vec<_> = xml
-        .split("<intent-filter>")
+fn filters(xml: &str) -> Vec<&str> {
+    xml.split("<intent-filter>")
         .skip(1)
         .map(|filter| filter.split("</intent-filter>").next().unwrap())
-        .collect();
-    assert_eq!(filters.len(), 2);
+        .collect()
+}
+
+#[test]
+fn wildcard_and_untyped_view_filters_require_a_typ_path() {
+    let xml = android_file_associations::intent_filters();
+    let filters = filters(&xml);
+    assert_eq!(filters.len(), 3);
     assert_eq!(attributes(filters[0], "mimeType"), ["*/*"]);
     assert!(attributes(filters[1], "mimeType").is_empty());
+    for filter in &filters[..2] {
+        assert!(!attributes(filter, "pathPattern").is_empty());
+        assert!(!attributes(filter, "pathSuffix").is_empty());
+    }
     for filter in filters {
         assert_eq!(attributes(filter, "scheme"), ["content", "file"]);
         // Scheme AND authority are required or Android ignores path filters.
         // The empty authority also covers file:///storage/... URLs.
         assert_eq!(attributes(filter, "host"), ["*", ""]);
-        assert!(!attributes(filter, "pathPattern").is_empty());
-        assert!(!attributes(filter, "pathSuffix").is_empty());
         assert!(filter.contains("android.intent.action.VIEW"));
         assert!(!filter.contains("android.intent.action.SEND"));
+    }
+}
+
+// Most file managers, Downloads and attachment viewers hand over opaque URIs
+// (`content://…/document/42`), which only a MIME filter without paths matches.
+// Android has no type for `.typ`, so those arrive as octet-stream.
+#[test]
+fn opaque_uris_match_on_typst_capable_mime_types_only() {
+    let xml = android_file_associations::intent_filters();
+    let opaque = filters(&xml)[2];
+    assert!(attributes(opaque, "pathPattern").is_empty());
+    assert!(attributes(opaque, "pathSuffix").is_empty());
+    let types = attributes(opaque, "mimeType");
+    assert_eq!(types, android_file_associations::TYPST_MIME_TYPES);
+    // Android matches these exactly: nothing here may cover photos, PDFs,
+    // archives or plain-text notes.
+    for mime in &types {
+        assert!(!mime.contains('*'), "{mime}");
+    }
+    for other in ["image/png", "application/pdf", "application/zip", "text/plain"] {
+        assert!(!types.iter().any(|mime| *mime == other), "{other}");
     }
 }
 

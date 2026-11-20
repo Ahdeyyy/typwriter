@@ -3,6 +3,7 @@
   import { app } from "$lib/stores/app.svelte";
   import { settings } from "$lib/stores/settings.svelte";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { updater } from "$lib/stores/updater.svelte";
   import { startDocumentOpening } from "$lib/document-opening";
   import HomeScreen from "$lib/components/screens/home.svelte";
   import EditorScreen from "$lib/components/screens/editor.svelte";
@@ -21,6 +22,8 @@
     const holdTimer = setTimeout(() => (restoring = false), RESTORE_HOLD_MS);
     app.init();
     workspace.init();
+    // Dev builds carry the committed version, so they'd always be "behind".
+    if (!import.meta.env.DEV) void updater.checkPassive();
     const version = workspace.version;
     const documentOpening = startDocumentOpening();
     const restoreWorkspace = async () => {

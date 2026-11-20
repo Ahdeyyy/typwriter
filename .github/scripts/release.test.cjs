@@ -88,11 +88,18 @@ test('finalizer creates all updater entries from uploaded signatures with stable
   const writes = calls.filter(([name]) => /upload|update|delete/.test(name));
   assert.deepEqual(writes.map(([name]) => name), [
     'uploadReleaseAsset', 'updateReleaseAsset', 'updateReleaseAsset', 'deleteReleaseAsset',
+    'uploadReleaseAsset',
   ]);
   assert.equal(writes[0][1].release_id, release.id);
   assert.equal(writes[0][1].name, 'latest.json.next');
   assert.deepEqual(JSON.parse(writes[0][1].data), manifest);
   assert.equal(writes[2][1].name, 'latest.json');
+  // The Android update check reads android.json, published after latest.json.
+  assert.equal(writes[4][1].name, 'android.json');
+  const android = JSON.parse(writes[4][1].data);
+  assert.equal(android.version, version);
+  assert.equal(android.notes, 'Release notes');
+  assert.equal(android.url, `https://github.com/example/typwriter/releases/download/${release.tag_name}/typwriter_mobile_${version}_arm64.apk`);
 });
 
 test('finalizer leaves existing updater intact when an installer or signature is missing', async () => {

@@ -46,6 +46,32 @@ test('the committed overlays give each app its own identity', () => {
   }
 });
 
+test('desktop nightly opens .typ files without taking them over from stable', () => {
+  const dir = path.resolve(__dirname, '../../apps/typwriter-desktop/src-tauri');
+  const read = file => fs.readFileSync(path.join(dir, file), 'utf8');
+  const stable = JSON.parse(read('tauri.conf.json'));
+  const nightly = JSON.parse(read('tauri.nightly.conf.json'));
+  const [association] = nightly.bundle.fileAssociations;
+  // Windows keys the ProgID on the name: sharing stable's lets nightly's
+  // installer rewrite, and its uninstaller delete, stable's handler.
+  assert(!stable.bundle.fileAssociations.some(a => a.name === association.name));
+  assert.deepEqual(association.ext, ['typ']);
+  // macOS: Finder prefers stable but still lists nightly under Open With.
+  assert.equal(association.rank, 'Alternate');
+  // Windows: the installer hooks hand .typ back to the previous handler.
+  const hooks = read(nightly.bundle.windows.nsis.installerHooks);
+  assert(hooks.includes(`!define NIGHTLY_FILECLASS "${association.name}"`));
+  for (const hook of ['POSTINSTALL', 'PREUNINSTALL', 'POSTUNINSTALL']) {
+    assert(hooks.includes(`!macro NSIS_HOOK_${hook}`), hook);
+  }
+  // Linux has no handler ranking, so nightly declares no MIME types at all.
+  for (const format of ['deb', 'rpm']) {
+    const template = read(nightly.bundle.linux[format].desktopTemplate);
+    assert(!template.includes('MimeType'), format);
+    assert(template.includes('Exec={{exec}} %F'), format);
+  }
+});
+
 test('desktop bundles are renamed to predictable asset names', () => {
   const bundleDir = tempDir();
   const outDir = tempDir();
@@ -133,10 +159,16 @@ test('publishing uploads the build, then the manifest, then prunes older builds'
   assert.equal(exe.signature, `signature:Typwriter-Nightly_${version}_x64-setup.exe.sig`);
 
   const uploads = calls.filter(([name]) => name === 'uploadReleaseAsset').map(([, args]) => args.name);
-  assert.equal(uploads.at(-1), 'latest.json.next');
+  assert.deepEqual(uploads.slice(-2), ['latest.json.next', 'android.json']);
+  const android = JSON.parse(calls.find(([, args]) => args?.name === 'android.json')[1].data);
+  assert.equal(android.version, version);
+  assert.equal(android.url, `https://github.com/example/typwriter/releases/download/nightly/typwriter_mobile_nightly_${version}_arm64.apk`);
   const firstDelete = calls.findIndex(([name, args]) => name === 'deleteReleaseAsset' && args.asset_id === 1);
-  assert(firstDelete > calls.findIndex(([, args]) => args?.name === 'latest.json.next'));
-  assert.deepEqual(assets.map(asset => asset.name).sort(), [...required, 'latest.json'].sort());
+  assert(firstDelete > calls.findIndex(([, args]) => args?.name === 'android.json'));
+  assert.deepEqual(
+    assets.map(asset => asset.name).sort(),
+    [...required, 'latest.json', 'android.json'].sort(),
+  );
 });
 
 test('the first nightly creates a prerelease that never becomes latest', async () => {

@@ -23,6 +23,7 @@ export class SettingsStore {
   lastPdfStandard = $state<string>("1.7");
   lastPngScale = $state<number>(2.0);
   lastPackageMode = $state<"zip" | "folder">("zip");
+  lastUpdateCheck = $state(0);
 
   private store: Store | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -55,6 +56,7 @@ export class SettingsStore {
         this.lastPdfStandard = saved.lastPdfStandard ?? this.lastPdfStandard;
         this.lastPngScale = saved.lastPngScale ?? this.lastPngScale;
         this.lastPackageMode = saved.lastPackageMode ?? this.lastPackageMode;
+        this.lastUpdateCheck = saved.lastUpdateCheck ?? this.lastUpdateCheck;
       }
       this.store = store;
       this.loaded = true;
@@ -75,6 +77,7 @@ export class SettingsStore {
       lastPdfStandard: this.lastPdfStandard,
       lastPngScale: this.lastPngScale,
       lastPackageMode: this.lastPackageMode,
+      lastUpdateCheck: this.lastUpdateCheck,
     };
   }
 
@@ -108,6 +111,10 @@ export class SettingsStore {
   }
   setPreviewScaleBucket(bucket: 1 | 2 | 3 | 4) {
     this.previewScaleBucket = bucket;
+    this.save();
+  }
+  setLastUpdateCheck(at: number) {
+    this.lastUpdateCheck = at;
     this.save();
   }
   setLastWorkspace(name: string | null) {

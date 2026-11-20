@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { buildManifest, uploadAsset } = require('./release.cjs');
+const { androidManifest, buildManifest, manifestData, uploadAsset } = require('./release.cjs');
 
 // Nightly builds are separate apps (own identifier, name, icon and updater
 // endpoint, from each app's tauri.nightly.conf.json) published to one rolling
@@ -139,9 +139,9 @@ async function publishNightly({ github, context, version, dir, warn = () => {} }
   const release = await moveNightly({
     github, context, name: `Nightly ${version}`, body, warn,
   });
-  // Installed nightlies keep reading the previous latest.json, whose assets
-  // stay up until the end: upload this build, then switch the manifest over,
-  // then prune.
+  // Installed nightlies keep reading the previous latest.json/android.json,
+  // whose assets stay up until the end: upload this build, then switch the
+  // manifests over, then prune.
   for (const name of files) {
     await uploadAsset({
       github, context, releaseId: release.id, name,
@@ -153,10 +153,15 @@ async function publishNightly({ github, context, version, dir, warn = () => {} }
     readSignature: async name => fs.readFileSync(path.join(dir, `${name}.sig`), 'utf8'),
   });
   await uploadAsset({
-    github, context, releaseId: release.id, name: 'latest.json',
-    data: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`),
+    github, context, releaseId: release.id, name: 'latest.json', data: manifestData(manifest),
   });
-  const keep = new Set([...files, 'latest.json']);
+  await uploadAsset({
+    github, context, releaseId: release.id, name: 'android.json',
+    data: manifestData(androidManifest({
+      repo, tag: TAG, version, notes: body, apk: `${MOBILE_PREFIX}_${version}_arm64.apk`,
+    })),
+  });
+  const keep = new Set([...files, 'latest.json', 'android.json']);
   const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
     ...repo, release_id: release.id,
   });

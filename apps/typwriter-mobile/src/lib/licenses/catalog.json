@@ -1,5 +1,5 @@
 {
-  "inputHash": "f82c561c16d4b8cf064173933571d66a6ca544030aadee647d22ebab60726f73",
+  "inputHash": "8318de4eba1b49df2ecb3720cc41233abe6520f35970944ca3d20b35e7ff4d83",
   "packages": [
     {
       "name": "@codemirror/autocomplete",
@@ -550,6 +550,22 @@
         {
           "title": "LICENSE",
           "text": "e38e309ca1f5d07b"
+        }
+      ]
+    },
+    {
+      "name": "semver",
+      "version": "1.0.28",
+      "ecosystem": "Rust",
+      "license": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "title": "LICENSE-APACHE",
+          "text": "85ad950cce8752f7"
+        },
+        {
+          "title": "LICENSE-MIT",
+          "text": "30fefc3a7d6a0041"
         }
       ]
     },

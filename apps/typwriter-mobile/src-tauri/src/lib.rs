@@ -119,6 +119,7 @@ pub fn run() {
             document::pick_document,
             document::open_document,
             commands::app::get_typst_version,
+            commands::app::check_for_update,
             commands::workspace::list_workspaces,
             commands::workspace::create_workspace,
             commands::workspace::delete_workspace,

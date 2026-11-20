@@ -53,6 +53,7 @@
 					.find(Boolean) ?? null)
 			: version
 	);
+	const OBTAINIUM_URL = 'https://github.com/ImranR98/Obtainium';
 	const MACOS_UNSIGNED_GUIDE_URL =
 		'https://github.com/st235/macos-unverified-signature-apps-installation';
 
@@ -408,7 +409,15 @@
 			<div class="flex items-start gap-1.5 rounded-lg bg-muted/40 p-2.5 text-[0.6875rem] text-muted-foreground">
 				<HugeiconsIcon icon={InformationCircleIcon} size={13} class="mt-0.5 shrink-0 text-muted-foreground" />
 				<p>
-					Standalone mobile app via SAF storage.
+					The app checks for updates itself. You can also track releases with
+					<a
+						href={OBTAINIUM_URL}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="font-medium text-foreground underline underline-offset-2 hover:text-primary"
+					>
+						Obtainium</a
+					>.
 				</p>
 			</div>
 		</div>

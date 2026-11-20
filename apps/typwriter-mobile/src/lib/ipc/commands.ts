@@ -21,6 +21,7 @@ import type {
   HtmlExportConfig,
   ExportShareConfig,
   ExportShareResult,
+  UpdateInfo,
 } from "./types";
 
 const call = <T>(cmd: string, args?: Record<string, unknown>): ResultAsync<T, string> =>
@@ -30,6 +31,8 @@ const call = <T>(cmd: string, args?: Record<string, unknown>): ResultAsync<T, st
 
 /** Version of the Typst compiler this build links against (`sys.version`). */
 export const getTypstVersion = () => call<string>("get_typst_version");
+/** A newer build on this app's track (stable or nightly), or null. */
+export const checkForUpdate = () => call<UpdateInfo | null>("check_for_update");
 
 // ─── Workspace ───────────────────────────────────────────────────────────────
 
