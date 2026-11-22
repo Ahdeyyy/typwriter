@@ -4,8 +4,11 @@ Landing page for Typwriter — a static SvelteKit site whose job is to advertise
 
 ## Stack
 
-- SvelteKit (Svelte 5), TypeScript, Tailwind v4, shadcn-svelte (Lyra style, mauve, 0rem radius), Hugeicons (`@hugeicons/svelte`).
-- `bun` for package management; `eslint` + `prettier` + `vitest` configured.
+- SvelteKit 3 (Svelte 5), Vite 8, TypeScript 6, Tailwind v4, shadcn-svelte (Lyra style, mauve, 0rem radius), Hugeicons (`@hugeicons/svelte`). Needs Node 22.17+.
+- There is no `svelte.config.js`: SvelteKit and vite-plugin-svelte options (adapter, `dynamicCompileOptions` forcing runes) are passed to `sveltekit({...})` in `vite.config.ts`. `eslint.config.js` reads them back through `@sveltejs/load-config`.
+- `$lib` no longer exists. Import shared code through the `#lib` subpath import (`package.json` `imports`) with an explicit extension: `#lib/links.ts`, `#lib/components/ui/button/index.ts`, `#lib/components/Navbar.svelte`. `components.json` uses `#lib` too, so new shadcn components follow suit.
+- TypeScript stays on 6.x: SvelteKit 3, svelte-check and typescript-eslint don't support TypeScript 7 yet.
+- `bun` for package management; `eslint` 10 + `prettier` + `vitest` 5 configured.
 - Dev server on port 5173 (`bun run dev`).
 
 ## Structure (`src/`)

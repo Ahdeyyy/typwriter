@@ -43,6 +43,11 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
+      # SvelteKit 3 (typwriter-web) needs Node 22.17+; svelte-kit and
+      # svelte-check run under Node even when started through bun.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
       - uses: oven-sh/setup-bun@v2
       - name: Release workflow regression tests
         run: node --test .github/scripts/*.test.cjs

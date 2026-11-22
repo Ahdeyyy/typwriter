@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getRelease, RELEASE_PAGES, type Channel, type Release } from '$lib/releases';
+	import { getRelease, RELEASE_PAGES, type Channel, type Release } from '#lib/releases.ts';
 	import {
 		assetLabel,
 		detectPlatform,
@@ -9,11 +9,11 @@
 		PLATFORM_NAMES,
 		PLATFORMS,
 		type Platform
-	} from '$lib/platforms';
-	import * as Tabs from '$lib/components/ui/tabs';
-	import Navbar from '$lib/components/Navbar.svelte';
-	import Footer from '$lib/components/Footer.svelte';
-	import PlatformIcon from '$lib/components/PlatformIcon.svelte';
+	} from '#lib/platforms.ts';
+	import * as Tabs from '#lib/components/ui/tabs/index.ts';
+	import Navbar from '#lib/components/Navbar.svelte';
+	import Footer from '#lib/components/Footer.svelte';
+	import PlatformIcon from '#lib/components/PlatformIcon.svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { Download04Icon } from '@hugeicons/core-free-icons';
 

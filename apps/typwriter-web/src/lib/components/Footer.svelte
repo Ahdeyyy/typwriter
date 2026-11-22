@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { GITHUB_URL, SPONSOR_URL } from '$lib/links';
+	import { GITHUB_URL, SPONSOR_URL } from '#lib/links.ts';
 
 	const link = 'transition-colors duration-150 ease-[ease] hover:text-foreground';
 </script>
@@ -11,7 +11,7 @@
 	>
 		<span>© {new Date().getFullYear()} Typwriter · MIT License</span>
 		<div class="flex items-center gap-5">
-			<a href={resolve('/download')} class={link}>Download</a>
+			<a href={resolve('download')} class={link}>Download</a>
 			<a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" class={link}>GitHub</a>
 			<a href={SPONSOR_URL} target="_blank" rel="noopener noreferrer" class={link}>Sponsor</a>
 		</div>

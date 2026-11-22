@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { getLatestRelease, RELEASE_PAGES, type Release } from '$lib/releases';
+	import { getLatestRelease, RELEASE_PAGES, type Release } from '#lib/releases.ts';
 	import {
 		assetLabel,
 		detectPlatform,
@@ -9,13 +9,13 @@
 		groupAssets,
 		PLATFORM_NAMES,
 		type Platform
-	} from '$lib/platforms';
-	import { reveal } from '$lib/reveal';
-	import { Button } from '$lib/components/ui/button';
-	import Navbar from '$lib/components/Navbar.svelte';
-	import Footer from '$lib/components/Footer.svelte';
-	import InteractiveShowcase from '$lib/components/InteractiveShowcase.svelte';
-	import PlatformIcon from '$lib/components/PlatformIcon.svelte';
+	} from '#lib/platforms.ts';
+	import { reveal } from '#lib/reveal.ts';
+	import { Button } from '#lib/components/ui/button/index.ts';
+	import Navbar from '#lib/components/Navbar.svelte';
+	import Footer from '#lib/components/Footer.svelte';
+	import InteractiveShowcase from '#lib/components/InteractiveShowcase.svelte';
+	import PlatformIcon from '#lib/components/PlatformIcon.svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { Download04Icon } from '@hugeicons/core-free-icons';
 
@@ -41,7 +41,7 @@
 	const releaseFallback = $derived(releaseChecked && !primaryAsset);
 	const primaryHref = $derived(
 		primaryAsset?.browser_download_url ??
-			(releaseFallback ? RELEASE_PAGES.stable : resolve('/download'))
+			(releaseFallback ? RELEASE_PAGES.stable : resolve('download'))
 	);
 
 	const features = [
@@ -112,7 +112,7 @@
 						</span>
 					</Button>
 				{:else}
-					<Button class="h-11 gap-2 px-6 text-sm font-semibold" href={resolve('/download')}>
+					<Button class="h-11 gap-2 px-6 text-sm font-semibold" href={resolve('download')}>
 						<HugeiconsIcon icon={Download04Icon} size={18} />
 						Download
 					</Button>
@@ -129,7 +129,7 @@
 					{/if}
 				</p>
 				<a
-					href={resolve('/download')}
+					href={resolve('download')}
 					class="text-sm text-muted-foreground underline-offset-4 transition-colors duration-150 ease-[ease] hover:text-foreground hover:underline"
 				>
 					Other platforms and nightly builds

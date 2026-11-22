@@ -1,11 +1,11 @@
 <script lang="ts">
-	import type { Platform } from '$lib/platforms';
-	import { cn } from '$lib/utils.js';
+	import type { Platform } from '#lib/platforms.ts';
+	import { cn } from '#lib/utils.js';
 	// Logos from svgl.app. Apple's is inlined so it can follow the text colour;
 	// the others keep their brand colours and are loaded as images.
-	import windows from '$lib/assets/platforms/windows.svg';
-	import linux from '$lib/assets/platforms/linux.svg';
-	import android from '$lib/assets/platforms/android.svg';
+	import windows from '#lib/assets/platforms/windows.svg';
+	import linux from '#lib/assets/platforms/linux.svg';
+	import android from '#lib/assets/platforms/android.svg';
 
 	let {
 		platform,

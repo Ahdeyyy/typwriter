@@ -2,10 +2,10 @@
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { Sun01Icon, Moon02Icon } from '@hugeicons/core-free-icons';
 
-	import showcaseDark from '$lib/assets/showcase_dark.png';
-	import showcaseLight from '$lib/assets/showcase_light.png';
-	import mobileShowcaseDark from '$lib/assets/mobile_showcase_dark.png';
-	import mobileShowcaseLight from '$lib/assets/mobile_showcase_light.png';
+	import showcaseDark from '#lib/assets/showcase_dark.png';
+	import showcaseLight from '#lib/assets/showcase_light.png';
+	import mobileShowcaseDark from '#lib/assets/mobile_showcase_dark.png';
+	import mobileShowcaseLight from '#lib/assets/mobile_showcase_light.png';
 
 	type Theme = 'dark' | 'light';
 

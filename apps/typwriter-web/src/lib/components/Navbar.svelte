@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
+	import { Button } from '#lib/components/ui/button/index.ts';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { Github01Icon } from '@hugeicons/core-free-icons';
 	import { resolve } from '$app/paths';
-	import { GITHUB_URL } from '$lib/links';
+	import { GITHUB_URL } from '#lib/links.ts';
 </script>
 
 <header
@@ -26,7 +26,7 @@
 				Features
 			</a>
 			<a
-				href={resolve('/download')}
+				href={resolve('download')}
 				class="px-2 transition-colors duration-150 ease-[ease] hover:text-foreground">Download</a
 			>
 			<Button
