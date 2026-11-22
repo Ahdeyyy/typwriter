@@ -15,6 +15,8 @@ function defaultBucket(): 1 | 2 | 3 | 4 {
 export class SettingsStore {
   editorFontSize = $state(15);
   showLineNumbers = $state(false);
+  showInlineTitle = $state(true);
+  hideChromeOnScroll = $state(true);
   autosaveMs = $state(600);
   previewScaleBucket = $state<1 | 2 | 3 | 4>(defaultBucket());
   lastWorkspace = $state<string | null>(null);
@@ -48,6 +50,8 @@ export class SettingsStore {
       if (saved) {
         this.editorFontSize = saved.editorFontSize ?? this.editorFontSize;
         this.showLineNumbers = saved.showLineNumbers ?? this.showLineNumbers;
+        this.showInlineTitle = saved.showInlineTitle ?? this.showInlineTitle;
+        this.hideChromeOnScroll = saved.hideChromeOnScroll ?? this.hideChromeOnScroll;
         this.autosaveMs = saved.autosaveMs ?? this.autosaveMs;
         this.previewScaleBucket = saved.previewScaleBucket ?? this.previewScaleBucket;
         this.lastWorkspace = saved.lastWorkspace ?? this.lastWorkspace;
@@ -69,6 +73,8 @@ export class SettingsStore {
     return {
       editorFontSize: this.editorFontSize,
       showLineNumbers: this.showLineNumbers,
+      showInlineTitle: this.showInlineTitle,
+      hideChromeOnScroll: this.hideChromeOnScroll,
       autosaveMs: this.autosaveMs,
       previewScaleBucket: this.previewScaleBucket,
       lastWorkspace: this.lastWorkspace,
@@ -103,6 +109,14 @@ export class SettingsStore {
   }
   setShowLineNumbers(value: boolean) {
     this.showLineNumbers = value;
+    this.save();
+  }
+  setShowInlineTitle(value: boolean) {
+    this.showInlineTitle = value;
+    this.save();
+  }
+  setHideChromeOnScroll(value: boolean) {
+    this.hideChromeOnScroll = value;
     this.save();
   }
   setAutosaveMs(ms: number) {

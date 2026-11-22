@@ -182,7 +182,7 @@
     showCloseButton={app.overlay !== "licenses"}
     style={`height: var(--app-height, ${viewportHeight});`}>
     <div class="flex h-full min-h-0 flex-col"
-      style={`padding-top: calc(${viewportTop}px + env(safe-area-inset-top));`}>
+      style={`padding-top: calc(${viewportTop}px + var(--safe-top));`}>
       <div class="flex h-12 shrink-0 items-center border-b px-4">
         {#if app.overlay === "licenses"}
           <Button variant="ghost" size="icon-sm" class="mr-2" aria-label="Back to settings" onclick={() => app.closeOverlay()}>
@@ -240,6 +240,25 @@
             <Switch
               checked={settings.showLineNumbers}
               onCheckedChange={(v) => settings.setShowLineNumbers(v)}
+            />
+          </section>
+
+          <section class="flex items-center justify-between">
+            <span class="text-sm font-medium">Inline title</span>
+            <Switch
+              checked={settings.showInlineTitle}
+              onCheckedChange={(v) => settings.setShowInlineTitle(v)}
+            />
+          </section>
+
+          <section class="flex items-center justify-between gap-4">
+            <div class="flex flex-col">
+              <span class="text-sm font-medium">Hide controls while scrolling</span>
+              <span class="text-muted-foreground text-xs">Also hides the status bar for distraction-free reading</span>
+            </div>
+            <Switch
+              checked={settings.hideChromeOnScroll}
+              onCheckedChange={(v) => settings.setHideChromeOnScroll(v)}
             />
           </section>
 

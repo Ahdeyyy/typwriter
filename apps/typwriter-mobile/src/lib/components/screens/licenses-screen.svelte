@@ -53,7 +53,7 @@
   </div>
 
   <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4"
-    style="padding-bottom: max(1rem, env(safe-area-inset-bottom));">
+    style="padding-bottom: max(1rem, var(--safe-bottom));">
     {#if failed}
       <div class="flex flex-col items-start gap-3" role="alert">
         <p class="text-muted-foreground text-sm">Couldn't load the licenses.</p>

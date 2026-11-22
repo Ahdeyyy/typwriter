@@ -5383,6 +5383,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-system-bars"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+]
+
+[[package]]
 name = "tauri-runtime"
 version = "2.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6364,6 +6374,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-opener",
  "tauri-plugin-store",
+ "tauri-plugin-system-bars",
  "tauri-utils",
  "thiserror 2.0.18",
  "typst",

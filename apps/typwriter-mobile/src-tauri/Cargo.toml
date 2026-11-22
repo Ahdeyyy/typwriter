@@ -49,6 +49,9 @@ png = "0.18"
 zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 base64 = "0.22"
 tauri-plugin-android-fs = { version = "=28.1.0", features = ["legacy_storage_permission"] }
+# Local: status bar hide/show, bar icon style and real window insets for the
+# edge-to-edge, immersive editor and preview.
+tauri-plugin-system-bars = { path = "plugins/system-bars" }
 
 # Mobile cross-compilation can't find a system OpenSSL; vendor it.
 [target.'cfg(target_os = "android")'.dependencies]

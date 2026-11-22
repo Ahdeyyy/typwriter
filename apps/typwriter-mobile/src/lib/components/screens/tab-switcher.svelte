@@ -82,7 +82,7 @@
   <div
     transition:screen
     class="bg-background fixed inset-0 z-50 flex flex-col"
-    style="padding-top: env(safe-area-inset-top);"
+    style="padding-top: var(--safe-top);"
   >
     <!-- Tab grid -->
     <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 tablet:p-8">
@@ -143,7 +143,7 @@
     <!-- Bottom bar: new tab · count · done -->
     <div
       class="flex shrink-0 items-center border-t px-4 py-3"
-      style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem);"
+      style="padding-bottom: calc(var(--safe-bottom) + 0.75rem);"
     >
       <button
         class="text-foreground -ml-1.5 flex size-11 items-center justify-center rounded-full"
@@ -188,7 +188,7 @@
       </div>
       <div
         class="flex flex-col gap-3 px-3 pb-4 pt-2"
-        style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);"
+        style="padding-bottom: calc(var(--safe-bottom) + 1rem);"
       >
         {#if !editor.isActiveTab(target)}
           <div class="bg-muted/40 overflow-hidden rounded-xl">

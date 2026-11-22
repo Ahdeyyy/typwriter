@@ -34,10 +34,10 @@
 <!-- Floating pill dock (browser-style). Transparent wrapper keeps the pill off
      the screen edges and above the home-indicator safe area. -->
 <div
-  class="shrink-0 px-3 pt-1 pb-2"
-  style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);"
+  class="pointer-events-none shrink-0 px-3 pt-1 pb-2"
+  style="padding-bottom: calc(var(--safe-bottom) + 0.5rem);"
 >
-  <div class="bg-muted/70 flex h-14 items-center justify-between gap-1 rounded-full border px-1.5 shadow-lg backdrop-blur-md">
+  <div class="float-pill flex h-14 items-center justify-between gap-1 px-1.5">
     <button
       class="text-foreground flex size-11 shrink-0 items-center justify-center rounded-full transition-opacity disabled:opacity-35"
       aria-label="Previous tab"

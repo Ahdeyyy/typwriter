@@ -69,7 +69,7 @@
   <div
     transition:screen={{ duration: 200, scale: 0.98 }}
     class="bg-background fixed inset-x-0 top-0 z-50 flex flex-col overflow-hidden"
-    style="height: var(--app-height, 100svh); padding-top: calc(var(--app-inset-top, 0px) + env(safe-area-inset-top));"
+    style="height: var(--app-height, 100svh); padding-top: calc(var(--app-inset-top, 0px) + var(--safe-top));"
     role="presentation"
   >
     <!-- Results — list on top, most relevant nearest the input below. -->
@@ -117,7 +117,7 @@
     <!-- Search input, pinned to the bottom above the keyboard. -->
     <div
       class="shrink-0 px-3 pt-2 tablet:px-[max(0.75rem,calc(50%-21rem))]"
-      style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);"
+      style="padding-bottom: calc(var(--safe-bottom) + 0.5rem);"
     >
       <div class="bg-muted flex items-center gap-2 rounded-full py-1 pl-5 pr-2">
         <input

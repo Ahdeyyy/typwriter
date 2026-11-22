@@ -22,6 +22,7 @@ import type {
   ExportShareConfig,
   ExportShareResult,
   UpdateInfo,
+  SystemInsets,
 } from "./types";
 
 const call = <T>(cmd: string, args?: Record<string, unknown>): ResultAsync<T, string> =>
@@ -138,3 +139,14 @@ export const exportWorkspace = (name: string) => call<number>("export_workspace"
 
 // AppSettings is re-exported for store typing convenience.
 export type { AppSettings };
+
+// ─── System bars (local `system-bars` plugin; no-ops off Android) ────────────
+
+/** Hide or show the Android status bar (immersive editor / preview). */
+export const setStatusBarHidden = (hidden: boolean) =>
+  call<void>("plugin:system-bars|set_status_bar_hidden", { hidden });
+/** Light or dark status/navigation-bar icons, following the app's theme. */
+export const setSystemBarStyle = (dark: boolean) =>
+  call<void>("plugin:system-bars|set_style", { dark });
+/** System-bar + cutout insets in CSS px, measured ignoring bar visibility. */
+export const getSystemInsets = () => call<SystemInsets>("plugin:system-bars|get_insets");

@@ -4055,6 +4055,48 @@
           "type": "string",
           "const": "store:deny-values",
           "markdownDescription": "Denies the values command without any pre-configured scope."
+        },
+        {
+          "description": "Everything the app's immersive chrome needs.\n#### This default permission set includes:\n\n- `allow-set-status-bar-hidden`\n- `allow-set-style`\n- `allow-get-insets`",
+          "type": "string",
+          "const": "system-bars:default",
+          "markdownDescription": "Everything the app's immersive chrome needs.\n#### This default permission set includes:\n\n- `allow-set-status-bar-hidden`\n- `allow-set-style`\n- `allow-get-insets`"
+        },
+        {
+          "description": "Enables the get_insets command without any pre-configured scope.",
+          "type": "string",
+          "const": "system-bars:allow-get-insets",
+          "markdownDescription": "Enables the get_insets command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_status_bar_hidden command without any pre-configured scope.",
+          "type": "string",
+          "const": "system-bars:allow-set-status-bar-hidden",
+          "markdownDescription": "Enables the set_status_bar_hidden command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_style command without any pre-configured scope.",
+          "type": "string",
+          "const": "system-bars:allow-set-style",
+          "markdownDescription": "Enables the set_style command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_insets command without any pre-configured scope.",
+          "type": "string",
+          "const": "system-bars:deny-get-insets",
+          "markdownDescription": "Denies the get_insets command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_status_bar_hidden command without any pre-configured scope.",
+          "type": "string",
+          "const": "system-bars:deny-set-status-bar-hidden",
+          "markdownDescription": "Denies the set_status_bar_hidden command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_style command without any pre-configured scope.",
+          "type": "string",
+          "const": "system-bars:deny-set-style",
+          "markdownDescription": "Denies the set_style command without any pre-configured scope."
         }
       ]
     },

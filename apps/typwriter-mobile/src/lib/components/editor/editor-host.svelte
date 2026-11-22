@@ -9,9 +9,12 @@
     themeC,
     lineNumbersC,
     fontSizeC,
+    titleC,
     themeExtensionFor,
     fontThemeFor,
   } from "$lib/editor/create-editor";
+  import { inlineTitle, inlineTitleFor } from "$lib/editor/inline-title";
+  import { immersive } from "$lib/stores/immersive.svelte";
   import {
     setInlineDiagnostics,
     type InlineDiagnostic,
@@ -28,11 +31,14 @@
     const relPath = editor.relPath;
     const view = createEditorView(host, editor.loadedText, relPath ?? "");
     editor.view = view;
+    // Scrolling the text hides the phone header, dock and status bar.
+    const unbindImmersive = immersive.bind("editor", view.scrollDOM);
     const cursor = editor.relPath ? editor.takePendingCursor(editor.relPath) : null;
     if (cursor !== null) {
       editor.programmatic(() => loadDocInto(view, editor.loadedText, editor.relPath!, cursor));
     }
     return () => {
+      unbindImmersive();
       // A history/back transition may unmount while a save is still draining.
       // Keep the seed current if this screen is mounted again before it ends.
       if (editor.relPath === relPath && !editor.loading && editor.fileKind === "text") {
@@ -62,6 +68,16 @@
   watch([() => editor.view, () => settings.showLineNumbers], ([view, show]) => {
     view?.dispatch({ effects: lineNumbersC.reconfigure(show ? lineNumbers() : []) });
   });
+
+  // Inline title follows renames and moves — the view outlives them.
+  // Also follows its setting.
+  watch(
+    [() => editor.view, () => editor.relPath, () => settings.showInlineTitle],
+    ([view, relPath, show]) => {
+      const title = show ? inlineTitleFor(relPath ?? "") : "";
+      view?.dispatch({ effects: titleC.reconfigure(inlineTitle(title)) });
+    },
+  );
 
   // Font size.
   watch([() => editor.view, () => settings.editorFontSize], ([view, size]) => {

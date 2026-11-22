@@ -8,7 +8,7 @@ import { sourceText } from "./licenses/source-text";
 
 type Package = { name: string; version: string; ecosystem: string; license: string;
   notices: { title: string; text: string }[] };
-type CargoDependency = string | { package?: string };
+type CargoDependency = string | { package?: string; path?: string };
 interface DependencyTables {
   dependencies?: Record<string, CargoDependency>;
   "build-dependencies"?: Record<string, CargoDependency>;
@@ -63,6 +63,9 @@ const directCrateNames = new Set<string>();
 for (const config of [cargo, ...Object.values(cargo.target ?? {})]) {
   for (const table of [config.dependencies, config["build-dependencies"], config["dev-dependencies"]]) {
     for (const [name, dependency] of Object.entries(table ?? {})) {
+      // Path crates (src-tauri/plugins/*) are the app's own code, not
+      // third-party dependencies with notices to carry.
+      if (typeof dependency !== "string" && dependency.path) continue;
       directCrateNames.add(typeof dependency === "string" ? name : dependency.package ?? name);
     }
   }

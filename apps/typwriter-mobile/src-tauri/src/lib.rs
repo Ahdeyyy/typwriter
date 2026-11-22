@@ -87,6 +87,8 @@ pub fn run() {
             });
         })
         .plugin(tauri_plugin_android_fs::init())
+        .plugin(tauri_plugin_system_bars::init())
+        .plugin(tauri_plugin_system_bars::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())

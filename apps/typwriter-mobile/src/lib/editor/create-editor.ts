@@ -16,6 +16,8 @@ import { typst, light, dark } from "./typst-lang";
 import { typstKeymap } from "./commands";
 import { inlineDiagnostics } from "./inline-diagnostics";
 import { caretVisibility } from "./caret-visibility";
+import { inlineTitle, inlineTitleFor } from "./inline-title";
+import { immersive } from "$lib/stores/immersive.svelte";
 import { settings } from "$lib/stores/settings.svelte";
 import { editor } from "$lib/stores/editor.svelte";
 import { completions } from "./completion-controller.svelte";
@@ -27,6 +29,7 @@ const CARET_SCROLL_MARGIN_PX = 32;
 export const themeC = new Compartment(); // light | dark (follows mode-watcher)
 export const lineNumbersC = new Compartment(); // settings.showLineNumbers
 export const fontSizeC = new Compartment(); // settings.editorFontSize
+export const titleC = new Compartment(); // inline title (follows renames)
 
 export function themeExtensionFor(isDark: boolean): Extension {
   return isDark ? dark : light;
@@ -50,8 +53,11 @@ function baseTheme(): Extension {
       // long-press landing one line off from where it was aimed.
       lineHeight: "1.75",
     },
-    // Caret can always scroll above the soft keyboard.
-    ".cm-content": { paddingBottom: "40vh" },
+    // Caret can always scroll above the soft keyboard. The top clears the
+    // status bar and the floating header on phones — the shell is edge to
+    // edge, so the editor starts at the top of the screen. The editor screen
+    // sets `--editor-pad-top`.
+    ".cm-content": { paddingTop: "var(--editor-pad-top, 4px)", paddingBottom: "40vh" },
     ".cm-line": { padding: "0 0.5rem" },
     // A 1px caret is hard to find on a phone, and finding it is the whole job
     // when you are placing it by hand.
@@ -59,8 +65,9 @@ function baseTheme(): Extension {
   });
 }
 
-/** The lean extension set. `lang` is the language support (or null for plain text). */
-export function createExtensions(lang: Extension | null): Extension[] {
+/** The lean extension set. `lang` is the language support (or null for plain
+ *  text); `relPath` names the inline title. */
+export function createExtensions(lang: Extension | null, relPath: string): Extension[] {
   return [
     history(),
     indentOnInput(),
@@ -74,7 +81,13 @@ export function createExtensions(lang: Extension | null): Extension[] {
     // arrow keys, the cursor row — otherwise parks the caret hard against the
     // scroller's edge, i.e. tucked under the completion strip, with no context
     // on the side you are moving towards.
-    EditorView.scrollMargins.of(() => ({ top: CARET_SCROLL_MARGIN_PX, bottom: CARET_SCROLL_MARGIN_PX })),
+    // On phones the floating header sits over the top of the scroller, so
+    // that much more is out of bounds at the top while it is showing.
+    EditorView.scrollMargins.of(() => ({
+      top: CARET_SCROLL_MARGIN_PX + immersive.editorObscuredTop,
+      bottom: CARET_SCROLL_MARGIN_PX,
+    })),
+    titleC.of(inlineTitle(settings.showInlineTitle ? inlineTitleFor(relPath) : "")),
     lineNumbersC.of(settings.showLineNumbers ? lineNumbers() : []),
     themeC.of(themeExtensionFor(document.documentElement.classList.contains("dark"))),
     fontSizeC.of(fontThemeFor(settings.editorFontSize)),
@@ -122,7 +135,7 @@ export function languageFor(relPath: string): Extension | null {
 export function createEditorView(parent: HTMLElement, doc: string, relPath: string): EditorView {
   return new EditorView({
     parent,
-    state: EditorState.create({ doc, extensions: createExtensions(languageFor(relPath)) }),
+    state: EditorState.create({ doc, extensions: createExtensions(languageFor(relPath), relPath) }),
   });
 }
 
@@ -141,7 +154,7 @@ export function loadDocInto(
     EditorState.create({
       doc,
       selection: anchor === undefined ? undefined : { anchor },
-      extensions: createExtensions(languageFor(relPath)),
+      extensions: createExtensions(languageFor(relPath), relPath),
     }),
   );
   // `setState` doesn't scroll, so a restored caret deep in the file would sit

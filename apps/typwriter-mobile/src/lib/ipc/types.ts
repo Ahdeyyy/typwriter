@@ -138,6 +138,10 @@ export interface CompileResult {
 export interface AppSettings {
   editorFontSize: number;
   showLineNumbers: boolean;
+  /** File name as a heading above the first line (Obsidian's inline title). */
+  showInlineTitle?: boolean;
+  /** Scrolling hides the floating header, dock and status bar (phones). */
+  hideChromeOnScroll?: boolean;
   autosaveMs: number;
   previewScaleBucket: 1 | 2 | 3 | 4;
   /** Name of the most recently opened workspace, re-opened on launch. */
@@ -205,3 +209,12 @@ export interface ExportShareResult {
   dataBase64: string;
 }
 
+
+/** `tauri-plugin-system-bars::Insets` — system-bar and display-cutout insets,
+ *  in CSS px. All zero off Android. */
+export interface SystemInsets {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}

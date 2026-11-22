@@ -247,7 +247,7 @@
     }}
   >
     <Sheet.Content side="left" class="w-[85vw] max-w-80 overflow-hidden rounded-r-2xl p-0" showCloseButton={false}>
-      <div class="flex h-full flex-col" style="padding-top: env(safe-area-inset-top);">
+      <div class="flex h-full flex-col" style="padding-top: var(--safe-top);">
         {@render panel()}
       </div>
     </Sheet.Content>
@@ -299,7 +299,7 @@
   <!-- Footer: vault name, counts, settings -->
   <div
     class="border-border/60 flex items-center gap-2 border-t px-3 py-2.5"
-    style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.625rem);"
+    style="padding-bottom: calc(var(--safe-bottom) + 0.625rem);"
   >
     <button
       type="button"
@@ -356,7 +356,7 @@
       </div>
       <div
         class="flex flex-col gap-3 px-3 pb-4 pt-2"
-        style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);"
+        style="padding-bottom: calc(var(--safe-bottom) + 1rem);"
       >
         <!-- Primary actions -->
         <div class="bg-muted/40 divide-border/60 divide-y overflow-hidden rounded-xl">
@@ -396,7 +396,7 @@
     </div>
     <div
       class="flex flex-col gap-3 px-3 pb-4 pt-2"
-      style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);"
+      style="padding-bottom: calc(var(--safe-bottom) + 1rem);"
     >
       {#if recentOthers.length > 0}
         <div class="bg-muted/40 divide-border/60 divide-y overflow-hidden rounded-xl">

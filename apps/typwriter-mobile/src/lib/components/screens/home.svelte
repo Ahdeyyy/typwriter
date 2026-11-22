@@ -144,7 +144,7 @@
   }
 </script>
 
-<div in:screen={{ scale: 0.98 }} class="bg-background flex flex-col" style="height: 100svh; padding-top: env(safe-area-inset-top);">
+<div in:screen={{ scale: 0.98 }} class="bg-background flex flex-col" style="height: 100svh; padding-top: var(--safe-top);">
   <!-- Tablets centre everything in one reading column and move "Open file" up
        into the header, next to settings. -->
   <header class="flex shrink-0 items-center justify-between gap-2 px-5 pt-4 pb-2 tablet:mx-auto tablet:w-full tablet:max-w-5xl tablet:px-10 tablet:pt-8 tablet:pb-4">
@@ -171,7 +171,7 @@
     </Button>
   </header>
 
-  <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-4 tablet:px-10 tablet:pt-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 6rem);">
+  <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-4 tablet:px-10 tablet:pt-2" style="padding-bottom: calc(var(--safe-bottom) + 6rem);">
     <div class="tablet:mx-auto tablet:max-w-[59rem]">
       {#if loading}
         <div class="flex flex-col gap-3">
@@ -292,7 +292,7 @@
   {#if layout.tablet}
     <button
       class="{fabClass} right-10 w-auto px-5"
-      style="bottom: calc(env(safe-area-inset-bottom) + 1.25rem);"
+      style="bottom: calc(var(--safe-bottom) + 1.25rem);"
       onclick={() => (createOpen = true)}
       aria-label="New workspace"
     >
@@ -305,7 +305,7 @@
         {#snippet child({ props })}
           <button
             class="{fabClass} right-5 size-14"
-            style="bottom: calc(env(safe-area-inset-bottom) + 1.25rem);"
+            style="bottom: calc(var(--safe-bottom) + 1.25rem);"
             aria-label="Create"
             {...props}
           >
@@ -377,7 +377,7 @@
         <Drawer.Title>Delete "{menuTarget.name}"?</Drawer.Title>
         <Drawer.Description>This permanently deletes the workspace and all its files.</Drawer.Description>
       </Drawer.Header>
-      <div class="flex flex-col gap-2 p-4 pt-2" style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);">
+      <div class="flex flex-col gap-2 p-4 pt-2" style="padding-bottom: calc(var(--safe-bottom) + 1rem);">
         <Button
           variant="destructive"
           class="w-full"
@@ -398,7 +398,7 @@
       <Drawer.Header>
         <Drawer.Title>{menuTarget?.name}</Drawer.Title>
       </Drawer.Header>
-      <div class="flex flex-col gap-1 p-2 pb-6" style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);">
+      <div class="flex flex-col gap-1 p-2 pb-6" style="padding-bottom: calc(var(--safe-bottom) + 1rem);">
         <Button
           variant="ghost"
           class="justify-start"

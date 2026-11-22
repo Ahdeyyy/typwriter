@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-status-bar-hidden"
+description = "Enables the set_status_bar_hidden command without any pre-configured scope."
+commands.allow = ["set_status_bar_hidden"]
+
+[[permission]]
+identifier = "deny-set-status-bar-hidden"
+description = "Denies the set_status_bar_hidden command without any pre-configured scope."
+commands.deny = ["set_status_bar_hidden"]
