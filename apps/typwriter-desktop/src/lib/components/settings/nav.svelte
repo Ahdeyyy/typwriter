@@ -9,7 +9,8 @@
   import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
   import { SETTINGS_GROUPS, type SettingsGroupId } from "./groups";
   import { getSettingsSearch } from "./search.svelte";
-  import UpdateButton from "./update-button.svelte";
+  import WindowControls from "$lib/components/titlebar/window-controls.svelte";
+  import { platform } from "$lib/stores/platform.svelte";
 
   interface Props {
     active: SettingsGroupId;
@@ -22,6 +23,18 @@
 </script>
 
 <nav class="flex w-52 shrink-0 flex-col border-r border-border bg-sidebar" aria-label="Settings">
+  <!-- Runs the full window height, so its header shares the titlebar row:
+       a drag region carrying the window title (and, on macOS, the traffic
+       lights, which the titlebar beside it leaves out). -->
+  <!-- px-5 = the list's p-2 + each item's px-3, so the title lines up with
+       the group icons below it. -->
+  <div data-tauri-drag-region class="flex h-9 shrink-0 select-none items-center gap-2 px-5">
+    {#if platform.isMac}
+      <WindowControls />
+    {/if}
+    <h1 data-tauri-drag-region class="text-sm font-semibold">Settings</h1>
+  </div>
+
   <ScrollArea.Root class="min-h-0 flex-1">
     <ul class="flex flex-col gap-0.5 p-2">
       {#each SETTINGS_GROUPS as group (group.id)}
@@ -51,9 +64,4 @@
       {/each}
     </ul>
   </ScrollArea.Root>
-
-  <!-- Pinned below the group list: the app's whole update flow in one button. -->
-  <div class="shrink-0 border-t border-border p-2">
-    <UpdateButton />
-  </div>
 </nav>
