@@ -195,8 +195,10 @@
       {#if app.overlay === "licenses"}
         <LicensesScreen />
       {:else}
-      <ScrollArea class="flex-1">
-        <div class="flex flex-col gap-6 p-4">
+      <ScrollArea class="min-h-0 flex-1">
+        <!-- The sheet runs behind the navigation bar (edge to edge); the last row
+             has to scroll clear of it. -->
+        <div class="flex flex-col gap-6 p-4" style="padding-bottom: calc(var(--safe-bottom) + 1.5rem);">
           <section class="flex flex-col gap-2">
             <span class="text-sm font-medium">Theme</span>
             <div class="grid grid-cols-3 gap-1">
