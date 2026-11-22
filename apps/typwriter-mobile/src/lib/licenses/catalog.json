@@ -1,5 +1,5 @@
 {
-  "inputHash": "8318de4eba1b49df2ecb3720cc41233abe6520f35970944ca3d20b35e7ff4d83",
+  "inputHash": "d79f6d46711cb0372f6aaee5f64d4cb1f86fa204145993ddbe2f77e9c6dd2357",
   "packages": [
     {
       "name": "@codemirror/autocomplete",
@@ -355,7 +355,7 @@
     },
     {
       "name": "codemirror-typst",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "ecosystem": "JavaScript",
       "license": "MIT",
       "notices": [
