@@ -12,7 +12,6 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
-import kotlin.math.max
 
 @InvokeArg
 class StatusBarArgs {
@@ -101,24 +100,50 @@ class SystemBarsPlugin(private val activity: Activity) : Plugin(activity) {
    */
   @Command
   fun getInsets(invoke: Invoke) {
-    activity.runOnUiThread {
-      val result = JSObject()
-      val insets = ViewCompat.getRootWindowInsets(activity.window.decorView)
-      val density = activity.resources.displayMetrics.density
-      if (insets != null && density > 0f) {
-        val bars = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars())
-        val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
-        result.put("top", (max(bars.top, cutout.top) / density).toDouble())
-        result.put("bottom", (max(bars.bottom, cutout.bottom) / density).toDouble())
-        result.put("left", (max(bars.left, cutout.left) / density).toDouble())
-        result.put("right", (max(bars.right, cutout.right) / density).toDouble())
-      } else {
-        result.put("top", 0)
-        result.put("bottom", 0)
-        result.put("left", 0)
-        result.put("right", 0)
+    activity.runOnUiThread { measure(invoke, MEASURE_ATTEMPTS) }
+  }
+
+  /**
+   * Early in startup the window hasn't dispatched its insets yet: the root
+   * insets are null, or all zero. Reporting that as "no system bars" would
+   * put the whole UI under the status bar (and the frontend caches it), so
+   * wait a frame and look again, and fail rather than guess.
+   */
+  private fun measure(invoke: Invoke, attemptsLeft: Int) {
+    val decor = activity.window.decorView
+    val insets = ViewCompat.getRootWindowInsets(decor)
+    val density = activity.resources.displayMetrics.density
+    if (insets != null && density > 0f) {
+      // Ignoring visibility keeps the hidden status bar's height; `max` with
+      // the visible insets covers older releases where the ignoring-
+      // visibility value isn't tracked and reads 0.
+      val types = WindowInsetsCompat.Type.systemBars()
+      val hidden = insets.getInsetsIgnoringVisibility(types)
+      val shown = insets.getInsets(types)
+      val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+      val top = maxOf(hidden.top, shown.top, cutout.top)
+      val bottom = maxOf(hidden.bottom, shown.bottom, cutout.bottom)
+      val left = maxOf(hidden.left, shown.left, cutout.left)
+      val right = maxOf(hidden.right, shown.right, cutout.right)
+      if (top > 0 || bottom > 0 || left > 0 || right > 0) {
+        val result = JSObject()
+        result.put("top", (top / density).toDouble())
+        result.put("bottom", (bottom / density).toDouble())
+        result.put("left", (left / density).toDouble())
+        result.put("right", (right / density).toDouble())
+        invoke.resolve(result)
+        return
       }
-      invoke.resolve(result)
     }
+    if (attemptsLeft <= 0) {
+      invoke.reject("System bar insets are not available yet")
+      return
+    }
+    decor.postDelayed({ measure(invoke, attemptsLeft - 1) }, MEASURE_RETRY_MS)
+  }
+
+  private companion object {
+    const val MEASURE_ATTEMPTS = 20
+    const val MEASURE_RETRY_MS = 50L
   }
 }
