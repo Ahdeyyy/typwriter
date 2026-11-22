@@ -52,7 +52,9 @@ export const lightTheme = EditorView.theme(
             color: "var(--foreground)",
             backgroundColor: "var(--background)",
         },
-        ".cm-content": { caretColor: ML.indigo, padding: "0.55rem" },
+        // Horizontal only: the vertical padding is layout (header clearance,
+        // keyboard room) and belongs to create-editor's base theme.
+        ".cm-content": { caretColor: ML.indigo, paddingInline: "0.55rem" },
         ".cm-cursor, .cm-dropCursor": { borderLeftColor: ML.indigo },
         "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
             backgroundColor: ML.bgSelection,
