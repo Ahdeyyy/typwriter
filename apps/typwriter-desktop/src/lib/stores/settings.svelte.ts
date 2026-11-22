@@ -90,6 +90,15 @@ export const THEMES: { id: ThemeId; label: string; description: string }[] = [
     { id: 'gruvbox', label: 'Gruvbox', description: 'Retro warm earth tones.' },
 ];
 
+/** See `PersistedSettings.linkUpdateMode`. */
+export type LinkUpdateMode = 'always' | 'ask' | 'never';
+
+const LINK_UPDATE_MODES: readonly LinkUpdateMode[] = ['always', 'ask', 'never'];
+
+function isLinkUpdateMode(value: unknown): value is LinkUpdateMode {
+    return LINK_UPDATE_MODES.includes(value as LinkUpdateMode);
+}
+
 export interface PersistedSettings {
     uiFontFamily: string;
     /** Root font size in pixels. The interface is sized in `rem`, so this
@@ -124,6 +133,11 @@ export interface PersistedSettings {
     /** Use the tinymist language server (when installed) for completion, hover,
      *  and diagnostics. UI-only — not round-tripped through the Rust settings. */
     useLsp: boolean;
+
+    /** What to do with links (`#include`, `#image`, …) a rename or move
+     *  breaks: fix them with an Undo toast, show them for review first, or
+     *  leave them. UI-only — not round-tripped through the Rust settings. */
+    linkUpdateMode: LinkUpdateMode;
 
     /** UI-only, opt-in keyboard behavior for assistive technology. */
     screenReaderMode: boolean;
@@ -189,6 +203,7 @@ const DEFAULTS: PersistedSettings = {
     focusMode: false,
     typewriterScrolling: false,
     useLsp: true,
+    linkUpdateMode: 'always',
     screenReaderMode: false,
     screenReaderModeChosen: false,
 
@@ -311,6 +326,7 @@ class SettingsStore {
     focusMode = $state(INITIAL.focusMode);
     typewriterScrolling = $state(INITIAL.typewriterScrolling);
     useLsp = $state(INITIAL.useLsp);
+    linkUpdateMode = $state<LinkUpdateMode>(INITIAL.linkUpdateMode);
     screenReaderMode = $state(INITIAL.screenReaderMode);
     screenReaderModeChosen = $state(INITIAL.screenReaderModeChosen);
 
@@ -363,6 +379,7 @@ class SettingsStore {
                     typewriterScrolling: s.typewriter_scrolling,
                     // UI-only: Rust has no say — always reseed from the local value.
                     useLsp: INITIAL.useLsp,
+                    linkUpdateMode: INITIAL.linkUpdateMode,
                     screenReaderMode: this.screenReaderMode,
                     screenReaderModeChosen: this.screenReaderModeChosen,
                     autoSaveEnabled: s.auto_save_enabled,
@@ -424,6 +441,7 @@ class SettingsStore {
             focusMode: this.focusMode,
             typewriterScrolling: this.typewriterScrolling,
             useLsp: this.useLsp,
+            linkUpdateMode: this.linkUpdateMode,
             screenReaderMode: this.screenReaderMode,
             screenReaderModeChosen: this.screenReaderModeChosen,
             autoSaveEnabled: this.autoSaveEnabled,
@@ -466,6 +484,7 @@ class SettingsStore {
         this.focusMode = settings.focusMode;
         this.typewriterScrolling = settings.typewriterScrolling;
         this.useLsp = settings.useLsp;
+        this.linkUpdateMode = isLinkUpdateMode(settings.linkUpdateMode) ? settings.linkUpdateMode : DEFAULTS.linkUpdateMode;
         this.screenReaderMode = settings.screenReaderMode === true;
         this.screenReaderModeChosen = settings.screenReaderModeChosen === true || this.screenReaderMode;
         this.autoSaveEnabled = settings.autoSaveEnabled;
@@ -648,6 +667,11 @@ class SettingsStore {
         this.persist();
     }
 
+    setLinkUpdateMode(value: LinkUpdateMode) {
+        this.linkUpdateMode = value;
+        this.persist();
+    }
+
     setUseLsp(value: boolean) {
         this.useLsp = value;
         this.persist();
@@ -793,6 +817,7 @@ class SettingsStore {
         this.focusMode = DEFAULTS.focusMode;
         this.typewriterScrolling = DEFAULTS.typewriterScrolling;
         this.useLsp = DEFAULTS.useLsp;
+        this.linkUpdateMode = DEFAULTS.linkUpdateMode;
         this.screenReaderMode = DEFAULTS.screenReaderMode;
         this.autoSaveEnabled = DEFAULTS.autoSaveEnabled;
         this.autoSaveDelayMs = DEFAULTS.autoSaveDelayMs;

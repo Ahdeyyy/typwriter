@@ -25,7 +25,9 @@ import { documentScope } from '$lib/stores/document-scope.svelte';
 import { snippets } from '$lib/stores/snippets.svelte';
 import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
 import { editor } from './editor.svelte';
+import { linkUpdates } from './link-updates.svelte';
 import { preview } from './preview.svelte';
+import type { PathMove } from '$lib/link-updates';
 import { importFilesToWorkspace } from '$lib/services/workspace-file-service';
 import { importDroppedFiles, type DroppedFile } from '$lib/services/drop-import';
 import { normalize, basename, dirname } from '$lib/paths';
@@ -552,6 +554,13 @@ class WorkspaceStore {
     private async _renameAction(src: string, newName: string): Promise<void> {
         const dir = dirname(src);
         const dst = dir ? `${dir}/${newName}` : newName;
+        // A folder rename is a folder move in place: `move_folder` claims every
+        // file inside for the watcher and carries the main file along, and
+        // `_moveAction` remaps the tabs beneath it. The file path below only
+        // knows how to follow a single tab.
+        if (findNode(this.tree, normalize(src))?.is_dir) {
+            return this._moveAction(src, dst, true);
+        }
 
         const result = await renameFile(normalize(src), normalize(dst));
         if (result.isErr()) {
@@ -575,6 +584,10 @@ class WorkspaceStore {
                 logError('preview trigger after main file rename failed:', err);
             });
         }
+
+        // Tabs follow above; this fixes the links in files. Not awaited — the
+        // rename is done, and the link store reports on its own.
+        void linkUpdates.afterMove([{ from: normalizedSrc, to: normalize(dst), isDir: false }]);
 
         const refreshResult = await this.refreshTree();
         if (refreshResult.isErr()) {
@@ -617,6 +630,8 @@ class WorkspaceStore {
                 logError('preview trigger after moving main path failed:', err);
             });
         }
+
+        void linkUpdates.afterMove([{ from: normalize(src), to: normalize(dst), isDir: is_dir }]);
 
         const refreshResult = await this.refreshTree();
         if (refreshResult.isErr()) {
@@ -704,19 +719,24 @@ class WorkspaceStore {
     private async _applyExternalChanges(changes: WorkspaceFileChange[]): Promise<void> {
         this._scheduleTreeRefresh();
 
+        const moves: PathMove[] = [];
         for (const change of changes) {
             if (change.kind === 'renamed' && change.to) {
-                this._followExternalRename(
-                    this.toRel(change.path),
-                    this.toRel(change.to),
-                    change.isDir
-                );
+                const from = normalize(this.toRel(change.path));
+                const to = normalize(this.toRel(change.to));
+                this._followExternalRename(from, to, change.isDir);
+                moves.push({ from, to, isDir: change.isDir });
             } else if (change.kind === 'removed') {
                 this._forgetExternallyRemoved(this.toRel(change.path));
             }
         }
 
         await editor.applyExternalChanges(changes);
+
+        // Only offered, never applied unasked: whatever moved the files may
+        // have fixed the links itself. Planned after the tabs followed, so
+        // the open buffers are keyed by their new paths.
+        void linkUpdates.afterExternalMoves(moves);
 
         // The editor may have closed the tab the sidebar was highlighting, or
         // carried it to a new path; either way the active tab is the truth.

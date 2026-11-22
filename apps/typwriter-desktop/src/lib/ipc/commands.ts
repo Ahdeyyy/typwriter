@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ResultAsync } from 'neverthrow';
+import type { FileLinkUpdate, PathMove } from '$lib/link-updates';
 
 import type {
     FileTreeEntry,
@@ -111,6 +112,24 @@ export function moveFile(src: string, dst: string) {
 
 export function moveFolder(src: string, dst: string) {
     return ResultAsync.fromPromise(invoke<void>('move_folder', { src, dst }), toErrString);
+}
+
+/** Plan the link fixes for moves that already happened. `buffers` holds the
+ *  open tabs' text by workspace-relative path. */
+export function planLinkUpdates(moves: PathMove[], buffers: Record<string, string>) {
+    return ResultAsync.fromPromise(
+        invoke<FileLinkUpdate[]>('plan_link_updates', { moves, buffers }),
+        toErrString
+    );
+}
+
+/** Write link fixes to files without an open tab; `message` labels the
+ *  restore point. Files that changed since the plan come back as skipped. */
+export function applyLinkUpdates(updates: FileLinkUpdate[], message: string) {
+    return ResultAsync.fromPromise(
+        invoke<{ applied: string[]; skipped: string[] }>('apply_link_updates', { updates, message }),
+        toErrString
+    );
 }
 
 export function importFiles(sources: string[], destDir: string) {

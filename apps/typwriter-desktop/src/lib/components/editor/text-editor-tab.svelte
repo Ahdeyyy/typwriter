@@ -782,6 +782,34 @@
     };
   });
 
+  // Let the store patch the path literals a rename broke straight into a
+  // tab's view (see EditorStore.applyLinkEdits). One transaction with exact
+  // ranges, rather than a contentSyncRequest: the caret and scroll stay where
+  // they are, every open tab can be patched in the same tick, and one Ctrl+Z
+  // takes the change back out.
+  $effect(() => {
+    editor.linkEditApplier = (tabId, edits) => {
+      const view = tabViews.get(tabId);
+      if (!view) return "no-view";
+      const doc = view.state.doc;
+      for (const edit of edits) {
+        if (edit.end > doc.length || doc.sliceString(edit.start, edit.end) !== edit.oldText) {
+          return "stale";
+        }
+      }
+      view.dispatch({
+        changes: edits.map((edit) => ({ from: edit.start, to: edit.end, insert: edit.newText })),
+        scrollIntoView: false,
+        userEvent: "input.links",
+        annotations: programmaticSync.of(true),
+      });
+      return "applied";
+    };
+    return () => {
+      editor.linkEditApplier = null;
+    };
+  });
+
   $effect(() => {
     return () => {
       for (const view of tabViews.values()) view.destroy();

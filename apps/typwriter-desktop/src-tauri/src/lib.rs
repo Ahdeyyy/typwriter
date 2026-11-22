@@ -57,8 +57,8 @@ use commands::{
         clear_recent_workspaces, close_session, create_file, create_folder, create_workspace,
         delete_file, delete_folder, get_file_tree, get_project_snippets, get_recent_workspaces,
         get_workspace_tabs, import_dropped, import_files, list_recent_documents, move_file,
-        move_folder, open_document, open_folder, remove_recent_document, remove_recent_workspace,
-        rename_file, save_workspace_tabs, set_main_file, set_project_snippets,
+        apply_link_updates, move_folder, open_document, open_folder, plan_link_updates,
+        remove_recent_document, remove_recent_workspace, rename_file, save_workspace_tabs, set_main_file, set_project_snippets,
     },
 };
 
@@ -315,6 +315,8 @@ pub fn run() {
             rename_file,
             move_file,
             move_folder,
+            plan_link_updates,
+            apply_link_updates,
             import_files,
             import_dropped,
             // editor buffer + IDE features

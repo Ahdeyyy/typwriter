@@ -32,6 +32,7 @@
    import { HugeiconsIcon } from "@hugeicons/svelte";
    import { Loading03Icon } from "@hugeicons/core-free-icons";
   import PresenterView from "$lib/components/presentation/presenter-view.svelte";
+  import LinkReviewDialog from "$lib/components/editor/link-review-dialog.svelte";
   import PresentationBanner from "$lib/components/presentation/presentation-banner.svelte";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { listDisplays } from "$lib/ipc/commands";
@@ -378,6 +379,7 @@
     </div>
 
     <CommandPalette ctx={paletteContext} />
+    <LinkReviewDialog />
   </Sidebar.Provider>
 {/if}
 </Tooltip.Provider>
