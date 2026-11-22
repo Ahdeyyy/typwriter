@@ -11,6 +11,7 @@
     LeftToRightListBulletIcon,
     Search01Icon,
     Tick02Icon,
+    FolderTransferIcon,
   } from "@hugeicons/core-free-icons";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -117,15 +118,17 @@
                 {...props}
                 tooltipContent={workspaceName}
                 aria-label={workspaceName}
-                class="md:px-2 px-0"
+                class="md:px-2 px-0 group-data-[collapsible=icon]:justify-center"
               >
+                <!-- Collapsed, the name has no room; a switch glyph stands in for it. -->
+                <HugeiconsIcon icon={FolderTransferIcon} class="hidden size-4 shrink-0 text-sidebar-foreground/70 group-data-[collapsible=icon]:block" aria-hidden="true" />
                 <div class="flex min-w-0 flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
                   <span class="truncate font-semibold">{workspaceName}</span>
                   <span class="truncate text-[0.6875rem] opacity-60" title={workspacePath}>
                     {workspaceSubtitle}
                   </span>
                 </div>
-                <HugeiconsIcon icon={ArrowDown01Icon} class="ml-auto size-4 shrink-0 opacity-50 transition-transform duration-200 ease-(--ease-out) group-data-[state=open]/menu-button:rotate-180" />
+                <HugeiconsIcon icon={ArrowDown01Icon} class="ml-auto size-4 shrink-0 opacity-50 group-data-[collapsible=icon]:hidden transition-transform duration-200 ease-(--ease-out) group-data-[state=open]/menu-button:rotate-180" />
               </Sidebar.MenuButton>
             {/snippet}
           </DropdownMenu.Trigger>
