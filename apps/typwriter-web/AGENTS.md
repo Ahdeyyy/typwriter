@@ -10,12 +10,13 @@ Landing page for Typwriter — a static SvelteKit site whose job is to advertise
 
 ## Structure (`src/`)
 
-- `routes/+page.ts`: enables prerendering. `+page.svelte` fetches the latest GitHub release after mount via `lib/releases.ts`, with a one-hour localStorage cache so downloads update without a site rebuild. Expired or invalid cache entries trigger a fresh lookup. If GitHub is unavailable or rate limited, download buttons fall back to the latest release page.
-- `lib/components/DownloadSection.svelte` has a Stable / Nightly switch. The nightly release (`releases/tags/nightly`, the separate "Typwriter Nightly" app) is fetched only when that tab is opened and cached for 5 minutes, because every nightly build deletes the previous build's files.
-- `routes/+page.svelte` — the single landing page.
+- `routes/+page.svelte` — the landing page. Kept deliberately short: hero, screenshot, a plain feature list. Its one download button is for the visitor's platform (detected after mount from the user agent via `lib/platforms.ts`); everything else links to `/download`.
+- `routes/download/+page.svelte` — every platform's files, with a Stable / Nightly switch. The visitor's platform is listed first. The nightly release (`releases/tags/nightly`, the separate "Typwriter Nightly" app) is fetched only when that tab is opened and cached for 5 minutes, because every nightly build deletes the previous build's files.
+- Both routes are prerendered (`+page.ts`) and fetch releases after mount via `lib/releases.ts`, with a one-hour localStorage cache for stable so downloads update without a site rebuild. Expired or invalid cache entries trigger a fresh lookup. If GitHub is unavailable or rate limited, downloads fall back to the GitHub release page.
+- `lib/platforms.ts` — platform detection, grouping release files per platform (recommended file first), and file labels.
+- `lib/components/` — `Navbar`, `Footer`, `InteractiveShowcase` (desktop/Android + theme screenshots) and shadcn primitives under `ui/`.
 - `routes/+layout.svelte` + `layout.css` — global shell and styles.
-- `lib/components/` — `FeatureCard.svelte` (Hugeicons icon + title + description) and shadcn primitives under `ui/`.
-- `lib/assets/`, `lib/utils.ts`, `lib/hooks/`, `lib/index.ts` — shared helpers.
+- `lib/assets/`, `lib/links.ts`, `lib/utils.ts`, `lib/hooks/`, `lib/index.ts` — shared helpers.
 
 ## Svelte MCP tools
 

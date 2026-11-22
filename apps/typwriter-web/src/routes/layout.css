@@ -236,50 +236,61 @@
 	}
 }
 
-@utility bg-grid-pattern {
-	background-size: 32px 32px;
-	background-image: 
-		linear-gradient(to right, color-mix(in oklch, var(--foreground) 4.5%, transparent) 1px, transparent 1px),
-		linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 4.5%, transparent) 1px, transparent 1px);
+@theme {
+	/* Stronger than Tailwind's defaults; these also drive the ease-out / ease-in-out utilities. */
+	--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+	--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
-@utility bg-dot-pattern {
-	background-size: 24px 24px;
-	background-image: radial-gradient(color-mix(in oklch, var(--foreground) 7%, transparent) 1px, transparent 1px);
-}
-
-@keyframes float-subtle {
-	0%, 100% {
-		transform: translateY(0px);
-	}
-	50% {
-		transform: translateY(-5px);
+@keyframes rise {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
 	}
 }
 
-@keyframes pulse-subtle {
-	0%, 100% {
-		opacity: 0.4;
-		transform: scale(1);
-	}
-	50% {
-		opacity: 0.75;
-		transform: scale(1.04);
+@keyframes appear {
+	from {
+		opacity: 0;
 	}
 }
 
-@utility animate-float {
-	animation: float-subtle 6s ease-in-out infinite;
+/* Set --stagger (on the element or a parent) to delay it by that many steps. */
+@utility animate-enter {
+	animation: rise 500ms var(--ease-out) both;
+	animation-delay: calc(var(--stagger, 0) * 70ms);
 }
 
-@utility animate-pulse-subtle {
-	animation: pulse-subtle 5s ease-in-out infinite;
+@utility animate-fade {
+	animation: appear 200ms var(--ease-out) both;
+}
+
+/* Scroll reveal, driven by lib/reveal.ts. Set --stagger on each item. */
+[data-reveal] [data-reveal-item] {
+	transition:
+		opacity 500ms var(--ease-out),
+		transform 500ms var(--ease-out);
+	transition-delay: calc(var(--stagger, 0) * 60ms);
+}
+
+[data-reveal='hidden'] [data-reveal-item] {
+	opacity: 0;
+	transform: translateY(12px);
+}
+
+/* Route changes crossfade; the header is its own layer so it holds still. */
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation-duration: 200ms;
+	animation-timing-function: var(--ease-out);
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.animate-float,
-	.animate-pulse-subtle {
-		animation: none !important;
+	.animate-enter {
+		animation-name: appear;
+	}
+
+	[data-reveal='hidden'] [data-reveal-item] {
+		transform: none;
 	}
 }
-
