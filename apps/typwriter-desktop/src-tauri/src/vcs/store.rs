@@ -296,3 +296,41 @@ pub fn hex_sha256(bytes: &[u8]) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vcs::fs::LocalWorkingTreeFs;
+
+    const FIXTURE_TEXT: &[u8] =
+        b"= Restore point fixture\n\nWritten by zstd 0.13 so later versions must still read it.\n";
+    const FIXTURE_HASH: &str = "44bc6a0de2e34efb5629bf086a094554d3d9b59a6653a83c2ef662263436426b";
+    /// `FIXTURE_TEXT` as zstd 0.13.3 wrote it at `ZSTD_LEVEL`.
+    const FIXTURE_BLOB: &[u8] = &[
+        40, 181, 47, 253, 0, 88, 69, 2, 0, 66, 5, 17, 22, 160, 57, 7, 205, 191, 19, 1, 45, 148,
+        41, 104, 4, 126, 81, 125, 92, 181, 232, 168, 138, 135, 1, 7, 29, 173, 210, 169, 215, 194,
+        175, 191, 13, 241, 178, 196, 213, 83, 172, 247, 180, 156, 107, 33, 64, 128, 213, 183, 49,
+        99, 152, 221, 143, 90, 156, 115, 218, 190, 224, 225, 51, 204, 196, 167, 249, 61, 194, 67,
+        0,
+    ];
+
+    /// Object ids are content hashes that existing histories reference, so
+    /// the hex digest must never change across sha2 upgrades.
+    #[test]
+    fn object_ids_are_stable() {
+        assert_eq!(hex_sha256(FIXTURE_TEXT), FIXTURE_HASH);
+    }
+
+    /// Histories written before a zstd upgrade must stay readable after it.
+    #[test]
+    fn reads_blobs_written_by_older_zstd() {
+        let root = std::env::temp_dir().join(format!("typwriter-store-fixture-{}", std::process::id()));
+        let path = object_path(&root, FIXTURE_HASH);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, FIXTURE_BLOB).unwrap();
+
+        let read = read_blob(&LocalWorkingTreeFs, &root, FIXTURE_HASH);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(read.unwrap(), FIXTURE_TEXT);
+    }
+}

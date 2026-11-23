@@ -59,6 +59,17 @@ mod tests {
         assert_eq!(document_id(Path::new("/docs/a.typ")).len(), 64);
     }
 
+    /// The id names each document's recovery and cache directories, so it
+    /// must not change across hashing-crate upgrades. Pinned against the value
+    /// sha2 0.10 produced. Lowercase input keeps it identical on Windows.
+    #[test]
+    fn document_id_is_stable() {
+        assert_eq!(
+            document_id(Path::new("c:/users/me/notes/main.typ")),
+            "4561017e24f8a18046e11db81f3a243e53c866c91c412780ae09754ac284b559"
+        );
+    }
+
     #[test]
     fn document_roots_are_validated_without_creating_metadata() {
         let temp = std::env::temp_dir().join(format!(
