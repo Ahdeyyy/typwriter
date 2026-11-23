@@ -7,8 +7,8 @@
 // compile waits until the user opens the preview.
 
 import { ResultAsync } from "neverthrow";
-import type { Diagnostic, PageMeta } from "$lib/ipc/types";
-import * as ipc from "$lib/ipc/commands";
+import type { Diagnostic, PageMeta } from "#lib/ipc/types.ts";
+import * as ipc from "#lib/ipc/commands.ts";
 import { app } from "./app.svelte";
 import { layout } from "./layout.svelte";
 

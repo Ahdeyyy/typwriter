@@ -2,7 +2,7 @@
 // there are no Rust settings commands. Writes are debounced.
 
 import { load, type Store } from "@tauri-apps/plugin-store";
-import type { AppSettings } from "$lib/ipc/types";
+import type { AppSettings } from "#lib/ipc/types.ts";
 
 const STORE_FILE = "settings.json";
 const SAVE_DEBOUNCE_MS = 300;

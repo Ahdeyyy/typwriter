@@ -55,10 +55,10 @@ const loadStore = mock(async () => ({
   get: async () => null, set: async () => {}, save: async () => {},
 }));
 
-mock.module("$lib/ipc/commands", () => ({
+mock.module("#lib/ipc/commands.ts", () => ({
   getFileTree, rescanWorkspace, openWorkspace, pickDocument, openDocument, createFile, renameEntry, listWorkspaces, setMainFile,
 }));
-mock.module("$lib/ipc/events", () => ({ onWorkspaceFilesChanged }));
+mock.module("#lib/ipc/events.ts", () => ({ onWorkspaceFilesChanged }));
 mock.module("../../apps/typwriter-mobile/src/lib/stores/editor.svelte.ts", () => ({ editor: editorMock }));
 mock.module("../../apps/typwriter-mobile/src/lib/stores/compile.svelte.ts", () => ({ compileStore: compileMock }));
 mock.module("@tauri-apps/plugin-store", () => ({ load: loadStore }));

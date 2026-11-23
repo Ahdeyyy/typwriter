@@ -16,15 +16,15 @@
     File02Icon,
   } from "@hugeicons/core-free-icons";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import Icon from "$lib/components/icon.svelte";
-  import { Button } from "$lib/components/ui/button";
-  import { Switch } from "$lib/components/ui/switch";
-  import * as Sheet from "$lib/components/ui/sheet";
-  import { ScrollArea } from "$lib/components/ui/scroll-area";
-  import { app } from "$lib/stores/app.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { updater, type UpdateStatus } from "$lib/stores/updater.svelte";
-  import { pickFontsDir, clearFontsDir, getFontsStatus, getTypstVersion } from "$lib/ipc/commands";
+  import Icon from "#lib/components/icon.svelte";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Switch } from "#lib/components/ui/switch/index.ts";
+  import * as Sheet from "#lib/components/ui/sheet/index.ts";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { updater, type UpdateStatus } from "#lib/stores/updater.svelte.ts";
+  import { pickFontsDir, clearFontsDir, getFontsStatus, getTypstVersion } from "#lib/ipc/commands.ts";
   import LicensesScreen from "./licenses-screen.svelte";
 
   let pickingFonts = $state(false);

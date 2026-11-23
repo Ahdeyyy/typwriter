@@ -2,10 +2,10 @@
   import "./layout.css";
   import { ModeWatcher } from "mode-watcher";
   import { onMount } from "svelte";
-  import { Toaster } from "$lib/components/ui/sonner";
-  import { installRipple } from "$lib/ripple";
-  import { layout } from "$lib/stores/layout.svelte";
-  import { systemBars } from "$lib/stores/system-bars.svelte";
+  import { Toaster } from "#lib/components/ui/sonner/index.ts";
+  import { installRipple } from "#lib/ripple.ts";
+  import { layout } from "#lib/stores/layout.svelte.ts";
+  import { systemBars } from "#lib/stores/system-bars.svelte.ts";
   let { children } = $props();
 
   // Before the first paint, so an edge-to-edge cold start lays out against the

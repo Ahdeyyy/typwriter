@@ -38,7 +38,7 @@
 
 import { EditorView, ViewPlugin, type PluginValue, type ViewUpdate } from "@codemirror/view";
 import { keyboard, visibleViewportRect } from "./keyboard-visibility.svelte";
-import { immersive } from "$lib/stores/immersive.svelte";
+import { immersive } from "#lib/stores/immersive.svelte.ts";
 
 /** Breathing room between the caret and the edge it gets scrolled to. */
 const CARET_MARGIN_PX = 24;

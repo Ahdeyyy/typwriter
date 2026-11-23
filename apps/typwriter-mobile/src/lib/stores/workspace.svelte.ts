@@ -9,10 +9,10 @@ import type {
   WorkspaceFileChange,
   WorkspaceInfo,
   WorkspaceMeta,
-} from "$lib/ipc/types";
-import * as ipc from "$lib/ipc/commands";
-import { onWorkspaceFilesChanged, type UnlistenFn } from "$lib/ipc/events";
-import { remapPath } from "$lib/paths";
+} from "#lib/ipc/types.ts";
+import * as ipc from "#lib/ipc/commands.ts";
+import { onWorkspaceFilesChanged, type UnlistenFn } from "#lib/ipc/events.ts";
+import { remapPath } from "#lib/paths.ts";
 import { app } from "./app.svelte";
 import { editor } from "./editor.svelte";
 import { settings } from "./settings.svelte";

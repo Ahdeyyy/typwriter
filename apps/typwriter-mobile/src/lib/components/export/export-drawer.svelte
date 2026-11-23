@@ -14,25 +14,25 @@
   } from "@hugeicons/core-free-icons";
   import { toast } from "svelte-sonner";
   import { openPath } from "@tauri-apps/plugin-opener";
-  import Icon from "$lib/components/icon.svelte";
-  import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
-  import { Switch } from "$lib/components/ui/switch";
-  import { ScrollArea } from "$lib/components/ui/scroll-area";
-  import * as Drawer from "$lib/components/ui/drawer";
+  import Icon from "#lib/components/icon.svelte";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import { Switch } from "#lib/components/ui/switch/index.ts";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.ts";
+  import * as Drawer from "#lib/components/ui/drawer/index.ts";
   import {
     exportPdf,
     exportPng,
     exportSvg,
     exportHtml,
     exportForShare,
-  } from "$lib/ipc/commands";
-  import type { ExportFormat } from "$lib/ipc/types";
-  import { app } from "$lib/stores/app.svelte";
-  import { compileStore } from "$lib/stores/compile.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { prepareExport } from "$lib/services/prepare-export";
-  import { settings } from "$lib/stores/settings.svelte";
+  } from "#lib/ipc/commands.ts";
+  import type { ExportFormat } from "#lib/ipc/types.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { compileStore } from "#lib/stores/compile.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { prepareExport } from "#lib/services/prepare-export.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
 
   // ── State ──────────────────────────────────────────────────────────────────
 

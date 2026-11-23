@@ -1,5 +1,5 @@
 import { appDataDir, documentDir, homeDir, join } from "@tauri-apps/api/path";
-import { displayPath, workspaceLocation, type DisplayPathRoot } from "$lib/paths";
+import { displayPath, workspaceLocation, type DisplayPathRoot } from "#lib/paths.ts";
 
 class PathDisplayStore {
   private roots = $state<DisplayPathRoot[]>([]);

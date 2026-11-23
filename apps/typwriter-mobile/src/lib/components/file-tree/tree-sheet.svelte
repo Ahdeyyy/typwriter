@@ -16,21 +16,21 @@
     UnfoldMoreIcon,
   } from "@hugeicons/core-free-icons";
   import type { IconSvgElement } from "@hugeicons/svelte";
-  import Icon from "$lib/components/icon.svelte";
-  import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
-  import * as Sheet from "$lib/components/ui/sheet";
-  import * as Drawer from "$lib/components/ui/drawer";
-  import * as Dialog from "$lib/components/ui/dialog";
-  import { ScrollArea } from "$lib/components/ui/scroll-area";
-  import { parentDir } from "$lib/paths";
-  import { app } from "$lib/stores/app.svelte";
-  import { dismissOnBack } from "$lib/back-dismiss.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { pathDisplay } from "$lib/stores/path-display.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { openedAgo } from "$lib/time";
-  import type { FileNode } from "$lib/ipc/types";
+  import Icon from "#lib/components/icon.svelte";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import * as Sheet from "#lib/components/ui/sheet/index.ts";
+  import * as Drawer from "#lib/components/ui/drawer/index.ts";
+  import * as Dialog from "#lib/components/ui/dialog/index.ts";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.ts";
+  import { parentDir } from "#lib/paths.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { dismissOnBack } from "#lib/back-dismiss.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { pathDisplay } from "#lib/stores/path-display.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { openedAgo } from "#lib/time.ts";
+  import type { FileNode } from "#lib/ipc/types.ts";
   import TreeNode from "./tree-node.svelte";
 
   const expanded = new SvelteSet<string>([""]); // root expanded by default

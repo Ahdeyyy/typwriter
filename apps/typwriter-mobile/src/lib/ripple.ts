@@ -10,7 +10,7 @@
 // - The ripple's own nodes are removed once it fades, so nothing foreign stays
 //   inside a Svelte-managed element.
 
-import { prefersReducedMotion } from "$lib/motion";
+import { prefersReducedMotion } from "#lib/motion.ts";
 
 const PRESSABLE =
   'button, a[href], [role="button"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], [data-ripple]';

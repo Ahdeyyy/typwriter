@@ -3,11 +3,11 @@
 	import DialogPortal from "./dialog-portal.svelte";
 	import type { Snippet } from "svelte";
 	import * as Dialog from "./index.js";
-	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+	import { cn, type WithoutChildrenOrChild } from "#lib/utils.ts";
 	import type { ComponentProps } from "svelte";
-	import { Button } from "$lib/components/ui/button/index.js";
+	import { Button } from "#lib/components/ui/button/index.ts";
 	import { Cancel01Icon } from "@hugeicons/core-free-icons";
-	import Icon from "$lib/components/icon.svelte";
+	import Icon from "#lib/components/icon.svelte";
 
 	let {
 		ref = $bindable(null),

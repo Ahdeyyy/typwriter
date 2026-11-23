@@ -28,8 +28,8 @@
   } from "@hugeicons/core-free-icons";
   import type { IconSvgElement } from "@hugeicons/svelte";
   import type { EditorView } from "@codemirror/view";
-  import Icon from "$lib/components/icon.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
+  import Icon from "#lib/components/icon.svelte";
+  import { editor } from "#lib/stores/editor.svelte.ts";
   import {
     step,
     selectWordAtCursor,
@@ -37,7 +37,7 @@
     selectWholeDoc,
     collapseSelection,
     type Step,
-  } from "$lib/editor/selection";
+  } from "#lib/editor/selection.ts";
 
   /** Extend-from-anchor mode: arrows and the grip drag the selection's head. */
   let extend = $state(false);

@@ -12,13 +12,13 @@
     SidebarLeft01Icon,
   } from "@hugeicons/core-free-icons";
   import type { IconSvgElement } from "@hugeicons/svelte";
-  import Icon from "$lib/components/icon.svelte";
-  import { Button } from "$lib/components/ui/button";
-  import { Badge } from "$lib/components/ui/badge";
-  import { app } from "$lib/stores/app.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { compileStore } from "$lib/stores/compile.svelte";
-  import { layout } from "$lib/stores/layout.svelte";
+  import Icon from "#lib/components/icon.svelte";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Badge } from "#lib/components/ui/badge/index.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { compileStore } from "#lib/stores/compile.svelte.ts";
+  import { layout } from "#lib/stores/layout.svelte.ts";
   import ActionsMenu from "./actions-menu.svelte";
 
   // Tablet editor header. With room to spare, the phone's centered title and

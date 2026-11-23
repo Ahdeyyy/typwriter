@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
 	import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
-	import Icon from "$lib/components/icon.svelte";
-	import { cn } from "$lib/utils.js";
+	import Icon from "#lib/components/icon.svelte";
+	import { cn } from "#lib/utils.ts";
 
 	let {
 		ref = $bindable(null),

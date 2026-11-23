@@ -12,17 +12,17 @@
     titleC,
     themeExtensionFor,
     fontThemeFor,
-  } from "$lib/editor/create-editor";
-  import { inlineTitle, inlineTitleFor } from "$lib/editor/inline-title";
-  import { immersive } from "$lib/stores/immersive.svelte";
+  } from "#lib/editor/create-editor.ts";
+  import { inlineTitle, inlineTitleFor } from "#lib/editor/inline-title.ts";
+  import { immersive } from "#lib/stores/immersive.svelte.ts";
   import {
     setInlineDiagnostics,
     type InlineDiagnostic,
-  } from "$lib/editor/inline-diagnostics";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { compileStore } from "$lib/stores/compile.svelte";
-  import { completions } from "$lib/editor/completion-controller.svelte";
+  } from "#lib/editor/inline-diagnostics.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { compileStore } from "#lib/stores/compile.svelte.ts";
+  import { completions } from "#lib/editor/completion-controller.svelte.ts";
 
   let host = $state<HTMLElement | null>(null);
 

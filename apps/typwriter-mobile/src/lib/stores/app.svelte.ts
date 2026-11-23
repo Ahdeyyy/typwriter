@@ -13,7 +13,7 @@
 // until our own traversals have landed. `history.back()` is asynchronous, so a
 // push issued before it lands goes on the wrong entry.
 
-import { destroyBodyLockSafety, initBodyLockSafety, scheduleBodyLockRelease } from "$lib/body-lock";
+import { destroyBodyLockSafety, initBodyLockSafety, scheduleBodyLockRelease } from "#lib/body-lock.ts";
 
 export type Screen = "home" | "editor";
 export type Overlay =

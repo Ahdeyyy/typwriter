@@ -1,13 +1,13 @@
 <script lang="ts">
   import { toast } from "svelte-sonner";
   import { Cancel01Icon, Add01Icon, File01Icon, File02Icon } from "@hugeicons/core-free-icons";
-  import Icon from "$lib/components/icon.svelte";
-  import { basename, parentDir } from "$lib/paths";
-  import { screen } from "$lib/motion";
-  import { app } from "$lib/stores/app.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { flattenFiles, searchFiles } from "$lib/editor/file-search";
+  import Icon from "#lib/components/icon.svelte";
+  import { basename, parentDir } from "#lib/paths.ts";
+  import { screen } from "#lib/motion.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { flattenFiles, searchFiles } from "#lib/editor/file-search.ts";
 
   let query = $state("");
   let inputEl = $state<HTMLInputElement | null>(null);

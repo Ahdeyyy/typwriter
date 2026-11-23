@@ -1,9 +1,9 @@
 <script lang="ts">
   import { Add01Icon, Search01Icon, ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
   import { toast } from "svelte-sonner";
-  import Icon from "$lib/components/icon.svelte";
-  import { app } from "$lib/stores/app.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
+  import Icon from "#lib/components/icon.svelte";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
   import ActionsMenu from "./actions-menu.svelte";
 
   let { onFormat }: { onFormat: () => void } = $props();

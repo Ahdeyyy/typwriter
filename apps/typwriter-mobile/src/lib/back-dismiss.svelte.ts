@@ -3,7 +3,7 @@
 // `stores/app.svelte.ts`.
 
 import { untrack } from "svelte";
-import { app } from "$lib/stores/app.svelte";
+import { app } from "#lib/stores/app.svelte.ts";
 
 /** Call during component initialisation. `close` must make `isOpen` false. */
 export function dismissOnBack(isOpen: () => boolean, close: () => void) {

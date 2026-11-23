@@ -1,8 +1,8 @@
 import { toast } from "svelte-sonner";
-import * as ipc from "$lib/ipc/commands";
-import { onOpenFiles, type UnlistenFn } from "$lib/ipc/events";
-import { settings } from "$lib/stores/settings.svelte";
-import { workspace } from "$lib/stores/workspace.svelte";
+import * as ipc from "#lib/ipc/commands.ts";
+import { onOpenFiles, type UnlistenFn } from "#lib/ipc/events.ts";
+import { settings } from "#lib/stores/settings.svelte.ts";
+import { workspace } from "#lib/stores/workspace.svelte.ts";
 
 export async function pickDocument(): Promise<void> {
   await settings.init();

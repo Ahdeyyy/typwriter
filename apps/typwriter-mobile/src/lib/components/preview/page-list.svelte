@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { PageMeta } from "$lib/ipc/types";
+  import type { PageMeta } from "#lib/ipc/types.ts";
   import Page from "./page.svelte";
 
   let {

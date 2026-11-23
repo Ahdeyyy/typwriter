@@ -2,13 +2,13 @@
   import { tick } from "svelte";
   import { toast } from "svelte-sonner";
   import { CancelCircleIcon, Alert02Icon } from "@hugeicons/core-free-icons";
-  import Icon from "$lib/components/icon.svelte";
-  import * as Drawer from "$lib/components/ui/drawer";
-  import { ScrollArea } from "$lib/components/ui/scroll-area";
-  import { app } from "$lib/stores/app.svelte";
-  import { compileStore } from "$lib/stores/compile.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import type { Diagnostic } from "$lib/ipc/types";
+  import Icon from "#lib/components/icon.svelte";
+  import * as Drawer from "#lib/components/ui/drawer/index.ts";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { compileStore } from "#lib/stores/compile.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import type { Diagnostic } from "#lib/ipc/types.ts";
 
   const items = $derived([...compileStore.errors, ...compileStore.warnings]);
 

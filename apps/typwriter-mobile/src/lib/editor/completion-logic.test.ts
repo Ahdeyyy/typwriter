@@ -9,7 +9,7 @@ import {
   wordStartBefore,
   type StripItem,
 } from "./completion-logic";
-import type { IpcCompletion } from "$lib/ipc/types";
+import type { IpcCompletion } from "#lib/ipc/types.ts";
 
 const items = (...labels: string[]): StripItem[] =>
   labels.map((label) => ({ label, kind: "func", template: label }));

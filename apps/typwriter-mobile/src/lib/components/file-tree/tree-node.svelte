@@ -8,9 +8,9 @@
     Image01Icon,
     File01Icon,
   } from "@hugeicons/core-free-icons";
-  import Icon from "$lib/components/icon.svelte";
-  import { longpress } from "$lib/actions/longpress";
-  import type { FileNode } from "$lib/ipc/types";
+  import Icon from "#lib/components/icon.svelte";
+  import { longpress } from "#lib/actions/longpress.ts";
+  import type { FileNode } from "#lib/ipc/types.ts";
   import Self from "./tree-node.svelte";
 
   let {

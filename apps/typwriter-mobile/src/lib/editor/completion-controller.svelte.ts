@@ -12,8 +12,8 @@
 import type { EditorState } from "@codemirror/state";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
 import { snippet } from "@codemirror/autocomplete";
-import { getCompletions } from "$lib/ipc/commands";
-import { editor } from "$lib/stores/editor.svelte";
+import { getCompletions } from "#lib/ipc/commands.ts";
+import { editor } from "#lib/stores/editor.svelte.ts";
 import { pinScroll } from "./scroll-pin";
 import {
   autoTriggerApplies,

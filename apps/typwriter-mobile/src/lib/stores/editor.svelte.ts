@@ -4,10 +4,10 @@
 
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
 import type { EditorView } from "@codemirror/view";
-import * as ipc from "$lib/ipc/commands";
-import type { WorkspaceFileChange } from "$lib/ipc/types";
-import { basename, remapPath } from "$lib/paths";
-import { minimalChange } from "$lib/editor/minimal-change";
+import * as ipc from "#lib/ipc/commands.ts";
+import type { WorkspaceFileChange } from "#lib/ipc/types.ts";
+import { basename, remapPath } from "#lib/paths.ts";
+import { minimalChange } from "#lib/editor/minimal-change.ts";
 import { settings } from "./settings.svelte";
 import { compileStore } from "./compile.svelte";
 

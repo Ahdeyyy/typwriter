@@ -8,7 +8,7 @@
 		InformationCircleIcon,
 		Alert02Icon,
 	} from "@hugeicons/core-free-icons";
-	import Icon from "$lib/components/icon.svelte";
+	import Icon from "#lib/components/icon.svelte";
 
 	let { ...restProps }: SonnerProps = $props();
 </script>

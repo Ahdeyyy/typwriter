@@ -3,18 +3,18 @@
   import { toast } from "svelte-sonner";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { Cancel01Icon, RefreshIcon, Alert02Icon, Loading03Icon, Download01Icon } from "@hugeicons/core-free-icons";
-  import Icon from "$lib/components/icon.svelte";
-  import { Button } from "$lib/components/ui/button";
-  import { jumpFromClick } from "$lib/ipc/commands";
-  import type { PreviewJump } from "$lib/ipc/types";
-  import { app } from "$lib/stores/app.svelte";
-  import { compileStore } from "$lib/stores/compile.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { layout } from "$lib/stores/layout.svelte";
-  import { immersive } from "$lib/stores/immersive.svelte";
-  import { screen } from "$lib/motion";
+  import Icon from "#lib/components/icon.svelte";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { jumpFromClick } from "#lib/ipc/commands.ts";
+  import type { PreviewJump } from "#lib/ipc/types.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { compileStore } from "#lib/stores/compile.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { layout } from "#lib/stores/layout.svelte.ts";
+  import { immersive } from "#lib/stores/immersive.svelte.ts";
+  import { screen } from "#lib/motion.ts";
   import PageList from "./page-list.svelte";
 
   let {

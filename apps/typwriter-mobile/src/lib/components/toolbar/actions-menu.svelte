@@ -9,14 +9,14 @@
     FolderExportIcon,
   } from "@hugeicons/core-free-icons";
   import { toast } from "svelte-sonner";
-  import Icon from "$lib/components/icon.svelte";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import { exportWorkspace } from "$lib/ipc/commands";
-  import { app } from "$lib/stores/app.svelte";
-  import { dismissOnBack } from "$lib/back-dismiss.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { compileStore } from "$lib/stores/compile.svelte";
+  import Icon from "#lib/components/icon.svelte";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.ts";
+  import { exportWorkspace } from "#lib/ipc/commands.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { dismissOnBack } from "#lib/back-dismiss.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { compileStore } from "#lib/stores/compile.svelte.ts";
 
   // The editor's quick-actions menu. The phone dock opens it upwards from the
   // bottom edge; the tablet header opens it downwards.

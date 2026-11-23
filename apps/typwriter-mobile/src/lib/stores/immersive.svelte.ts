@@ -16,8 +16,8 @@ import {
   nextScrollHide,
   syncScrollHide,
   type ScrollHideState,
-} from "$lib/immersive-logic";
-import { keyboard } from "$lib/editor/keyboard-visibility.svelte";
+} from "#lib/immersive-logic.ts";
+import { keyboard } from "#lib/editor/keyboard-visibility.svelte.ts";
 import { app } from "./app.svelte";
 import { editor } from "./editor.svelte";
 import { layout } from "./layout.svelte";

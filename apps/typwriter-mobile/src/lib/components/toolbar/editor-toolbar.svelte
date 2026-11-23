@@ -14,11 +14,11 @@
     TextFontIcon,
   } from "@hugeicons/core-free-icons";
   import type { IconSvgElement } from "@hugeicons/svelte";
-  import Icon from "$lib/components/icon.svelte";
+  import Icon from "#lib/components/icon.svelte";
   import CursorRow from "./cursor-row.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { completions } from "$lib/editor/completion-controller.svelte";
-  import { insertOrWrap } from "$lib/editor/insert";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { completions } from "#lib/editor/completion-controller.svelte.ts";
+  import { insertOrWrap } from "#lib/editor/insert.ts";
   import {
     toggleBold,
     toggleItalic,
@@ -26,7 +26,7 @@
     toggleMath,
     toggleBulletList,
     setHeadingLevel,
-  } from "$lib/editor/commands";
+  } from "#lib/editor/commands.ts";
   import type { EditorView } from "@codemirror/view";
 
   // Symbols inserted/wrapped at the cursor. Order matters (most-used first).

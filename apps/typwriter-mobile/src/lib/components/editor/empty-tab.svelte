@@ -5,15 +5,15 @@
     FileAddIcon,
     FolderLibraryIcon,
   } from "@hugeicons/core-free-icons";
-  import Icon from "$lib/components/icon.svelte";
-  import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
-  import * as Dialog from "$lib/components/ui/dialog";
-  import { app } from "$lib/stores/app.svelte";
-  import { dismissOnBack } from "$lib/back-dismiss.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { pickDocument } from "$lib/document-opening";
+  import Icon from "#lib/components/icon.svelte";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import * as Dialog from "#lib/components/ui/dialog/index.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { dismissOnBack } from "#lib/back-dismiss.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { pickDocument } from "#lib/document-opening.ts";
 
   let createOpen = $state(false);
   dismissOnBack(() => createOpen, () => (createOpen = false));

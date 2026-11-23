@@ -12,8 +12,8 @@
 // 3. Bar icon colour, from the app's own theme rather than the system's.
 
 import { mode } from "mode-watcher";
-import { getSystemInsets, setStatusBarHidden, setSystemBarStyle } from "$lib/ipc/commands";
-import type { SystemInsets } from "$lib/ipc/types";
+import { getSystemInsets, setStatusBarHidden, setSystemBarStyle } from "#lib/ipc/commands.ts";
+import type { SystemInsets } from "#lib/ipc/types.ts";
 import { immersive } from "./immersive.svelte";
 
 const CACHE_KEY = "typwriter.system-insets";

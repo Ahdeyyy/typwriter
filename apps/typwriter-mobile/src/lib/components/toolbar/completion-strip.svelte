@@ -9,10 +9,10 @@
     AiMagicIcon,
   } from "@hugeicons/core-free-icons";
   import type { IconSvgElement } from "@hugeicons/svelte";
-  import Icon from "$lib/components/icon.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { completions } from "$lib/editor/completion-controller.svelte";
-  import type { StripItem } from "$lib/editor/completion-logic";
+  import Icon from "#lib/components/icon.svelte";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { completions } from "#lib/editor/completion-controller.svelte.ts";
+  import type { StripItem } from "#lib/editor/completion-logic.ts";
 
   // Match the desktop's mapBackendCompletionKind: lowercase substring match.
   function iconFor(kind: string): IconSvgElement {

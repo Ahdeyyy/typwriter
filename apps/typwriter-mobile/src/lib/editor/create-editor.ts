@@ -17,9 +17,9 @@ import { typstKeymap } from "./commands";
 import { inlineDiagnostics } from "./inline-diagnostics";
 import { caretVisibility } from "./caret-visibility";
 import { inlineTitle, inlineTitleFor } from "./inline-title";
-import { immersive } from "$lib/stores/immersive.svelte";
-import { settings } from "$lib/stores/settings.svelte";
-import { editor } from "$lib/stores/editor.svelte";
+import { immersive } from "#lib/stores/immersive.svelte.ts";
+import { settings } from "#lib/stores/settings.svelte.ts";
+import { editor } from "#lib/stores/editor.svelte.ts";
 import { completions } from "./completion-controller.svelte";
 
 /** Breathing room CodeMirror leaves around the caret when it scrolls to it —

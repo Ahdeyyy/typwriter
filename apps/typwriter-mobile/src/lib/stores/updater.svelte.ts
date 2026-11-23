@@ -5,8 +5,8 @@
 
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "svelte-sonner";
-import { checkForUpdate } from "$lib/ipc/commands";
-import type { UpdateInfo } from "$lib/ipc/types";
+import { checkForUpdate } from "#lib/ipc/commands.ts";
+import type { UpdateInfo } from "#lib/ipc/types.ts";
 import { settings } from "./settings.svelte";
 
 const PASSIVE_INTERVAL_MS = 24 * 60 * 60 * 1000;

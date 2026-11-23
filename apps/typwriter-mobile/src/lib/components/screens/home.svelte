@@ -12,26 +12,26 @@
     Time04Icon,
     File02Icon,
   } from "@hugeicons/core-free-icons";
-  import Icon from "$lib/components/icon.svelte";
-  import appIcon from "$lib/assets/app-icon.png";
-  import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
-  import * as Dialog from "$lib/components/ui/dialog";
-  import * as Drawer from "$lib/components/ui/drawer";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import { layout } from "$lib/stores/layout.svelte";
-  import { Skeleton } from "$lib/components/ui/skeleton";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { app } from "$lib/stores/app.svelte";
-  import { dismissOnBack } from "$lib/back-dismiss.svelte";
-  import { pathDisplay } from "$lib/stores/path-display.svelte";
-  import { longpress } from "$lib/actions/longpress";
-  import { openedAgo } from "$lib/time";
-  import { exportWorkspace } from "$lib/ipc/commands";
-  import { scheduleBodyLockRelease } from "$lib/body-lock";
-  import { pickDocument } from "$lib/document-opening";
-  import type { WorkspaceMeta } from "$lib/ipc/types";
-  import { screen } from "$lib/motion";
+  import Icon from "#lib/components/icon.svelte";
+  import appIcon from "#lib/assets/app-icon.png";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import * as Dialog from "#lib/components/ui/dialog/index.ts";
+  import * as Drawer from "#lib/components/ui/drawer/index.ts";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.ts";
+  import { layout } from "#lib/stores/layout.svelte.ts";
+  import { Skeleton } from "#lib/components/ui/skeleton/index.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { dismissOnBack } from "#lib/back-dismiss.svelte.ts";
+  import { pathDisplay } from "#lib/stores/path-display.svelte.ts";
+  import { longpress } from "#lib/actions/longpress.ts";
+  import { openedAgo } from "#lib/time.ts";
+  import { exportWorkspace } from "#lib/ipc/commands.ts";
+  import { scheduleBodyLockRelease } from "#lib/body-lock.ts";
+  import { pickDocument } from "#lib/document-opening.ts";
+  import type { WorkspaceMeta } from "#lib/ipc/types.ts";
+  import { screen } from "#lib/motion.ts";
 
   let loading = $state(true);
   let createOpen = $state(false);

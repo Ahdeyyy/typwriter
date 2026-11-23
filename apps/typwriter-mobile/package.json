@@ -3,6 +3,12 @@
   "version": "0.9.3",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.17"
+  },
+  "imports": {
+    "#lib/*": "./src/lib/*"
+  },
   "scripts": {
     "dev": "vite dev",
     "build": "bun run licenses:check && vite build",
@@ -35,14 +41,15 @@
     "@tauri-apps/plugin-opener": "^2.7.3",
     "@tauri-apps/plugin-store": "^2.5.1",
     "neverthrow": "^8.2.0",
-    "runed": "^0.37.1",
+    "runed": "^0.38.0",
     "vaul-svelte": "^1.0.0-next.7"
   },
   "devDependencies": {
     "@eslint/compat": "^2.1.1",
     "@eslint/js": "^9.39.5",
-    "@sveltejs/adapter-static": "^3.0.11",
-    "@sveltejs/kit": "^2.70.4",
+    "@sveltejs/adapter-static": "^4.0.1",
+    "@sveltejs/kit": "^3.4.0",
+    "@sveltejs/load-config": "^0.2.2",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tailwindcss/vite": "^4.3.5",
     "@tauri-apps/cli": "^2.12.6",

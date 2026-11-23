@@ -11,15 +11,15 @@
     FolderOpenIcon,
   } from "@hugeicons/core-free-icons";
   import type { IconSvgElement } from "@hugeicons/svelte";
-  import Icon from "$lib/components/icon.svelte";
-  import * as Drawer from "$lib/components/ui/drawer";
-  import { longpress } from "$lib/actions/longpress";
-  import { basename, parentDir } from "$lib/paths";
+  import Icon from "#lib/components/icon.svelte";
+  import * as Drawer from "#lib/components/ui/drawer/index.ts";
+  import { longpress } from "#lib/actions/longpress.ts";
+  import { basename, parentDir } from "#lib/paths.ts";
   import { flip } from "svelte/animate";
-  import { easeOut, screen } from "$lib/motion";
-  import { app } from "$lib/stores/app.svelte";
-  import { dismissOnBack } from "$lib/back-dismiss.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
+  import { easeOut, screen } from "#lib/motion.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { dismissOnBack } from "#lib/back-dismiss.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
 
   const open = $derived(app.overlay === "tabswitcher");
   const count = $derived(editor.tabs.length + (editor.newTabOpen ? 1 : 0));

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { PageMeta } from "$lib/ipc/types";
-  import { previewUrl } from "$lib/preview-url";
-  import { compileStore } from "$lib/stores/compile.svelte";
+  import type { PageMeta } from "#lib/ipc/types.ts";
+  import { previewUrl } from "#lib/preview-url.ts";
+  import { compileStore } from "#lib/stores/compile.svelte.ts";
 
   let {
     meta,
