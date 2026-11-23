@@ -119,7 +119,7 @@
     "@sveltejs/adapter-static": "^4.0.1",
     "@sveltejs/kit": "^3.4.0",
     "@sveltejs/load-config": "^0.2.2",
-    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@sveltejs/vite-plugin-svelte": "^7.3.2",
     "@tailwindcss/vite": "^4.3.5",
     "@tauri-apps/cli": "^2.12.6",
     "bits-ui": "^2.22.0",

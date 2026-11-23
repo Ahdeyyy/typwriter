@@ -1,5 +1,5 @@
 {
-  "inputHash": "14719ed83d59e0ace4fae35ad7abdb3baacce2dc024de017ab1f7e848a734af5",
+  "inputHash": "569ec99ab5b2f9228673ed2713614d403806cce58d281f4ed5d0f036577d5125",
   "packages": [
     {
       "name": "@codemirror/autocomplete",
@@ -195,7 +195,7 @@
     },
     {
       "name": "@sveltejs/vite-plugin-svelte",
-      "version": "7.3.1",
+      "version": "7.3.2",
       "ecosystem": "JavaScript",
       "license": "MIT",
       "notices": [
