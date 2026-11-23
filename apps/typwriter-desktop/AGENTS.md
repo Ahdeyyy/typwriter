@@ -6,6 +6,10 @@ The Typst editor for desktop. Tauri 2 + SvelteKit (static adapter) + a Rust core
 
 - camelCase for variables/functions, PascalCase for classes.
 - Frontend package manager is `bun`; Rust is `cargo`.
+- SvelteKit 3, Vite 8, TypeScript 6 (not 7: SvelteKit 3, svelte-check and typescript-eslint don't support it yet), ESLint 10. Needs Node 22.17+.
+- There is no `svelte.config.js`: the adapter, `preprocess` and `version.pollInterval: 0` are passed to `sveltekit({...})` in `vite.config.js`; `eslint.config.js` reads them back through `@sveltejs/load-config`.
+- `$lib` no longer exists. Import shared code through the `#lib` subpath import (`package.json` `imports`) with the file's real extension: `#lib/stores/editor.svelte.ts`, `#lib/components/ui/button/index.ts`, `#lib/utils.ts`. Bun tests mock modules by that exact specifier (`mock.module('#lib/ipc/commands.ts', ...)`). `components.json` uses `#lib` too.
+- The `tests/*-preview` harnesses alias the same `#lib/...` specifiers to their mocks, so keep them in step when an import path changes.
 - Validate Rust changes with `cargo check` in `src-tauri/` (full builds are slow and can OOM on Windows — see root memory).
 - Do **not** run the dev server to "view" the app — it's a Tauri shell, not a browser app.
 - The Typst CodeMirror parser is not in this repo: it is the `codemirror-typst` npm package (repo: `Ahdeyyy/codemirror-typst`, checked out next to this one as `../codemirror-typst`), shared with the mobile app. Parser fixes land there and reach the apps through a version bump.

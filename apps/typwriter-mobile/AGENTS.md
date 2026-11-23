@@ -9,6 +9,10 @@ See `README.md` for the dev loop, the `adjustResize` manifest note, and the app-
 ## Conventions
 
 - camelCase for variables/functions, PascalCase for classes. `bun` for the frontend, `cargo` for Rust.
+- SvelteKit 3, Vite 8, TypeScript 6 (not 7: SvelteKit 3, svelte-check and typescript-eslint don't support it yet), ESLint 10. Needs Node 22.17+.
+- There is no `svelte.config.js`: the adapter, `preprocess` and `version.pollInterval: 0` are passed to `sveltekit({...})` in `vite.config.ts`; `eslint.config.js` reads them back through `@sveltejs/load-config`.
+- `$lib` no longer exists. Import shared code through the `#lib` subpath import (`package.json` `imports`) with the file's real extension: `#lib/stores/editor.svelte.ts`, `#lib/components/ui/button/index.ts`, `#lib/utils.ts`. Bun tests mock modules by that exact specifier (`mock.module('#lib/ipc/commands.ts', ...)`). `components.json` uses `#lib` too.
+- `tsconfig.json` sets `types: ["$app/types", "bun"]`: TypeScript 6 no longer loads @types packages implicitly, and SvelteKit requires `$app/types` in any `types` list.
 - Validate Rust with `cargo check` in `src-tauri/` (`RUST_MIN_STACK=8388608` on Windows). Full builds are slow and can OOM.
 - Every Svelte store is a class with a singleton export — module-level `$state` exports lose reactivity.
 - `src/lib/ipc/commands.ts` is the **only** place `invoke` is called; `types.ts` mirrors the Rust contract.
@@ -59,4 +63,4 @@ These are the ones that cost real debugging time. Violating any of them breaks t
 
 ### Build config
 
-- `vite.config.ts` — dev server on port 1430 (desktop uses 1420). The `resolve.dedupe` list is load-bearing: two copies of `@lezer/common` collide `NodeProp` ids and highlighting silently renders as plain text. The root `package.json` `overrides` block pins the versions; check that pin before writing any CodeMirror workaround, since it caps both apps.
+- `vite.config.ts` — SvelteKit's own options (see Conventions), dev server on port 1430 (desktop uses 1420). The `resolve.dedupe` list is load-bearing: two copies of `@lezer/common` collide `NodeProp` ids and highlighting silently renders as plain text. The root `package.json` `overrides` block pins the versions; check that pin before writing any CodeMirror workaround, since it caps both apps.
