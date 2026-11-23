@@ -73,6 +73,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      # SvelteKit 3 and Vite 8 need Node 22.17+. They run under Node even
+      # when the frontend build is started through bun.
+      - name: setup node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
       - name: setup bun
         uses: oven-sh/setup-bun@v2
 

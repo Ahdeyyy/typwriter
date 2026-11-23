@@ -105,6 +105,13 @@ jobs:
           fi
           echo "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
 
+      # SvelteKit 3 and Vite 8 need Node 22.17+. They run under Node even
+      # when the frontend build is started through bun.
+      - name: setup node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
 
