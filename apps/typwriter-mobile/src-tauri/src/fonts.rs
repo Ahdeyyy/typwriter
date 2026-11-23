@@ -15,7 +15,7 @@ use std::{path::PathBuf, sync::Arc};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
-use tauri_plugin_android_fs::FileUri;
+use tauri_plugin_android_fs::FsUri;
 use typst_kit::fonts::{self as kit_fonts, FontStore};
 
 use crate::world::MobileWorld;
@@ -97,7 +97,7 @@ pub enum FontsSource {
     /// `std::fs` can reach).
     Path { path: String },
     /// A SAF content-tree URI picked on Android, with a display name.
-    Saf { uri: FileUri, name: String },
+    Saf { uri: FsUri, name: String },
 }
 
 impl FontsSource {
@@ -163,7 +163,7 @@ pub fn clear_source(app: &AppHandle) -> Result<(), String> {
             use tauri_plugin_android_fs::AndroidFsExt;
             let _ = app
                 .android_fs()
-                .file_picker()
+                .picker()
                 .release_persisted_uri_permission(&uri);
         }
         let _ = &uri; // only used on android
@@ -182,14 +182,14 @@ pub fn pick(app: &AppHandle) -> Result<Option<String>, String> {
         use tauri_plugin_android_fs::AndroidFsExt;
         let api = app.android_fs();
         let Some(uri) = api
-            .file_picker()
+            .picker()
             .pick_dir(None, false)
             .map_err(|e| e.to_string())?
         else {
             return Ok(None);
         };
         // Persist so the folder is still readable after a restart.
-        api.file_picker()
+        api.picker()
             .persist_uri_permission(&uri)
             .map_err(|e| e.to_string())?;
         let name = api
@@ -323,7 +323,7 @@ fn is_font_entry(name: Option<&str>, mime_type: Option<&str>) -> bool {
 /// which reads exactly like "my fonts aren't loading". We ask only for the two
 /// fields we actually use, and skip entries individually.
 #[cfg(target_os = "android")]
-fn collect_saf_fonts(app: &AppHandle, root: &FileUri, out: &mut Vec<Vec<u8>>) {
+fn collect_saf_fonts(app: &AppHandle, root: &FsUri, out: &mut Vec<Vec<u8>>) {
     use tauri_plugin_android_fs::{AndroidFsExt, EntryOptions, OptionalEntry};
 
     /// Directories to walk before giving up (a picked tree should be small;
@@ -386,7 +386,7 @@ fn collect_saf_fonts(app: &AppHandle, root: &FileUri, out: &mut Vec<Vec<u8>>) {
 }
 
 #[cfg(not(target_os = "android"))]
-fn collect_saf_fonts(_app: &AppHandle, _root: &FileUri, _out: &mut Vec<Vec<u8>>) {
+fn collect_saf_fonts(_app: &AppHandle, _root: &FsUri, _out: &mut Vec<Vec<u8>>) {
     // SAF is Android-only; on desktop the picker always yields a `Path`.
 }
 

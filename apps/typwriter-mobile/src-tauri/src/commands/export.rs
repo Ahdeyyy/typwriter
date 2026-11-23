@@ -657,7 +657,7 @@ fn save_single_file(
         use tauri_plugin_android_fs::AndroidFsExt;
         let api = app.android_fs();
         let uri = api
-            .file_picker()
+            .picker()
             .save_file(None, suggested_name, Some(_mime_type), false)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "Export cancelled".to_string())?;
@@ -693,7 +693,7 @@ fn save_files_to_folder(
         use tauri_plugin_android_fs::AndroidFsExt;
         let api = app.android_fs();
         let dest = api
-            .file_picker()
+            .picker()
             .pick_dir(None, false)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "Export cancelled".to_string())?;
@@ -801,7 +801,7 @@ fn export_workspace_blocking(app: &AppHandle, name: &str) -> Result<usize, Strin
         use tauri_plugin_android_fs::AndroidFsExt;
         let api = app.android_fs();
         let dest = api
-            .file_picker()
+            .picker()
             .pick_dir(None, false)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "Export cancelled".to_string())?;

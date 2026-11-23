@@ -10,7 +10,7 @@ use std::{
 
 use parking_lot::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_android_fs::FileUri;
+use tauri_plugin_android_fs::FsUri;
 
 use crate::{
     compiler::CompileState,
@@ -23,7 +23,7 @@ use crate::{
 pub struct FileOpenState(pub Mutex<Vec<String>>);
 
 pub struct DocumentSession {
-    pub uri: FileUri,
+    pub uri: FsUri,
     pub name: String,
     pub root: PathBuf,
     /// Last observed original bytes, used to catch a conflicting external save.
@@ -47,7 +47,7 @@ impl DocumentSession {
     fn write_through(
         &mut self,
         content: &str,
-        write: impl FnOnce(&FileUri, &str) -> Result<(), String>,
+        write: impl FnOnce(&FsUri, &str) -> Result<(), String>,
     ) -> Result<(), String> {
         // A failed provider write must not acknowledge a save that only
         // reached our private compilation mirror.
@@ -94,14 +94,14 @@ pub fn validate_name(name: &str) -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "android"))]
-fn local_path(uri: &FileUri) -> Result<PathBuf, String> {
+fn local_path(uri: &FsUri) -> Result<PathBuf, String> {
     tauri::Url::parse(&uri.uri)
         .map_err(|e| e.to_string())?
         .to_file_path()
         .map_err(|_| "Unsupported document URI".into())
 }
 
-fn read_original(app: &AppHandle, uri: &FileUri) -> Result<String, String> {
+fn read_original(app: &AppHandle, uri: &FsUri) -> Result<String, String> {
     #[cfg(target_os = "android")]
     {
         use tauri_plugin_android_fs::AndroidFsExt;
@@ -116,7 +116,7 @@ fn read_original(app: &AppHandle, uri: &FileUri) -> Result<String, String> {
     }
 }
 
-fn write_original(app: &AppHandle, uri: &FileUri, content: &str) -> Result<(), String> {
+fn write_original(app: &AppHandle, uri: &FsUri, content: &str) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
         use tauri_plugin_android_fs::AndroidFsExt;
@@ -204,7 +204,7 @@ pub async fn pick_document(
             // Android has no universally recognized Typst MIME type. Let the
             // user browse all files, then validate the provider's display name.
             let picked = fs
-                .file_picker()
+                .picker()
                 .pick_file(None, &["*/*"], false)
                 .map_err(|e| e.to_string())?;
             Ok(picked.map(|uri| uri.uri))
@@ -255,7 +255,7 @@ pub async fn open_document(
         if !matches!(url.scheme(), "content" | "file") {
             return Err("Unsupported document URI".into());
         }
-        let uri = FileUri::from_uri(uri);
+        let uri = FsUri::from_uri(uri);
         #[cfg(target_os = "android")]
         let name = {
             use tauri_plugin_android_fs::AndroidFsExt;
@@ -350,7 +350,7 @@ mod tests {
         ));
         std::fs::create_dir_all(&root).unwrap();
         let mut session = DocumentSession {
-            uri: FileUri::from_uri("content://provider/42"),
+            uri: FsUri::from_uri("content://provider/42"),
             name: "notes.typ".into(),
             root: root.clone(),
             source: "original".into(),
