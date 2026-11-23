@@ -43,7 +43,8 @@ pub fn document_id(path: &Path) -> String {
     let path = path.to_string_lossy();
     #[cfg(windows)]
     let path = path.to_lowercase();
-    format!("{:x}", Sha256::digest(path.as_bytes()))
+    let digest = Sha256::digest(path.as_bytes());
+    digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]

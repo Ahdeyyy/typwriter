@@ -62,7 +62,7 @@ thiserror = "2.0.18"
 # Versioning / restore-point system. Pure-Rust content-addressed store under
 # .typwriter/history/ inside each workspace — no gix dependency. zstd shrinks
 # blob storage; sha2 produces the content + snapshot ids.
-sha2 = "0.10"
+sha2 = "0.11"
 zstd = { version = "0.14", default-features = false }
 # Grammar / style checking. `concurrent` swaps harper's `Lrc` from `Rc` to
 # `Arc` so the dictionary and lint group can live in Tauri managed state.
