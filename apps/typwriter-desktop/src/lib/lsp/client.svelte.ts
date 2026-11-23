@@ -246,6 +246,10 @@ class LspClientStore {
         const lastPublished = new Map<string, string>();
         const client = new LSPClient({
             rootUri,
+            // The 3 s default is shorter than tinymist's first responses while
+            // it compiles a workspace, so hovers and completions timed out and
+            // their late answers were logged as unknown requests.
+            timeout: 10_000,
             // The deprecated `languageServerExtensions()` bundle also binds
             // `formatKeymap` (Shift-Alt-f), which would shadow the app's own
             // typstyle formatter binding — list the extensions explicitly and
