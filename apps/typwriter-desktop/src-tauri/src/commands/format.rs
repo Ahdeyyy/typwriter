@@ -26,7 +26,7 @@ use log::{debug, error, info, warn};
 use parking_lot::RwLock;
 use serde::Serialize;
 use tauri::State;
-use typstyle_core::{Config, Typstyle};
+use typstyle_core::{Config, Typstyle, WrapMode};
 
 use crate::commands::editor::byte_to_utf16;
 use crate::commands::settings::AppSettings;
@@ -55,7 +55,12 @@ pub fn formatter_config_from_settings(settings: &AppSettings) -> Config {
         blank_lines_upper_bound: (settings.format_blank_lines_upper_bound as usize).clamp(0, 8),
         collapse_markup_spaces: settings.format_collapse_markup_spaces || settings.format_wrap_text,
         reorder_import_items: settings.format_reorder_import_items,
-        wrap_text: settings.format_wrap_text,
+        // typstyle 0.15.3 replaced `wrap_text: bool` with `wrap_mode`; `Fill`
+        // is the old `true`. The sentence modes aren't exposed as settings.
+        wrap_mode: if settings.format_wrap_text { WrapMode::Fill } else { WrapMode::None },
+        // Also new in 0.15.3. The default, `Preserve`, writes CRLF only into
+        // an all-CRLF source; 0.15.0 mixed its own LF breaks into such files.
+        ..Config::default()
     }
 }
 
@@ -1720,7 +1725,7 @@ by others @jones2021 in a follow-up study.
         let config = formatter_config_from_settings(&settings);
         assert!(config.collapse_markup_spaces);
         assert!(!config.reorder_import_items);
-        assert!(!config.wrap_text);
+        assert_eq!(config.wrap_mode, WrapMode::None);
     }
 
     #[test]
@@ -1731,7 +1736,7 @@ by others @jones2021 in a follow-up study.
             ..AppSettings::default()
         };
         let config = formatter_config_from_settings(&settings);
-        assert!(config.wrap_text);
+        assert_eq!(config.wrap_mode, WrapMode::Fill);
         assert!(
             config.collapse_markup_spaces,
             "wrap_text must imply collapse_markup_spaces"

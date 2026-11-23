@@ -84,7 +84,7 @@ pub struct AppSettings {
     pub auto_save_delay_ms: u32,
     pub format_before_save: bool,
 
-    // Formatter (typstyle). Mirrors `typstyle_core::Config` one-for-one;
+    // Formatter (typstyle). Mirrors `typstyle_core::Config` (wrap mode as a bool);
     // `commands::format::formatter_config_from_settings` does the projection
     // and clamps each value.
     /// Spaces per indentation level in formatted output.

@@ -1,5 +1,5 @@
 {
-  "inputHash": "325850781f2088cdd0fdf0e0f4f0409c5024cb43b61c08cf5035e342b1b82100",
+  "inputHash": "e938412239b7961a19829a712e127085c7356052ab1a225dc1382025188aec56",
   "packages": [
     {
       "name": "@codemirror/autocomplete",
@@ -431,7 +431,7 @@
     },
     {
       "name": "log",
-      "version": "0.4.32",
+      "version": "0.4.35",
       "ecosystem": "Rust",
       "license": "MIT OR Apache-2.0",
       "notices": [
@@ -495,7 +495,7 @@
     },
     {
       "name": "openssl",
-      "version": "0.10.81",
+      "version": "0.10.82",
       "ecosystem": "Rust",
       "license": "Apache-2.0",
       "notices": [
@@ -571,7 +571,7 @@
     },
     {
       "name": "serde",
-      "version": "1.0.228",
+      "version": "1.0.229",
       "ecosystem": "Rust",
       "license": "MIT OR Apache-2.0",
       "notices": [
@@ -587,7 +587,7 @@
     },
     {
       "name": "serde_json",
-      "version": "1.0.150",
+      "version": "1.0.154",
       "ecosystem": "Rust",
       "license": "MIT OR Apache-2.0",
       "notices": [
@@ -687,32 +687,32 @@
     },
     {
       "name": "tauri",
-      "version": "2.11.2",
+      "version": "2.12.7",
       "ecosystem": "Rust",
       "license": "Apache-2.0 OR MIT",
       "notices": [
         {
-          "title": "LICENSE_APACHE-2.0",
+          "title": "LICENSE-APACHE-2.0",
           "text": "4bf96504d6e83ce5"
         },
         {
-          "title": "LICENSE_MIT",
+          "title": "LICENSE-MIT",
           "text": "89ff9689dcf9dd53"
         }
       ]
     },
     {
       "name": "tauri-build",
-      "version": "2.6.2",
+      "version": "2.7.6",
       "ecosystem": "Rust",
       "license": "Apache-2.0 OR MIT",
       "notices": [
         {
-          "title": "LICENSE_APACHE-2.0",
+          "title": "LICENSE-APACHE-2.0",
           "text": "4bf96504d6e83ce5"
         },
         {
-          "title": "LICENSE_MIT",
+          "title": "LICENSE-MIT",
           "text": "89ff9689dcf9dd53"
         }
       ]
@@ -743,7 +743,7 @@
     },
     {
       "name": "tauri-plugin-dialog",
-      "version": "2.7.1",
+      "version": "2.8.4",
       "ecosystem": "Rust",
       "license": "Apache-2.0 OR MIT",
       "notices": [
@@ -763,7 +763,7 @@
     },
     {
       "name": "tauri-plugin-log",
-      "version": "2.8.0",
+      "version": "2.10.2",
       "ecosystem": "Rust",
       "license": "Apache-2.0 OR MIT",
       "notices": [
@@ -783,7 +783,7 @@
     },
     {
       "name": "tauri-plugin-opener",
-      "version": "2.5.4",
+      "version": "2.7.3",
       "ecosystem": "Rust",
       "license": "Apache-2.0 OR MIT",
       "notices": [
@@ -803,7 +803,7 @@
     },
     {
       "name": "tauri-plugin-store",
-      "version": "2.4.3",
+      "version": "2.5.1",
       "ecosystem": "Rust",
       "license": "Apache-2.0 OR MIT",
       "notices": [
@@ -823,23 +823,23 @@
     },
     {
       "name": "tauri-utils",
-      "version": "2.9.2",
+      "version": "2.10.4",
       "ecosystem": "Rust",
       "license": "Apache-2.0 OR MIT",
       "notices": [
         {
-          "title": "LICENSE_APACHE-2.0",
+          "title": "LICENSE-APACHE-2.0",
           "text": "4bf96504d6e83ce5"
         },
         {
-          "title": "LICENSE_MIT",
+          "title": "LICENSE-MIT",
           "text": "89ff9689dcf9dd53"
         }
       ]
     },
     {
       "name": "thiserror",
-      "version": "2.0.18",
+      "version": "2.0.21",
       "ecosystem": "Rust",
       "license": "MIT OR Apache-2.0",
       "notices": [
@@ -1035,7 +1035,7 @@
     },
     {
       "name": "typstyle-core",
-      "version": "0.15.0",
+      "version": "0.15.3",
       "ecosystem": "Rust",
       "license": "Apache-2.0",
       "notices": [
