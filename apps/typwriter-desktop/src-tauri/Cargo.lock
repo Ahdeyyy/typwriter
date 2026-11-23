@@ -3636,9 +3636,9 @@ dependencies = [
 
 [[package]]
 name = "harper-brill"
-version = "2.13.0"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96edf04b3f466f4bced8efaf5c05654b6e0eb021bf6931c7b7388716d05ea65d"
+checksum = "e1fcd4306560f4cf50c3e73e96a09a0fb503cd59213e158166fcaba62c1d1c85"
 dependencies = [
  "harper-pos-utils",
  "serde_json",
@@ -3646,9 +3646,9 @@ dependencies = [
 
 [[package]]
 name = "harper-core"
-version = "2.13.0"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d88acd51ecd32aa6a7fcf1fd9f858bbbe507a935bcf31ddd833b454ae804a69"
+checksum = "e297ce4ebe1d64b3dc938cf02e7b6b692634c069dc4c67549941bd5cf7b85754"
 dependencies = [
  "ammonia",
  "bitflags 2.13.2",
@@ -3660,6 +3660,7 @@ dependencies = [
  "harper-brill",
  "harper-thesaurus",
  "hashbrown 0.16.1",
+ "indexmap 2.14.2",
  "is-macro",
  "itertools 0.15.0",
  "levenshtein_automata",
@@ -3683,9 +3684,9 @@ dependencies = [
 
 [[package]]
 name = "harper-pos-utils"
-version = "2.13.0"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2f791cff4e8ffcac4e0849e08662835246e3a30be39441c517f3fd705597b05"
+checksum = "d8560ee17f2c045dd24149f803454fd9c99ac7658d51f6b2d115cdc6a4a115ec"
 dependencies = [
  "burn",
  "burn-ndarray",
@@ -3701,9 +3702,9 @@ dependencies = [
 
 [[package]]
 name = "harper-thesaurus"
-version = "2.13.0"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb3986cd9a64e8fce5a40d96e8899827d4df0c7b62d0d55f33fd9dde2f478fff"
+checksum = "c62b2a8420cabe81d858da81e54c291cad31820345e907beefa03dd19a47b143"
 dependencies = [
  "hashbrown 0.16.1",
  "indexmap 2.14.2",

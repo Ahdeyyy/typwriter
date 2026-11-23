@@ -68,7 +68,7 @@ zstd = { version = "0.14", default-features = false }
 # `Arc` so the dictionary and lint group can live in Tauri managed state.
 # Note: harper-core pulls `burn` + `burn-ndarray` (CPU only — no GPU backend)
 # for its POS tagger, which is the bulk of the added compile time.
-harper-core = { version = "2.7", features = ["concurrent"] }
+harper-core = { version = "3.2", features = ["concurrent"] }
 # Depended on directly (rather than through the `typst` facade) because
 # `grammar/typst_parser/` walks the AST, and this pin is what decouples our
 # grammar checker from harper's own typst support.

@@ -584,6 +584,21 @@ mod tests {
         );
     }
 
+    /// A word added in lowercase must still be accepted when it starts a
+    /// sentence. Guards harper's dictionary case-sensitivity changes (3.0).
+    #[test]
+    fn a_user_dictionary_word_is_accepted_capitalized() {
+        let engine = GrammarEngine::new(GrammarConfig {
+            user_dictionary: vec!["zorbulator".into()],
+            ..Default::default()
+        });
+        let lints = engine.check("a.typ", "Zorbulator is ready.\n").lints;
+        assert!(
+            !lints.iter().any(|l| l.text == "Zorbulator"),
+            "sentence-initial capitalization should not count as a misspelling: {lints:?}"
+        );
+    }
+
     /// End-to-end proof that each file type reaches the right reader: the same
     /// misspelling is found in prose but not in the surrounding structure.
     #[test]
