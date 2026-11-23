@@ -42,7 +42,7 @@ typst-kit = { version = "0.15.1", features = ["embedded-fonts", "scan-fonts", "s
 ecow = { version = "0.2", features = ["serde"] }
 tauri-plugin-log = "2"
 tauri-plugin-store = "2"
-notify = "7"
+notify = "9"
 rayon = "1"
 # Project-wide search. Already in the tree via typst; declared directly
 # because `commands/search.rs` uses it.
