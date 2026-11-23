@@ -2,16 +2,16 @@
   import { onDestroy } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { FileCodeIcon } from "@hugeicons/core-free-icons";
-  import TabBar from "$lib/components/editor/tab-bar.svelte";
-  import TextEditorTab from "$lib/components/editor/text-editor-tab.svelte";
-  import FileInfoTab from "$lib/components/editor/file-info-tab.svelte";
-  import SearchPanel from "$lib/components/editor/search-panel.svelte";
-  import TypstToolbar from "$lib/components/editor/typst-toolbar.svelte";
-  import StatusBar from "$lib/components/editor/status-bar.svelte";
-  import SymbolPicker from "$lib/components/editor/symbol-picker.svelte";
-  import PackageBrowser from "$lib/components/editor/package-browser.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { logError } from "$lib/logger";
+  import TabBar from "#lib/components/editor/tab-bar.svelte";
+  import TextEditorTab from "#lib/components/editor/text-editor-tab.svelte";
+  import FileInfoTab from "#lib/components/editor/file-info-tab.svelte";
+  import SearchPanel from "#lib/components/editor/search-panel.svelte";
+  import TypstToolbar from "#lib/components/editor/typst-toolbar.svelte";
+  import StatusBar from "#lib/components/editor/status-bar.svelte";
+  import SymbolPicker from "#lib/components/editor/symbol-picker.svelte";
+  import PackageBrowser from "#lib/components/editor/package-browser.svelte";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { logError } from "#lib/logger.ts";
 
   const isTypstActive = $derived(
     editor.activeTab?.viewMode === "text" &&

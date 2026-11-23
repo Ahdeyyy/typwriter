@@ -32,13 +32,13 @@
     LayoutTwoColumnIcon,
   } from "@hugeicons/core-free-icons";
 
-  import Titlebar from "$lib/components/titlebar/titlebar.svelte";
-  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import Titlebar from "#lib/components/titlebar/titlebar.svelte";
+  import * as ScrollArea from "#lib/components/ui/scroll-area/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
   import { toast } from "svelte-sonner";
 
-  import { vcs } from "$lib/stores/vcs.svelte";
+  import { vcs } from "#lib/stores/vcs.svelte.ts";
   import {
     onVcsDiffSelection,
     onVcsPageDiff,
@@ -46,10 +46,10 @@
     onVcsRestoreFileResult,
     emitVcsRestoreFileRequest,
     type UnlistenFn,
-  } from "$lib/ipc/events";
-  import { logError } from "$lib/logger";
-  import DiffViewer from "$lib/components/vcs/diff-viewer.svelte";
-  import PageDiffView from "$lib/components/vcs/page-diff-view.svelte";
+  } from "#lib/ipc/events.ts";
+  import { logError } from "#lib/logger.ts";
+  import DiffViewer from "#lib/components/vcs/diff-viewer.svelte";
+  import PageDiffView from "#lib/components/vcs/page-diff-view.svelte";
 
   type DiffView = "files" | "pages";
   type Props = {

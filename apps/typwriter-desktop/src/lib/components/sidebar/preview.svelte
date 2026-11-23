@@ -4,14 +4,14 @@
   import { ZoomInAreaIcon, ZoomOutAreaIcon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon, ArrowLeft01Icon, ArrowRight01Icon, ArrowDown01Icon, Tick02Icon, BookOpen01Icon, ScrollVerticalIcon } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
 
-  import { preview } from "$lib/stores/preview.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { Button } from "$lib/components/ui/button";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { preview } from "#lib/stores/preview.svelte.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
   import { displayLabel, previewController } from "./preview-controller.svelte";
-  import { buildPreviewUrl } from "$lib/preview-url";
+  import { buildPreviewUrl } from "#lib/preview-url.ts";
 
   type Props = { onPresentationMode?: () => void };
   let { onPresentationMode }: Props = $props();

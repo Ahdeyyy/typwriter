@@ -33,7 +33,7 @@ const readFile = mock(() => {
   return read.result;
 });
 
-mock.module("$lib/ipc/commands", () => ({
+mock.module("#lib/ipc/commands.ts", () => ({
   checkGrammar, vcsDiffVsCurrent, vcsPageDiffRequest, readFile,
   getProjectSnippets, getUserSnippets: () => okAsync([]),
   setProjectSnippets: () => okAsync(), setUserSnippets: () => okAsync(),
@@ -47,7 +47,7 @@ mock.module("$lib/ipc/commands", () => ({
   vcsDiffBetween: () => okAsync({ files: [] }), vcsListHistory: () => okAsync([]),
   vcsPageDiffCancel: () => okAsync(), vcsRestoreFile: () => okAsync(), vcsRestoreWorkspace: () => okAsync(),
 }));
-mock.module("$lib/ipc/events", () => ({
+mock.module("#lib/ipc/events.ts", () => ({
   onCompileDiagnostics,
   emitSnippetsChanged: () => okAsync(), emitGrammarConfigChanged: () => okAsync(),
   onSnippetsChanged: () => okAsync(() => {}),
@@ -55,8 +55,8 @@ mock.module("$lib/ipc/events", () => ({
 mock.module("../../apps/typwriter-desktop/src/lib/stores/workspace.svelte.ts", () => ({ workspace: workspaceState }));
 mock.module("../../apps/typwriter-desktop/src/lib/stores/settings.svelte.ts", () => ({ settings: {} }));
 mock.module("../../apps/typwriter-desktop/src/lib/stores/bibliography.svelte.ts", () => ({ bibliography: { refresh: async () => {} } }));
-mock.module("$lib/windows", () => ({ closeDiffWindow: async () => {} }));
-mock.module("$lib/logger", () => ({ logError: () => {} }));
+mock.module("#lib/windows.ts", () => ({ closeDiffWindow: async () => {} }));
+mock.module("#lib/logger.ts", () => ({ logError: () => {} }));
 mock.module("svelte-sonner", () => ({ toast: { error: () => {}, warning: () => {} } }));
 mock.module("../../apps/typwriter-desktop/src/lib/components/pages/home.svelte", () => ({ default: () => {} }));
 

@@ -9,17 +9,17 @@
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Search01Icon } from "@hugeicons/core-free-icons";
 
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { editorSearch } from "$lib/stores/editor-search.svelte";
-  import { ui } from "$lib/stores/ui.svelte";
-  import { fuzzyRank } from "$lib/fuzzy";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { editorSearch } from "#lib/stores/editor-search.svelte.ts";
+  import { ui } from "#lib/stores/ui.svelte.ts";
+  import { fuzzyRank } from "#lib/fuzzy.ts";
   import {
     insertionFor,
     isInMath,
     SYMBOLS,
     SYMBOL_CATEGORIES,
     type TypstSymbol,
-  } from "$lib/typst-symbols";
+  } from "#lib/typst-symbols.ts";
 
   let query = $state("");
   let inputEl = $state<HTMLInputElement | null>(null);

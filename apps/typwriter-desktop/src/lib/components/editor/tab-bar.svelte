@@ -1,9 +1,9 @@
 <script lang="ts">
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Alert01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
-  import { editor } from "$lib/stores/editor.svelte";
-  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import * as ContextMenu from "#lib/components/ui/context-menu/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
   import { TabBarController } from "./tab-bar-controller.svelte";
 
   const ctrl = new TabBarController();

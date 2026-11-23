@@ -17,15 +17,15 @@ import type {
 } from '@pierre/trees';
 import { toast } from 'svelte-sonner';
 
-import { workspace, type FileNode } from '$lib/stores/workspace.svelte';
-import { basename, dirname, ensureTypExtension, normalize } from '$lib/paths';
-import { editor } from '$lib/stores/editor.svelte';
-import { exportWorkspaceWithPicker } from '$lib/services/export-service';
+import { workspace, type FileNode } from '#lib/stores/workspace.svelte.ts';
+import { basename, dirname, ensureTypExtension, normalize } from '#lib/paths.ts';
+import { editor } from '#lib/stores/editor.svelte.ts';
+import { exportWorkspaceWithPicker } from '#lib/services/export-service.ts';
 import {
     collectDroppedFiles,
     hasExternalFiles,
     type DroppedFile,
-} from '$lib/services/drop-import';
+} from '#lib/services/drop-import.ts';
 
 export type MenuState = {
     item: ContextMenuItem;

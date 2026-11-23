@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import Preview from "$lib/components/sidebar/preview.svelte";
-  import Titlebar from "$lib/components/titlebar/titlebar.svelte";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { preview } from "$lib/stores/preview.svelte";
-  import { onPresentationToggleRequest } from "$lib/ipc/events";
-  import { matchesCommand } from "$lib/keybindings";
-  import { logError } from "$lib/logger";
+  import Preview from "#lib/components/sidebar/preview.svelte";
+  import Titlebar from "#lib/components/titlebar/titlebar.svelte";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { preview } from "#lib/stores/preview.svelte.ts";
+  import { onPresentationToggleRequest } from "#lib/ipc/events.ts";
+  import { matchesCommand } from "#lib/keybindings/index.ts";
+  import { logError } from "#lib/logger.ts";
   import { toast } from "svelte-sonner";
 
   type Props = { autoPresent?: boolean; initialPage?: string | null };

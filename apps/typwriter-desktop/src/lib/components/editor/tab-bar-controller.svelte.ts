@@ -1,8 +1,8 @@
 import { tick } from "svelte";
-import { settings } from "$lib/stores/settings.svelte";
-import { editor, type TabInfo } from "$lib/stores/editor.svelte";
-import { workspace } from "$lib/stores/workspace.svelte";
-import { logError } from "$lib/logger";
+import { settings } from "#lib/stores/settings.svelte.ts";
+import { editor, type TabInfo } from "#lib/stores/editor.svelte.ts";
+import { workspace } from "#lib/stores/workspace.svelte.ts";
+import { logError } from "#lib/logger.ts";
 
 export class TabBarController {
   // Drag-drop state (desktop only)

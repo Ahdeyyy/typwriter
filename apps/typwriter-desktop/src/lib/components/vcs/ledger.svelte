@@ -22,12 +22,12 @@
     Target02Icon,
   } from "@hugeicons/core-free-icons";
 
-  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import * as ScrollArea from "#lib/components/ui/scroll-area/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
   import { toast } from "svelte-sonner";
 
-  import { vcs } from "$lib/stores/vcs.svelte";
+  import { vcs } from "#lib/stores/vcs.svelte.ts";
   import {
     bucketize,
     clockTime,
@@ -41,7 +41,7 @@
     viewDiffFor,
   } from "./shared";
   import CreatePointDialog from "./create-point-dialog.svelte";
-  import type { DiffWindowView } from "$lib/windows";
+  import type { DiffWindowView } from "#lib/windows.ts";
 
   interface Props {
     onclose?: () => void;

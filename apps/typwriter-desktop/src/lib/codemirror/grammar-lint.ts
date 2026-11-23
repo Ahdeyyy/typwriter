@@ -20,8 +20,8 @@ import {
   type Tooltip,
 } from "@codemirror/view";
 
-import type { GrammarLint, GrammarSuggestion } from "$lib/types";
-import { grammarSeverity } from "$lib/stores/grammar.svelte";
+import type { GrammarLint, GrammarSuggestion } from "#lib/types.ts";
+import { grammarSeverity } from "#lib/stores/grammar.svelte.ts";
 
 /** Replace the grammar lints shown in a view. */
 export const setGrammarLints = StateEffect.define<GrammarLint[]>();

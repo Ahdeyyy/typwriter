@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { watch } from "runed";
-  import { page } from "@/stores/page.svelte";
+  import { page } from "#lib/stores/page.svelte.ts";
   import Button from "../ui/button/button.svelte";
   import {
     getRecentWorkspaces,
@@ -12,11 +12,11 @@
     clearRecentWorkspaces,
     listRecentDocuments,
     removeRecentDocument,
-  } from "$lib/ipc/commands";
-  import type { RecentWorkspaceEntry, PackageEntry } from "$lib/types";
-  import { fuzzyRank } from "$lib/fuzzy";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { onboarding } from "$lib/stores/onboarding.svelte";
+  } from "#lib/ipc/commands.ts";
+  import type { RecentWorkspaceEntry, PackageEntry } from "#lib/types.ts";
+  import { fuzzyRank } from "#lib/fuzzy.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { onboarding } from "#lib/stores/onboarding.svelte.ts";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
@@ -30,15 +30,15 @@
     PackageIcon,
   } from "@hugeicons/core-free-icons";
   import { toast } from "svelte-sonner";
-  import { logError } from "$lib/logger";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import Titlebar from "$lib/components/titlebar/titlebar.svelte";
-  import { openSettingsWindow } from "$lib/windows";
-  import { chooseDocument, openDocumentPath, initializeDocumentOpening } from "$lib/services/document-opening";
-  import { basename, workspaceLocation } from "$lib/paths";
-  import { platform } from "$lib/stores/platform.svelte";
+  import { logError } from "#lib/logger.ts";
+  import * as Dialog from "#lib/components/ui/dialog/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import Titlebar from "#lib/components/titlebar/titlebar.svelte";
+  import { openSettingsWindow } from "#lib/windows.ts";
+  import { chooseDocument, openDocumentPath, initializeDocumentOpening } from "#lib/services/document-opening.ts";
+  import { basename, workspaceLocation } from "#lib/paths.ts";
+  import { platform } from "#lib/stores/platform.svelte.ts";
 
   let recentWorkspaces = $state<RecentWorkspaceEntry[]>([]);
   let recentDocuments = $state<string[]>([]);

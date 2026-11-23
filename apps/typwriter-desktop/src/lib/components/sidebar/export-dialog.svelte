@@ -4,24 +4,24 @@
   import { Select } from "bits-ui";
   import { toast } from "svelte-sonner";
 
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import * as Dialog from "#lib/components/ui/dialog/index.ts";
   import {
     exportHtmlWithPicker,
     exportPdfWithPicker,
     exportPngWithPicker,
     exportSvgWithPicker,
-  } from "$lib/services/export-service";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { exportPresets } from "$lib/stores/export-presets.svelte";
+  } from "#lib/services/export-service.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { exportPresets } from "#lib/stores/export-presets.svelte.ts";
   import {
     configMatches,
     findPreset,
     toConfig,
     type ExportConfig,
     type ExportPreset,
-  } from "$lib/export-presets";
+  } from "#lib/export-presets.ts";
 
   // ── Props ────────────────────────────────────────────────────────────────
 

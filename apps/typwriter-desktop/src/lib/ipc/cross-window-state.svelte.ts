@@ -32,7 +32,7 @@
 
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import { logError } from "$lib/logger";
+import { logError } from "#lib/logger.ts";
 
 // Tauri only allows alphanumeric, `-`, `/`, `:`, `_` in event names.
 const sanitize = (key: string) => key.replace(/\./g, "_");

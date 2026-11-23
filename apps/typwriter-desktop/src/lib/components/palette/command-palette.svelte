@@ -16,14 +16,14 @@
     Search01Icon,
   } from "@hugeicons/core-free-icons";
 
-  import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { workspace, type FileNode } from "$lib/stores/workspace.svelte";
-  import { ui } from "$lib/stores/ui.svelte";
-  import { shortcutLabel } from "$lib/keybindings";
-  import { fuzzySegments } from "$lib/fuzzy";
-  import { extractOutline } from "$lib/outline";
-  import { buildCommands, type CommandContext } from "$lib/commands/registry";
+  import * as Sidebar from "#lib/components/ui/sidebar/index.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { workspace, type FileNode } from "#lib/stores/workspace.svelte.ts";
+  import { ui } from "#lib/stores/ui.svelte.ts";
+  import { shortcutLabel } from "#lib/keybindings/index.ts";
+  import { fuzzySegments } from "#lib/fuzzy.ts";
+  import { extractOutline } from "#lib/outline.ts";
+  import { buildCommands, type CommandContext } from "#lib/commands/registry.ts";
   import {
     buildRows,
     groupOf,
@@ -33,8 +33,8 @@
     seedFor,
     MAX_ROWS,
     type PaletteRow,
-  } from "$lib/commands/palette-model";
-  import { logError } from "$lib/logger";
+  } from "#lib/commands/palette-model.ts";
+  import { logError } from "#lib/logger.ts";
 
   interface Props {
     /** Everything except `toggleSidebar`, which this component supplies —

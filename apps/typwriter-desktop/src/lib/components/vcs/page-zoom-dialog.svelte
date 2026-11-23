@@ -20,11 +20,11 @@
     Loading03Icon,
   } from "@hugeicons/core-free-icons";
 
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { buildPreviewUrl } from "$lib/preview-url";
-  import { vcsPageDiffRenderPage } from "$lib/ipc/commands";
-  import type { PageChangeKind, PageDiffEntry, PageDiffSide } from "$lib/types";
+  import * as Dialog from "#lib/components/ui/dialog/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { buildPreviewUrl } from "#lib/preview-url.ts";
+  import { vcsPageDiffRenderPage } from "#lib/ipc/commands.ts";
+  import type { PageChangeKind, PageDiffEntry, PageDiffSide } from "#lib/types.ts";
 
   export type ZoomRow = { entry: PageDiffEntry; index: number };
 

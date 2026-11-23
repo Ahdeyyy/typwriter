@@ -19,7 +19,7 @@
   // transitively (its export map blocks the deep import anyway). All we
   // have to do is create the element and pass it as `fileContainer`; the
   // constructor takes care of the shadow + adopted stylesheet.
-  import type { FileDiff as FileDiffEntry } from "$lib/types";
+  import type { FileDiff as FileDiffEntry } from "#lib/types.ts";
 
   let {
     entry,

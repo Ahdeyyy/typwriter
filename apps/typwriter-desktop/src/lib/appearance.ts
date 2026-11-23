@@ -1,7 +1,7 @@
 import { app } from '@tauri-apps/api';
 import { setMode, resetMode, systemPrefersMode } from 'mode-watcher';
-import { emitAppModeChanged, type ModePreference } from '$lib/ipc/events';
-import { logError } from '$lib/logger';
+import { emitAppModeChanged, type ModePreference } from '#lib/ipc/events.ts';
+import { logError } from '#lib/logger.ts';
 
 /** Apply and broadcast a color scheme, including the native window chrome. */
 export function selectColorScheme(next: ModePreference): void {

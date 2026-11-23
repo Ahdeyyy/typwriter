@@ -4,15 +4,15 @@
   // of problem and shouldn't compete for the same list.
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Cancel01Icon, RefreshIcon, TextCheckIcon } from "@hugeicons/core-free-icons";
-  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Switch } from "$lib/components/ui/switch/index.js";
-  import { grammar, grammarSeverity } from "$lib/stores/grammar.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { basename } from "$lib/paths";
-  import type { GrammarLint } from "$lib/types";
+  import * as ScrollArea from "#lib/components/ui/scroll-area/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Switch } from "#lib/components/ui/switch/index.ts";
+  import { grammar, grammarSeverity } from "#lib/stores/grammar.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { basename } from "#lib/paths.ts";
+  import type { GrammarLint } from "#lib/types.ts";
   import { toast } from "svelte-sonner";
 
   interface Props {

@@ -8,7 +8,7 @@
   // list and the keymaps table: they pass whether their filtered list still has
   // anything in it, so a search for a single rule or shortcut surfaces them.
   import type { Snippet } from "svelte";
-  import { cn } from "$lib/utils";
+  import { cn } from "#lib/utils.ts";
   import { getForcedVisible, getSettingsSearch, reportSettingHit, setForcedVisible } from "./search.svelte";
 
   interface Props {

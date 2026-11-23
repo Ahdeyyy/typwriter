@@ -9,11 +9,11 @@
     ViewOffSlashIcon,
     LinkSquare01Icon,
   } from "@hugeicons/core-free-icons";
-  import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import * as Sidebar from "#lib/components/ui/sidebar/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
   import WindowControls from "./window-controls.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
+  import { platform } from "#lib/stores/platform.svelte.ts";
 
   type Props = {
     variant?: "workspace" | "minimal";

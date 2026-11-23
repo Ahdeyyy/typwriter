@@ -7,18 +7,18 @@
     FavouriteIcon,
     LinkSquare02Icon,
   } from "@hugeicons/core-free-icons";
-  import Button from "$lib/components/ui/button/button.svelte";
-  import { Switch } from "$lib/components/ui/switch/index.js";
+  import Button from "#lib/components/ui/button/button.svelte";
+  import { Switch } from "#lib/components/ui/switch/index.ts";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
   import SettingMatch from "../setting-match.svelte";
   import UpdateCard from "../update-card.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { setOnboardingCompleted, getLogFilePath } from "$lib/ipc/commands";
-  import { emitShowTutorialRequest } from "$lib/ipc/events";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { setOnboardingCompleted, getLogFilePath } from "#lib/ipc/commands.ts";
+  import { emitShowTutorialRequest } from "#lib/ipc/events.ts";
   import { openPath, openUrl } from "@tauri-apps/plugin-opener";
   import { toast } from "svelte-sonner";
-  import { logError } from "$lib/logger";
+  import { logError } from "#lib/logger.ts";
 
   // The tutorial is a page in the *main* window; this window can only ask for
   // it. The main window navigates and focuses itself.

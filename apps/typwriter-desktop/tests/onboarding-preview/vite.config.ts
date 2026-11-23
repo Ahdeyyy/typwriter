@@ -5,13 +5,13 @@ import tailwindcss from '@tailwindcss/vite';
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 const mocked = [
-    '$lib/stores/onboarding.svelte', '$lib/stores/preview.svelte',
-    '$lib/ipc/commands', '$lib/ipc/events', '$lib/logger', '@tauri-apps/plugin-opener',
+    '#lib/stores/onboarding.svelte.ts', '#lib/stores/preview.svelte.ts',
+    '#lib/ipc/commands.ts', '#lib/ipc/events.ts', '#lib/logger.ts', '@tauri-apps/plugin-opener',
 ];
 const stubbed = [
-    '$lib/components/titlebar/titlebar.svelte',
-    '$lib/components/editor/onboarding-editor.svelte',
-    '$lib/components/sidebar/preview.svelte',
+    '#lib/components/titlebar/titlebar.svelte',
+    '#lib/components/editor/onboarding-editor.svelte',
+    '#lib/components/sidebar/preview.svelte',
 ];
 
 // Build the actual onboarding page and settings store; native services and
@@ -23,7 +23,7 @@ export default defineConfig({
         alias: [
             ...mocked.map((find) => ({ find, replacement: here('./mocks.ts') })),
             ...stubbed.map((find) => ({ find, replacement: here('./stub.svelte') })),
-            { find: '$lib', replacement: here('../../src/lib') },
+            { find: '#lib', replacement: here('../../src/lib') },
         ],
         dedupe: ['svelte'],
     },

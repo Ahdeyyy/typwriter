@@ -18,6 +18,12 @@
     "tauri": "tauri"
   },
   "license": "MIT",
+  "engines": {
+    "node": ">=22.17"
+  },
+  "imports": {
+    "#lib/*": "./src/lib/*"
+  },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.4",
     "@codemirror/commands": "^6.11.1",
@@ -98,7 +104,7 @@
     "codemirror": "^6.0.2",
     "codemirror-typst": "^0.1.2",
     "neverthrow": "^8.2.0",
-    "runed": "^0.37.1",
+    "runed": "^0.38.0",
     "thememirror": "^2.0.1"
   },
   "devDependencies": {
@@ -110,8 +116,9 @@
     "@hugeicons/svelte": "^1.1.5",
     "@internationalized/date": "^3.12.4",
     "@lucide/svelte": "^1.78.0",
-    "@sveltejs/adapter-static": "^3.0.11",
-    "@sveltejs/kit": "^2.70.4",
+    "@sveltejs/adapter-static": "^4.0.1",
+    "@sveltejs/kit": "^3.4.0",
+    "@sveltejs/load-config": "^0.2.2",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tailwindcss/vite": "^4.3.5",
     "@tauri-apps/cli": "^2.12.6",

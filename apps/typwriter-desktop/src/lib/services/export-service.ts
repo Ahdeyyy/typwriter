@@ -6,13 +6,13 @@ import {
     exportPdf,
     exportPng,
     exportSvg,
-} from '$lib/ipc/commands';
+} from '#lib/ipc/commands.ts';
 import type {
     HtmlExportConfig,
     PdfExportConfig,
     PngExportConfig,
     SvgExportConfig,
-} from '$lib/types';
+} from '#lib/types.ts';
 
 type MaybeResult<T> = Promise<Result<T, string> | null>;
 

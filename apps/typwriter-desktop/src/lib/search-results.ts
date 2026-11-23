@@ -4,7 +4,7 @@
 // with a collapsible header. Grouping lives here rather than in the component
 // so it can be tested.
 
-import type { SearchHit } from '$lib/types';
+import type { SearchHit } from '#lib/types.ts';
 
 export interface HitGroup {
     /** Workspace-relative path, the group's identity. */

@@ -2,8 +2,8 @@
   // Card and circle buttons are siblings so each is keyboard accessible and
   // selecting one mode cannot also trigger the whole-card action.
   import { Moon, Sun } from "@lucide/svelte";
-  import { cn } from "$lib/utils";
-  import { settings, THEMES, type ThemeId } from "$lib/stores/settings.svelte";
+  import { cn } from "#lib/utils.ts";
+  import { settings, THEMES, type ThemeId } from "#lib/stores/settings.svelte.ts";
   import "./theme-preview.css";
 </script>
 

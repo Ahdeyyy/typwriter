@@ -1,10 +1,10 @@
 <script lang="ts">
   import { open } from '@tauri-apps/plugin-dialog';
   import { toast } from 'svelte-sonner';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { workspace } from '$lib/stores/workspace.svelte';
-  import { basename, dirname } from '$lib/paths';
-  import { chooseDocument, openDocumentPath } from '$lib/services/document-opening';
+  import { Button } from '#lib/components/ui/button/index.ts';
+  import { workspace } from '#lib/stores/workspace.svelte.ts';
+  import { basename, dirname } from '#lib/paths.ts';
+  import { chooseDocument, openDocumentPath } from '#lib/services/document-opening.ts';
 
   async function chooseRoot() {
     const path = workspace.documentPath;

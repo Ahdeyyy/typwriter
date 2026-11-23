@@ -2,17 +2,17 @@
   import { onMount } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Alert01Icon } from "@hugeicons/core-free-icons";
-  import { Switch } from "$lib/components/ui/switch/index.js";
+  import { Switch } from "#lib/components/ui/switch/index.ts";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
   import FontPicker from "../font-picker.svelte";
   import SliderControl from "../slider-control.svelte";
-  import { settings, BUNDLED_EDITOR_FONTS } from "$lib/stores/settings.svelte";
-  import { systemFonts, withoutBundled, type FontGroup } from "$lib/stores/system-fonts.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
+  import { settings, BUNDLED_EDITOR_FONTS } from "#lib/stores/settings.svelte.ts";
+  import { systemFonts, withoutBundled, type FontGroup } from "#lib/stores/system-fonts.svelte.ts";
+  import { platform } from "#lib/stores/platform.svelte.ts";
   // The probe store, not the LSP client: the client owns the CodeMirror
   // lsp-client machinery, and this window has no editor to attach it to.
-  import { lspProbeState } from "$lib/lsp/probe.svelte";
+  import { lspProbeState } from "#lib/lsp/probe.svelte.ts";
 
   // tinymist may be installed (or removed) while the app runs, so re-probe every
   // time this pane opens rather than trusting a launch-time answer.

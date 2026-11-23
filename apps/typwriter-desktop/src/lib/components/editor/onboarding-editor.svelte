@@ -19,7 +19,7 @@
     bracketMatching,
   } from "@codemirror/language";
   import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-  import { resolveCodeLanguage } from "$lib/codemirror/langs";
+  import { resolveCodeLanguage } from "#lib/codemirror/langs.ts";
   import { untrack } from "svelte";
   import { mode, systemPrefersMode } from "mode-watcher";
 
@@ -29,10 +29,10 @@
     dark,
     typstListKeymap,
     typstFormatCommands,
-  } from "$lib/typst-codemirror-lang";
-  import { keysFor } from "$lib/keybindings";
-  import { editorAccessibility } from "$lib/codemirror/accessibility";
-  import { settings } from "$lib/stores/settings.svelte";
+  } from "#lib/typst-codemirror-lang/index.ts";
+  import { keysFor } from "#lib/keybindings/index.ts";
+  import { editorAccessibility } from "#lib/codemirror/accessibility.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
 
   /**
    * A deliberately minimal, single-document CodeMirror editor for the tutorial.

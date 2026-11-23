@@ -1,6 +1,6 @@
-import { IsMobile } from "$lib/hooks/is-mobile.svelte.js";
+import { IsMobile } from "#lib/hooks/is-mobile.svelte.ts";
 import { getContext, setContext } from "svelte";
-import { matchesCommand } from "$lib/keybindings";
+import { matchesCommand } from "#lib/keybindings/index.ts";
 
 type Getter<T> = () => T;
 

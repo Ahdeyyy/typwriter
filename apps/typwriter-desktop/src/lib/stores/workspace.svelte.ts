@@ -16,25 +16,25 @@ import {
     setMainFile,
     triggerPreview,
     syncPreview,
-} from '$lib/ipc/commands';
-import { onWorkspaceFilesChanged, onDocumentDependenciesChanged, type UnlistenFn } from '$lib/ipc/events';
-import type { FileTreeEntry, WorkspaceFileChange } from '$lib/types';
-import { logError } from '$lib/logger';
-import { bibliography } from '$lib/stores/bibliography.svelte';
-import { documentScope } from '$lib/stores/document-scope.svelte';
-import { snippets } from '$lib/stores/snippets.svelte';
-import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
+} from '#lib/ipc/commands.ts';
+import { onWorkspaceFilesChanged, onDocumentDependenciesChanged, type UnlistenFn } from '#lib/ipc/events.ts';
+import type { FileTreeEntry, WorkspaceFileChange } from '#lib/types.ts';
+import { logError } from '#lib/logger.ts';
+import { bibliography } from '#lib/stores/bibliography.svelte.ts';
+import { documentScope } from '#lib/stores/document-scope.svelte.ts';
+import { snippets } from '#lib/stores/snippets.svelte.ts';
+import { crossWindowState } from '#lib/ipc/cross-window-state.svelte.ts';
 import { editor } from './editor.svelte';
 import { linkUpdates } from './link-updates.svelte';
 import { preview } from './preview.svelte';
-import type { PathMove } from '$lib/link-updates';
-import { importFilesToWorkspace } from '$lib/services/workspace-file-service';
-import { importDroppedFiles, type DroppedFile } from '$lib/services/drop-import';
-import { normalize, basename, dirname } from '$lib/paths';
-import { SerialQueue } from '$lib/async';
+import type { PathMove } from '#lib/link-updates.ts';
+import { importFilesToWorkspace } from '#lib/services/workspace-file-service.ts';
+import { importDroppedFiles, type DroppedFile } from '#lib/services/drop-import.ts';
+import { normalize, basename, dirname } from '#lib/paths.ts';
+import { SerialQueue } from '#lib/async.ts';
 
-// Re-exported for back-compat with existing `from '$lib/stores/workspace.svelte'`
-// imports. New code should import from `$lib/paths` directly.
+// Re-exported for back-compat with existing `from '#lib/stores/workspace.svelte.ts'`
+// imports. New code should import from `#lib/paths.ts` directly.
 export { normalize, basename, dirname };
 
 export interface FileNode {

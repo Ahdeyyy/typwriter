@@ -1,6 +1,6 @@
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { logError } from "$lib/logger";
+import { logError } from "#lib/logger.ts";
 
 /**
  * The update lifecycle, in the order it advances. One action drives the whole

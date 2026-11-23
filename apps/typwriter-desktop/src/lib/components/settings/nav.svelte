@@ -6,11 +6,11 @@
   // how many settings matched, groups with none are greyed out, and selecting
   // one jumps to its section in the stacked results rather than switching pane.
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
+  import * as ScrollArea from "#lib/components/ui/scroll-area/index.ts";
   import { SETTINGS_GROUPS, type SettingsGroupId } from "./groups";
   import { getSettingsSearch } from "./search.svelte";
-  import WindowControls from "$lib/components/titlebar/window-controls.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
+  import WindowControls from "#lib/components/titlebar/window-controls.svelte";
+  import { platform } from "#lib/stores/platform.svelte.ts";
 
   interface Props {
     active: SettingsGroupId;

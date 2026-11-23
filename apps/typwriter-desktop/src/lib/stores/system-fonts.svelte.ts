@@ -8,8 +8,8 @@
 // fall back to a generic family.
 
 import { ResultAsync, okAsync } from 'neverthrow';
-import { listSystemFontFamilies, type SystemFontFamily } from '$lib/ipc/commands';
-import { logError } from '$lib/logger';
+import { listSystemFontFamilies, type SystemFontFamily } from '#lib/ipc/commands.ts';
+import { logError } from '#lib/logger.ts';
 
 /** A labelled section of a font picker. */
 export interface FontGroup {

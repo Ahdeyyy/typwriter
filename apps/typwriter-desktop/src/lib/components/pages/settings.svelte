@@ -1,21 +1,21 @@
 <script lang="ts">
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { RefreshIcon, Search01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
-  import Button from "$lib/components/ui/button/button.svelte";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import Titlebar from "$lib/components/titlebar/titlebar.svelte";
-  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import SettingsNav from "$lib/components/settings/nav.svelte";
-  import GroupPane from "$lib/components/settings/group-pane.svelte";
+  import Button from "#lib/components/ui/button/button.svelte";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import Titlebar from "#lib/components/titlebar/titlebar.svelte";
+  import * as ScrollArea from "#lib/components/ui/scroll-area/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import SettingsNav from "#lib/components/settings/nav.svelte";
+  import GroupPane from "#lib/components/settings/group-pane.svelte";
   import {
     SETTINGS_GROUPS,
     DEFAULT_SETTINGS_GROUP,
     type SettingsGroupId,
-  } from "$lib/components/settings/groups";
-  import { SettingsSearch, setSettingsSearch } from "$lib/components/settings/search.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { matchesCommand, shortcutLabel } from "$lib/keybindings";
+  } from "#lib/components/settings/groups.ts";
+  import { SettingsSearch, setSettingsSearch } from "#lib/components/settings/search.svelte.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { matchesCommand, shortcutLabel } from "#lib/keybindings/index.ts";
   import { toast } from "svelte-sonner";
 
   interface Props {

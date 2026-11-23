@@ -6,9 +6,9 @@
 // Tauri shell that is not meant to be driven through a dev server, so logic
 // that stays in a `.svelte` file is logic nothing can check.
 
-import { fuzzyRank, type FuzzyMatch } from '$lib/fuzzy';
-import type { OutlineItem } from '$lib/outline';
-import type { AppCommand } from '$lib/commands/registry';
+import { fuzzyRank, type FuzzyMatch } from '#lib/fuzzy.ts';
+import type { OutlineItem } from '#lib/outline.ts';
+import type { AppCommand } from '#lib/commands/registry.ts';
 
 export type PaletteMode = 'files' | 'commands' | 'outline';
 

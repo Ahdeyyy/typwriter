@@ -8,22 +8,22 @@ import {
     saveFile,
     triggerPreview,
     updateFileContent,
-} from '$lib/ipc/commands';
-import { emitSnippetsChanged } from '$lib/ipc/events';
-import { SNIPPETS_REL_PATH } from '$lib/snippets';
-import { applyLinkEdits, type LinkEdit } from '$lib/link-updates';
+} from '#lib/ipc/commands.ts';
+import { emitSnippetsChanged } from '#lib/ipc/events.ts';
+import { SNIPPETS_REL_PATH } from '#lib/snippets.ts';
+import { applyLinkEdits, type LinkEdit } from '#lib/link-updates.ts';
 import type {
     CompileReason,
     FileContentResponse,
     FileMeta,
     WorkspaceFileChange
-} from '$lib/types';
+} from '#lib/types.ts';
 import { workspace } from './workspace.svelte';
 import { bibliography } from './bibliography.svelte';
 import { settings } from './settings.svelte';
 import { grammar } from './grammar.svelte';
-import { normalize, basename } from '$lib/paths';
-import { logError } from '$lib/logger';
+import { normalize, basename } from '#lib/paths.ts';
+import { logError } from '#lib/logger.ts';
 import { toast } from 'svelte-sonner';
 
 export type ViewMode = 'text' | 'image' | 'unsupported';

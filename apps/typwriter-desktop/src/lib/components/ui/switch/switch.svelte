@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { Switch as SwitchPrimitive } from "bits-ui";
-	import { getSettingControl } from "$lib/components/settings/control-context";
+	import { getSettingControl } from "#lib/components/settings/control-context.ts";
 	const settingControl = getSettingControl();
-	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+	import { cn, type WithoutChildrenOrChild } from "#lib/utils.ts";
 
 	let {
 		ref = $bindable(null),

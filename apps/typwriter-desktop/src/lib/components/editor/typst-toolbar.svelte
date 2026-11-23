@@ -15,11 +15,11 @@
     Table01Icon,
     MathIcon,
   } from "@hugeicons/core-free-icons";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { editorSearch } from "$lib/stores/editor-search.svelte";
-  import { editorFormat } from "$lib/stores/editor-format.svelte";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { editorSearch } from "#lib/stores/editor-search.svelte.ts";
+  import { editorFormat } from "#lib/stores/editor-format.svelte.ts";
   import {
     toggleBold,
     toggleItalic,
@@ -32,9 +32,9 @@
     insertImage,
     insertLink,
     insertTable,
-  } from "$lib/typst-codemirror-lang";
-  import { shortcutLabel } from "$lib/keybindings";
-  import { ui } from "$lib/stores/ui.svelte";
+  } from "#lib/typst-codemirror-lang/index.ts";
+  import { shortcutLabel } from "#lib/keybindings/index.ts";
+  import { ui } from "#lib/stores/ui.svelte.ts";
   import type { EditorView } from "@codemirror/view";
 
   type Cmd = (view: EditorView) => boolean;

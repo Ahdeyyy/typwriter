@@ -50,7 +50,7 @@ const editor = {
   applyExternalChanges: async () => {},
 };
 
-mock.module('$lib/ipc/commands', () => ({
+mock.module('#lib/ipc/commands.ts', () => ({
   openDocument, saveWorkspaceTabs: saveTabs, getWorkspaceTabs: getTabs,
   takeOpenRequests: getRequests,
   openFolder: () => okAsync(null), closeSession: () => { backendKey = null; return okAsync(); },
@@ -59,7 +59,7 @@ mock.module('$lib/ipc/commands', () => ({
   deleteFolder: () => okAsync(), moveFile: () => okAsync(), moveFolder: () => okAsync(),
   renameFile: () => okAsync(), setMainFile: () => okAsync(),
 }));
-mock.module('$lib/ipc/events', () => ({
+mock.module('#lib/ipc/events.ts', () => ({
   onWorkspaceFilesChanged: (handler: typeof watcher) => { watcher = handler; return okAsync(() => { watcher = null; }); },
   onDocumentDependenciesChanged: () => okAsync(() => {}),
   onAppOpenFiles: (handler: () => void) => {
@@ -76,11 +76,11 @@ const pageState = { current: { name: 'home' }, navigate };
 mock.module('../../apps/typwriter-desktop/src/lib/stores/page.svelte.ts', () => ({ page: pageState }));
 const finishTutorial = mock(() => { calls.push('finish-tutorial'); return okAsync(); });
 mock.module('../../apps/typwriter-desktop/src/lib/stores/onboarding.svelte.ts', () => ({ onboarding: { finish: finishTutorial } }));
-mock.module('$lib/services/workspace-file-service', () => ({ importFilesToWorkspace: async () => {} }));
-mock.module('$lib/services/drop-import', () => ({ importDroppedFiles: async () => [] }));
+mock.module('#lib/services/workspace-file-service.ts', () => ({ importFilesToWorkspace: async () => {} }));
+mock.module('#lib/services/drop-import.ts', () => ({ importDroppedFiles: async () => [] }));
 mock.module('@tauri-apps/plugin-dialog', () => ({ open: async () => null }));
-mock.module('$lib/windows', () => ({ closeDiffWindow: async () => {} }));
-mock.module('$lib/logger', () => ({ logError: () => {} }));
+mock.module('#lib/windows.ts', () => ({ closeDiffWindow: async () => {} }));
+mock.module('#lib/logger.ts', () => ({ logError: () => {} }));
 const showError = mock(() => {});
 mock.module('svelte-sonner', () => ({ toast: { error: showError } }));
 

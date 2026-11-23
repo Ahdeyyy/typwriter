@@ -1,9 +1,9 @@
 <script lang="ts">
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Alert01Icon } from "@hugeicons/core-free-icons";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { diagnostics } from "$lib/stores/diagnostics.svelte";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { diagnostics } from "#lib/stores/diagnostics.svelte.ts";
 
   const diagCount = $derived(diagnostics.errors.length + diagnostics.warnings.length);
   const hasErrors = $derived(diagnostics.errors.length > 0);

@@ -9,7 +9,7 @@
 // sidebar panel and the palette's `@` mode.
 
 import { parser } from 'codemirror-typst';
-import { lineAt, lineStarts } from '$lib/text-position';
+import { lineAt, lineStarts } from '#lib/text-position.ts';
 
 export interface OutlineItem {
     /** 1-6, from the number of `=` in the heading marker. */

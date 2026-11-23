@@ -31,12 +31,12 @@
     RefreshIcon,
   } from "@hugeicons/core-free-icons";
 
-  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { buildPreviewUrl } from "$lib/preview-url";
-  import { vcs } from "$lib/stores/vcs.svelte";
-  import type { PageChangeKind, PageDiffEntry } from "$lib/types";
+  import * as ScrollArea from "#lib/components/ui/scroll-area/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { buildPreviewUrl } from "#lib/preview-url.ts";
+  import { vcs } from "#lib/stores/vcs.svelte.ts";
+  import type { PageChangeKind, PageDiffEntry } from "#lib/types.ts";
   import PageZoomDialog from "./page-zoom-dialog.svelte";
 
   let { onrefresh }: { onrefresh?: () => void } = $props();

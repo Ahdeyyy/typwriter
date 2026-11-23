@@ -3,7 +3,7 @@ import type { EditorState } from '@codemirror/state';
 import type { SyntaxNode, Tree } from '@lezer/common';
 
 import { parser } from 'codemirror-typst';
-import { citePrefixAt, refPrefixAt } from '$lib/references';
+import { citePrefixAt, refPrefixAt } from '#lib/references.ts';
 
 export type CompletionScope = 'markup' | 'code' | 'string' | 'raw' | 'raw-language' | 'comment' | 'math' | 'reference';
 

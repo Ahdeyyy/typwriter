@@ -8,11 +8,11 @@
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import { referenceContextAt } from './completion-context';
 
-import { describeEntry, type BibEntry } from '$lib/bibliography';
+import { describeEntry, type BibEntry } from '#lib/bibliography.ts';
 import {
     extractLabels,
     type LabelDef,
-} from '$lib/references';
+} from '#lib/references.ts';
 
 export interface LabelSource {
     /** Buffers to harvest labels from: usually every open `.typ` tab. */

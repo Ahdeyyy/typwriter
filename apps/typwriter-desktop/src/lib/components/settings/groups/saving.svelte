@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { Switch } from "$lib/components/ui/switch/index.js";
+  import { Switch } from "#lib/components/ui/switch/index.ts";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
   import SliderControl from "../slider-control.svelte";
-  import { settings, type LinkUpdateMode } from "$lib/stores/settings.svelte";
-  import { shortcutLabel } from "$lib/keybindings";
+  import { settings, type LinkUpdateMode } from "#lib/stores/settings.svelte.ts";
+  import { shortcutLabel } from "#lib/keybindings/index.ts";
 
   const LINK_MODES: { id: LinkUpdateMode; label: string; hint: string }[] = [
     { id: "always", label: "Always", hint: "Update them right away, with an Undo option" },

@@ -13,30 +13,30 @@
     Tick02Icon,
     FolderTransferIcon,
   } from "@hugeicons/core-free-icons";
-  import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { diagnostics } from "$lib/stores/diagnostics.svelte";
-  import { grammar } from "$lib/stores/grammar.svelte";
-  import { ui, type SidebarSection } from "$lib/stores/ui.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
-  import { normalize, workspaceLocation } from "$lib/paths";
-  import { getRecentWorkspaces } from "$lib/ipc/commands";
+  import * as Sidebar from "#lib/components/ui/sidebar/index.ts";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { diagnostics } from "#lib/stores/diagnostics.svelte.ts";
+  import { grammar } from "#lib/stores/grammar.svelte.ts";
+  import { ui, type SidebarSection } from "#lib/stores/ui.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { platform } from "#lib/stores/platform.svelte.ts";
+  import { normalize, workspaceLocation } from "#lib/paths.ts";
+  import { getRecentWorkspaces } from "#lib/ipc/commands.ts";
   import { toast } from "svelte-sonner";
-  import { logError } from "$lib/logger";
-  import FileTree from "$lib/components/sidebar/filetree.svelte";
-  import StandaloneDocument from "$lib/components/sidebar/standalone-document.svelte";
-  import { chooseDocument } from "$lib/services/document-opening";
-  import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
-  import GrammarPane from "$lib/components/editor/grammar-pane.svelte";
-  import OutlinePane from "$lib/components/sidebar/outline-pane.svelte";
-  import SearchPane from "$lib/components/sidebar/search-pane.svelte";
-  import HistoryPane from "$lib/components/vcs/ledger.svelte";
-  import { vcs } from "$lib/stores/vcs.svelte";
-  import { openDiffWindow, openSettingsWindow } from "$lib/windows";
-  import type { RecentWorkspaceEntry } from "$lib/types";
+  import { logError } from "#lib/logger.ts";
+  import FileTree from "#lib/components/sidebar/filetree.svelte";
+  import StandaloneDocument from "#lib/components/sidebar/standalone-document.svelte";
+  import { chooseDocument } from "#lib/services/document-opening.ts";
+  import DiagnosticsPane from "#lib/components/editor/diagnostics-pane.svelte";
+  import GrammarPane from "#lib/components/editor/grammar-pane.svelte";
+  import OutlinePane from "#lib/components/sidebar/outline-pane.svelte";
+  import SearchPane from "#lib/components/sidebar/search-pane.svelte";
+  import HistoryPane from "#lib/components/vcs/ledger.svelte";
+  import { vcs } from "#lib/stores/vcs.svelte.ts";
+  import { openDiffWindow, openSettingsWindow } from "#lib/windows.ts";
+  import type { RecentWorkspaceEntry } from "#lib/types.ts";
 
   const sidebarCtx = Sidebar.useSidebar();
 

@@ -10,14 +10,14 @@
     PresentationBarChart01Icon,
     RefreshIcon,
   } from "@hugeicons/core-free-icons";
-  import { Button } from "$lib/components/ui/button";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { preview } from "$lib/stores/preview.svelte";
-  import { previewController } from "$lib/components/sidebar/preview-controller.svelte";
-  import { buildPreviewUrl } from "$lib/preview-url";
-  import { matchesCommand } from "$lib/keybindings";
-  import WindowControls from "$lib/components/titlebar/window-controls.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { preview } from "#lib/stores/preview.svelte.ts";
+  import { previewController } from "#lib/components/sidebar/preview-controller.svelte.ts";
+  import { buildPreviewUrl } from "#lib/preview-url.ts";
+  import { matchesCommand } from "#lib/keybindings/index.ts";
+  import WindowControls from "#lib/components/titlebar/window-controls.svelte";
+  import { platform } from "#lib/stores/platform.svelte.ts";
 
   type Props = {
     onToggleEditor: () => void;

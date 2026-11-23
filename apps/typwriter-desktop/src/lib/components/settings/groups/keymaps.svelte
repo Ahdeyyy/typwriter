@@ -10,13 +10,13 @@
     Search01Icon,
     Alert02Icon,
   } from "@hugeicons/core-free-icons";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
   import SettingGroup from "../setting-group.svelte";
   import SettingMatch from "../setting-match.svelte";
   import { getSettingsSearch } from "../search.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { platform } from "#lib/stores/platform.svelte.ts";
   import {
     KEY_SECTIONS,
     chordFromEvent,
@@ -26,7 +26,7 @@
     isCustomized,
     keysFor,
     type KeyCommandDef,
-  } from "$lib/keybindings";
+  } from "#lib/keybindings/index.ts";
 
   // Bindings we don't own: they come from the VS Code keymap and CodeMirror's
   // own defaults. Listed so the pane still documents them.

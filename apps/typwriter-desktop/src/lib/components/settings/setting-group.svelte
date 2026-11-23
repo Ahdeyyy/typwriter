@@ -6,7 +6,7 @@
   // inside back into view — searching "grammar" should show the whole Grammar
   // pane, not only the rows that repeat the word.
   import type { Snippet } from "svelte";
-  import { cn } from "$lib/utils";
+  import { cn } from "#lib/utils.ts";
   import Highlight from "./highlight.svelte";
   import {
     getSettingsGroupId,

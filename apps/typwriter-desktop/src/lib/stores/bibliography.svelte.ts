@@ -9,10 +9,10 @@
 // They also change rarely, which is why this is a store refreshed on workspace
 // and file-tree changes rather than something the completion path recomputes.
 
-import type { BibEntry } from '$lib/bibliography';
-import { parseBibliography } from '$lib/ipc/commands';
-import { logError } from '$lib/logger';
-import { workspace, type FileNode } from '$lib/stores/workspace.svelte';
+import type { BibEntry } from '#lib/bibliography.ts';
+import { parseBibliography } from '#lib/ipc/commands.ts';
+import { logError } from '#lib/logger.ts';
+import { workspace, type FileNode } from '#lib/stores/workspace.svelte.ts';
 
 /** Guard against a pathological project. Reading every file is cheap, but a
  *  tree with hundreds of them is a sign something else is wrong. */

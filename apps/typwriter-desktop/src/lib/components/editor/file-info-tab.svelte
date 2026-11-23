@@ -12,11 +12,11 @@
     TextFontIcon,
     Video01Icon,
   } from "@hugeicons/core-free-icons";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { openFileExternally, revealFileInManager } from "$lib/ipc/commands";
-  import { dirname } from "$lib/paths";
-  import type { TabInfo } from "$lib/stores/editor.svelte";
-  import { logError } from "$lib/logger";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { openFileExternally, revealFileInManager } from "#lib/ipc/commands.ts";
+  import { dirname } from "#lib/paths.ts";
+  import type { TabInfo } from "#lib/stores/editor.svelte.ts";
+  import { logError } from "#lib/logger.ts";
   import { toast } from "svelte-sonner";
 
   let { tab }: { tab: TabInfo } = $props();

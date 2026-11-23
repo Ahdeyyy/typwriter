@@ -7,7 +7,7 @@ import {
     snippetCompletionSource,
     wordBefore,
 } from './snippet-completion';
-import type { Snippet } from '$lib/snippets';
+import type { Snippet } from '#lib/snippets.ts';
 
 function contextAt(doc: string, pos = doc.length, explicit = false): CompletionContext {
     return new CompletionContext(EditorState.create({ doc }), pos, explicit);

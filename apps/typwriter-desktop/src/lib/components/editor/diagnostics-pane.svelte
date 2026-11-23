@@ -1,14 +1,14 @@
 <script lang="ts">
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Alert01Icon, MultiplicationSignCircleIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
-  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { diagnostics } from "$lib/stores/diagnostics.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { basename } from "$lib/paths";
-  import type { SerializedDiagnostic } from "$lib/types";
+  import * as ScrollArea from "#lib/components/ui/scroll-area/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { diagnostics } from "#lib/stores/diagnostics.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { basename } from "#lib/paths.ts";
+  import type { SerializedDiagnostic } from "#lib/types.ts";
 
   interface Props {
     onclose?: () => void;

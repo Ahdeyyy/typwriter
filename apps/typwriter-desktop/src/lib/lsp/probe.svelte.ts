@@ -7,8 +7,8 @@
 // no editor in it. Keeping the two apart is what lets that window skip the
 // whole CodeMirror graph.
 
-import { lspProbe } from '$lib/ipc/commands';
-import { logError, logInfo } from '$lib/logger';
+import { lspProbe } from '#lib/ipc/commands.ts';
+import { logError, logInfo } from '#lib/logger.ts';
 
 class LspProbeStore {
     /** Whether the `tinymist` CLI is installed. `null` until the first probe

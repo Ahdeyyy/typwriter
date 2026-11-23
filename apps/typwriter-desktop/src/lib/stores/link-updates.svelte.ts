@@ -20,15 +20,15 @@
 // becomes one restore point. Nothing here runs except after a move.
 
 import { toast } from 'svelte-sonner';
-import { applyLinkUpdates, planLinkUpdates } from '$lib/ipc/commands';
+import { applyLinkUpdates, planLinkUpdates } from '#lib/ipc/commands.ts';
 import {
     describeLinkCount,
     invertLinkUpdates,
     type FileLinkUpdate,
     type PathMove,
-} from '$lib/link-updates';
-import { basename } from '$lib/paths';
-import { logError } from '$lib/logger';
+} from '#lib/link-updates.ts';
+import { basename } from '#lib/paths.ts';
+import { logError } from '#lib/logger.ts';
 import { editor } from './editor.svelte';
 import { settings } from './settings.svelte';
 import { workspace } from './workspace.svelte';

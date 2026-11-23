@@ -9,7 +9,7 @@
 // or a comment is correctly ignored.
 
 import { parser } from 'codemirror-typst';
-import { lineAt, lineStarts } from '$lib/text-position';
+import { lineAt, lineStarts } from '#lib/text-position.ts';
 
 export interface LabelDef {
     name: string;

@@ -7,8 +7,8 @@
   import ThemeGrid from "../theme-grid.svelte";
   import FontPicker from "../font-picker.svelte";
   import SliderControl from "../slider-control.svelte";
-  import { settings, BUNDLED_UI_FONTS, UI_FONT_SIZE_LIMITS } from "$lib/stores/settings.svelte";
-  import { systemFonts, withoutBundled, type FontGroup } from "$lib/stores/system-fonts.svelte";
+  import { settings, BUNDLED_UI_FONTS, UI_FONT_SIZE_LIMITS } from "#lib/stores/settings.svelte.ts";
+  import { systemFonts, withoutBundled, type FontGroup } from "#lib/stores/system-fonts.svelte.ts";
 
   // The OS font scan takes a moment, so kick it off as soon as this pane opens
   // rather than when the picker is first clicked.

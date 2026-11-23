@@ -467,7 +467,7 @@ pub fn create_workspace(parent_path: String, name: String) -> Result<String, Str
 //
 // Both are read and written as raw JSON text: the schema, and the deliberately
 // forgiving parser that reports one bad entry without losing the rest, live in
-// the frontend's `$lib/snippets.ts`.
+// the frontend's `#lib/snippets.ts`.
 
 #[tauri::command(async)]
 pub fn get_project_snippets(workspace: State<'_, Arc<WorkspaceState>>) -> Option<String> {

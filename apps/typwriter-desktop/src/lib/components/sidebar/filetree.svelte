@@ -11,10 +11,10 @@
     Folder01Icon,
   } from "@hugeicons/core-free-icons";
   import { ChevronsUpDownIcon } from "@lucide/svelte";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
   import { FiletreeController } from "./filetree-controller.svelte";
 
   const controller = new FiletreeController({

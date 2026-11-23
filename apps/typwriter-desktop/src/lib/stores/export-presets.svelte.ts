@@ -9,9 +9,9 @@ import {
     removePreset as removeFrom,
     upsertPreset as upsertInto,
     type ExportPreset,
-} from '$lib/export-presets';
-import { getExportPresets, setExportPresets } from '$lib/ipc/commands';
-import { logError } from '$lib/logger';
+} from '#lib/export-presets.ts';
+import { getExportPresets, setExportPresets } from '#lib/ipc/commands.ts';
+import { logError } from '#lib/logger.ts';
 
 class ExportPresetStore {
     presets = $state<ExportPreset[]>([]);

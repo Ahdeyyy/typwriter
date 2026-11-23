@@ -8,12 +8,12 @@
 <script lang="ts">
   import { tick } from "svelte";
 
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
   import { toast } from "svelte-sonner";
 
-  import { vcs } from "$lib/stores/vcs.svelte";
+  import { vcs } from "#lib/stores/vcs.svelte.ts";
   import { defaultRestoreLabel } from "./shared";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();

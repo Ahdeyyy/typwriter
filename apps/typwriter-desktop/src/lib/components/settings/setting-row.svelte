@@ -7,7 +7,7 @@
   // against its own title, description, and `keywords`, hides itself when the
   // query doesn't match, and reports a hit to its group.
   import type { Snippet } from "svelte";
-  import { cn } from "$lib/utils";
+  import { cn } from "#lib/utils.ts";
   import Highlight from "./highlight.svelte";
   import { setSettingControl } from "./control-context";
   import { getForcedVisible, getSettingsSearch, reportSettingHit } from "./search.svelte";

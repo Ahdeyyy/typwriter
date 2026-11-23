@@ -6,10 +6,10 @@
   skip them all. Driven entirely by `linkUpdates.review`.
 -->
 <script lang="ts">
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { linkUpdates } from "$lib/stores/link-updates.svelte";
-  import { describeLinkCount, literalValue } from "$lib/link-updates";
+  import * as Dialog from "#lib/components/ui/dialog/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { linkUpdates } from "#lib/stores/link-updates.svelte.ts";
+  import { describeLinkCount, literalValue } from "#lib/link-updates.ts";
 
   const review = $derived(linkUpdates.review);
 

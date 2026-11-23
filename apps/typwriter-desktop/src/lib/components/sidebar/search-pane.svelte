@@ -12,16 +12,16 @@
     ArrowRight01Icon,
     Alert01Icon,
   } from "@hugeicons/core-free-icons";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { searchWorkspace, replaceInWorkspace } from "$lib/ipc/commands";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { groupHits } from "$lib/search-results";
-  import type { SearchHit, SearchQuery } from "$lib/types";
-  import { logError } from "$lib/logger";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import { searchWorkspace, replaceInWorkspace } from "#lib/ipc/commands.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { groupHits } from "#lib/search-results.ts";
+  import type { SearchHit, SearchQuery } from "#lib/types.ts";
+  import { logError } from "#lib/logger.ts";
   import { toast } from "svelte-sonner";
   import { watch } from "runed";
 

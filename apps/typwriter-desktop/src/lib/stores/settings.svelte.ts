@@ -11,10 +11,10 @@ import {
     getAppSettings,
     setAppSettings,
     setTypstFontDirectories,
-} from '$lib/ipc/commands';
-import { emitSettingsChanged } from '$lib/ipc/events';
-import { commandById, normalizeKeybindings } from '$lib/keybindings/registry';
-import { logError } from '$lib/logger';
+} from '#lib/ipc/commands.ts';
+import { emitSettingsChanged } from '#lib/ipc/events.ts';
+import { commandById, normalizeKeybindings } from '#lib/keybindings/registry.ts';
+import { logError } from '#lib/logger.ts';
 
 const LS_KEY = 'typwriter:settings:v1';
 
@@ -170,7 +170,7 @@ export interface PersistedSettings {
     snapshotRetentionMaxDays: number;
 
     /** Keyboard shortcut overrides, keyed by command id (see
-     *  `$lib/keybindings/registry`). Only commands the user actually changed
+     *  `#lib/keybindings/registry.ts`). Only commands the user actually changed
      *  appear here — everything else resolves to the shipped default, so
      *  revising a default later still reaches users who never touched it. */
     keybindings: Record<string, string[]>;

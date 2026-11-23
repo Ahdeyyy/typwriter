@@ -6,11 +6,11 @@
     Cancel01Icon,
     PresentationBarChart01Icon,
   } from "@hugeicons/core-free-icons";
-  import { Button } from "$lib/components/ui/button";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { preview } from "$lib/stores/preview.svelte";
-  import { previewController } from "$lib/components/sidebar/preview-controller.svelte";
-  import { matchesCommand } from "$lib/keybindings";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { preview } from "#lib/stores/preview.svelte.ts";
+  import { previewController } from "#lib/components/sidebar/preview-controller.svelte.ts";
+  import { matchesCommand } from "#lib/keybindings/index.ts";
 
   type Props = {
     onReturnToPresenter: () => void;

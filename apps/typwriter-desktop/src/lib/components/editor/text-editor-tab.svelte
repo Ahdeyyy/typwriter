@@ -36,40 +36,40 @@
   import {
     langExtensionForPath,
     resolveCodeLanguage,
-  } from "$lib/codemirror/langs";
+  } from "#lib/codemirror/langs.ts";
 
   import {
     forEachDiagnostic,
     setDiagnostics,
     type Diagnostic as CMDiagnostic,
   } from "@codemirror/lint";
-  import { editorAccessibility } from "$lib/codemirror/accessibility";
-  import { inlineDiagnostics } from "$lib/codemirror/inline-diagnostics";
+  import { editorAccessibility } from "#lib/codemirror/accessibility.ts";
+  import { inlineDiagnostics } from "#lib/codemirror/inline-diagnostics.ts";
   import {
     createLabelIndex,
     mergeLabels,
     referenceCompletionSource,
-  } from "$lib/codemirror/reference-completion";
-  import { typstCompletionSource } from "$lib/codemirror/typst-completion";
-  import { bibliography } from "$lib/stores/bibliography.svelte";
-  import { documentScope } from "$lib/stores/document-scope.svelte";
-  import { ui } from "$lib/stores/ui.svelte";
+  } from "#lib/codemirror/reference-completion.ts";
+  import { typstCompletionSource } from "#lib/codemirror/typst-completion.ts";
+  import { bibliography } from "#lib/stores/bibliography.svelte.ts";
+  import { documentScope } from "#lib/stores/document-scope.svelte.ts";
+  import { ui } from "#lib/stores/ui.svelte.ts";
   import {
     focusMode,
     typewriterScrolling,
     programmaticSync,
-  } from "$lib/codemirror/focus-mode";
-  import { snippetCompletionSource } from "$lib/codemirror/snippet-completion";
-  import { snippets } from "$lib/stores/snippets.svelte";
+  } from "#lib/codemirror/focus-mode.ts";
+  import { snippetCompletionSource } from "#lib/codemirror/snippet-completion.ts";
+  import { snippets } from "#lib/stores/snippets.svelte.ts";
   import {
     diagnosticsMatch,
     type DiagnosticMark,
-  } from "$lib/codemirror/diagnostics-compare";
-  import { imageDrop } from "$lib/codemirror/image-drop";
-  import { grammarLint, setGrammarLints } from "$lib/codemirror/grammar-lint";
+  } from "#lib/codemirror/diagnostics-compare.ts";
+  import { imageDrop } from "#lib/codemirror/image-drop.ts";
+  import { grammarLint, setGrammarLints } from "#lib/codemirror/grammar-lint.ts";
   import { search } from "@codemirror/search";
-  import { editorSearch } from "$lib/stores/editor-search.svelte";
-  import { editorFormat } from "$lib/stores/editor-format.svelte";
+  import { editorSearch } from "#lib/stores/editor-search.svelte.ts";
+  import { editorFormat } from "#lib/stores/editor-format.svelte.ts";
   import {
     typst,
     lightTheme,
@@ -80,28 +80,28 @@
     typstCommentDecorations,
     typstListKeymap,
     typstFormatCommands,
-  } from "$lib/typst-codemirror-lang";
-  import { keysFor } from "$lib/keybindings";
-  import { lspClient } from "$lib/lsp/client.svelte";
-  import { semanticTokenHighlighter } from "$lib/lsp/semantic-tokens";
+  } from "#lib/typst-codemirror-lang/index.ts";
+  import { keysFor } from "#lib/keybindings/index.ts";
+  import { lspClient } from "#lib/lsp/client.svelte.ts";
+  import { semanticTokenHighlighter } from "#lib/lsp/semantic-tokens.ts";
   import type { SvelteSet } from "svelte/reactivity";
   import { Compartment } from "@codemirror/state";
   import { mode, systemPrefersMode } from "mode-watcher";
   import { untrack } from "svelte";
   import { watch } from "runed";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { preview } from "$lib/stores/preview.svelte";
-  import { diagnostics } from "$lib/stores/diagnostics.svelte";
-  import { grammar } from "$lib/stores/grammar.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { preview } from "#lib/stores/preview.svelte.ts";
+  import { diagnostics } from "#lib/stores/diagnostics.svelte.ts";
+  import { grammar } from "#lib/stores/grammar.svelte.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
   import {
     getCompletions,
     getTooltip as getTooltipIpc,
-  } from "$lib/ipc/commands";
-  import type { SerializedDiagnostic, TooltipResponse } from "$lib/types";
+  } from "#lib/ipc/commands.ts";
+  import type { SerializedDiagnostic, TooltipResponse } from "#lib/types.ts";
   import { indentationMarkers } from "@replit/codemirror-indentation-markers";
   import { vscodeKeymap } from "@replit/codemirror-vscode-keymap";
-  import { logError, logPreview } from "$lib/logger";
+  import { logError, logPreview } from "#lib/logger.ts";
 
   let editorHost = $state<HTMLDivElement | null>(null);
   const tabViews = new Map<string, EditorView>();

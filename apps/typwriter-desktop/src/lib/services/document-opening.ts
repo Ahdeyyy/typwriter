@@ -1,13 +1,13 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { toast } from 'svelte-sonner';
-import { SerialQueue } from '$lib/async';
-import { takeOpenRequests } from '$lib/ipc/commands';
-import { onAppOpenFiles, type UnlistenFn } from '$lib/ipc/events';
-import { workspace } from '$lib/stores/workspace.svelte';
-import { page } from '$lib/stores/page.svelte';
-import { normalize } from '$lib/paths';
-import { logError } from '$lib/logger';
-import { closeDiffWindow } from '$lib/windows';
+import { SerialQueue } from '#lib/async.ts';
+import { takeOpenRequests } from '#lib/ipc/commands.ts';
+import { onAppOpenFiles, type UnlistenFn } from '#lib/ipc/events.ts';
+import { workspace } from '#lib/stores/workspace.svelte.ts';
+import { page } from '#lib/stores/page.svelte.ts';
+import { normalize } from '#lib/paths.ts';
+import { logError } from '#lib/logger.ts';
+import { closeDiffWindow } from '#lib/windows.ts';
 
 const queue = new SerialQueue();
 const pending = new Map<string, Promise<void>>();
@@ -22,7 +22,7 @@ export function openDocumentPath(path: string, root?: string): Promise<void> {
     if (existing) return existing;
     const request = queue.run(async () => {
         if (page.current.name === 'onboarding') {
-            const { onboarding } = await import('$lib/stores/onboarding.svelte');
+            const { onboarding } = await import('#lib/stores/onboarding.svelte.ts');
             const finished = await onboarding.finish();
             if (finished.isErr()) {
                 toast.error(`Could not close the tutorial: ${finished.error}`);

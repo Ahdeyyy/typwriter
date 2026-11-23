@@ -8,10 +8,10 @@
   import { fly } from "svelte/transition";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { ArrowRight02Icon, ArrowDown01Icon } from "@hugeicons/core-free-icons";
-  import Button from "$lib/components/ui/button/button.svelte";
-  import { cn } from "$lib/utils";
-  import { platform } from "$lib/stores/platform.svelte";
-  import { updater } from "$lib/stores/updater.svelte";
+  import Button from "#lib/components/ui/button/button.svelte";
+  import { cn } from "#lib/utils.ts";
+  import { platform } from "#lib/stores/platform.svelte.ts";
+  import { updater } from "#lib/stores/updater.svelte.ts";
 
   function formatBytes(bytes: number) {
     if (bytes < 1024 ** 2) return `${Math.round(bytes / 1024)} KB`;

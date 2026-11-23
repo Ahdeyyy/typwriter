@@ -2,7 +2,7 @@
 	import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
 	import { HugeiconsIcon } from "@hugeicons/svelte"
 	import { ArrowRight01Icon } from '@hugeicons/core-free-icons';
-	import { cn } from "$lib/utils.js";
+	import { cn } from "#lib/utils.ts";
 
 	let {
 		ref = $bindable(null),

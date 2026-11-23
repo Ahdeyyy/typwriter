@@ -1,10 +1,10 @@
 <script lang="ts">
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { ArrowUp01Icon, ArrowDown01Icon, ArrowRight01Icon, Cancel01Icon, RotateClockwiseIcon, ReplaceAllIcon } from "@hugeicons/core-free-icons";
-  import { editorSearch } from "$lib/stores/editor-search.svelte";
-  import { matchesCommand, shortcutLabel } from "$lib/keybindings";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { editorSearch } from "#lib/stores/editor-search.svelte.ts";
+  import { matchesCommand, shortcutLabel } from "#lib/keybindings/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
   import { tick } from "svelte";
 
   let searchInput = $state<HTMLInputElement | null>(null);

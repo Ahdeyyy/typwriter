@@ -7,7 +7,7 @@
 // bytes have to be read here and shipped to Rust rather than copied on the
 // Rust side (which is what `import_files` does for the file picker).
 
-import { importDropped } from '$lib/ipc/commands';
+import { importDropped } from '#lib/ipc/commands.ts';
 
 /** One file from an external drop. `path` is relative to the drop target: a
  *  plain file is just its name, while a dropped folder contributes entries

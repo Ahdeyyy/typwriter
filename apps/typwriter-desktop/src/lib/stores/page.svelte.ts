@@ -1,9 +1,9 @@
-import Home from "$lib/components/pages/home.svelte"
-import { logError } from "$lib/logger"
+import Home from "#lib/components/pages/home.svelte"
+import { logError } from "#lib/logger.ts"
 import type { Component } from "svelte"
 
 // Settings is not listed here — it opens in its own webview window
-// (see $lib/windows.ts) rather than swapping the main window's page. Keymaps
+// (see #lib/windows.ts) rather than swapping the main window's page. Keymaps
 // lives inside it as a settings group.
 type PageName = "home" | "workspace" | "onboarding"
 
@@ -29,11 +29,11 @@ export const pages: Record<PageName, PageDefinition> = {
     },
     "workspace": {
         name: "workspace",
-        load: () => import("$lib/components/pages/workspace.svelte"),
+        load: () => import("#lib/components/pages/workspace.svelte"),
     },
     "onboarding": {
         name: "onboarding",
-        load: () => import("$lib/components/pages/onboarding.svelte"),
+        load: () => import("#lib/components/pages/onboarding.svelte"),
     },
 }
 

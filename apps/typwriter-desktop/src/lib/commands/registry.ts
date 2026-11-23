@@ -1,6 +1,6 @@
 // The catalog of things the command palette can run.
 //
-// Distinct from `$lib/keybindings/registry.ts`, which answers "what keystroke
+// Distinct from `#lib/keybindings/registry.ts`, which answers "what keystroke
 // is this bound to". This answers "what happens when you pick it". The two are
 // linked by `shortcut`: a command naming a keybinding id shows whatever that id
 // is currently bound to, so a rebind in settings is reflected here without
@@ -12,17 +12,17 @@
 
 import type { EditorView } from '@codemirror/view';
 
-import { editor } from '$lib/stores/editor.svelte';
-import { editorSearch } from '$lib/stores/editor-search.svelte';
-import { editorFormat } from '$lib/stores/editor-format.svelte';
-import { preview } from '$lib/stores/preview.svelte';
-import { settings } from '$lib/stores/settings.svelte';
-import { workspace } from '$lib/stores/workspace.svelte';
-import { ui } from '$lib/stores/ui.svelte';
-import { snippets } from '$lib/stores/snippets.svelte';
-import { openSettingsWindow } from '$lib/windows';
-import { logError } from '$lib/logger';
-import { chooseDocument } from '$lib/services/document-opening';
+import { editor } from '#lib/stores/editor.svelte.ts';
+import { editorSearch } from '#lib/stores/editor-search.svelte.ts';
+import { editorFormat } from '#lib/stores/editor-format.svelte.ts';
+import { preview } from '#lib/stores/preview.svelte.ts';
+import { settings } from '#lib/stores/settings.svelte.ts';
+import { workspace } from '#lib/stores/workspace.svelte.ts';
+import { ui } from '#lib/stores/ui.svelte.ts';
+import { snippets } from '#lib/stores/snippets.svelte.ts';
+import { openSettingsWindow } from '#lib/windows.ts';
+import { logError } from '#lib/logger.ts';
+import { chooseDocument } from '#lib/services/document-opening.ts';
 import {
     insertCodeBlock,
     insertImage,
@@ -35,7 +35,7 @@ import {
     toggleNumberedList,
     toggleRawInline,
     toggleStrikethrough,
-} from '$lib/typst-codemirror-lang';
+} from '#lib/typst-codemirror-lang/index.ts';
 
 /** Groups are rendered as headers in the palette, in this order. */
 export const COMMAND_GROUPS = [

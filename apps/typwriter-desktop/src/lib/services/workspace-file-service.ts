@@ -1,7 +1,7 @@
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import type { Result } from 'neverthrow';
 
-import { importFiles } from '$lib/ipc/commands';
+import { importFiles } from '#lib/ipc/commands.ts';
 
 export interface WorkspaceImportService {
     importFiles(destDir: string): Promise<Result<void, string> | null>;

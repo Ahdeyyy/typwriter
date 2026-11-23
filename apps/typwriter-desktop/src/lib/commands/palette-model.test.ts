@@ -10,7 +10,7 @@ import {
     type PaletteSources,
 } from './palette-model';
 import type { AppCommand } from './registry';
-import { extractOutline } from '$lib/outline';
+import { extractOutline } from '#lib/outline.ts';
 
 const files: FileEntry[] = [
     { name: 'main.typ', path: 'main.typ' },

@@ -1,5 +1,5 @@
 import type { EditorView } from "@codemirror/view";
-import { computeFormatState } from "$lib/typst-codemirror-lang";
+import { computeFormatState } from "#lib/typst-codemirror-lang/index.ts";
 
 /**
  * Reactive mirror of the formatting that applies at the active editor's cursor.

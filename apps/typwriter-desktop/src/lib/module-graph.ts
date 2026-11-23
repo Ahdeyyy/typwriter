@@ -13,7 +13,7 @@
 // leading `/`.
 
 import { parser } from 'codemirror-typst';
-import { dirname, normalize } from '$lib/paths';
+import { dirname, normalize } from '#lib/paths.ts';
 import type { SyntaxNode } from '@lezer/common';
 
 /** The quoted string inside a `Str` node's text, unescaped. */

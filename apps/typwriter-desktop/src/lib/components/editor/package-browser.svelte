@@ -11,18 +11,18 @@
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { toast } from "svelte-sonner";
 
-  import { editorSearch } from "$lib/stores/editor-search.svelte";
-  import { ui } from "$lib/stores/ui.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { page } from "$lib/stores/page.svelte";
-  import { fuzzyRank, fuzzySegments } from "$lib/fuzzy";
-  import { listPackages, initPackageWorkspace } from "$lib/ipc/commands";
-  import { importLineFor } from "$lib/packages";
-  import type { PackageEntry } from "$lib/types";
-  import { logError } from "$lib/logger";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import { editorSearch } from "#lib/stores/editor-search.svelte.ts";
+  import { ui } from "#lib/stores/ui.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { page } from "#lib/stores/page.svelte.ts";
+  import { fuzzyRank, fuzzySegments } from "#lib/fuzzy.ts";
+  import { listPackages, initPackageWorkspace } from "#lib/ipc/commands.ts";
+  import { importLineFor } from "#lib/packages.ts";
+  import type { PackageEntry } from "#lib/types.ts";
+  import { logError } from "#lib/logger.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import * as Dialog from "#lib/components/ui/dialog/index.ts";
 
   let query = $state("");
   let inputEl = $state<HTMLInputElement | null>(null);

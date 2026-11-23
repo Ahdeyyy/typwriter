@@ -13,20 +13,20 @@
     Copy01Icon,
     Alert01Icon,
   } from "@hugeicons/core-free-icons";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import Button from "$lib/components/ui/button/button.svelte";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import Button from "#lib/components/ui/button/button.svelte";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
   import SettingGroup from "../setting-group.svelte";
   import SettingMatch from "../setting-match.svelte";
-  import { snippets, type WritableScope } from "$lib/stores/snippets.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { basename } from "$lib/paths";
+  import { snippets, type WritableScope } from "#lib/stores/snippets.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { basename } from "#lib/paths.ts";
   import {
     BUILTIN_SNIPPETS,
     validateSnippet,
     type Snippet,
     type SnippetScope,
-  } from "$lib/snippets";
+  } from "#lib/snippets.ts";
   import { toast } from "svelte-sonner";
 
   let scope = $state<WritableScope>("app");
