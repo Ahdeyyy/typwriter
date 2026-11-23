@@ -8,6 +8,13 @@ edition = "2021"
 [profile.dev]
 debug = "line-tables-only"
 
+# Optimize dependencies (not this crate) in dev builds. Unoptimized, Harper's
+# grammar checker and the Typst compiler run several times slower than in
+# release, which makes `tauri dev` misleading about real performance. Only the
+# first build pays for it; incremental rebuilds of our own code are unchanged.
+[profile.dev.package."*"]
+opt-level = 2
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
