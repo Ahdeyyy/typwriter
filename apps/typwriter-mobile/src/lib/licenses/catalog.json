@@ -1,5 +1,5 @@
 {
-  "inputHash": "9768e9869dfc8cbe22a8a976cc1295d07ca29cddce0a15a57105ae379834e5b7",
+  "inputHash": "e215f3043b91c1f694fcdba0c17d5735826ce80e623e1e69fb1ae2d229669efc",
   "packages": [
     {
       "name": "@codemirror/autocomplete",
@@ -75,7 +75,7 @@
     },
     {
       "name": "@eslint/js",
-      "version": "9.39.5",
+      "version": "10.0.1",
       "ecosystem": "JavaScript",
       "license": "MIT",
       "notices": [
@@ -391,7 +391,7 @@
     },
     {
       "name": "eslint",
-      "version": "9.39.5",
+      "version": "10.15.0",
       "ecosystem": "JavaScript",
       "license": "MIT",
       "notices": [
