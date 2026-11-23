@@ -25,11 +25,11 @@ serde_json = "1"
 # Comparing this build's version with the update manifest's.
 semver = "1"
 log = "0.4"
-parking_lot = "0.12"
+parking_lot = "0.13"
 # Workspace file watching. Only `PollWatcher` is used — see the module
 # comment in src/watcher.rs for why inotify is not trustworthy here.
-notify = { version = "7", default-features = false, features = ["macos_kqueue"] }
-lru = "0.12"
+notify = { version = "9", default-features = false, features = ["macos_kqueue"] }
+lru = "0.19"
 thiserror = "2"
 chrono = "0.4"
 typst = "0.15.1"
@@ -46,8 +46,8 @@ typst-kit = { version = "0.15.1", features = ["embedded-fonts", "scan-fonts", "s
 typstyle-core = "0.15"
 ecow = { version = "0.2", features = ["serde"] }
 png = "0.18"
-zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
-base64 = "0.22"
+zip = { version = "=9.8.1", default-features = false, features = ["deflate"] }
+base64 = "0.23"
 tauri-plugin-android-fs = { version = "=28.1.0", features = ["legacy_storage_permission"] }
 # Local: status bar hide/show, bar icon style and real window insets for the
 # edge-to-edge, immersive editor and preview.
