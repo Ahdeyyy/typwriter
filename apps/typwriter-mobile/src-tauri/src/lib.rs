@@ -5,6 +5,7 @@
 mod commands;
 mod compiler;
 mod document;
+mod folders;
 mod fonts;
 mod renderer;
 mod watcher;
@@ -23,8 +24,10 @@ use world::MobileWorld;
 
 /// Resolve the (cache, packages) directories for the package store. Both point
 /// at an app-reachable `Typwriter/Packages` dir; `std::fs` can always read it.
-/// Note this lives *inside* the managed-workspaces root, so the workspace list
-/// marks it as a system entry (see `commands::workspace::list_workspaces`).
+/// Note this lives *inside* the app-storage workspaces root, so the workspace
+/// list marks it as a system entry (see `commands::workspace::list_workspaces`).
+/// It stays in app storage when workspaces move to a picked folder: packages
+/// are a per-device download cache, not something to sync.
 pub(crate) fn packages_dirs(app: &tauri::AppHandle) -> (Option<PathBuf>, Option<PathBuf>) {
     let base = app
         .path()
@@ -124,6 +127,13 @@ pub fn run() {
             commands::app::check_for_update,
             commands::workspace::list_workspaces,
             commands::workspace::create_workspace,
+            commands::workspace::add_folder_workspace,
+            commands::workspace::get_workspace_location,
+            commands::workspace::pick_workspace_location,
+            commands::workspace::migrate_app_workspaces,
+            commands::workspace::get_sync_status,
+            commands::workspace::set_sync_paused,
+            commands::workspace::stop_folder_sync,
             commands::workspace::delete_workspace,
             commands::workspace::open_workspace,
             commands::workspace::get_file_tree,

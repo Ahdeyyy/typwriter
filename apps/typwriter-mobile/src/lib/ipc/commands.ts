@@ -12,7 +12,9 @@ import type {
   FileContent,
   FileNode,
   FontsStatus,
+  MigrationReport,
   PreviewJump,
+  SyncStatus,
   WorkspaceInfo,
   WorkspaceMeta,
   PdfExportConfig,
@@ -38,10 +40,30 @@ export const checkForUpdate = () => call<UpdateInfo | null>("check_for_update");
 // ─── Workspace ───────────────────────────────────────────────────────────────
 
 export const listWorkspaces = () => call<WorkspaceMeta[]>("list_workspaces");
-export const createWorkspace = (name: string) =>
-  call<WorkspaceMeta>("create_workspace", { name });
-export const deleteWorkspace = (name: string) => call<null>("delete_workspace", { name });
-export const openWorkspace = (name: string) => call<WorkspaceInfo>("open_workspace", { name });
+/** Create a workspace: in app storage, or with `inFolder` as a new folder
+ *  inside the chosen location (see `pickWorkspaceLocation`). */
+export const createWorkspace = (name: string, inFolder: boolean) =>
+  call<WorkspaceMeta>("create_workspace", { name, inFolder });
+/** Pick an existing folder and list it as a workspace; null if cancelled. */
+export const addFolderWorkspace = () => call<WorkspaceMeta | null>("add_folder_workspace");
+/** Where new workspaces are created, as a readable label, or null before the
+ *  user has chosen. */
+export const getWorkspaceLocation = () => call<string | null>("get_workspace_location");
+/** Choose where new workspaces are created; the new label, or null if cancelled. */
+export const pickWorkspaceLocation = () => call<string | null>("pick_workspace_location");
+/** Move every app-storage workspace into a folder the user picks (the package
+ *  store stays); null if the picker was cancelled. */
+export const migrateAppWorkspaces = () => call<MigrationReport | null>("migrate_app_workspaces");
+/** Delete an app-storage workspace, or take a folder workspace off the list
+ *  (its files stay where they are). */
+export const deleteWorkspace = (id: string) => call<null>("delete_workspace", { id });
+export const openWorkspace = (id: string) => call<WorkspaceInfo>("open_workspace", { id });
+/** The open folder workspace's sync state, or null when none is open. */
+export const getSyncStatus = () => call<SyncStatus | null>("get_sync_status");
+/** Pause folder polling while the app is hidden; resuming catches up at once. */
+export const setSyncPaused = (paused: boolean) => call<null>("set_sync_paused", { paused });
+/** Stop syncing the open folder workspace (announced as `stopped`). */
+export const stopFolderSync = () => call<null>("stop_folder_sync");
 export const pickDocument = () => call<WorkspaceInfo | null>("pick_document");
 export const openDocument = (uri: string) => call<WorkspaceInfo>("open_document", { uri });
 /** Drain the native queue, including requests delivered before the UI loaded. */
@@ -133,9 +155,9 @@ export const exportForShare = (config: ExportShareConfig) =>
 
 export const exportPdfToUri = () => call<string>("export_pdf_to_uri");
 export const exportPdfToCacheFile = () => call<string>("export_pdf_to_cache_file");
-/** Copy the named workspace into a user-chosen folder; resolves to the number
- *  of files copied. */
-export const exportWorkspace = (name: string) => call<number>("export_workspace", { name });
+/** Copy a workspace into a user-chosen folder; resolves to the number of files
+ *  copied. */
+export const exportWorkspace = (id: string) => call<number>("export_workspace", { id });
 
 // AppSettings is re-exported for store typing convenience.
 export type { AppSettings };

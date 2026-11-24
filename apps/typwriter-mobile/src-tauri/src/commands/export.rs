@@ -777,15 +777,45 @@ pub async fn export_pdf_to_cache_file(
 }
 
 #[tauri::command]
-pub async fn export_workspace(name: String, app: AppHandle) -> Result<usize, String> {
-    tauri::async_runtime::spawn_blocking(move || export_workspace_blocking(&app, &name))
+pub async fn export_workspace(
+    id: String,
+    app: AppHandle,
+    workspace: State<'_, Arc<crate::workspace::WorkspaceState>>,
+) -> Result<usize, String> {
+    let workspace = workspace.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || export_workspace_blocking(&app, &workspace, &id))
         .await
         .map_err(|e| format!("export task panicked: {e}"))?
 }
 
-fn export_workspace_blocking(app: &AppHandle, name: &str) -> Result<usize, String> {
+fn export_workspace_blocking(
+    app: &AppHandle,
+    workspace: &crate::workspace::WorkspaceState,
+    id: &str,
+) -> Result<usize, String> {
+    use crate::commands::workspace::{resolve_target, Target};
+    use crate::folders::{remote::open_remote, sync::FolderSync};
+
     let t = Instant::now();
-    let src = crate::commands::workspace::root_dir(app).join(name);
+    let (name, src) = match resolve_target(app, id)? {
+        Target::App { name, dir } => (name, dir),
+        Target::Folder { entry, mirror } => {
+            // Export what the folder holds now, not what the mirror last saw.
+            // The open workspace's own sync does that; any other folder gets a
+            // one-off sync (nothing else is touching its mirror).
+            match workspace.sync().filter(|s| s.mirror() == mirror.as_path()) {
+                Some(sync) => sync.pull().map(|_| ())?,
+                None => {
+                    std::fs::create_dir_all(&mirror).map_err(|e| e.to_string())?;
+                    FolderSync::new(open_remote(app, &entry.remote), mirror.clone())
+                        .pull()
+                        .map(|_| ())?
+                }
+            };
+            (entry.name, mirror)
+        }
+    };
+    let name = name.as_str();
     if !src.is_dir() {
         return Err(format!("Workspace \"{name}\" not found"));
     }

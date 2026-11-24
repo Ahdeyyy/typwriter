@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { errAsync, okAsync, ResultAsync } from "../../apps/typwriter-mobile/node_modules/neverthrow";
-import type { EntryChange, FileNode, WorkspaceFilesChangedPayload, WorkspaceInfo, WorkspaceMeta } from "../../apps/typwriter-mobile/src/lib/ipc/types";
+import type { EntryChange, FileNode, SyncStatus, WorkspaceFilesChangedPayload, WorkspaceInfo, WorkspaceMeta } from "../../apps/typwriter-mobile/src/lib/ipc/types";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -12,7 +12,7 @@ function deferred<T>() {
 const tick = () => new Promise<void>((done) => setTimeout(done, 0));
 const tree = (name: string): FileNode => ({ name, relPath: "", isDir: true, children: [] });
 const info = (name: string): WorkspaceInfo => ({
-  name, root: `/workspaces/${name}`, tree: tree(name), mainFile: null,
+  id: name, name, root: `/workspaces/${name}`, tree: tree(name), mainFile: null,
   lastFile: null, openTabs: [], activeTab: null, cursor: null,
 });
 const getFileTree = mock(() => okAsync<FileNode, string>(tree("default")));
@@ -51,17 +51,29 @@ const onWorkspaceFilesChanged = mock((handler: Listener["handler"]) => {
   registrations.push({ handler, registration });
   return registration.result;
 });
+const onSyncStatus = mock((_handler: (status: SyncStatus) => void) => okAsync<() => void, string>(() => {}));
+const setSyncPaused = mock((_paused: boolean) => okAsync<null, string>(null));
+const stopFolderSync = mock(() => okAsync<null, string>(null));
+const getSyncStatus = mock(() => okAsync<SyncStatus | null, string>(null));
+const toastMock = Object.assign(mock((_message: string, _options?: unknown) => {}), {
+  error: mock((_message: string, _options?: unknown) => {}),
+  success: mock((_message: string, _options?: unknown) => {}),
+  loading: mock((_message: string, _options?: unknown) => {}),
+  dismiss: mock((_id?: string) => {}),
+});
 const loadStore = mock(async () => ({
   get: async () => null, set: async () => {}, save: async () => {},
 }));
 
 mock.module("#lib/ipc/commands.ts", () => ({
   getFileTree, rescanWorkspace, openWorkspace, pickDocument, openDocument, createFile, renameEntry, listWorkspaces, setMainFile,
+  setSyncPaused, stopFolderSync, getSyncStatus,
 }));
-mock.module("#lib/ipc/events.ts", () => ({ onWorkspaceFilesChanged }));
+mock.module("#lib/ipc/events.ts", () => ({ onWorkspaceFilesChanged, onSyncStatus }));
 mock.module("../../apps/typwriter-mobile/src/lib/stores/editor.svelte.ts", () => ({ editor: editorMock }));
 mock.module("../../apps/typwriter-mobile/src/lib/stores/compile.svelte.ts", () => ({ compileStore: compileMock }));
 mock.module("@tauri-apps/plugin-store", () => ({ load: loadStore }));
+mock.module("svelte-sonner", () => ({ toast: toastMock }));
 
 // EventTarget is enough for listener ownership tests; no renderer or Tauri runs.
 class Surface extends EventTarget {
@@ -119,6 +131,7 @@ beforeEach(() => {
   workspace.mainFile = "main.typ";
   workspace.document = false;
   workspace.workspaces = [];
+  workspace.sync = null;
   app.screen = "editor";
   app.overlay = "none";
   historyMock.state = { screen: "editor", overlay: "none" };
@@ -127,7 +140,8 @@ beforeEach(() => {
   documentSurface.body.style.overflow = "";
   documentSurface.body.style.removeProperty.mockClear();
   for (const fn of [getFileTree, rescanWorkspace, openWorkspace, pickDocument, openDocument, createFile, renameEntry, listWorkspaces,
-    setMainFile, onWorkspaceFilesChanged, loadStore, setLastWorkspace,
+    setMainFile, onWorkspaceFilesChanged, loadStore, setLastWorkspace, onSyncStatus, setSyncPaused, stopFolderSync,
+    getSyncStatus, toastMock, ...Object.values(toastMock),
     ...Object.values(editorMock).filter((value) => typeof value === "function"),
     ...Object.values(compileMock)]) fn.mockClear();
 });
@@ -634,5 +648,72 @@ describe("back dismisses modal layers", () => {
     app.closeOverlay();
     await settle();
     expect(historyMock.back.mock.calls.length - backs).toBe(2);
+  });
+});
+
+describe("folder workspace sync visibility", () => {
+  const status = (state: SyncStatus["state"], extra: Partial<SyncStatus> = {}): SyncStatus => ({
+    workspaceId: "folder:1", name: "Thesis", location: "Sync/Thesis", state,
+    message: null, done: null, total: null, lastSyncedMs: null, ...extra,
+  });
+  const listen = async () => {
+    workspace.init();
+    await tick();
+    const handler = onSyncStatus.mock.calls.at(-1)?.[0];
+    if (!handler) throw new Error("no sync listener");
+    return handler;
+  };
+  const messages = (fn: { mock: { calls: unknown[][] } }) => fn.mock.calls.map((call) => call[0]);
+
+  test("starting and stopping are both announced, routine states only move the indicator", async () => {
+    const emit = await listen();
+    emit(status("syncing"));
+    expect(messages(toastMock)).toEqual(["Sync started: Thesis"]);
+    expect(workspace.sync?.state).toBe("syncing");
+    emit(status("synced", { lastSyncedMs: 1 }));
+    emit(status("paused"));
+    emit(status("syncing"));
+    emit(status("synced", { lastSyncedMs: 2 }));
+    expect(messages(toastMock)).toEqual(["Sync started: Thesis"]);
+    expect(workspace.sync?.state).toBe("synced");
+    emit(status("stopped"));
+    expect(messages(toastMock)).toEqual(["Sync started: Thesis", "Sync stopped: Thesis"]);
+    expect(workspace.sync).toBeNull();
+  });
+
+  test("a big copy shows progress and losing or regaining the folder is announced once", async () => {
+    const emit = await listen();
+    emit(status("syncing", { done: 0, total: 40 }));
+    emit(status("syncing", { done: 20, total: 40 }));
+    expect(messages(toastMock.loading)).toEqual(["Syncing 0 of 40 files", "Syncing 20 of 40 files"]);
+    emit(status("synced"));
+    expect(toastMock.dismiss).toHaveBeenCalled();
+    emit(status("offline", { message: "gone" }));
+    emit(status("offline", { message: "gone" }));
+    expect(toastMock.error).toHaveBeenCalledTimes(1);
+    emit(status("synced"));
+    expect(messages(toastMock.success)).toEqual(["Sync/Thesis is reachable again"]);
+  });
+
+  test("the background pauses an open folder's sync and coming back resumes and catches up", async () => {
+    const emit = await listen();
+    emit(status("synced"));
+    documentSurface.visibilityState = "hidden";
+    documentSurface.dispatchEvent(new Event("visibilitychange"));
+    expect(setSyncPaused).toHaveBeenLastCalledWith(true);
+    expect(rescanWorkspace).not.toHaveBeenCalled();
+    documentSurface.visibilityState = "visible";
+    documentSurface.dispatchEvent(new Event("visibilitychange"));
+    expect(setSyncPaused).toHaveBeenLastCalledWith(false);
+    expect(rescanWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  test("leaving for home stops the sync; with none running nothing is sent", async () => {
+    expect((await workspace.stopSync()).isOk()).toBe(true);
+    expect(stopFolderSync).not.toHaveBeenCalled();
+    const emit = await listen();
+    emit(status("synced"));
+    await workspace.stopSync();
+    expect(stopFolderSync).toHaveBeenCalledTimes(1);
   });
 });

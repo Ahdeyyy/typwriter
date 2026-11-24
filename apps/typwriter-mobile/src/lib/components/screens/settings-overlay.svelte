@@ -26,6 +26,22 @@
   import { updater, type UpdateStatus } from "#lib/stores/updater.svelte.ts";
   import { pickFontsDir, clearFontsDir, getFontsStatus, getTypstVersion } from "#lib/ipc/commands.ts";
   import LicensesScreen from "./licenses-screen.svelte";
+  import FolderStorageDialog from "#lib/components/folder-storage-dialog.svelte";
+
+  // Folder workspaces are opt-in: switching on shows the trade-offs first and
+  // only the dialog's "Turn on" flips the setting.
+  let folderExplainerOpen = $state(false);
+  function setFolderWorkspaces(on: boolean) {
+    if (on) {
+      folderExplainerOpen = true;
+      return;
+    }
+    settings.setFolderWorkspaces(false);
+    toast("Folder workspaces turned off", {
+      description:
+        "New workspaces are stored in the app. Folder workspaces you already have stay in the list and still sync while open.",
+    });
+  }
 
   let pickingFonts = $state(false);
   /** Font families the compiler has loaded, or null before we've asked. */
@@ -294,6 +310,21 @@
             </div>
           </section>
 
+          <section class="flex items-center justify-between gap-4">
+            <div class="flex flex-col">
+              <span class="text-sm font-medium">Workspaces in your own folders</span>
+              <span class="text-muted-foreground text-xs">
+                {settings.folderWorkspaces
+                  ? "On: new workspaces are created in a folder you choose and synced with it while open."
+                  : "Off: workspaces are stored inside the app. Turn on to keep them in a folder a sync app can reach."}
+              </span>
+            </div>
+            <Switch
+              bind:checked={() => settings.folderWorkspaces, (v) => setFolderWorkspaces(v)}
+              aria-label="Workspaces in your own folders"
+            />
+          </section>
+
           <section class="flex flex-col gap-2">
             <div class="flex items-center gap-2">
               <Icon icon={TextFontIcon} class="text-muted-foreground size-5" />
@@ -388,3 +419,5 @@
     </div>
   </Sheet.Content>
 </Sheet.Root>
+
+<FolderStorageDialog bind:open={folderExplainerOpen} />

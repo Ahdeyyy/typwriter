@@ -20,6 +20,7 @@
   import { compileStore } from "#lib/stores/compile.svelte.ts";
   import { layout } from "#lib/stores/layout.svelte.ts";
   import ActionsMenu from "./actions-menu.svelte";
+  import SyncIndicator from "#lib/components/sync-indicator.svelte";
 
   // Tablet editor header. With room to spare, the phone's centered title and
   // bottom dock fold into one row: every open tab is visible and one tap away,
@@ -172,6 +173,7 @@
   </div>
 
   <div class="flex shrink-0 items-center gap-1">
+    <SyncIndicator />
     {#if compileStore.errors.length > 0}
       <Badge variant="destructive" onclick={() => app.openOverlay("diagnostics")}>
         {compileStore.errors.length}

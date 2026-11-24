@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { toast } from "svelte-sonner";
   import { SidebarLeft01Icon, EyeIcon, Alert01Icon } from "@hugeicons/core-free-icons";
   import Icon from "#lib/components/icon.svelte";
@@ -22,6 +22,8 @@
   import TabBar from "#lib/components/toolbar/tab-bar.svelte";
   import { layout } from "#lib/stores/layout.svelte.ts";
   import { immersive } from "#lib/stores/immersive.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import SyncIndicator from "#lib/components/sync-indicator.svelte";
   import { fade } from "svelte/transition";
   import { easeOut } from "#lib/motion.ts";
 
@@ -99,6 +101,16 @@
     formatting = false;
     result.mapErr((e) => toast.error(`Format failed: ${e}`));
   }
+
+  // A folder workspace's sync changing state (started, syncing, synced,
+  // paused, lost the folder) must be seen: bring the floating header — and the
+  // indicator in it — back if scrolling had hidden it.
+  $effect(() => {
+    const state = workspace.sync?.state;
+    // Only the sync state is a dependency — reading the immersive state here
+    // would re-reveal the header every time scrolling hides it.
+    if (state) untrack(() => immersive.reveal("editor"));
+  });
 </script>
 
 <!-- Anchored to the top of the layout viewport and shortened by the keyboard
@@ -189,6 +201,7 @@
             </button>
 
             <div class="flex items-center gap-2">
+              <SyncIndicator floating />
               {#if compileStore.errors.length > 0}
                 <button
                   class="float-pill text-destructive flex h-11 items-center gap-1.5 px-3.5 text-sm font-semibold tabular-nums"

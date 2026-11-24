@@ -36,8 +36,13 @@
       if (last) {
         const result = await workspace.refreshList();
         if (disposed || version !== workspace.version || result.isErr()) return;
-        if (workspace.workspaces.some((w) => w.name === last)) {
-          const opening = workspace.open(last);
+        // Ids replaced names; a name saved by an older build still finds its
+        // (app-storage) workspace.
+        const target = workspace.workspaces.find(
+          (w) => w.id === last || (w.kind === "app" && w.name === last),
+        );
+        if (target) {
+          const opening = workspace.open(target.id);
           const openVersion = workspace.version;
           await opening.mapErr(() => {
             if (!disposed && workspace.version === openVersion) settings.setLastWorkspace(null);

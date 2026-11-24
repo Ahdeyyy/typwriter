@@ -4,11 +4,46 @@
 // plans/typwriter-mobile/02-rust-core.md.
 
 export interface WorkspaceMeta {
+  /** What `openWorkspace` takes: `app:<name>` or `folder:<hex>`. */
+  id: string;
   name: string;
+  /** Where it lives: an absolute path, or a readable label such as
+   *  `Sync/Thesis` for a folder picked through Android's folder picker.
+   *  Display only. */
   path: string;
+  /** `app`: in the app's own storage (how workspaces were kept before they
+   *  could live anywhere). `folder`: a folder the user picked. */
+  kind: "app" | "folder";
   lastOpenedMs: number | null;
   /** App-managed entry (the Typst package store), not a user workspace. */
   system: boolean;
+}
+
+/** Result of moving the app-storage workspaces into a picked folder. */
+export interface MigrationReport {
+  /** `from` is the app-storage id, `to` the new folder workspace's id. */
+  moved: { name: string; from: string; to: string }[];
+  /** Left where they were. */
+  failed: { name: string; error: string }[];
+}
+
+/** Where the open folder workspace's sync stands — mirrors `SyncState` in
+ *  src-tauri/src/folders/sync.rs. */
+export type SyncState = "syncing" | "synced" | "paused" | "offline" | "stopped";
+
+/** `workspace:sync-status` / `get_sync_status`. Emitted on every state change,
+ *  plus throttled progress while files are being copied in. */
+export interface SyncStatus {
+  workspaceId: string;
+  name: string;
+  /** Readable folder location, e.g. `Sync/Thesis`. */
+  location: string;
+  state: SyncState;
+  message: string | null;
+  /** Files copied so far / to copy, while syncing a batch. */
+  done: number | null;
+  total: number | null;
+  lastSyncedMs: number | null;
 }
 
 export interface FileNode {
@@ -60,6 +95,8 @@ export interface WorkspaceFilesChangedPayload {
 export interface WorkspaceInfo {
   /** Standalone file with a private compilation mirror and original URI. */
   document?: boolean;
+  /** The id it was opened with; empty for a standalone document. */
+  id: string;
   name: string;
   root: string;
   tree: FileNode;
@@ -144,7 +181,8 @@ export interface AppSettings {
   hideChromeOnScroll?: boolean;
   autosaveMs: number;
   previewScaleBucket: 1 | 2 | 3 | 4;
-  /** Name of the most recently opened workspace, re-opened on launch. */
+  /** Id of the most recently opened workspace, re-opened on launch (a bare
+   *  name from older builds still resolves to its app-storage workspace). */
   lastWorkspace: string | null;
   /** App-wide fonts source folder (path or SAF URI) loaded into the compiler. */
   fontsDir: string | null;
@@ -154,6 +192,9 @@ export interface AppSettings {
   lastPackageMode?: "zip" | "folder";
   /** When the launch-time update check last reached the server (epoch ms). */
   lastUpdateCheck?: number;
+  /** The user opted into workspaces in folders they pick (synced through a
+   *  private mirror). Off until they have read the trade-offs. */
+  folderWorkspaces?: boolean;
 }
 
 /** A newer build on this app's release track (`check_for_update`). */

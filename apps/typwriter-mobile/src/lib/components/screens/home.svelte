@@ -11,6 +11,10 @@
     ArrowRight01Icon,
     Time04Icon,
     File02Icon,
+    FolderOpenIcon,
+    FolderSyncIcon,
+    Location01Icon,
+    Cancel01Icon,
   } from "@hugeicons/core-free-icons";
   import Icon from "#lib/components/icon.svelte";
   import appIcon from "#lib/assets/app-icon.png";
@@ -32,6 +36,12 @@
   import { pickDocument } from "#lib/document-opening.ts";
   import type { WorkspaceMeta } from "#lib/ipc/types.ts";
   import { screen } from "#lib/motion.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import FolderStorageDialog from "#lib/components/folder-storage-dialog.svelte";
+
+  // Folder workspaces are opt-in; everything that creates or adds one hides
+  // until the user has read the trade-offs and turned them on.
+  let folderExplainerOpen = $state(false);
 
   let loading = $state(true);
   let createOpen = $state(false);
@@ -44,6 +54,11 @@
   let pickingDocument = $state(false);
   let createMenuOpen = $state(false);
   dismissOnBack(() => createMenuOpen, () => (createMenuOpen = false));
+  let creating = $state(false);
+  let addingFolder = $state(false);
+  let migrateOpen = $state(false);
+  dismissOnBack(() => migrateOpen, () => (migrateOpen = false));
+  let migrating = $state(false);
 
   const fabClass =
     "bg-primary text-primary-foreground active:scale-95 fixed flex h-14 items-center justify-center gap-2 rounded-2xl shadow-lg transition-transform duration-150 ease-(--ease-out)";
@@ -76,6 +91,11 @@
   const userCount = $derived(sorted.length);
 
   onMount(() => {
+    // Home is where the user goes after leaving a workspace: a folder
+    // workspace stops syncing here (and says so), rather than polling a
+    // folder nobody is looking at.
+    workspace.stopSync().mapErr((e) => console.error("stop sync:", e));
+    workspace.refreshLocation().mapErr((e) => console.error("workspace location:", e));
     workspace.refreshList().match(
       () => (loading = false),
       (e) => {
@@ -89,41 +109,95 @@
     const n = name.trim();
     if (!n) return "Name cannot be empty";
     if (INVALID.test(n)) return 'Name cannot contain / \\ : * ? " < > |';
-    if (workspace.workspaces.some((w) => w.name === n)) return "A workspace with that name exists";
     return null;
   }
 
-  function submitCreate() {
+  function changeLocation() {
+    workspace.pickLocation().mapErr((e) => toast.error(`Couldn't use that folder: ${e}`));
+  }
+
+  async function submitCreate() {
     const name = newName.trim();
     const err = validateName(name);
     if (err) {
       toast.error(err);
       return;
     }
-    workspace.create(name).match(
-      () => {
-        createOpen = false;
-        newName = "";
-        scheduleBodyLockRelease();
-        workspace.open(name).mapErr((e) => toast.error(`Failed to open: ${e}`));
-      },
-      (e) => toast.error(`Failed to create: ${e}`),
-    );
+    if (creating) return;
+    creating = true;
+    try {
+      // The first folder workspace asks where workspaces live; later ones reuse it.
+      if (settings.folderWorkspaces && !workspace.location) {
+        const picked = await workspace.pickLocation();
+        if (picked.isErr()) {
+          toast.error(`Couldn't use that folder: ${picked.error}`);
+          return;
+        }
+        if (!picked.value) return;
+      }
+      const created = await workspace.create(name);
+      if (created.isErr()) {
+        toast.error(`Failed to create: ${created.error}`);
+        return;
+      }
+      createOpen = false;
+      newName = "";
+      scheduleBodyLockRelease();
+      workspace.open(created.value).mapErr((e) => toast.error(`Failed to open: ${e}`));
+    } finally {
+      creating = false;
+    }
+  }
+
+  async function addFolder() {
+    if (addingFolder) return;
+    addingFolder = true;
+    try {
+      const added = await workspace.addFolder();
+      if (added.isErr()) toast.error(`Couldn't open that folder: ${added.error}`);
+      else if (added.value)
+        workspace.open(added.value).mapErr((e) => toast.error(`Failed to open: ${e}`));
+    } finally {
+      addingFolder = false;
+    }
+  }
+
+  async function doMigrate() {
+    if (migrating) return;
+    migrating = true;
+    try {
+      const result = await workspace.migrate();
+      if (result.isErr()) {
+        toast.error(`Couldn't move workspaces: ${result.error}`);
+        return;
+      }
+      const report = result.value;
+      if (!report) return;
+      migrateOpen = false;
+      scheduleBodyLockRelease();
+      const moved = report.moved.length;
+      if (moved) toast.success(`Moved ${moved} workspace${moved === 1 ? "" : "s"} to ${workspace.location ?? "the folder"}`);
+      for (const failed of report.failed) {
+        toast.error(`"${failed.name}" stayed in app storage`, { description: failed.error });
+      }
+    } finally {
+      migrating = false;
+    }
   }
 
   function openWorkspace(meta: WorkspaceMeta) {
-    workspace.open(meta.name).mapErr((e) => toast.error(`Failed to open: ${e}`));
+    workspace.open(meta.id).mapErr((e) => toast.error(`Failed to open: ${e}`));
   }
 
   function doDelete(meta: WorkspaceMeta) {
-    workspace.delete(meta.name).match(
+    workspace.delete(meta.id).match(
       () => {
-        toast.success(`Deleted "${meta.name}"`);
+        toast.success(meta.kind === "folder" ? `Removed "${meta.name}" from the list` : `Deleted "${meta.name}"`);
         menuTarget = null;
         confirmingDelete = false;
         scheduleBodyLockRelease();
       },
-      (e) => toast.error(`Failed to delete: ${e}`),
+      (e) => toast.error(`Failed to ${meta.kind === "folder" ? "remove" : "delete"}: ${e}`),
     );
   }
 
@@ -131,7 +205,7 @@
     if (exporting) return;
     exporting = true;
     menuTarget = null;
-    exportWorkspace(meta.name).match(
+    exportWorkspace(meta.id).match(
       (count) => {
         exporting = false;
         toast.success(`Exported ${count} file${count === 1 ? "" : "s"} from "${meta.name}"`);
@@ -160,6 +234,16 @@
     >
       <Icon icon={File02Icon} /> {pickingDocument ? "Opening…" : "Open file"}
     </Button>
+    {#if settings.folderWorkspaces}
+      <Button
+        variant="secondary"
+        class="hidden rounded-full px-5 tablet:inline-flex"
+        disabled={addingFolder}
+        onclick={addFolder}
+      >
+        <Icon icon={FolderOpenIcon} /> Open folder
+      </Button>
+    {/if}
     <Button
       variant="ghost"
       size="icon"
@@ -194,12 +278,34 @@
             </Button>
             <!-- No FAB without workspaces, so phones open files from here
                  (tablets keep it in the header). -->
+            {#if settings.folderWorkspaces}
+              <Button variant="ghost" class="rounded-full px-6" disabled={addingFolder} onclick={addFolder}>
+                <Icon icon={FolderOpenIcon} /> Open folder
+              </Button>
+            {/if}
             <Button variant="ghost" class="rounded-full px-6 tablet:hidden" disabled={pickingDocument} onclick={openDocument}>
               <Icon icon={File02Icon} /> {pickingDocument ? "Opening…" : "Open file"}
             </Button>
           </div>
         </div>
       {:else}
+        <!-- Workspaces still inside the app can't reach a sync app: offer to
+             move them out to a folder of the user's choosing. -->
+        {#if settings.folderWorkspaces && workspace.appStorageCount > 0}
+          <div class="bg-card mb-6 flex items-start gap-3.5 rounded-2xl border p-4">
+            <div class="bg-primary/10 text-primary flex size-11 shrink-0 items-center justify-center rounded-xl">
+              <Icon icon={FolderSyncIcon} class="size-6" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="text-[15px] font-medium">
+                {workspace.appStorageCount === 1 ? "1 workspace is" : `${workspace.appStorageCount} workspaces are`} stored inside the app
+              </div>
+              <p class="text-muted-foreground mt-0.5 text-sm">Move them to a folder you choose to back them up or sync them with your other devices.</p>
+              <Button size="sm" class="mt-3 rounded-full px-4" onclick={() => (migrateOpen = true)}>Move to a folder…</Button>
+            </div>
+          </div>
+        {/if}
+
         <!-- Jump back in -->
         {#if recent}
           {@const r = recent}
@@ -233,7 +339,7 @@
         {#if rest.length > 0}
           <h2 class="text-muted-foreground mb-2 px-1 text-xs font-medium tracking-wide uppercase">Workspaces</h2>
           <div class="flex flex-col gap-2 tablet:grid tablet:grid-cols-2 tablet:gap-3 wide:grid-cols-3">
-            {#each rest as meta (meta.path)}
+            {#each rest as meta (meta.id)}
               <button
                 class="bg-card flex w-full items-center gap-3.5 rounded-2xl border p-3 text-left transition-colors tablet:p-4"
                 onclick={() => openWorkspace(meta)}
@@ -260,7 +366,7 @@
       {#if !loading && systemEntries.length > 0}
         <h2 class="text-muted-foreground mt-6 mb-2 px-1 text-xs font-medium tracking-wide uppercase">App storage</h2>
         <div class="flex flex-col gap-2 tablet:grid tablet:grid-cols-2 tablet:gap-3 wide:grid-cols-3">
-          {#each systemEntries as meta (meta.path)}
+          {#each systemEntries as meta (meta.id)}
             <button
               class="bg-muted/40 flex w-full items-center gap-3.5 rounded-2xl border border-dashed p-3 text-left transition-colors tablet:p-4"
               onclick={() => openWorkspace(meta)}
@@ -321,6 +427,11 @@
         <DropdownMenu.Item class={menuItemClass} disabled={pickingDocument} onclick={openDocument}>
           <Icon icon={File02Icon} /> Open file
         </DropdownMenu.Item>
+        {#if settings.folderWorkspaces}
+          <DropdownMenu.Item class={menuItemClass} disabled={addingFolder} onclick={addFolder}>
+            <Icon icon={FolderOpenIcon} /> Open folder
+          </DropdownMenu.Item>
+        {/if}
         <DropdownMenu.Item class={menuItemClass} onclick={() => (createOpen = true)}>
           <Icon icon={Folder01Icon} /> New workspace
         </DropdownMenu.Item>
@@ -339,12 +450,16 @@
   <Dialog.Content>
     <Dialog.Header>
       <Dialog.Title>New workspace</Dialog.Title>
-      <Dialog.Description>Choose a name for your new Typst workspace.</Dialog.Description>
+      <Dialog.Description>
+        {settings.folderWorkspaces
+          ? "A new folder with this name is created in the location below."
+          : "Choose a name for your new Typst workspace."}
+      </Dialog.Description>
     </Dialog.Header>
     <form
       onsubmit={(e) => {
         e.preventDefault();
-        submitCreate();
+        void submitCreate();
       }}
     >
       <Input
@@ -353,8 +468,27 @@
         autocapitalize="off"
         autocorrect="off"
       />
+      {#if settings.folderWorkspaces}
+        <div class="bg-muted/50 mt-3 flex items-center gap-3 rounded-xl px-3 py-2">
+          <Icon icon={Location01Icon} class="text-muted-foreground size-5 shrink-0" />
+          <div class="min-w-0 flex-1">
+            <div class="text-muted-foreground text-xs">Location</div>
+            <div class="truncate text-sm">{workspace.location ?? "Not chosen yet"}</div>
+          </div>
+          <Button type="button" variant="ghost" size="sm" onclick={changeLocation}>
+            {workspace.location ? "Change" : "Choose"}
+          </Button>
+        </div>
+      {:else}
+        <p class="text-muted-foreground mt-3 text-xs">
+          Stored inside the app.
+          <button type="button" class="text-primary underline-offset-2 hover:underline" onclick={() => (folderExplainerOpen = true)}>
+            Keep workspaces in your own folders instead…
+          </button>
+        </p>
+      {/if}
       <Dialog.Footer class="mt-4">
-        <Button type="submit" class="w-full">Create</Button>
+        <Button type="submit" class="w-full" disabled={creating}>{creating ? "Creating…" : "Create"}</Button>
       </Dialog.Footer>
     </form>
   </Dialog.Content>
@@ -374,8 +508,13 @@
   <Drawer.Content>
     {#if confirmingDelete && menuTarget}
       <Drawer.Header>
-        <Drawer.Title>Delete "{menuTarget.name}"?</Drawer.Title>
-        <Drawer.Description>This permanently deletes the workspace and all its files.</Drawer.Description>
+        {#if menuTarget.kind === "folder"}
+          <Drawer.Title>Remove "{menuTarget.name}" from the list?</Drawer.Title>
+          <Drawer.Description>Its files stay in {menuTarget.path}. You can open the folder again at any time.</Drawer.Description>
+        {:else}
+          <Drawer.Title>Delete "{menuTarget.name}"?</Drawer.Title>
+          <Drawer.Description>This permanently deletes the workspace and all its files.</Drawer.Description>
+        {/if}
       </Drawer.Header>
       <div class="flex flex-col gap-2 p-4 pt-2" style="padding-bottom: calc(var(--safe-bottom) + 1rem);">
         <Button
@@ -383,8 +522,13 @@
           class="w-full"
           onclick={() => menuTarget && doDelete(menuTarget)}
         >
-          <Icon icon={Delete02Icon} />
-          Delete workspace
+          {#if menuTarget.kind === "folder"}
+            <Icon icon={Cancel01Icon} />
+            Remove from list
+          {:else}
+            <Icon icon={Delete02Icon} />
+            Delete workspace
+          {/if}
         </Button>
         <Button
           variant="ghost"
@@ -408,17 +552,58 @@
           <Icon icon={FolderExportIcon} />
           Export to folder…
         </Button>
-        {#if !menuTarget?.system}
+        {#if menuTarget && !menuTarget.system}
           <Button
             variant="ghost"
             class="text-destructive justify-start"
             onclick={() => (confirmingDelete = true)}
           >
-            <Icon icon={Delete02Icon} />
-            Delete workspace
+            {#if menuTarget.kind === "folder"}
+              <Icon icon={Cancel01Icon} />
+              Remove from list
+            {:else}
+              <Icon icon={Delete02Icon} />
+              Delete workspace
+            {/if}
           </Button>
         {/if}
       </div>
     {/if}
   </Drawer.Content>
 </Drawer.Root>
+
+<!-- Move app-storage workspaces out to a folder -->
+<Dialog.Root
+  bind:open={migrateOpen}
+  onOpenChange={(o) => {
+    if (!o) scheduleBodyLockRelease();
+  }}
+>
+  <Dialog.Content>
+    <Dialog.Header>
+      <Dialog.Title>Move workspaces to a folder</Dialog.Title>
+      <Dialog.Description>
+        Choose a folder, for example one your sync app keeps in step with your other devices. Each
+        workspace is copied into it as its own folder, checked, and then removed from the app's
+        storage. Downloaded packages stay in the app.
+      </Dialog.Description>
+    </Dialog.Header>
+    <Dialog.Footer class="mt-2 flex-col gap-2">
+      <Button class="w-full" disabled={migrating} onclick={() => void doMigrate()}>
+        {migrating ? "Moving…" : "Choose folder…"}
+      </Button>
+      <Button variant="ghost" class="w-full" disabled={migrating} onclick={() => (migrateOpen = false)}>
+        Not now
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
+
+<FolderStorageDialog
+  bind:open={folderExplainerOpen}
+  onEnabled={() => {
+    toast.success("Folder workspaces turned on", {
+      description: "New workspaces are created in a folder you choose.",
+    });
+  }}
+/>

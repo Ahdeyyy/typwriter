@@ -294,6 +294,7 @@ pub async fn open_document(
         };
         let tree = session.tree();
         watcher.stop();
+        workspace.replace_sync(None);
         *workspace.document.lock() = Some(session);
         *workspace.root.write() = Some(root.clone());
         world.set_root(root.clone());
@@ -301,6 +302,7 @@ pub async fn open_document(
         *compile.document.lock() = None;
         compile.page_lookup.lock().clear();
         Ok(WorkspaceInfo {
+            id: String::new(),
             name: name.clone(),
             root: root.to_string_lossy().into_owned(),
             tree,

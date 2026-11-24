@@ -33,8 +33,8 @@
   // first so the copy contains what's on screen.
   let exportingWorkspace = $state(false);
   async function exportWorkspaceCopy() {
-    const name = workspace.name;
-    if (!name || exportingWorkspace) return;
+    const id = workspace.id;
+    if (!id || exportingWorkspace) return;
     exportingWorkspace = true;
     const version = workspace.version;
     try {
@@ -44,7 +44,7 @@
         return;
       }
       if (version !== workspace.version || workspace.isOpening) return;
-      const result = await exportWorkspace(name);
+      const result = await exportWorkspace(id);
       result.match(
         (count) => toast.success(`Exported ${count} file${count === 1 ? "" : "s"}`),
         (e) => {

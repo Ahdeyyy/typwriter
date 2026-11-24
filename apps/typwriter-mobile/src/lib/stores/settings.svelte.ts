@@ -26,6 +26,7 @@ export class SettingsStore {
   lastPngScale = $state<number>(2.0);
   lastPackageMode = $state<"zip" | "folder">("zip");
   lastUpdateCheck = $state(0);
+  folderWorkspaces = $state(false);
 
   private store: Store | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -61,6 +62,7 @@ export class SettingsStore {
         this.lastPngScale = saved.lastPngScale ?? this.lastPngScale;
         this.lastPackageMode = saved.lastPackageMode ?? this.lastPackageMode;
         this.lastUpdateCheck = saved.lastUpdateCheck ?? this.lastUpdateCheck;
+        this.folderWorkspaces = saved.folderWorkspaces ?? this.folderWorkspaces;
       }
       this.store = store;
       this.loaded = true;
@@ -84,6 +86,7 @@ export class SettingsStore {
       lastPngScale: this.lastPngScale,
       lastPackageMode: this.lastPackageMode,
       lastUpdateCheck: this.lastUpdateCheck,
+      folderWorkspaces: this.folderWorkspaces,
     };
   }
 
@@ -131,8 +134,14 @@ export class SettingsStore {
     this.lastUpdateCheck = at;
     this.save();
   }
-  setLastWorkspace(name: string | null) {
-    this.lastWorkspace = name;
+  /** Only after the user has read the trade-offs (`folder-storage-dialog`). */
+  setFolderWorkspaces(value: boolean) {
+    this.folderWorkspaces = value;
+    this.save();
+  }
+  /** The workspace id (not its name) to reopen on launch. */
+  setLastWorkspace(id: string | null) {
+    this.lastWorkspace = id;
     this.save();
   }
   setFontsDir(dir: string | null) {

@@ -128,6 +128,10 @@ pub async fn read_file(
             }
         }
         crate::document::refresh(&app, &workspace)?;
+        // The file now on screen is the one worth checking every second.
+        if let Some(sync) = workspace.sync() {
+            sync.set_hot(Some(rel_path.clone()));
+        }
         let content = read_file_inner(rel_path, &world)?;
         if let Some(session) = workspace.document.lock().as_mut() {
             session.conflicted = false;
@@ -219,7 +223,14 @@ pub async fn save_file(
             }
             return Ok(());
         }
-        save_file_inner(rel_path, content, &world, &watcher)
+        save_file_inner(
+            rel_path,
+            content,
+            overwrite.unwrap_or(false),
+            &workspace,
+            &world,
+            &watcher,
+        )
     })
     .await
     .map_err(|e| e.to_string())?
@@ -228,25 +239,34 @@ pub async fn save_file(
 fn save_file_inner(
     rel_path: String,
     content: String,
+    overwrite: bool,
+    workspace: &WorkspaceState,
     world: &MobileWorld,
     watcher: &WatcherState,
 ) -> Result<(), String> {
     let t = Instant::now();
     let root = workspace_root(&world)?;
     let abs = resolve_in_root(&root, &rel_path)?;
-    if let Some(parent) = abs.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    // Atomic write: temp file in the same dir, then rename over the target.
-    let tmp = abs.with_extension(format!(
-        "{}.tmp",
-        abs.extension().and_then(|e| e.to_str()).unwrap_or("")
-    ));
-    std::fs::write(&tmp, content.as_bytes()).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &abs).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        e.to_string()
-    })?;
+    // A folder workspace writes to the folder first: a failed write there
+    // must not be acknowledged by a save that only reached the mirror. It
+    // also refuses (with the usual "File changed on disk" conflict) to write
+    // over a version another device synced in since the last poll.
+    workspace.mutate(
+        |folder| folder.save(&rel_path, content.as_bytes(), overwrite),
+        || {
+            let tmp = write_atomic(&abs, &content)?;
+            // Claimed after the rename lands, so the stamp describes the
+            // finished file. Without this every autosave polls back as an
+            // external change and the buffer the user is typing into gets
+            // reconciled against its own bytes.
+            watcher.self_writes.note_write(&abs);
+            // The temp file exists for microseconds, but a poll that lands
+            // inside that window would report it as a stray file appearing
+            // and vanishing.
+            watcher.self_writes.note_removal(&tmp);
+            Ok(())
+        },
+    )?;
     // Fold the bytes we just wrote straight into the cached tree. Without this
     // the write changes the file's stamp, and the compile that follows would
     // re-read from disk the content we are already holding. Best-effort: an
@@ -254,19 +274,30 @@ fn save_file_inner(
     if let Ok(id) = world.rel_to_id(&rel_path) {
         world.apply_saved_source(id, &content);
     }
-    // Claimed after the rename lands, so the stamp describes the finished file.
-    // Without this every autosave polls back as an external change and the
-    // buffer the user is typing into gets reconciled against its own bytes.
-    watcher.self_writes.note_write(&abs);
-    // The temp file exists for microseconds, but a poll that lands inside that
-    // window would report it as a stray file appearing and vanishing.
-    watcher.self_writes.note_removal(&tmp);
     info!(
         "save_file: ok {rel_path:?} bytes={} ({:.1}ms)",
         content.len(),
         t.elapsed().as_secs_f64() * 1000.0
     );
     Ok(())
+}
+
+/// Write through a temp file in the same directory, then rename over the
+/// target. Returns the temp path so the caller can claim it.
+fn write_atomic(abs: &std::path::Path, content: &str) -> Result<std::path::PathBuf, String> {
+    if let Some(parent) = abs.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let tmp = abs.with_extension(format!(
+        "{}.tmp",
+        abs.extension().and_then(|e| e.to_str()).unwrap_or("")
+    ));
+    std::fs::write(&tmp, content.as_bytes()).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, abs).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        e.to_string()
+    })?;
+    Ok(tmp)
 }
 
 #[tauri::command]

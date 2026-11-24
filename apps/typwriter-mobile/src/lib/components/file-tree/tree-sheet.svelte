@@ -170,7 +170,7 @@
    *  defensively), capped at three. */
   const recentOthers = $derived(
     workspace.workspaces
-      .filter((w) => !w.system && w.name !== current.name)
+      .filter((w) => !w.system && w.id !== workspace.id)
       .sort((a, b) => (b.lastOpenedMs ?? 0) - (a.lastOpenedMs ?? 0))
       .slice(0, 3),
   );
@@ -182,11 +182,11 @@
     switcherOpen = true;
   }
 
-  async function switchTo(name: string) {
+  async function switchTo(id: string) {
     switcherOpen = false;
     // Pop the file-tree entry first so back from the new workspace goes home.
     await app.closeOverlayAsync();
-    workspace.switchTo(name).mapErr((e) => toast.error(`Failed to open: ${e}`));
+    workspace.switchTo(id).mapErr((e) => toast.error(`Failed to open: ${e}`));
   }
 
   /** Total files and folders in the workspace, for the footer summary. */
@@ -405,7 +405,7 @@
             <button
               type="button"
               class="flex min-h-16 w-full items-center gap-4 px-4 py-2.5 text-left"
-              onclick={() => void switchTo(meta.name)}
+              onclick={() => void switchTo(meta.id)}
             >
               <Icon icon={Folder01Icon} class="text-muted-foreground size-6 shrink-0" />
               <span class="min-w-0 flex-1">

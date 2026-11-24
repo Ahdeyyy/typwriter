@@ -10,6 +10,52 @@ overlay, no per-keystroke IPC (disk is the source of truth; autosave on idle/blu
 preview-open), touch completion strip above the keyboard, and lazy on-demand page
 rendering over the `previewimg://` scheme.
 
+## Workspaces in your own folders (opt-in)
+
+Off by default: workspaces live in the app's own storage. Turning on
+**Workspaces in your own folders** (Settings, or the link in the New workspace
+dialog) first shows `folder-storage-dialog.svelte`, which spells out the costs:
+a second copy on the device, changes from elsewhere arriving within seconds,
+some battery while a workspace is open, a slow first open of a big folder,
+Keep mine / Reload on simultaneous edits, and a folder that must stay
+reachable. Turning it off again only changes where *new* workspaces go.
+
+Once on, **New workspace** creates a folder inside a chosen location (asked
+once, then reused; **Change** in the dialog), **Open folder** lists an existing
+folder, and Home offers **Move to a folder…** for workspaces still in app
+storage (copy, check, then delete the original; one that fails stays and is
+reported). Point it at a folder Syncthing (or similar) keeps in step and the
+workspace follows you across devices. The Typst package store always stays in
+app storage.
+
+Picked folders are SAF trees, so the app works on a private *mirror* under app
+data (`mirrors/<id>/`) and `src-tauri/src/folders/sync.rs` keeps it in step,
+keeping the cost as low as it can:
+
+- Changes made in the app go to the folder first, then the mirror.
+- A folder opened before opens instantly from its mirror and catches up in
+  the background; only a first open waits for the copy (with progress).
+- The open file is checked every second (one stat), the whole folder every 4 s
+  (one query per directory), nothing while the app is in the background, and
+  everything at once on return or with **Sync now**.
+- Inbound changes go straight to the editor; the mirror runs no poll watcher.
+- Saving over a version another device synced in meanwhile gets **Keep mine** /
+  **Reload**. Hidden entries (`.git`, `.stfolder`, `.stversions`) are never
+  copied; the mirror's `.typwriter/` never leaves the device.
+
+The user always sees where syncing stands: an indicator in the editor header
+(syncing with progress, synced, paused, not syncing) with a details sheet, and
+toasts when syncing starts (opening the workspace), stops (leaving it — going
+home, switching, opening a file), copies a large batch, loses the folder, or
+gets it back.
+
+On device, verify: the opt-in dialog, create in a new location, open an
+existing folder, reopening (instant) vs first open (progress), an edit made on
+another device arriving in the open file (~1 s) and elsewhere (~4 s) with clean
+and dirty buffers, backgrounding (paused) and returning (caught up), the move,
+removing a workspace, and a folder deleted or with its access revoked while
+open.
+
 ## Opening individual Typst documents
 
 Use **Open file** on the home screen to select a `.typ` document through Android's
