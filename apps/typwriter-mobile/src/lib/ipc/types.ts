@@ -244,7 +244,6 @@ export interface ExportShareResult {
   filePath: string;
   fileName: string;
   mimeType: string;
-  dataBase64: string;
 }
 
 

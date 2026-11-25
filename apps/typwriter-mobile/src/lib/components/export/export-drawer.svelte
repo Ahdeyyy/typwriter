@@ -13,7 +13,6 @@
     Package01Icon,
   } from "@hugeicons/core-free-icons";
   import { toast } from "svelte-sonner";
-  import { openPath } from "@tauri-apps/plugin-opener";
   import Icon from "#lib/components/icon.svelte";
   import { Button } from "#lib/components/ui/button/index.ts";
   import { Input } from "#lib/components/ui/input/index.ts";
@@ -172,6 +171,9 @@
         if (prepared.error !== "Export cancelled") toast.error(`Share export failed: ${prepared.error}`);
         return;
       }
+      // Renders into the app cache and opens Android's share sheet natively:
+      // the WebView has no Web Share API, and a cache path can't be opened by
+      // another app without a content URI.
       const res = await exportForShare(config);
       if (!owns()) return;
 
@@ -179,44 +181,7 @@
         toast.error(`Share export failed: ${res.error}`);
         return;
       }
-
-      const { filePath, fileName, mimeType, dataBase64 } = res.value;
-
-      // First attempt: Web Share API with binary File
-      let shared = false;
-      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-        try {
-          const binary = atob(dataBase64);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) {
-            bytes[i] = binary.charCodeAt(i);
-          }
-          const blob = new Blob([bytes], { type: mimeType });
-          const file = new File([blob], fileName, { type: mimeType });
-          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: fileName });
-            shared = true;
-          }
-        } catch (err) {
-          if (err instanceof Error && err.name === "AbortError") {
-            return;
-          }
-        }
-      }
-
-      // Fallback: Open with system viewer / intent via opener
-      if (!owns()) return;
-      if (!shared) {
-        try {
-          await openPath(filePath);
-          toast.success(`Exported for sharing: ${fileName}`);
-          if (owns()) app.closeOverlay();
-        } catch {
-          toast.info(`Exported to ${filePath}`);
-        }
-      } else if (owns()) {
-        app.closeOverlay();
-      }
+      app.closeOverlay();
     } catch (e) {
       toast.error(`Share export failed: ${e}`);
     } finally {
