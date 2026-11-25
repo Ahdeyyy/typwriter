@@ -25,6 +25,7 @@ import type {
   ExportShareResult,
   UpdateInfo,
   SystemInsets,
+  SpellReport,
 } from "./types";
 
 const call = <T>(cmd: string, args?: Record<string, unknown>): ResultAsync<T, string> =>
@@ -162,6 +163,13 @@ export const exportPdfToCacheFile = () => call<string>("export_pdf_to_cache_file
 /** Copy a workspace into a user-chosen folder; resolves to the number of files
  *  copied. */
 export const exportWorkspace = (id: string) => call<number>("export_workspace", { id });
+
+// ─── Spell check (device spellchecker, bundled dictionary as fallback) ───────
+
+/** Check prose paragraphs already stripped of Typst markup. */
+export const spellCheck = (texts: string[]) => call<SpellReport>("spell_check", { texts });
+/** Suggestions for a word the bundled dictionary flagged. */
+export const spellSuggest = (word: string) => call<string[]>("spell_suggest", { word });
 
 // AppSettings is re-exported for store typing convenience.
 export type { AppSettings };

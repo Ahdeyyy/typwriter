@@ -26,6 +26,8 @@ export class SettingsStore {
   lastPngScale = $state<number>(2.0);
   lastPackageMode = $state<"zip" | "folder">("zip");
   lastUpdateCheck = $state(0);
+  spellcheck = $state(true);
+  spellIgnoredWords = $state<string[]>([]);
 
   private store: Store | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -61,6 +63,8 @@ export class SettingsStore {
         this.lastPngScale = saved.lastPngScale ?? this.lastPngScale;
         this.lastPackageMode = saved.lastPackageMode ?? this.lastPackageMode;
         this.lastUpdateCheck = saved.lastUpdateCheck ?? this.lastUpdateCheck;
+        this.spellcheck = saved.spellcheck ?? this.spellcheck;
+        this.spellIgnoredWords = saved.spellIgnoredWords ?? this.spellIgnoredWords;
       }
       this.store = store;
       this.loaded = true;
@@ -84,6 +88,8 @@ export class SettingsStore {
       lastPngScale: this.lastPngScale,
       lastPackageMode: this.lastPackageMode,
       lastUpdateCheck: this.lastUpdateCheck,
+      spellcheck: this.spellcheck,
+      spellIgnoredWords: this.spellIgnoredWords,
     };
   }
 
@@ -125,6 +131,22 @@ export class SettingsStore {
   }
   setPreviewScaleBucket(bucket: 1 | 2 | 3 | 4) {
     this.previewScaleBucket = bucket;
+    this.save();
+  }
+  setSpellcheck(value: boolean) {
+    this.spellcheck = value;
+    this.save();
+  }
+  /** Stop flagging `word` (compared case-insensitively). */
+  addSpellIgnoredWord(word: string) {
+    const trimmed = word.trim();
+    const key = trimmed.toLowerCase();
+    if (!trimmed || this.spellIgnoredWords.some((w) => w.toLowerCase() === key)) return;
+    this.spellIgnoredWords = [...this.spellIgnoredWords, trimmed].sort((a, b) => a.localeCompare(b));
+    this.save();
+  }
+  removeSpellIgnoredWord(word: string) {
+    this.spellIgnoredWords = this.spellIgnoredWords.filter((w) => w !== word);
     this.save();
   }
   setLastUpdateCheck(at: number) {

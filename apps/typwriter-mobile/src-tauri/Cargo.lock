@@ -5021,6 +5021,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "spellbook"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d204abcbdf8e88729306a8d0ca01a79d8a49969fe1f84696909d6dbc4321c1a"
+dependencies = [
+ "foldhash",
+ "hashbrown 0.17.2",
+]
+
+[[package]]
 name = "spin"
 version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5570,6 +5580,16 @@ dependencies = [
  "url",
  "windows",
  "zbus",
+]
+
+[[package]]
+name = "tauri-plugin-spellcheck"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]
@@ -6537,12 +6557,14 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "spellbook",
  "tauri",
  "tauri-build",
  "tauri-plugin-android-fs",
  "tauri-plugin-dialog",
  "tauri-plugin-log",
  "tauri-plugin-opener",
+ "tauri-plugin-spellcheck",
  "tauri-plugin-store",
  "tauri-plugin-system-bars",
  "tauri-utils",

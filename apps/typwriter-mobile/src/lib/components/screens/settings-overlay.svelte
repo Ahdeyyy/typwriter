@@ -14,6 +14,7 @@
     ArrowLeft01Icon,
     ArrowRight01Icon,
     File02Icon,
+    Cancel01Icon,
   } from "@hugeicons/core-free-icons";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import Icon from "#lib/components/icon.svelte";
@@ -23,9 +24,18 @@
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.ts";
   import { app } from "#lib/stores/app.svelte.ts";
   import { settings } from "#lib/stores/settings.svelte.ts";
+  import { spell } from "#lib/stores/spell.svelte.ts";
   import { updater, type UpdateStatus } from "#lib/stores/updater.svelte.ts";
   import { pickFontsDir, clearFontsDir, getFontsStatus, getTypstVersion } from "#lib/ipc/commands.ts";
   import LicensesScreen from "./licenses-screen.svelte";
+
+  const spellSource = $derived(
+    spell.engine === "native"
+      ? "Using your keyboard's spellchecker, in its languages"
+      : spell.engine === "bundled"
+        ? "Using the built-in English dictionary — this device has no spellchecker turned on"
+        : "Uses your keyboard's spellchecker, or a built-in English dictionary",
+  );
 
   let pickingFonts = $state(false);
   /** Font families the compiler has loaded, or null before we've asked. */
@@ -262,6 +272,34 @@
               checked={settings.hideChromeOnScroll}
               onCheckedChange={(v) => settings.setHideChromeOnScroll(v)}
             />
+          </section>
+
+          <section class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-4">
+              <div class="flex flex-col">
+                <span class="text-sm font-medium">Spell check</span>
+                <span class="text-muted-foreground text-xs">{spellSource}</span>
+              </div>
+              <Switch
+                checked={settings.spellcheck}
+                onCheckedChange={(v) => settings.setSpellcheck(v)}
+              />
+            </div>
+            {#if settings.spellcheck && settings.spellIgnoredWords.length > 0}
+              <span class="text-muted-foreground text-xs">Your dictionary</span>
+              <div class="flex flex-wrap gap-1">
+                {#each settings.spellIgnoredWords as word (word)}
+                  <button
+                    class="bg-muted active:bg-foreground/10 flex items-center gap-1 rounded-full border py-1 pr-2 pl-3 text-sm"
+                    aria-label={`Remove ${word} from your dictionary`}
+                    onclick={() => settings.removeSpellIgnoredWord(word)}
+                  >
+                    <span class="max-w-[20ch] truncate">{word}</span>
+                    <Icon icon={Cancel01Icon} class="text-muted-foreground size-3.5" />
+                  </button>
+                {/each}
+              </div>
+            {/if}
           </section>
 
           <section class="flex flex-col gap-2">

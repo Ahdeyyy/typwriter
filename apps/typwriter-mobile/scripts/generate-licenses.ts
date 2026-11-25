@@ -68,10 +68,18 @@ for (const name of [...directCrateNames].sort()) {
   }
 }
 
+// Data the app ships that no package manager knows about. Each directory
+// holds its own license file.
+const bundledData = [{
+  name: "en_US Hunspell dictionary (SCOWL)", version: "2020.12.07", ecosystem: "Data", license: "MIT AND BSD",
+  directory: join(app, "src-tauri/dictionaries/en_US"),
+}];
+
 const packageId = (pkg: Pick<Package, "ecosystem" | "name" | "version">) => `${pkg.ecosystem}/${pkg.name}/${pkg.version}`;
 const expectedIds = new Set([
   ...directNpm.map(({ meta }) => packageId({ ecosystem: "JavaScript", name: meta.name, version: meta.version })),
   ...directRust.map(pkg => packageId({ ...pkg, ecosystem: "Rust" })),
+  ...bundledData.map(packageId),
 ]);
 // The catalog is stale only when the set of direct dependencies or their
 // versions changed. It deliberately doesn't hash the manifests or lockfiles:
@@ -140,6 +148,7 @@ for (const { directory, meta } of directNpm) {
   await addPackage({ name: meta.name, version: meta.version, ecosystem: "JavaScript", license }, directory,
     [meta.author, ...(meta.contributors ?? [])].filter(Boolean).map((person: string | { name: string }) => typeof person === "string" ? person : person.name).join("\n"));
 }
+for (const { directory, ...data } of bundledData) await addPackage(data, directory);
 const registries = registryDirectories();
 for (const pkg of directRust) {
   if (!pkg.source?.startsWith("registry+")) throw new Error(`Add license collection for ${pkg.name}: ${pkg.source}`);

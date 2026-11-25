@@ -21,6 +21,7 @@ import { immersive } from "#lib/stores/immersive.svelte.ts";
 import { settings } from "#lib/stores/settings.svelte.ts";
 import { editor } from "#lib/stores/editor.svelte.ts";
 import { completions } from "./completion-controller.svelte";
+import { spellcheckFor } from "./spellcheck";
 
 /** Breathing room CodeMirror leaves around the caret when it scrolls to it —
  *  roughly a line and a half at the default size. */
@@ -30,6 +31,7 @@ export const themeC = new Compartment(); // light | dark (follows mode-watcher)
 export const lineNumbersC = new Compartment(); // settings.showLineNumbers
 export const fontSizeC = new Compartment(); // settings.editorFontSize
 export const titleC = new Compartment(); // inline title (follows renames)
+export const spellC = new Compartment(); // settings.spellcheck (Typst only)
 
 export function themeExtensionFor(isDark: boolean): Extension {
   return isDark ? dark : light;
@@ -92,6 +94,10 @@ export function createExtensions(lang: Extension | null, relPath: string): Exten
     themeC.of(themeExtensionFor(document.documentElement.classList.contains("dark"))),
     fontSizeC.of(fontThemeFor(settings.editorFontSize)),
     ...(lang ? [lang] : []),
+    // The keyboard's own spellcheck stays off (`spellcheck: "false"` below):
+    // on a contenteditable it fights CodeMirror over the composing word. This
+    // asks the same spellchecker service directly instead, about prose only.
+    spellC.of(spellcheckFor(lang !== null, settings.spellcheck)),
     // typstKeymap before defaultKeymap so Enter continues list items (and
     // Mod-b/i/e toggle marks on hardware keyboards) ahead of the defaults.
     // Typst buffers only — plain text keeps the stock behavior.

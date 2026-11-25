@@ -10,6 +10,7 @@
     lineNumbersC,
     fontSizeC,
     titleC,
+    spellC,
     themeExtensionFor,
     fontThemeFor,
   } from "#lib/editor/create-editor.ts";
@@ -23,6 +24,7 @@
   import { settings } from "#lib/stores/settings.svelte.ts";
   import { compileStore } from "#lib/stores/compile.svelte.ts";
   import { completions } from "#lib/editor/completion-controller.svelte.ts";
+  import { refreshSpell, spellcheckFor } from "#lib/editor/spellcheck/index.ts";
 
   let host = $state<HTMLElement | null>(null);
 
@@ -78,6 +80,20 @@
       view?.dispatch({ effects: titleC.reconfigure(inlineTitle(title)) });
     },
   );
+
+  // Spell check follows its setting; a file switch rebuilds the extensions
+  // (and so this compartment) anyway, which is why relPath isn't watched.
+  watch([() => editor.view, () => settings.spellcheck], ([view, on]) => {
+    view?.dispatch({
+      effects: spellC.reconfigure(spellcheckFor(editor.relPath?.endsWith(".typ") ?? false, on)),
+    });
+  });
+
+  // Words added to (or removed from) the dictionary re-derive the underlines
+  // from the cache; nothing is re-checked.
+  watch([() => editor.view, () => settings.spellIgnoredWords], ([view]) => {
+    view?.dispatch({ effects: refreshSpell.of(null) });
+  });
 
   // Font size.
   watch([() => editor.view, () => settings.editorFontSize], ([view, size]) => {

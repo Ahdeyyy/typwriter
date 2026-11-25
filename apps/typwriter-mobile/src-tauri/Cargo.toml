@@ -53,6 +53,12 @@ tauri-plugin-android-fs = { version = "=30.2.0", features = ["legacy_storage_per
 # Local: status bar hide/show, bar icon style and real window insets for the
 # edge-to-edge, immersive editor and preview.
 tauri-plugin-system-bars = { path = "plugins/system-bars" }
+# Local: Android's own spellchecker service (SpellCheckerSession). The app
+# falls back to `spellbook` when the device has none — see src/spell.rs.
+tauri-plugin-spellcheck = { path = "plugins/spellcheck" }
+# Pure-Rust Hunspell, for the spell-check fallback and its suggestions. Its
+# dictionary is vendored under dictionaries/.
+spellbook = "0.4"
 
 # Mobile cross-compilation can't find a system OpenSSL; vendor it.
 [target.'cfg(target_os = "android")'.dependencies]

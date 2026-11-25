@@ -5,4 +5,5 @@ pub mod cursor;
 pub mod editor;
 pub mod export;
 pub mod format;
+pub mod spell;
 pub mod workspace;

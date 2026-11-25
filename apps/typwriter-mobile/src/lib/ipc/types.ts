@@ -192,6 +192,30 @@ export interface AppSettings {
   lastPackageMode?: "zip" | "folder";
   /** When the launch-time update check last reached the server (epoch ms). */
   lastUpdateCheck?: number;
+  /** Underline misspellings (and, where the device's checker reports them,
+   *  grammar slips) in Typst prose. */
+  spellcheck?: boolean;
+  /** Words the user added to the dictionary, kept as typed. */
+  spellIgnoredWords?: string[];
+}
+
+/** Which checker answered a spell check (`spell_check`). */
+export type SpellEngine = "native" | "bundled";
+
+/** One flagged range; UTF-16 offsets into the text it was found in. */
+export interface SpellIssue {
+  start: number;
+  end: number;
+  kind: "spelling" | "grammar";
+  /** `null`: not computed up front — ask `spell_suggest` for the word. */
+  suggestions: string[] | null;
+}
+
+export interface SpellReport {
+  engine: SpellEngine;
+  /** One list per text sent, in order. Shorter than the request when the
+   *  request ran over the backend's size cap; the rest went unchecked. */
+  results: SpellIssue[][];
 }
 
 /** A newer build on this app's release track (`check_for_update`). */

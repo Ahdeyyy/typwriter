@@ -8,6 +8,7 @@ mod document;
 mod folders;
 mod fonts;
 mod renderer;
+mod spell;
 mod watcher;
 mod workspace;
 mod world;
@@ -45,6 +46,7 @@ pub(crate) fn packages_dirs(app: &tauri::AppHandle) -> (Option<PathBuf>, Option<
 pub fn run() {
     tauri::Builder::default()
         .manage(document::FileOpenState::default())
+        .manage(Arc::new(spell::SpellState::default()))
         .register_asynchronous_uri_scheme_protocol("previewimg", |ctx, request, responder| {
             // URL: http://previewimg.localhost/{fp}-{bucket}.png (Android/Windows)
             //      previewimg://localhost/{fp}-{bucket}.png (macOS/iOS/Linux)
@@ -91,7 +93,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_android_fs::init())
         .plugin(tauri_plugin_system_bars::init())
-        .plugin(tauri_plugin_system_bars::init())
+        .plugin(tauri_plugin_spellcheck::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -158,6 +160,8 @@ pub fn run() {
             commands::click::jump_from_click,
             commands::format::format_typst_source,
             commands::format::format_typst_cursor_virtual,
+            commands::spell::spell_check,
+            commands::spell::spell_suggest,
             commands::export::export_pdf,
             commands::export::export_png,
             commands::export::export_svg,
