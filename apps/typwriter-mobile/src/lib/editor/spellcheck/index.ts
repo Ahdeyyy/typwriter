@@ -1,8 +1,12 @@
 // Spell checking for Typst buffers, underlined in the editor.
 //
 // Cheap by construction, because the phone's CPU budget is the constraint:
-//   - nothing runs while typing: a check waits for the buffer to sit idle, and
-//     never runs mid-composition (the keyboard owns the word being typed);
+//   - nothing runs while typing: a check waits for the buffer to sit idle.
+//     It does run while the keyboard is composing — Android keyboards keep
+//     the word at the caret composing for as long as the caret sits in it, so
+//     waiting for composition to end meant never checking at all — but the
+//     word being typed is left un-underlined until it's finished, as a
+//     keyboard would;
 //   - only the prose near the viewport is looked at, a paragraph at a time
 //     (`prose.ts`), and each paragraph's answer is cached by its text, so an
 //     edit re-checks one paragraph and scrolling back costs nothing;
@@ -41,7 +45,6 @@ const setIssues = StateEffect.define<DocSpellIssue[]>();
 const IDLE_DELAY_MS = 800;
 /** After a scroll or a parse catching up: only cache misses cost anything. */
 const SETTLE_DELAY_MS = 250;
-const COMPOSING_RETRY_MS = 400;
 const ERROR_RETRY_MS = 5000;
 /** How far past the viewport to look, in characters, before widening to the
  *  enclosing paragraphs. */
@@ -158,8 +161,9 @@ function visibleChunks(view: EditorView): ProseChunk[] {
   return extractProse(tree, (a, b) => doc.sliceString(a, b), from, to);
 }
 
-/** Turn cached answers for `chunks` into document issues. */
-function issuesFor(view: EditorView, chunks: ProseChunk[]): DocSpellIssue[] {
+/** Turn cached answers for `chunks` into document issues, leaving out the
+ *  one containing `holdBack` (the word being typed), if any. */
+function issuesFor(view: EditorView, chunks: ProseChunk[], holdBack: number): DocSpellIssue[] {
   const ignored = new Set(settings.spellIgnoredWords.map((w) => w.toLowerCase()));
   const issues: DocSpellIssue[] = [];
   for (const chunk of chunks) {
@@ -167,7 +171,7 @@ function issuesFor(view: EditorView, chunks: ProseChunk[]): DocSpellIssue[] {
     if (!answer) continue;
     for (const issue of answer) {
       const range = chunkRangeToDoc(chunk, issue.start, issue.end);
-      if (!range) continue;
+      if (!range || (range.from <= holdBack && holdBack <= range.to)) continue;
       const word = view.state.doc.sliceString(range.from, range.to);
       if (issue.kind === "spelling" && ignored.has(word.replace(/’/g, "'").toLowerCase())) continue;
       issues.push({ ...range, kind: issue.kind, word, suggestions: issue.suggestions });
@@ -182,18 +186,29 @@ class SpellChecker {
    *  every response schedules. */
   private inFlight = false;
   private destroyed = false;
+  /** Where the caret was after the last edit, until it moves for any other
+   *  reason. Together with `view.composing`, that's the word being typed —
+   *  as opposed to a word the user tapped, which Android keyboards also
+   *  compose, and whose underline (and suggestions) must stay. */
+  private typingAt = -1;
 
   constructor(private view: EditorView) {
     this.schedule(SETTLE_DELAY_MS);
   }
 
   update(u: ViewUpdate) {
+    if (u.docChanged) this.typingAt = u.state.selection.main.head;
+    else if (u.selectionSet) this.typingAt = -1;
     if (u.transactions.some((tr) => tr.effects.some((e) => e.is(refreshSpell)))) {
       this.schedule(0, true);
     } else if (u.docChanged) {
       // Typing pushes the check back; nothing else may pull it forward.
       this.schedule(IDLE_DELAY_MS, true);
-    } else if (u.viewportChanged || syntaxTree(u.state) !== syntaxTree(u.startState)) {
+    } else if (
+      u.viewportChanged || u.selectionSet || syntaxTree(u.state) !== syntaxTree(u.startState)
+    ) {
+      // A caret move can end a composition, which lets the word held back
+      // from the last publish show. Cache hits only: this costs no request.
       this.schedule(SETTLE_DELAY_MS);
     }
     if (u.docChanged || u.selectionSet || u.state.field(spellField) !== u.startState.field(spellField)) {
@@ -222,13 +237,10 @@ class SpellChecker {
   private async run() {
     if (this.destroyed) return;
     if (this.inFlight) return;
-    if (this.view.composing) {
-      this.schedule(COMPOSING_RETRY_MS);
-      return;
-    }
 
     const chunks = visibleChunks(this.view);
-    this.view.dispatch({ effects: setIssues.of(issuesFor(this.view, chunks)) });
+    const holdBack = this.view.composing ? this.typingAt : -1;
+    this.view.dispatch({ effects: setIssues.of(issuesFor(this.view, chunks, holdBack)) });
 
     const batch: string[] = [];
     let size = 0;

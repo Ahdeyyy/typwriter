@@ -1,5 +1,6 @@
 //! Spell-check commands. See `crate::spell` for which checker answers.
 
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
 use tauri::{AppHandle, State};
@@ -11,6 +12,24 @@ use crate::spell::{SpellEngine, SpellReport, SpellState, SUGGESTION_LIMIT};
 /// or a blocking thread on a whole book. The frontend batches well below them.
 const MAX_TEXTS: usize = 64;
 const MAX_TOTAL_UTF16: usize = 32_000;
+
+/// Which engine answered last (0: none yet, 1: native, 2: bundled), so the
+/// log says when it changes — `adb logcat | grep spell` on a device.
+static LAST_ENGINE: AtomicU8 = AtomicU8::new(0);
+
+fn note_engine(engine: SpellEngine, results: &[Vec<crate::spell::SpellIssue>]) {
+    let code = match engine {
+        SpellEngine::Native => 1,
+        SpellEngine::Bundled => 2,
+    };
+    if LAST_ENGINE.swap(code, Ordering::Relaxed) != code {
+        let issues: usize = results.iter().map(Vec::len).sum();
+        log::info!(
+            "spell: now checking with the {engine:?} engine ({} texts, {issues} issues)",
+            results.len()
+        );
+    }
+}
 
 /// Check prose paragraphs (already stripped of Typst markup by the frontend).
 /// Offsets in the report are UTF-16, relative to each text.
@@ -33,13 +52,15 @@ pub async fn spell_check(
     if !state.native_paused() {
         match app.native_spellcheck().check(&texts, SUGGESTION_LIMIT).await {
             Ok(Some(results)) => {
+                let results: Vec<Vec<_>> = results
+                    .into_iter()
+                    .map(|issues| issues.into_iter().map(Into::into).collect())
+                    .collect();
+                note_engine(SpellEngine::Native, &results);
                 return Ok(SpellReport {
                     engine: SpellEngine::Native,
-                    results: results
-                        .into_iter()
-                        .map(|issues| issues.into_iter().map(Into::into).collect())
-                        .collect(),
-                })
+                    results,
+                });
             }
             Ok(None) => {}
             Err(err) => {
@@ -53,6 +74,7 @@ pub async fn spell_check(
     let results = tauri::async_runtime::spawn_blocking(move || state.check_bundled(&texts))
         .await
         .map_err(|err| format!("spell check failed: {err}"))?;
+    note_engine(SpellEngine::Bundled, &results);
     Ok(SpellReport {
         engine: SpellEngine::Bundled,
         results,
