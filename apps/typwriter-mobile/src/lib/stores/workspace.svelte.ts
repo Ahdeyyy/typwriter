@@ -7,7 +7,6 @@ import { toast } from "svelte-sonner";
 import type {
   EntryChange,
   FileNode,
-  MigrationReport,
   SyncStatus,
   WorkspaceFileChange,
   WorkspaceInfo,
@@ -31,9 +30,11 @@ class WorkspaceStore {
   id = $state<string | null>(null);
   name = $state<string | null>(null);
   /** The open folder workspace's sync, or null when none is running. Drives
-   *  the sync indicator; every transition is also announced (see
-   *  `announceSync`) so the user always knows whether their work syncs. */
+   *  the (small) sync indicator, which is on screen exactly while it runs. */
   sync = $state<SyncStatus | null>(null);
+  /** The sync details sheet (`sync-details.svelte`). One flag, so the
+   *  indicator, the header alert and the toast's "Details" all open it. */
+  syncDetailsOpen = $state(false);
   root = $state<string | null>(null);
   tree = $state<FileNode | null>(null);
   mainFile = $state<string | null>(null);
@@ -79,31 +80,26 @@ class WorkspaceStore {
     else result.value();
   }
 
-  /** Track a sync status and announce what the user needs to know: syncing
-   *  started, stopped, a big copy in progress, the folder lost or back. Routine
-   *  polls that find nothing never reach here (the backend only emits
-   *  changes), and quick inbound edits only move the indicator. */
+  /** Track a sync status. Starting, stopping and routine syncs only move the
+   *  small indicator; a toast appears for just two things: the first copy of
+   *  a folder (the editor isn't on screen yet, so the indicator can't show
+   *  it), and the folder becoming unreachable or reachable again. */
   private applySyncStatus(status: SyncStatus) {
     const previous = this.sync?.workspaceId === status.workspaceId ? this.sync : null;
     const progressToast = `folder-sync-progress:${status.workspaceId}`;
 
     if (status.state === "stopped") {
       toast.dismiss(progressToast);
-      toast(`Sync stopped: ${status.name}`, {
-        description: `No longer syncing with ${status.location}. Opening the workspace starts it again.`,
-      });
-      if (this.sync?.workspaceId === status.workspaceId) this.sync = null;
+      if (this.sync?.workspaceId === status.workspaceId) {
+        this.sync = null;
+        this.syncDetailsOpen = false;
+      }
       return;
     }
 
-    if (!previous) {
-      toast(`Sync started: ${status.name}`, {
-        description: `Changes sync with ${status.location} while this workspace is open.`,
-      });
-    }
-
-    if (status.state === "syncing" && status.total !== null && status.total >= 3) {
-      toast.loading(`Syncing ${status.done ?? 0} of ${status.total} files`, {
+    const opening = app.screen !== "editor";
+    if (opening && status.state === "syncing" && status.total !== null && status.total >= 3) {
+      toast.loading(`Copying ${status.done ?? 0} of ${status.total} files`, {
         id: progressToast,
         description: `From ${status.location}`,
       });
@@ -112,13 +108,14 @@ class WorkspaceStore {
     }
 
     if (status.state === "offline" && previous?.state !== "offline") {
+      // Goes away on its own like any toast; "Details" (and the red header
+      // button that stays while offline) bring the explanation back.
       toast.error(`Can't reach ${status.location}`, {
-        description:
-          "Sync is on hold and saving to the folder fails until it is back. It may have been moved, deleted, or its access revoked." +
-          (status.message ? ` (${status.message})` : ""),
+        description: "Saving fails until the folder is back.",
+        action: { label: "Details", onClick: () => (this.syncDetailsOpen = true) },
       });
     } else if (previous?.state === "offline" && status.state === "synced") {
-      toast.success(`${status.location} is reachable again`, { description: "Syncing resumed." });
+      toast.success(`${status.location} is back`, { description: "Syncing again." });
     }
 
     this.sync = status;
@@ -197,11 +194,11 @@ class WorkspaceStore {
     });
   }
 
-  /** Create a workspace — in {@link location} when the user opted into folder
-   *  workspaces, in app storage otherwise; resolves to its id. */
-  create(name: string): ResultAsync<string, string> {
+  /** Create a workspace — in app storage, or with `inFolder` as a new folder
+   *  in {@link location} that it syncs with; resolves to its id. */
+  create(name: string, inFolder: boolean): ResultAsync<string, string> {
     return ipc
-      .createWorkspace(name, settings.folderWorkspaces)
+      .createWorkspace(name, inFolder)
       .andThen((meta) => this.refreshList().map(() => meta.id));
   }
 
@@ -221,25 +218,32 @@ class WorkspaceStore {
     });
   }
 
-  /** Workspaces still kept in the app's own storage, which can't be synced. */
-  get appStorageCount(): number {
-    return this.workspaces.filter((w) => w.kind === "app" && !w.system).length;
-  }
-
-  /** Move every app-storage workspace into a folder the user picks. Resolves to
-   *  null if they cancelled the picker. */
-  migrate(): ResultAsync<MigrationReport | null, string> {
-    return ipc.migrateAppWorkspaces().andThen((report) => {
-      if (!report) return okAsync(null);
-      // The reopen-on-launch hint follows its workspace to the new id (it may
-      // still be a bare name saved by an older build).
-      const last = settings.lastWorkspace;
-      const moved = report.moved.find((m) => m.from === last || m.from === `app:${last}`);
-      if (moved) settings.setLastWorkspace(moved.to);
+  /** Start syncing one workspace: move it from app storage into a folder
+   *  the user picks. Resolves to its new id, or null if they cancelled. */
+  moveToFolder(id: string): ResultAsync<string | null, string> {
+    return ipc.moveWorkspaceToFolder(id).andThen((moved) => {
+      if (!moved) return okAsync(null);
+      this.followMove(moved.from, moved.to);
       return this.refreshList()
         .andThen(() => this.refreshLocation())
-        .map(() => report);
+        .map(() => moved.to);
     });
+  }
+
+  /** Stop syncing one workspace: bring it back into app storage. The folder
+   *  keeps its files. Resolves to the workspace's new id. */
+  moveToApp(id: string): ResultAsync<string, string> {
+    return ipc.moveWorkspaceToApp(id).andThen((moved) => {
+      this.followMove(moved.from, moved.to);
+      return this.refreshList().map(() => moved.to);
+    });
+  }
+
+  /** The reopen-on-launch hint follows its workspace to its new id (it may
+   *  still be a bare name saved by an older build). */
+  private followMove(from: string, to: string) {
+    const last = settings.lastWorkspace;
+    if (last === from || `app:${last}` === from) settings.setLastWorkspace(to);
   }
 
   open(id: string): ResultAsync<WorkspaceInfo, string> {

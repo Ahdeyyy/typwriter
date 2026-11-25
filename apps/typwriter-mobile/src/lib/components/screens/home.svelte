@@ -15,6 +15,7 @@
     FolderSyncIcon,
     Location01Icon,
     Cancel01Icon,
+    Unlink02Icon,
   } from "@hugeicons/core-free-icons";
   import Icon from "#lib/components/icon.svelte";
   import appIcon from "#lib/assets/app-icon.png";
@@ -36,12 +37,17 @@
   import { pickDocument } from "#lib/document-opening.ts";
   import type { WorkspaceMeta } from "#lib/ipc/types.ts";
   import { screen } from "#lib/motion.ts";
-  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { Switch } from "#lib/components/ui/switch/index.ts";
   import FolderStorageDialog from "#lib/components/folder-storage-dialog.svelte";
+  import SyncTradeoffs from "#lib/components/sync-tradeoffs.svelte";
 
-  // Folder workspaces are opt-in; everything that creates or adds one hides
-  // until the user has read the trade-offs and turned them on.
-  let folderExplainerOpen = $state(false);
+  // Syncing with a folder is a per-workspace choice, and every way into it
+  // (new workspace, open folder, move a workspace) shows what it costs first.
+  /** What the sync confirmation is about to do, or null when it is closed. */
+  let syncConfirm = $state<{ kind: "open" } | { kind: "move"; meta: WorkspaceMeta } | null>(null);
+  let syncBusy = $state(false);
+  /** "New workspace": sync this one with a folder. Off by default. */
+  let newSyncs = $state(false);
 
   let loading = $state(true);
   let createOpen = $state(false);
@@ -56,9 +62,7 @@
   dismissOnBack(() => createMenuOpen, () => (createMenuOpen = false));
   let creating = $state(false);
   let addingFolder = $state(false);
-  let migrateOpen = $state(false);
-  dismissOnBack(() => migrateOpen, () => (migrateOpen = false));
-  let migrating = $state(false);
+  let confirmingStop = $state(false);
 
   const fabClass =
     "bg-primary text-primary-foreground active:scale-95 fixed flex h-14 items-center justify-center gap-2 rounded-2xl shadow-lg transition-transform duration-150 ease-(--ease-out)";
@@ -92,8 +96,8 @@
 
   onMount(() => {
     // Home is where the user goes after leaving a workspace: a folder
-    // workspace stops syncing here (and says so), rather than polling a
-    // folder nobody is looking at.
+    // workspace stops syncing here rather than polling a folder nobody is
+    // looking at.
     workspace.stopSync().mapErr((e) => console.error("stop sync:", e));
     workspace.refreshLocation().mapErr((e) => console.error("workspace location:", e));
     workspace.refreshList().match(
@@ -126,8 +130,8 @@
     if (creating) return;
     creating = true;
     try {
-      // The first folder workspace asks where workspaces live; later ones reuse it.
-      if (settings.folderWorkspaces && !workspace.location) {
+      // The first synced workspace asks where to put it; later ones reuse it.
+      if (newSyncs && !workspace.location) {
         const picked = await workspace.pickLocation();
         if (picked.isErr()) {
           toast.error(`Couldn't use that folder: ${picked.error}`);
@@ -135,13 +139,14 @@
         }
         if (!picked.value) return;
       }
-      const created = await workspace.create(name);
+      const created = await workspace.create(name, newSyncs);
       if (created.isErr()) {
         toast.error(`Failed to create: ${created.error}`);
         return;
       }
       createOpen = false;
       newName = "";
+      newSyncs = false;
       scheduleBodyLockRelease();
       workspace.open(created.value).mapErr((e) => toast.error(`Failed to open: ${e}`));
     } finally {
@@ -155,33 +160,64 @@
     try {
       const added = await workspace.addFolder();
       if (added.isErr()) toast.error(`Couldn't open that folder: ${added.error}`);
-      else if (added.value)
+      else if (added.value) {
+        closeSyncConfirm();
         workspace.open(added.value).mapErr((e) => toast.error(`Failed to open: ${e}`));
+      }
     } finally {
       addingFolder = false;
     }
   }
 
-  async function doMigrate() {
-    if (migrating) return;
-    migrating = true;
+  function closeSyncConfirm() {
+    syncConfirm = null;
+    scheduleBodyLockRelease();
+  }
+
+  /** "Sync with a folder…" on one workspace: copy it into a folder the user
+   *  picks, then it syncs with it. */
+  async function moveToFolder(meta: WorkspaceMeta) {
+    if (syncBusy) return;
+    syncBusy = true;
     try {
-      const result = await workspace.migrate();
+      const result = await workspace.moveToFolder(meta.id);
       if (result.isErr()) {
-        toast.error(`Couldn't move workspaces: ${result.error}`);
+        toast.error(`Couldn't move "${meta.name}"`, { description: result.error });
         return;
       }
-      const report = result.value;
-      if (!report) return;
-      migrateOpen = false;
-      scheduleBodyLockRelease();
-      const moved = report.moved.length;
-      if (moved) toast.success(`Moved ${moved} workspace${moved === 1 ? "" : "s"} to ${workspace.location ?? "the folder"}`);
-      for (const failed of report.failed) {
-        toast.error(`"${failed.name}" stayed in app storage`, { description: failed.error });
-      }
+      if (!result.value) return;
+      closeSyncConfirm();
+      toast.success(`"${meta.name}" now syncs with ${workspace.location ?? "the folder"}`);
     } finally {
-      migrating = false;
+      syncBusy = false;
+    }
+  }
+
+  function confirmSync() {
+    const action = syncConfirm;
+    if (!action) return;
+    if (action.kind === "open") void addFolder();
+    else void moveToFolder(action.meta);
+  }
+
+  /** "Stop syncing": bring a folder workspace back into the app. */
+  async function stopSyncing(meta: WorkspaceMeta) {
+    if (syncBusy) return;
+    syncBusy = true;
+    try {
+      const result = await workspace.moveToApp(meta.id);
+      if (result.isErr()) {
+        toast.error(`Couldn't stop syncing "${meta.name}"`, { description: result.error });
+        return;
+      }
+      menuTarget = null;
+      confirmingStop = false;
+      scheduleBodyLockRelease();
+      toast.success(`"${meta.name}" is now stored in the app`, {
+        description: `Its folder in ${meta.path} was left as it is.`,
+      });
+    } finally {
+      syncBusy = false;
     }
   }
 
@@ -234,16 +270,14 @@
     >
       <Icon icon={File02Icon} /> {pickingDocument ? "Opening…" : "Open file"}
     </Button>
-    {#if settings.folderWorkspaces}
-      <Button
-        variant="secondary"
-        class="hidden rounded-full px-5 tablet:inline-flex"
-        disabled={addingFolder}
-        onclick={addFolder}
-      >
-        <Icon icon={FolderOpenIcon} /> Open folder
-      </Button>
-    {/if}
+    <Button
+      variant="secondary"
+      class="hidden rounded-full px-5 tablet:inline-flex"
+      disabled={addingFolder}
+      onclick={() => (syncConfirm = { kind: "open" })}
+    >
+      <Icon icon={FolderOpenIcon} /> Open folder
+    </Button>
     <Button
       variant="ghost"
       size="icon"
@@ -278,34 +312,15 @@
             </Button>
             <!-- No FAB without workspaces, so phones open files from here
                  (tablets keep it in the header). -->
-            {#if settings.folderWorkspaces}
-              <Button variant="ghost" class="rounded-full px-6" disabled={addingFolder} onclick={addFolder}>
-                <Icon icon={FolderOpenIcon} /> Open folder
-              </Button>
-            {/if}
+            <Button variant="ghost" class="rounded-full px-6" disabled={addingFolder} onclick={() => (syncConfirm = { kind: "open" })}>
+              <Icon icon={FolderOpenIcon} /> Open folder
+            </Button>
             <Button variant="ghost" class="rounded-full px-6 tablet:hidden" disabled={pickingDocument} onclick={openDocument}>
               <Icon icon={File02Icon} /> {pickingDocument ? "Opening…" : "Open file"}
             </Button>
           </div>
         </div>
       {:else}
-        <!-- Workspaces still inside the app can't reach a sync app: offer to
-             move them out to a folder of the user's choosing. -->
-        {#if settings.folderWorkspaces && workspace.appStorageCount > 0}
-          <div class="bg-card mb-6 flex items-start gap-3.5 rounded-2xl border p-4">
-            <div class="bg-primary/10 text-primary flex size-11 shrink-0 items-center justify-center rounded-xl">
-              <Icon icon={FolderSyncIcon} class="size-6" />
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="text-[15px] font-medium">
-                {workspace.appStorageCount === 1 ? "1 workspace is" : `${workspace.appStorageCount} workspaces are`} stored inside the app
-              </div>
-              <p class="text-muted-foreground mt-0.5 text-sm">Move them to a folder you choose to back them up or sync them with your other devices.</p>
-              <Button size="sm" class="mt-3 rounded-full px-4" onclick={() => (migrateOpen = true)}>Move to a folder…</Button>
-            </div>
-          </div>
-        {/if}
-
         <!-- Jump back in -->
         {#if recent}
           {@const r = recent}
@@ -320,7 +335,12 @@
             <div class="flex items-end justify-between gap-3">
               <div class="min-w-0">
                 <div class="truncate text-2xl font-semibold tracking-tight tablet:text-4xl">{r.name}</div>
-                {#if pathDisplay.location(r.path)}
+                {#if r.kind === "folder"}
+                  <div class="text-primary-foreground/70 mt-1 flex items-center gap-1.5 text-xs">
+                    <Icon icon={FolderSyncIcon} class="size-4 shrink-0" />
+                    <span class="truncate">{r.path}</span>
+                  </div>
+                {:else if pathDisplay.location(r.path)}
                   <div class="text-primary-foreground/70 mt-1 truncate text-xs">{pathDisplay.location(r.path)}</div>
                 {/if}
                 <div class="text-primary-foreground/70 mt-1 flex items-center gap-1.5 text-xs">
@@ -346,12 +366,13 @@
                 use:longpress={{ onLongpress: () => (menuTarget = meta) }}
               >
                 <div class="bg-muted text-muted-foreground flex size-11 shrink-0 items-center justify-center rounded-xl">
-                  <Icon icon={Folder01Icon} class="size-6" />
+                  <!-- A synced workspace is told apart by its icon alone. -->
+                  <Icon icon={meta.kind === "folder" ? FolderSyncIcon : Folder01Icon} class="size-6" />
                 </div>
                 <div class="min-w-0 flex-1">
                   <div class="truncate text-[15px] font-medium">{meta.name}</div>
                   <div class="text-muted-foreground truncate text-xs">
-                    {#if pathDisplay.location(meta.path)}{pathDisplay.location(meta.path)} · {/if}{openedAgo(meta.lastOpenedMs)}
+                    {#if meta.kind === "folder"}{meta.path} · {:else if pathDisplay.location(meta.path)}{pathDisplay.location(meta.path)} · {/if}{openedAgo(meta.lastOpenedMs)}
                   </div>
                 </div>
                 <Icon icon={ArrowRight01Icon} class="text-muted-foreground/50 size-5 shrink-0" />
@@ -427,11 +448,9 @@
         <DropdownMenu.Item class={menuItemClass} disabled={pickingDocument} onclick={openDocument}>
           <Icon icon={File02Icon} /> Open file
         </DropdownMenu.Item>
-        {#if settings.folderWorkspaces}
-          <DropdownMenu.Item class={menuItemClass} disabled={addingFolder} onclick={addFolder}>
-            <Icon icon={FolderOpenIcon} /> Open folder
-          </DropdownMenu.Item>
-        {/if}
+        <DropdownMenu.Item class={menuItemClass} disabled={addingFolder} onclick={() => (syncConfirm = { kind: "open" })}>
+          <Icon icon={FolderOpenIcon} /> Open folder
+        </DropdownMenu.Item>
         <DropdownMenu.Item class={menuItemClass} onclick={() => (createOpen = true)}>
           <Icon icon={Folder01Icon} /> New workspace
         </DropdownMenu.Item>
@@ -450,11 +469,7 @@
   <Dialog.Content>
     <Dialog.Header>
       <Dialog.Title>New workspace</Dialog.Title>
-      <Dialog.Description>
-        {settings.folderWorkspaces
-          ? "A new folder with this name is created in the location below."
-          : "Choose a name for your new Typst workspace."}
-      </Dialog.Description>
+      <Dialog.Description>Choose a name for your new Typst workspace.</Dialog.Description>
     </Dialog.Header>
     <form
       onsubmit={(e) => {
@@ -468,24 +483,28 @@
         autocapitalize="off"
         autocorrect="off"
       />
-      {#if settings.folderWorkspaces}
-        <div class="bg-muted/50 mt-3 flex items-center gap-3 rounded-xl px-3 py-2">
-          <Icon icon={Location01Icon} class="text-muted-foreground size-5 shrink-0" />
-          <div class="min-w-0 flex-1">
-            <div class="text-muted-foreground text-xs">Location</div>
-            <div class="truncate text-sm">{workspace.location ?? "Not chosen yet"}</div>
+      <!-- Per workspace, off by default: the costs show as soon as it's on. -->
+      <label class="mt-4 flex items-center justify-between gap-3">
+        <span class="flex min-w-0 flex-col">
+          <span class="text-sm font-medium">Sync with a folder</span>
+          <span class="text-muted-foreground text-xs">For a sync app like Syncthing</span>
+        </span>
+        <Switch bind:checked={newSyncs} aria-label="Sync with a folder" />
+      </label>
+      {#if newSyncs}
+        <div class="bg-muted/50 mt-3 flex flex-col gap-3 rounded-xl p-3">
+          <SyncTradeoffs />
+          <div class="border-border/60 flex items-center gap-3 border-t pt-2.5">
+            <Icon icon={Location01Icon} class="text-muted-foreground size-5 shrink-0" />
+            <div class="min-w-0 flex-1">
+              <div class="text-muted-foreground text-xs">Folder</div>
+              <div class="truncate text-sm">{workspace.location ?? "Not chosen yet"}</div>
+            </div>
+            <Button type="button" variant="ghost" size="sm" onclick={changeLocation}>
+              {workspace.location ? "Change" : "Choose"}
+            </Button>
           </div>
-          <Button type="button" variant="ghost" size="sm" onclick={changeLocation}>
-            {workspace.location ? "Change" : "Choose"}
-          </Button>
         </div>
-      {:else}
-        <p class="text-muted-foreground mt-3 text-xs">
-          Stored inside the app.
-          <button type="button" class="text-primary underline-offset-2 hover:underline" onclick={() => (folderExplainerOpen = true)}>
-            Keep workspaces in your own folders instead…
-          </button>
-        </p>
       {/if}
       <Dialog.Footer class="mt-4">
         <Button type="submit" class="w-full" disabled={creating}>{creating ? "Creating…" : "Create"}</Button>
@@ -501,12 +520,28 @@
     if (!o) {
       menuTarget = null;
       confirmingDelete = false;
+      confirmingStop = false;
       scheduleBodyLockRelease();
     }
   }}
 >
   <Drawer.Content>
-    {#if confirmingDelete && menuTarget}
+    {#if confirmingStop && menuTarget}
+      <Drawer.Header>
+        <Drawer.Title>Stop syncing "{menuTarget.name}"?</Drawer.Title>
+        <Drawer.Description>
+          It moves back into the app. The folder in {menuTarget.path} keeps its files.
+        </Drawer.Description>
+      </Drawer.Header>
+      <div class="flex flex-col gap-2 p-4 pt-2" style="padding-bottom: calc(var(--safe-bottom) + 1rem);">
+        <Button class="w-full" disabled={syncBusy} onclick={() => menuTarget && void stopSyncing(menuTarget)}>
+          {syncBusy ? "Moving…" : "Stop syncing"}
+        </Button>
+        <Button variant="ghost" class="w-full" disabled={syncBusy} onclick={() => (confirmingStop = false)}>
+          Cancel
+        </Button>
+      </div>
+    {:else if confirmingDelete && menuTarget}
       <Drawer.Header>
         {#if menuTarget.kind === "folder"}
           <Drawer.Title>Remove "{menuTarget.name}" from the list?</Drawer.Title>
@@ -553,6 +588,25 @@
           Export to folder…
         </Button>
         {#if menuTarget && !menuTarget.system}
+          {#if menuTarget.kind === "folder"}
+            <Button variant="ghost" class="justify-start" onclick={() => (confirmingStop = true)}>
+              <Icon icon={Unlink02Icon} />
+              Stop syncing
+            </Button>
+          {:else}
+            <Button
+              variant="ghost"
+              class="justify-start"
+              onclick={() => {
+                const meta = menuTarget;
+                menuTarget = null;
+                if (meta) syncConfirm = { kind: "move", meta };
+              }}
+            >
+              <Icon icon={FolderSyncIcon} />
+              Sync with a folder…
+            </Button>
+          {/if}
           <Button
             variant="ghost"
             class="text-destructive justify-start"
@@ -572,38 +626,12 @@
   </Drawer.Content>
 </Drawer.Root>
 
-<!-- Move app-storage workspaces out to a folder -->
-<Dialog.Root
-  bind:open={migrateOpen}
-  onOpenChange={(o) => {
-    if (!o) scheduleBodyLockRelease();
-  }}
->
-  <Dialog.Content>
-    <Dialog.Header>
-      <Dialog.Title>Move workspaces to a folder</Dialog.Title>
-      <Dialog.Description>
-        Choose a folder, for example one your sync app keeps in step with your other devices. Each
-        workspace is copied into it as its own folder, checked, and then removed from the app's
-        storage. Downloaded packages stay in the app.
-      </Dialog.Description>
-    </Dialog.Header>
-    <Dialog.Footer class="mt-2 flex-col gap-2">
-      <Button class="w-full" disabled={migrating} onclick={() => void doMigrate()}>
-        {migrating ? "Moving…" : "Choose folder…"}
-      </Button>
-      <Button variant="ghost" class="w-full" disabled={migrating} onclick={() => (migrateOpen = false)}>
-        Not now
-      </Button>
-    </Dialog.Footer>
-  </Dialog.Content>
-</Dialog.Root>
-
+<!-- Every way into syncing goes through this: the costs, then the picker. -->
 <FolderStorageDialog
-  bind:open={folderExplainerOpen}
-  onEnabled={() => {
-    toast.success("Folder workspaces turned on", {
-      description: "New workspaces are created in a folder you choose.",
-    });
-  }}
+  bind:open={() => syncConfirm !== null, (o) => { if (!o) closeSyncConfirm(); }}
+  description={syncConfirm?.kind === "move"
+    ? `Copy "${syncConfirm.meta.name}" into a folder that a sync app, like Syncthing, shares with your other devices.`
+    : "Open a folder that a sync app, like Syncthing, shares with your other devices."}
+  busy={syncBusy || addingFolder}
+  onConfirm={confirmSync}
 />

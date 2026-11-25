@@ -19,12 +19,12 @@ export interface WorkspaceMeta {
   system: boolean;
 }
 
-/** Result of moving the app-storage workspaces into a picked folder. */
-export interface MigrationReport {
-  /** `from` is the app-storage id, `to` the new folder workspace's id. */
-  moved: { name: string; from: string; to: string }[];
-  /** Left where they were. */
-  failed: { name: string; error: string }[];
+/** A workspace moved between app storage and a folder: its id before and
+ *  after (the name can change when it comes back into the app). */
+export interface MovedWorkspace {
+  name: string;
+  from: string;
+  to: string;
 }
 
 /** Where the open folder workspace's sync stands — mirrors `SyncState` in
@@ -192,9 +192,6 @@ export interface AppSettings {
   lastPackageMode?: "zip" | "folder";
   /** When the launch-time update check last reached the server (epoch ms). */
   lastUpdateCheck?: number;
-  /** The user opted into workspaces in folders they pick (synced through a
-   *  private mirror). Off until they have read the trade-offs. */
-  folderWorkspaces?: boolean;
 }
 
 /** A newer build on this app's release track (`check_for_update`). */

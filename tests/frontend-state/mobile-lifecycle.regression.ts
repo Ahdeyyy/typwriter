@@ -132,6 +132,7 @@ beforeEach(() => {
   workspace.document = false;
   workspace.workspaces = [];
   workspace.sync = null;
+  workspace.syncDetailsOpen = false;
   app.screen = "editor";
   app.overlay = "none";
   historyMock.state = { screen: "editor", overlay: "none" };
@@ -665,34 +666,43 @@ describe("folder workspace sync visibility", () => {
   };
   const messages = (fn: { mock: { calls: unknown[][] } }) => fn.mock.calls.map((call) => call[0]);
 
-  test("starting and stopping are both announced, routine states only move the indicator", async () => {
+  test("starting, stopping and routine syncs only move the indicator, without toasts", async () => {
     const emit = await listen();
     emit(status("syncing"));
-    expect(messages(toastMock)).toEqual(["Sync started: Thesis"]);
     expect(workspace.sync?.state).toBe("syncing");
     emit(status("synced", { lastSyncedMs: 1 }));
     emit(status("paused"));
-    emit(status("syncing"));
+    emit(status("syncing", { done: 3, total: 40 }));
     emit(status("synced", { lastSyncedMs: 2 }));
-    expect(messages(toastMock)).toEqual(["Sync started: Thesis"]);
     expect(workspace.sync?.state).toBe("synced");
     emit(status("stopped"));
-    expect(messages(toastMock)).toEqual(["Sync started: Thesis", "Sync stopped: Thesis"]);
     expect(workspace.sync).toBeNull();
+    expect(toastMock).not.toHaveBeenCalled();
+    expect(toastMock.loading).not.toHaveBeenCalled();
+    expect(toastMock.success).not.toHaveBeenCalled();
+    expect(toastMock.error).not.toHaveBeenCalled();
   });
 
-  test("a big copy shows progress and losing or regaining the folder is announced once", async () => {
+  test("the first copy (before the editor is up) shows progress; losing or regaining the folder is announced once", async () => {
     const emit = await listen();
+    app.screen = "home";
     emit(status("syncing", { done: 0, total: 40 }));
     emit(status("syncing", { done: 20, total: 40 }));
-    expect(messages(toastMock.loading)).toEqual(["Syncing 0 of 40 files", "Syncing 20 of 40 files"]);
+    expect(messages(toastMock.loading)).toEqual(["Copying 0 of 40 files", "Copying 20 of 40 files"]);
+    app.screen = "editor";
     emit(status("synced"));
     expect(toastMock.dismiss).toHaveBeenCalled();
     emit(status("offline", { message: "gone" }));
     emit(status("offline", { message: "gone" }));
     expect(toastMock.error).toHaveBeenCalledTimes(1);
+    // The toast times out, but its "Details" brings the explanation back.
+    const options = toastMock.error.mock.calls[0]?.[1] as { action?: { label: string; onClick: () => void } };
+    expect(options.action?.label).toBe("Details");
+    expect(workspace.syncDetailsOpen).toBe(false);
+    options.action?.onClick();
+    expect(workspace.syncDetailsOpen).toBe(true);
     emit(status("synced"));
-    expect(messages(toastMock.success)).toEqual(["Sync/Thesis is reachable again"]);
+    expect(messages(toastMock.success)).toEqual(["Sync/Thesis is back"]);
   });
 
   test("the background pauses an open folder's sync and coming back resumes and catches up", async () => {

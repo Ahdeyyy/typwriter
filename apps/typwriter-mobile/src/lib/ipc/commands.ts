@@ -12,7 +12,7 @@ import type {
   FileContent,
   FileNode,
   FontsStatus,
-  MigrationReport,
+  MovedWorkspace,
   PreviewJump,
   SyncStatus,
   WorkspaceInfo,
@@ -51,9 +51,13 @@ export const addFolderWorkspace = () => call<WorkspaceMeta | null>("add_folder_w
 export const getWorkspaceLocation = () => call<string | null>("get_workspace_location");
 /** Choose where new workspaces are created; the new label, or null if cancelled. */
 export const pickWorkspaceLocation = () => call<string | null>("pick_workspace_location");
-/** Move every app-storage workspace into a folder the user picks (the package
- *  store stays); null if the picker was cancelled. */
-export const migrateAppWorkspaces = () => call<MigrationReport | null>("migrate_app_workspaces");
+/** Move one app-storage workspace into a folder the user picks, so it syncs
+ *  with it from now on; null if the picker was cancelled. */
+export const moveWorkspaceToFolder = (id: string) =>
+  call<MovedWorkspace | null>("move_workspace_to_folder", { id });
+/** Stop syncing a folder workspace: bring it into app storage (the folder's
+ *  files stay where they are). */
+export const moveWorkspaceToApp = (id: string) => call<MovedWorkspace>("move_workspace_to_app", { id });
 /** Delete an app-storage workspace, or take a folder workspace off the list
  *  (its files stay where they are). */
 export const deleteWorkspace = (id: string) => call<null>("delete_workspace", { id });
@@ -62,7 +66,7 @@ export const openWorkspace = (id: string) => call<WorkspaceInfo>("open_workspace
 export const getSyncStatus = () => call<SyncStatus | null>("get_sync_status");
 /** Pause folder polling while the app is hidden; resuming catches up at once. */
 export const setSyncPaused = (paused: boolean) => call<null>("set_sync_paused", { paused });
-/** Stop syncing the open folder workspace (announced as `stopped`). */
+/** Stop syncing the open folder workspace (emits `stopped`). */
 export const stopFolderSync = () => call<null>("stop_folder_sync");
 export const pickDocument = () => call<WorkspaceInfo | null>("pick_document");
 export const openDocument = (uri: string) => call<WorkspaceInfo>("open_document", { uri });

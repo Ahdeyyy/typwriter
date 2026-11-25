@@ -10,23 +10,25 @@ overlay, no per-keystroke IPC (disk is the source of truth; autosave on idle/blu
 preview-open), touch completion strip above the keyboard, and lazy on-demand page
 rendering over the `previewimg://` scheme.
 
-## Workspaces in your own folders (opt-in)
+## Syncing a workspace with a folder (per workspace)
 
-Off by default: workspaces live in the app's own storage. Turning on
-**Workspaces in your own folders** (Settings, or the link in the New workspace
-dialog) first shows `folder-storage-dialog.svelte`, which spells out the costs:
-a second copy on the device, changes from elsewhere arriving within seconds,
-some battery while a workspace is open, a slow first open of a big folder,
-Keep mine / Reload on simultaneous edits, and a folder that must stay
-reachable. Turning it off again only changes where *new* workspaces go.
+Workspaces live in the app's own storage unless the user chooses otherwise,
+one workspace at a time:
 
-Once on, **New workspace** creates a folder inside a chosen location (asked
-once, then reused; **Change** in the dialog), **Open folder** lists an existing
-folder, and Home offers **Move to a folder…** for workspaces still in app
-storage (copy, check, then delete the original; one that fails stays and is
-reported). Point it at a folder Syncthing (or similar) keeps in step and the
-workspace follows you across devices. The Typst package store always stays in
-app storage.
+- **New workspace** has a **Sync with a folder** switch (off by default);
+  turning it on shows the costs and the folder it goes into (asked once, then
+  reused; **Change** picks another).
+- **Open folder** lists an existing folder as a workspace.
+- A workspace's long-press menu offers **Sync with a folder…** (copy, check,
+  then delete the app copy) or, for one that syncs, **Stop syncing** (brings it
+  back into the app; the folder keeps its files).
+
+Every one of these shows the same four-line list of costs first
+(`sync-tradeoffs.svelte`): about twice the space, changes from other devices
+after a few seconds, a little more battery while open, and choosing which
+version to keep when two devices edit the same file. Point it at a folder
+Syncthing (or similar) keeps in step and the workspace follows you across
+devices. The Typst package store always stays in app storage.
 
 Picked folders are SAF trees, so the app works on a private *mirror* under app
 data (`mirrors/<id>/`) and `src-tauri/src/folders/sync.rs` keeps it in step,
@@ -43,17 +45,20 @@ keeping the cost as low as it can:
   **Reload**. Hidden entries (`.git`, `.stfolder`, `.stversions`) are never
   copied; the mirror's `.typwriter/` never leaves the device.
 
-The user always sees where syncing stands: an indicator in the editor header
-(syncing with progress, synced, paused, not syncing) with a details sheet, and
-toasts when syncing starts (opening the workspace), stops (leaving it — going
-home, switching, opening a file), copies a large batch, loses the folder, or
-gets it back.
+Sync status stays small: synced workspaces have a sync icon on Home, a dot on
+the phone header's files button, and an icon in the file-tree footer (tablets:
+the tab strip) that opens the details and **Sync now**. They are there exactly
+while syncing runs (opening the workspace starts it; leaving it stops it).
+Toasts are kept for the first copy of a folder (before the editor is up) and
+for losing or regaining the folder. They time out; while the folder can't be
+reached a red cloud button stays in the header, and it (like the toast's
+**Details**) opens the same details sheet.
 
-On device, verify: the opt-in dialog, create in a new location, open an
+On device, verify: the switch in New workspace, create in a new location, open an
 existing folder, reopening (instant) vs first open (progress), an edit made on
 another device arriving in the open file (~1 s) and elsewhere (~4 s) with clean
-and dirty buffers, backgrounding (paused) and returning (caught up), the move,
-removing a workspace, and a folder deleted or with its access revoked while
+and dirty buffers, backgrounding (paused) and returning (caught up), moving a workspace
+into a folder and back, removing a workspace, and a folder deleted or with its access revoked while
 open.
 
 ## Opening individual Typst documents

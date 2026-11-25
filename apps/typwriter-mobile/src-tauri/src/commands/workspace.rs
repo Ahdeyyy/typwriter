@@ -174,25 +174,6 @@ fn folder_meta(entry: &FolderEntry) -> WorkspaceMeta {
     }
 }
 
-/// The user workspaces still in app storage (not the package store).
-fn app_workspace_dirs(app: &AppHandle) -> Vec<(String, PathBuf)> {
-    let system = system_dir(app);
-    let Ok(entries) = std::fs::read_dir(root_dir(app)) else {
-        return Vec::new();
-    };
-    let mut out: Vec<(String, PathBuf)> = entries
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.is_dir() && system.as_deref() != Some(path.as_path()))
-        .filter_map(|path| {
-            let name = path.file_name()?.to_str()?.to_string();
-            (!name.starts_with('.')).then_some((name, path))
-        })
-        .collect();
-    out.sort();
-    out
-}
-
 #[tauri::command]
 pub async fn list_workspaces(app: AppHandle) -> Result<Vec<WorkspaceMeta>, String> {
     let root = root_dir(&app);
@@ -551,103 +532,154 @@ pub async fn stop_folder_sync(workspace: State<'_, Arc<WorkspaceState>>) -> Resu
     Ok(())
 }
 
-// ─── Moving app-storage workspaces into a folder ─────────────────────────────
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MigrationReport {
-    pub moved: Vec<MovedWorkspace>,
-    pub failed: Vec<FailedWorkspace>,
-}
+// ─── Moving one workspace between app storage and a folder ───────────────────
+//
+// Syncing is a per-workspace choice: each one can be moved into a folder (and
+// from then on synced with it), or brought back into app storage.
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MovedWorkspace {
     pub name: String,
-    /// The id it had in app storage.
+    /// The id it had before the move.
     pub from: String,
-    /// Its id as a folder workspace.
+    /// Its id now.
     pub to: String,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FailedWorkspace {
-    pub name: String,
-    pub error: String,
+/// Let go of `dir` if the backend still has it open (Home keeps the last
+/// workspace loaded): its watcher or sync would otherwise write into a copy
+/// that is about to be deleted.
+fn release_root(workspace: &WorkspaceState, watcher: &WatcherState, dir: &Path) {
+    if workspace.root.read().as_deref() == Some(dir) {
+        workspace.replace_sync(None);
+        watcher.stop();
+        *workspace.root.write() = None;
+    }
 }
 
-/// Move every workspace still in app storage into a folder the user picks.
-/// The package store stays where it is. Returns `None` when the picker was
-/// cancelled.
+/// Move one app-storage workspace into a folder the user picks: a folder
+/// with its name is created there and the workspace syncs with it from now
+/// on. Returns `None` when the picker was cancelled.
 ///
-/// Each workspace is copied, the copy checked against the original, and only
-/// then is the original deleted; one that fails is left where it was and
-/// reported. Tab state and the main file come along in the new mirror, so the
-/// workspace reopens exactly as it was left.
+/// The workspace is copied, the copy checked against the original, and only
+/// then is the original deleted; on failure it stays where it was. Tab state
+/// and the main file come along in the new mirror.
 #[tauri::command]
-pub async fn migrate_app_workspaces(
+pub async fn move_workspace_to_folder(
+    id: String,
     app: AppHandle,
     workspace: State<'_, Arc<WorkspaceState>>,
     watcher: State<'_, Arc<WatcherState>>,
-) -> Result<Option<MigrationReport>, String> {
+) -> Result<Option<MovedWorkspace>, String> {
     let workspace = workspace.inner().clone();
     let watcher = watcher.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let sources = app_workspace_dirs(&app);
-        if sources.is_empty() {
-            return Err("There are no workspaces in app storage to move".into());
+        let Target::App { name, dir } = resolve_target(&app, &id)? else {
+            return Err("This workspace already syncs with a folder".into());
+        };
+        if system_dir(&app).as_deref() == Some(dir.as_path()) {
+            return Err("The package store stays in the app".into());
+        }
+        if !dir.is_dir() {
+            return Err(format!("Workspace \"{name}\" not found"));
         }
         let Some(dest) = folders::pick_folder(&app)? else {
             return Ok(None);
         };
-        // New workspaces go to the same place from now on.
+        // Offered as the default for the next one.
         set_last_parent(&app, dest.clone())?;
-
-        // Home keeps the last workspace open in the backend. If that is one of
-        // these, let go of it first: its watcher would otherwise rewrite
-        // metadata into a folder that is being copied and then deleted.
-        let base = root_dir(&app);
-        if workspace
-            .root
-            .read()
-            .as_deref()
-            .is_some_and(|root| root.starts_with(&base))
-        {
-            watcher.stop();
-            *workspace.root.write() = None;
-        }
-
+        release_root(&workspace, &watcher, &dir);
+        let t = Instant::now();
         let parent = open_remote(&app, &dest);
-        let mut report = MigrationReport {
-            moved: Vec::new(),
-            failed: Vec::new(),
-        };
-        for (name, dir) in sources {
-            let t = Instant::now();
-            match migrate_one(&app, &*parent, &name, &dir) {
-                Ok(id) => {
-                    info!(
-                        "migrate: {name:?} -> {} ({:.1}ms)",
-                        dest.display(),
-                        t.elapsed().as_secs_f64() * 1000.0
-                    );
-                    report.moved.push(MovedWorkspace {
-                        from: app_id(&name),
-                        to: id,
-                        name,
-                    });
-                }
-                Err(error) => {
-                    warn!("migrate: {name:?} failed: {error}");
-                    report.failed.push(FailedWorkspace { name, error });
-                }
-            }
-        }
-        Ok(Some(report))
+        let to = migrate_one(&app, &*parent, &name, &dir)?;
+        info!(
+            "move_workspace_to_folder: {name:?} -> {} ({:.1}ms)",
+            dest.display(),
+            t.elapsed().as_secs_f64() * 1000.0
+        );
+        Ok(Some(MovedWorkspace {
+            from: app_id(&name),
+            to,
+            name,
+        }))
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Stop syncing a folder workspace by bringing it into app storage. It
+/// catches up with the folder first; the folder and its files are the
+/// user's and stay exactly where they are.
+#[tauri::command]
+pub async fn move_workspace_to_app(
+    id: String,
+    app: AppHandle,
+    workspace: State<'_, Arc<WorkspaceState>>,
+    watcher: State<'_, Arc<WatcherState>>,
+) -> Result<MovedWorkspace, String> {
+    let workspace = workspace.inner().clone();
+    let watcher = watcher.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Target::Folder { entry, mirror } = resolve_target(&app, &id)? else {
+            return Err("This workspace is already stored in the app".into());
+        };
+        release_root(&workspace, &watcher, &mirror);
+        let location = entry.remote.display();
+        // Take the newest version along. Saves are written to the folder
+        // first, so a mirror that synced before is never ahead of it: if the
+        // folder can't be reached now, that copy is still safe to keep.
+        let sync = FolderSync::new(open_remote(&app, &entry.remote), mirror.clone());
+        if let Err(e) = sync.pull() {
+            if !has_synced(&mirror) {
+                return Err(format!("Can't reach {location}, and nothing was copied from it yet. ({e})"));
+            }
+            warn!("move_workspace_to_app: {location} unreachable, keeping the last synced copy: {e}");
+        }
+        drop(sync);
+
+        let name = unique_app_name(&app, &entry.name)?;
+        let dest = root_dir(&app).join(&name);
+        if let Err(e) = copy_dir(&mirror, &dest) {
+            let _ = std::fs::remove_dir_all(&dest);
+            return Err(e);
+        }
+        // Sync bookkeeping means nothing in app storage.
+        let meta = dest.join(".typwriter");
+        let _ = std::fs::remove_file(meta.join("sync.json"));
+        let _ = std::fs::remove_file(meta.join("sync.tmp"));
+
+        registry::update(&app, |r| r.folders.retain(|f| f.id != entry.id))?;
+        let _ = std::fs::remove_dir_all(&mirror);
+        folders::release_unused_grant(&app, &entry.remote);
+        info!("move_workspace_to_app: {:?} from {location}", entry.name);
+        Ok(MovedWorkspace {
+            name: name.clone(),
+            from: entry.id,
+            to: app_id(&name),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// `name`, or `name 2`, `name 3`… — the first not taken in app storage.
+fn unique_app_name(app: &AppHandle, name: &str) -> Result<String, String> {
+    // A folder's name may hold characters a workspace name can't.
+    let base: String = name
+        .chars()
+        .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { c })
+        .collect();
+    let base = if base.trim().is_empty() { "Workspace".to_string() } else { base };
+    let root = root_dir(app);
+    let taken = |candidate: &str| root.join(candidate).exists();
+    if !taken(&base) {
+        return Ok(base);
+    }
+    (2..1000)
+        .map(|n| format!("{base} {n}"))
+        .find(|candidate| !taken(candidate))
+        .ok_or_else(|| "Too many workspaces with this name".to_string())
 }
 
 fn migrate_one(

@@ -32,6 +32,8 @@
   import { openedAgo } from "#lib/time.ts";
   import type { FileNode } from "#lib/ipc/types.ts";
   import TreeNode from "./tree-node.svelte";
+  import SyncIndicator from "#lib/components/sync-indicator.svelte";
+  import { layout } from "#lib/stores/layout.svelte.ts";
 
   const expanded = new SvelteSet<string>([""]); // root expanded by default
 
@@ -318,6 +320,8 @@
       </div>
       <Icon icon={UnfoldMoreIcon} class="text-muted-foreground size-5 shrink-0" />
     </button>
+    <!-- Tablets show it in the tab strip instead. -->
+    {#if !layout.tablet}<SyncIndicator />{/if}
     <Button variant="ghost" size="icon" aria-label="Settings" onclick={openSettings}>
       <Icon icon={Settings01Icon} />
     </Button>

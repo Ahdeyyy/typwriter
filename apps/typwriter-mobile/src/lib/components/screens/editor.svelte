@@ -24,6 +24,7 @@
   import { immersive } from "#lib/stores/immersive.svelte.ts";
   import { workspace } from "#lib/stores/workspace.svelte.ts";
   import SyncIndicator from "#lib/components/sync-indicator.svelte";
+  import SyncDetails from "#lib/components/sync-details.svelte";
   import { fade } from "svelte/transition";
   import { easeOut } from "#lib/motion.ts";
 
@@ -102,14 +103,14 @@
     result.mapErr((e) => toast.error(`Format failed: ${e}`));
   }
 
-  // A folder workspace's sync changing state (started, syncing, synced,
-  // paused, lost the folder) must be seen: bring the floating header — and the
-  // indicator in it — back if scrolling had hidden it.
+  // Losing the folder is the one sync state worth interrupting for: bring the
+  // header (and the red sync button in it) back if scrolling hid it.
+  // Routine states stay quiet.
   $effect(() => {
-    const state = workspace.sync?.state;
+    const offline = workspace.sync?.state === "offline";
     // Only the sync state is a dependency — reading the immersive state here
     // would re-reveal the header every time scrolling hides it.
-    if (state) untrack(() => immersive.reveal("editor"));
+    if (offline) untrack(() => immersive.reveal("editor"));
   });
 </script>
 
@@ -198,10 +199,11 @@
               onclick={() => (app.overlay === "filetree" ? app.closeOverlay() : app.openOverlay("filetree"))}
             >
               <Icon icon={SidebarLeft01Icon} class="size-5" />
+              <SyncIndicator variant="dot" />
             </button>
 
             <div class="flex items-center gap-2">
-              <SyncIndicator floating />
+              <SyncIndicator variant="alert" />
               {#if compileStore.errors.length > 0}
                 <button
                   class="float-pill text-destructive flex h-11 items-center gap-1.5 px-3.5 text-sm font-semibold tabular-nums"
@@ -260,7 +262,11 @@
       role="status"
     >
       <Icon icon={Alert01Icon} class="text-destructive shrink-0" />
-      <span class="min-w-0 flex-1">Changed on disk since you started editing.</span>
+      <span class="min-w-0 flex-1">
+        {workspace.sync
+          ? "Changed on another device while you were editing."
+          : "Changed on disk since you started editing."}
+      </span>
       <Button variant="ghost" size="sm" onclick={() => editor.keepMyChanges()}>Keep mine</Button>
       <Button variant="secondary" size="sm" onclick={() => void editor.reloadActiveFromDisk()}>
         Reload
@@ -281,6 +287,7 @@
 
 {#if !layout.sidebarDocked}
   <TreeSheet />
+  <SyncDetails />
 {/if}
 <PreviewOverlay startPage={previewStartPage} />
 <QuickSwitcher />
