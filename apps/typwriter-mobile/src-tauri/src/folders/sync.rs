@@ -817,13 +817,20 @@ mod tests {
         }
 
         /// Write into the folder as another program would, with an mtime that
-        /// can't collide with an earlier write in the same tick.
+        /// can't collide with an earlier write. Stamps keep milliseconds, and
+        /// two writes on a fast machine can land in the same one — a
+        /// same-length rewrite would then look unchanged — so every write is
+        /// pushed one more second into the future than the last.
         fn external_write(&self, rel: &str, content: &str) {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static WRITES: AtomicU64 = AtomicU64::new(0);
+
             let path = self.folder.join(rel);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(&path, content).unwrap();
             let file = std::fs::File::options().write(true).open(&path).unwrap();
-            let later = std::time::SystemTime::now() + Duration::from_secs(60);
+            let n = WRITES.fetch_add(1, Ordering::Relaxed);
+            let later = std::time::SystemTime::now() + Duration::from_secs(60 + n);
             file.set_modified(later).unwrap();
         }
 

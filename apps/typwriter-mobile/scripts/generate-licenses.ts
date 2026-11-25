@@ -20,25 +20,7 @@ interface CargoManifest extends DependencyTables {
 }
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const root = resolve(app, "../..");
 const output = join(app, "src/lib/licenses/catalog.json");
-const inputs = ["package.json", "bun.lock", "apps/typwriter-mobile/package.json",
-  "apps/typwriter-mobile/src-tauri/Cargo.toml", "apps/typwriter-mobile/src-tauri/Cargo.lock",
-  "apps/typwriter-mobile/scripts/generate-licenses.ts", "apps/typwriter-mobile/scripts/licenses/collect-rust.ts",
-  "apps/typwriter-mobile/scripts/licenses/source-text.ts"];
-// Only the dependency fields of a package.json can change the notices, so
-// editing a script (e.g. `icons`) must not make the catalog stale.
-const dependencyFields = ["dependencies", "devDependencies", "optionalDependencies", "overrides", "workspaces"];
-const fingerprint = createHash("sha256");
-for (const input of inputs) {
-  let text = readFileSync(join(root, input), "utf8").replace(/\r\n/g, "\n");
-  if (input.endsWith("package.json")) {
-    const manifest = JSON.parse(text);
-    text = JSON.stringify(dependencyFields.map(field => [field, manifest[field] ?? null]));
-  }
-  fingerprint.update(input).update(text);
-}
-const inputHash = fingerprint.digest("hex");
 
 function packageDirectory(name: string): string {
   for (let directory = app; ; directory = dirname(directory)) {
@@ -91,19 +73,22 @@ const expectedIds = new Set([
   ...directNpm.map(({ meta }) => packageId({ ecosystem: "JavaScript", name: meta.name, version: meta.version })),
   ...directRust.map(pkg => packageId({ ...pkg, ecosystem: "Rust" })),
 ]);
+// The catalog is stale only when the set of direct dependencies or their
+// versions changed. It deliberately doesn't hash the manifests or lockfiles:
+// a feature flag, a comment or a transitive lock bump changes no notice.
+const stale = (message: string) => new Error(`${message}. Run bun run licenses:generate.`);
 if (process.argv.includes("--check")) {
   const catalog = await Bun.file(output).json();
-  if (catalog.inputHash !== inputHash) throw new Error("Mobile licenses are stale. Run bun run licenses:generate.");
   const actualIds = new Set<string>();
   for (const pkg of catalog.packages as Package[]) {
     const id = packageId(pkg);
-    if (!expectedIds.has(id) || actualIds.has(id)) throw new Error(`Unexpected dependency notice: ${id}`);
+    if (!expectedIds.has(id) || actualIds.has(id)) throw stale(`Unexpected dependency notice: ${id}`);
     actualIds.add(id);
     if (!pkg.license || !pkg.notices.length || pkg.notices.some(n => !catalog.texts[n.text])) {
       throw new Error(`Incomplete license notice: ${pkg.name} ${pkg.version}`);
     }
   }
-  for (const id of expectedIds) if (!actualIds.has(id)) throw new Error(`Missing direct dependency notice: ${id}`);
+  for (const id of expectedIds) if (!actualIds.has(id)) throw stale(`Missing direct dependency notice: ${id}`);
   console.log(`Verified ${actualIds.size} direct mobile dependency notices.`);
   process.exit(0);
 }
@@ -171,5 +156,5 @@ for (const pkg of directRust) {
 }
 const unique = [...new Map(packages.map(pkg => [packageId(pkg), pkg])).values()];
 unique.sort((a, b) => a.name.localeCompare(b.name, "en") || a.version.localeCompare(b.version, "en") || a.ecosystem.localeCompare(b.ecosystem, "en"));
-await Bun.write(output, JSON.stringify({ inputHash, packages: unique, texts }, null, 2) + "\n");
+await Bun.write(output, JSON.stringify({ packages: unique, texts }, null, 2) + "\n");
 console.log(`Wrote ${unique.length} direct dependencies and ${Object.keys(texts).length} license/notice texts.`);

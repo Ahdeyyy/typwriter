@@ -142,7 +142,7 @@ directly in the mobile app's `package.json` and `src-tauri/Cargo.toml`, includin
 development/build dependencies and target-specific direct crates. Transitive
 packages are excluded. Long notices are rendered only when expanded.
 
-After updating dependencies or bumping workspace versions, run from this app
+After adding, removing or upgrading a direct dependency, run from this app
 directory:
 
 ```bash
@@ -151,12 +151,11 @@ bun run licenses:check
 ```
 
 Generation requires `bun install` and internet access to upstream license texts,
-and crate archives. Commit `src/lib/licenses/catalog.json` with dependency
-changes and version bumps. Ordinary builds verify the catalog against the
-manifests, lockfiles, and generator sources without accessing the network.
-The check also verifies that
-the catalog contains exactly the direct dependency set, at its installed or
-locked versions.
+and crate archives. Commit `src/lib/licenses/catalog.json` with the dependency
+change. Ordinary builds verify, without the network, that the catalog holds
+exactly the direct dependency set at its installed or locked versions, each with
+a complete notice. Nothing else makes it stale: feature flags, comments,
+transitive lockfile bumps and generator edits don't change any notice.
 
 ## Updates
 
