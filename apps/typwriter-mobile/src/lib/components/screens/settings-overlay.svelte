@@ -14,7 +14,7 @@
     ArrowLeft01Icon,
     ArrowRight01Icon,
     File02Icon,
-    Cancel01Icon,
+    BookOpen01Icon,
   } from "@hugeicons/core-free-icons";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import Icon from "#lib/components/icon.svelte";
@@ -28,6 +28,14 @@
   import { updater, type UpdateStatus } from "#lib/stores/updater.svelte.ts";
   import { pickFontsDir, clearFontsDir, getFontsStatus, getTypstVersion } from "#lib/ipc/commands.ts";
   import LicensesScreen from "./licenses-screen.svelte";
+  import DictionaryScreen from "./dictionary-screen.svelte";
+
+  /** Settings' sub-screens: they share the sheet and go back to settings. */
+  const subScreenTitles: Partial<Record<typeof app.overlay, string>> = {
+    licenses: "Open-source licenses",
+    dictionary: "Your dictionary",
+  };
+  const subScreenTitle = $derived(subScreenTitles[app.overlay]);
 
   const spellSource = $derived(
     spell.deviceGrammar === true
@@ -183,27 +191,29 @@
 </script>
 
 <Sheet.Root
-  open={app.overlay === "settings" || app.overlay === "licenses"}
+  open={app.overlay === "settings" || subScreenTitle !== undefined}
   onOpenChange={(o) => {
     if (!o) app.closeOverlay();
   }}
 >
   <Sheet.Content side="right" class="w-full max-w-md p-0 data-[side=right]:w-full sm:max-w-md"
-    showCloseButton={app.overlay !== "licenses"}
+    showCloseButton={subScreenTitle === undefined}
     style={`height: var(--app-height, ${viewportHeight});`}>
     <div class="flex h-full min-h-0 flex-col"
       style={`padding-top: calc(${viewportTop}px + var(--safe-top));`}>
       <div class="flex h-12 shrink-0 items-center border-b px-4">
-        {#if app.overlay === "licenses"}
+        {#if subScreenTitle}
           <Button variant="ghost" size="icon-sm" class="mr-2" aria-label="Back to settings" onclick={() => app.closeOverlay()}>
             <Icon icon={ArrowLeft01Icon} />
           </Button>
         {/if}
-        <Sheet.Title class="text-base font-semibold">{app.overlay === "licenses" ? "Open-source licenses" : "Settings"}</Sheet.Title>
+        <Sheet.Title class="text-base font-semibold">{subScreenTitle ?? "Settings"}</Sheet.Title>
       </div>
       <Sheet.Description class="sr-only">App preferences and third-party software notices.</Sheet.Description>
       {#if app.overlay === "licenses"}
         <LicensesScreen />
+      {:else if app.overlay === "dictionary"}
+        <DictionaryScreen />
       {:else}
       <ScrollArea class="min-h-0 flex-1">
         <!-- The sheet runs behind the navigation bar (edge to edge); the last row
@@ -286,19 +296,21 @@
               />
             </div>
             {#if settings.spellcheck && settings.spellIgnoredWords.length > 0}
-              <span class="text-muted-foreground text-xs">Your dictionary</span>
-              <div class="flex flex-wrap gap-1">
-                {#each settings.spellIgnoredWords as word (word)}
-                  <button
-                    class="bg-muted active:bg-foreground/10 flex items-center gap-1 rounded-full border py-1 pr-2 pl-3 text-sm"
-                    aria-label={`Remove ${word} from your dictionary`}
-                    onclick={() => settings.removeSpellIgnoredWord(word)}
-                  >
-                    <span class="max-w-[20ch] truncate">{word}</span>
-                    <Icon icon={Cancel01Icon} class="text-muted-foreground size-3.5" />
-                  </button>
-                {/each}
-              </div>
+              <!-- A row, not the words themselves: the list grows without bound
+                   and would push every setting below it off the screen. -->
+              <button
+                type="button"
+                class="flex min-h-11 items-center gap-2 rounded-md text-left text-sm focus-visible:outline-ring"
+                onclick={() => app.openOverlay("dictionary")}
+              >
+                <Icon icon={BookOpen01Icon} class="text-muted-foreground size-5" />
+                <span class="flex-1">Your dictionary</span>
+                <span class="text-muted-foreground text-sm tabular-nums">
+                  {settings.spellIgnoredWords.length}
+                  {settings.spellIgnoredWords.length === 1 ? "word" : "words"}
+                </span>
+                <Icon icon={ArrowRight01Icon} class="text-muted-foreground size-5" />
+              </button>
             {/if}
           </section>
 

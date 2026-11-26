@@ -23,6 +23,7 @@ export type Overlay =
   | "diagnostics"
   | "settings"
   | "licenses"
+  | "dictionary"
   | "quickswitcher"
   | "tabswitcher"
   | "export";
