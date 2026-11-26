@@ -80,7 +80,7 @@
 	/>
 </svelte:head>
 
-<div class="min-h-screen bg-background text-foreground">
+<div class="min-h-screen text-foreground">
 	<Navbar />
 
 	<main>

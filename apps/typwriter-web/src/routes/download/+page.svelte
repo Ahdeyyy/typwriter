@@ -72,7 +72,7 @@
 	/>
 </svelte:head>
 
-<div class="min-h-screen bg-background text-foreground">
+<div class="min-h-screen text-foreground">
 	<Navbar />
 
 	<main class="mx-auto max-w-3xl px-4 py-16 sm:px-6">
