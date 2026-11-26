@@ -10,9 +10,9 @@
 //   - only the prose near the viewport is looked at, a paragraph at a time
 //     (`prose.ts`), and each paragraph's answer is cached by its text, so an
 //     edit re-checks one paragraph and scrolling back costs nothing;
-//   - the checking itself happens in the keyboard's spellchecker service
-//     (or the bundled dictionary when there is none), behind one async
-//     command — see `src-tauri/src/spell.rs`;
+//   - the checking itself happens in Rust, behind one async command: the
+//     bundled dictionary for spelling, the keyboard's spellchecker service
+//     for grammar when it has one — see `src-tauri/src/spell.rs`;
 //   - one request in flight at a time.
 //
 // The caret sitting in a flagged word publishes it to the spell store; the
@@ -258,7 +258,7 @@ class SpellChecker {
     if (this.destroyed) return;
     result.match(
       (report) => {
-        spell.engine = report.engine;
+        spell.deviceGrammar = report.deviceGrammar;
         report.results.forEach((issues, i) => remember(batch[i]!, issues));
         // Publish what came back, and send the next batch if there is one.
         this.schedule(0, true);

@@ -1,14 +1,14 @@
 //! Spell checking for the editor.
 //!
 //! The frontend pulls the prose out of a Typst buffer, a paragraph at a time,
-//! and sends only paragraphs it has no answer cached for. This module answers
-//! them with Android's own spellchecker service when the device has one (the
-//! local `spellcheck` plugin), and with the bundled en_US Hunspell dictionary
-//! (`spellbook`) when it doesn't — no service installed, the user turned it
-//! off, the service failing, or the desktop dev window.
+//! and sends only paragraphs it has no answer cached for. Spelling is always
+//! checked here, with the bundled en_US Hunspell dictionary (`spellbook`), so
+//! it behaves the same on every device. Grammar, which the dictionary can't
+//! do, comes from Android's own spellchecker service (the local `spellcheck`
+//! plugin) when the device has one that reports it; its spelling flags are
+//! ignored.
 //!
-//! The dictionary is parsed on first use, on a blocking thread, and only if
-//! the fallback is ever needed.
+//! The dictionary is parsed on first use, on a blocking thread.
 
 use std::num::NonZeroUsize;
 use std::sync::OnceLock;
@@ -23,21 +23,11 @@ use tauri_plugin_spellcheck::{NativeIssue, NativeIssueKind};
 const AFF: &str = include_str!("../dictionaries/en_US/en_US.aff");
 const DIC: &str = include_str!("../dictionaries/en_US/en_US.dic");
 
-/// How long to stop asking a service that failed or timed out. A broken
-/// service would otherwise cost every check its full timeout.
+/// How long to stop asking a service that failed or timed out for grammar. A
+/// broken service would otherwise cost every check its full timeout.
 const NATIVE_BACKOFF: Duration = Duration::from_secs(60);
 pub const SUGGESTION_LIMIT: usize = 5;
 const SUGGESTION_CACHE: usize = 256;
-
-/// Which checker produced a report. The settings pane says which one is in use.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SpellEngine {
-    /// The device's spellchecker service.
-    Native,
-    /// The bundled en_US dictionary.
-    Bundled,
-}
 
 /// One flagged range, in UTF-16 code units of the text it was found in.
 #[derive(Debug, Clone, Serialize)]
@@ -63,10 +53,12 @@ impl From<NativeIssue> for SpellIssue {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpellReport {
-    pub engine: SpellEngine,
     /// One list per text sent, in order.
     pub results: Vec<Vec<SpellIssue>>,
+    /// Whether the device's service checked grammar. The settings pane says so.
+    pub device_grammar: bool,
 }
 
 pub struct SpellState {

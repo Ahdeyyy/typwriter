@@ -4,8 +4,9 @@
 //! checking runs in the keyboard's process, not ours.
 //!
 //! The plugin has no JS commands. The app calls [`NativeSpellcheck::check`]
-//! and treats `Ok(None)` — no service on this device, the user switched it
-//! off, or not Android at all — as the cue to use its bundled dictionary.
+//! for grammar only (it checks spelling with its bundled dictionary), and
+//! treats `Ok(None)` — no service on this device, the user switched it off,
+//! or not Android at all — as no grammar checker.
 
 use serde::{Deserialize, Serialize};
 use tauri::{

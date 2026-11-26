@@ -1,33 +1,31 @@
-//! Spell-check commands. See `crate::spell` for which checker answers.
+//! Spell-check commands. See `crate::spell` for who checks what.
 
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
-use tauri::{AppHandle, State};
-use tauri_plugin_spellcheck::NativeSpellcheckExt;
+use tauri::{AppHandle, Runtime, State};
+use tauri_plugin_spellcheck::{NativeIssueKind, NativeSpellcheckExt};
 
-use crate::spell::{SpellEngine, SpellReport, SpellState, SUGGESTION_LIMIT};
+use crate::spell::{SpellIssue, SpellReport, SpellState, SUGGESTION_LIMIT};
 
 /// Caps on one request, so a runaway caller can't park the keyboard's service
 /// or a blocking thread on a whole book. The frontend batches well below them.
 const MAX_TEXTS: usize = 64;
 const MAX_TOTAL_UTF16: usize = 32_000;
 
-/// Which engine answered last (0: none yet, 1: native, 2: bundled), so the
-/// log says when it changes — `adb logcat | grep spell` on a device.
-static LAST_ENGINE: AtomicU8 = AtomicU8::new(0);
+/// Whether the device answered for grammar last time (0: not asked yet,
+/// 1: yes, 2: no), so the log says when that changes —
+/// `adb logcat | grep spell` on a device.
+static LAST_GRAMMAR: AtomicU8 = AtomicU8::new(0);
 
-fn note_engine(engine: SpellEngine, results: &[Vec<crate::spell::SpellIssue>]) {
-    let code = match engine {
-        SpellEngine::Native => 1,
-        SpellEngine::Bundled => 2,
-    };
-    if LAST_ENGINE.swap(code, Ordering::Relaxed) != code {
-        let issues: usize = results.iter().map(Vec::len).sum();
-        log::info!(
-            "spell: now checking with the {engine:?} engine ({} texts, {issues} issues)",
-            results.len()
-        );
+fn note_grammar(answered: bool) {
+    let code = if answered { 1 } else { 2 };
+    if LAST_GRAMMAR.swap(code, Ordering::Relaxed) != code {
+        if answered {
+            log::info!("spell: spelling from the bundled dictionary, grammar from the device");
+        } else {
+            log::info!("spell: spelling from the bundled dictionary, no grammar checker on the device");
+        }
     }
 }
 
@@ -49,40 +47,70 @@ pub async fn spell_check(
         })
         .collect();
 
-    if !state.native_paused() {
-        match app.native_spellcheck().check(&texts, SUGGESTION_LIMIT).await {
-            Ok(Some(results)) => {
-                let results: Vec<Vec<_>> = results
-                    .into_iter()
-                    .map(|issues| issues.into_iter().map(Into::into).collect())
-                    .collect();
-                note_engine(SpellEngine::Native, &results);
-                return Ok(SpellReport {
-                    engine: SpellEngine::Native,
-                    results,
-                });
-            }
-            Ok(None) => {}
-            Err(err) => {
-                log::warn!("spell: device spellchecker failed, using the bundled one: {err}");
-                state.pause_native();
-            }
-        }
-    }
-
-    let state = state.inner().clone();
-    let results = tauri::async_runtime::spawn_blocking(move || state.check_bundled(&texts))
+    // Spelling: the bundled dictionary, on a blocking thread, while the
+    // device's service is asked for grammar alongside it.
+    let bundled = {
+        let state = state.inner().clone();
+        let texts = texts.clone();
+        tauri::async_runtime::spawn_blocking(move || state.check_bundled(&texts))
+    };
+    let grammar = device_grammar(&app, &state, &texts).await;
+    let mut results = bundled
         .await
         .map_err(|err| format!("spell check failed: {err}"))?;
-    note_engine(SpellEngine::Bundled, &results);
+
+    note_grammar(grammar.is_some());
+    let device_grammar = grammar.is_some();
+    if let Some(grammar) = grammar {
+        for (issues, flagged) in results.iter_mut().zip(grammar) {
+            if flagged.is_empty() {
+                continue;
+            }
+            issues.extend(flagged);
+            issues.sort_by_key(|issue| (issue.start, issue.end));
+        }
+    }
     Ok(SpellReport {
-        engine: SpellEngine::Bundled,
         results,
+        device_grammar,
     })
 }
 
-/// Suggestions for a word the bundled dictionary flagged. (The device's
-/// service sends its suggestions with the check.)
+/// The grammar issues the device's spellchecker service finds in `texts`
+/// (its spelling ones are dropped: the bundled dictionary has the say on
+/// spelling), or `None` when there's no service, it failed, or it's in its
+/// back-off after a failure.
+async fn device_grammar<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &SpellState,
+    texts: &[String],
+) -> Option<Vec<Vec<SpellIssue>>> {
+    if state.native_paused() {
+        return None;
+    }
+    match app.native_spellcheck().check(texts, SUGGESTION_LIMIT).await {
+        Ok(Some(results)) => Some(
+            results
+                .into_iter()
+                .map(|issues| {
+                    issues
+                        .into_iter()
+                        .filter(|issue| issue.kind == NativeIssueKind::Grammar)
+                        .map(Into::into)
+                        .collect()
+                })
+                .collect(),
+        ),
+        Ok(None) => None,
+        Err(err) => {
+            log::warn!("spell: device spellchecker failed, checking without grammar: {err}");
+            state.pause_native();
+            None
+        }
+    }
+}
+
+/// Suggestions for a misspelled word, from the bundled dictionary.
 #[tauri::command]
 pub async fn spell_suggest(
     state: State<'_, Arc<SpellState>>,

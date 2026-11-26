@@ -199,9 +199,6 @@ export interface AppSettings {
   spellIgnoredWords?: string[];
 }
 
-/** Which checker answered a spell check (`spell_check`). */
-export type SpellEngine = "native" | "bundled";
-
 /** One flagged range; UTF-16 offsets into the text it was found in. */
 export interface SpellIssue {
   start: number;
@@ -211,11 +208,14 @@ export interface SpellIssue {
   suggestions: string[] | null;
 }
 
+/** Spelling always comes from the bundled dictionary; grammar from the
+ *  device's spellchecker service, when it has one that reports it. */
 export interface SpellReport {
-  engine: SpellEngine;
   /** One list per text sent, in order. Shorter than the request when the
    *  request ran over the backend's size cap; the rest went unchecked. */
   results: SpellIssue[][];
+  /** Whether the device's service checked grammar. */
+  deviceGrammar: boolean;
 }
 
 /** A newer build on this app's release track (`check_for_update`). */

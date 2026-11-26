@@ -1,10 +1,10 @@
 // The flagged word under the caret, for the completion strip's suggestion
-// chips, plus which checker is answering (shown in Settings). The underlines
+// chips, plus whether the device checks grammar (shown in Settings). The underlines
 // themselves live in the editor (`lib/editor/spellcheck/`).
 
 import type { EditorView } from "@codemirror/view";
 import { spellSuggest } from "#lib/ipc/commands.ts";
-import type { SpellEngine, SpellIssue } from "#lib/ipc/types.ts";
+import type { SpellIssue } from "#lib/ipc/types.ts";
 import { settings } from "#lib/stores/settings.svelte.ts";
 
 export interface ActiveSpellIssue {
@@ -12,15 +12,16 @@ export interface ActiveSpellIssue {
   to: number;
   kind: SpellIssue["kind"];
   word: string;
-  /** `null` while the bundled dictionary's suggestions are being fetched. */
+  /** `null` while the dictionary's suggestions are being fetched. */
   suggestions: string[] | null;
 }
 
 const SUGGESTION_CACHE_LIMIT = 200;
 
 class SpellStore {
-  /** Which checker answered last; `null` until the first check. */
-  engine = $state<SpellEngine | null>(null);
+  /** Whether the device's spellchecker checked grammar last time; `null`
+   *  until the first check. */
+  deviceGrammar = $state<boolean | null>(null);
   active = $state.raw<ActiveSpellIssue | null>(null);
 
   private suggestions = new Map<string, string[]>();

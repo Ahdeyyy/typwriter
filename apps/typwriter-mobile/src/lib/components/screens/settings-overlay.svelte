@@ -30,11 +30,11 @@
   import LicensesScreen from "./licenses-screen.svelte";
 
   const spellSource = $derived(
-    spell.engine === "native"
-      ? "Using your keyboard's spellchecker, in its languages"
-      : spell.engine === "bundled"
-        ? "Using the built-in English dictionary — this device has no spellchecker turned on"
-        : "Uses your keyboard's spellchecker, or a built-in English dictionary",
+    spell.deviceGrammar === true
+      ? "Spelling from the built-in English dictionary, grammar from your keyboard"
+      : spell.deviceGrammar === false
+        ? "Spelling from the built-in English dictionary — your keyboard doesn't check grammar here"
+        : "Spelling from the built-in English dictionary, grammar from your keyboard when it can",
   );
 
   let pickingFonts = $state(false);
