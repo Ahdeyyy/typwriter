@@ -16,7 +16,7 @@
     },
     "apps/typwriter-desktop": {
       "name": "typwriter",
-      "version": "0.9.3",
+      "version": "0.9.4",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.4",
         "@codemirror/commands": "^6.11.1",
@@ -139,7 +139,7 @@
     },
     "apps/typwriter-mobile": {
       "name": "typwriter-mobile",
-      "version": "0.9.3",
+      "version": "0.9.4",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.4",
         "@codemirror/commands": "^6.11.1",
@@ -212,7 +212,7 @@
     },
     "apps/typwriter-web": {
       "name": "typwriter-web",
-      "version": "0.9.3",
+      "version": "0.9.4",
       "devDependencies": {
         "@eslint/compat": "^2.1.1",
         "@eslint/js": "^10.0.1",

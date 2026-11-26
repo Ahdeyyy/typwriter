@@ -9655,7 +9655,7 @@ dependencies = [
 
 [[package]]
 name = "typwriter"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "base64 0.23.1",
  "chrono",
