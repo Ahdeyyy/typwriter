@@ -224,11 +224,18 @@
       {/if}
 
       <!-- Toolbar: keyboard-open form (formatting) vs keyboard-closed dock.
-           Tablets have no dock — the tab bar carries its commands. The phone
-           dock floats over the text and hides with the header. -->
+           Tablets have no dock — the tab bar carries its commands. Both float
+           over the text on a transparent band; the phone dock also hides with
+           the header. The keyboard toolbar's height feeds the caret's bottom
+           scroll margin (`immersive.editorObscuredBottom`). -->
       {#if keyboard.visible && editor.fileKind === "text" && !editor.loading}
-        <CompletionStrip />
-        <EditorToolbar />
+        <div
+          class="absolute inset-x-0 bottom-0 z-20"
+          bind:offsetHeight={immersive.editorToolbarHeight}
+        >
+          <CompletionStrip />
+          <EditorToolbar />
+        </div>
       {:else if !layout.tablet}
         <div
           class="immersive-bottom pointer-events-none absolute inset-x-0 bottom-0 z-20"

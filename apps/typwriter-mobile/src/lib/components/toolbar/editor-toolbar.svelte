@@ -112,8 +112,9 @@
   }
 </script>
 
-<!-- Floating pill toolbar. Transparent wrapper keeps the pill off the edges and
-     anchors the heading picker directly above it. -->
+<!-- Floating pill toolbar, styled like the phone header's buttons: a
+     translucent, blurred pill over the text. Transparent wrapper keeps the pill
+     off the edges and anchors the heading picker directly above it. -->
 <div class="relative shrink-0 px-2 pb-2">
   {#if headingOpen}
     <!-- Outside-tap catcher. Keeps editor focus so the keyboard stays up. -->
@@ -148,7 +149,7 @@
   {/if}
 
   <!-- The pill: fixed-height row so every control shares one vertical axis. -->
-  <div class="bg-muted flex h-11 items-center gap-0.5 rounded-full border px-1 shadow-lg">
+  <div class="float-pill flex h-11 items-center gap-0.5 px-1">
     <!-- Manual completion trigger (replaces Ctrl+Space) -->
     <button
       class="active:bg-foreground/10 flex size-9 shrink-0 items-center justify-center rounded-full"

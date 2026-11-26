@@ -87,11 +87,12 @@ export function createExtensions(lang: Extension | null, relPath: string): Exten
     // arrow keys, the cursor row — otherwise parks the caret hard against the
     // scroller's edge, i.e. tucked under the completion strip, with no context
     // on the side you are moving towards.
-    // On phones the floating header sits over the top of the scroller, so
-    // that much more is out of bounds at the top while it is showing.
+    // On phones the floating header sits over the top of the scroller, and
+    // the keyboard toolbar floats over its bottom, so that much more is out of
+    // bounds at either edge while they are showing.
     EditorView.scrollMargins.of(() => ({
       top: CARET_SCROLL_MARGIN_PX + immersive.editorObscuredTop,
-      bottom: CARET_SCROLL_MARGIN_PX,
+      bottom: CARET_SCROLL_MARGIN_PX + immersive.editorObscuredBottom,
     })),
     titleC.of(inlineTitle(settings.showInlineTitle ? inlineTitleFor(relPath) : "")),
     lineNumbersC.of(settings.showLineNumbers ? lineNumbers() : []),

@@ -38,6 +38,8 @@ class ImmersiveStore {
   /** Height of the floating editor header (status-bar inset included), so
    *  caret scrolling can keep the caret out from under it. */
   editorHeaderHeight = $state(0);
+  /** Height of the floating keyboard toolbar (completion strip included). */
+  editorToolbarHeight = $state(0);
 
   private readonly states: Record<ImmersiveSurface, ScrollHideState> = {
     editor: initialScrollHide(),
@@ -76,6 +78,12 @@ class ImmersiveStore {
   /** Px at the top of the editor covered by the floating header. */
   get editorObscuredTop(): number {
     return layout.tablet || this.editorHidden ? 0 : this.editorHeaderHeight;
+  }
+
+  /** Px at the bottom of the editor covered by the floating keyboard toolbar,
+   *  which is only on screen while the keyboard is. */
+  get editorObscuredBottom(): number {
+    return keyboard.visible ? this.editorToolbarHeight : 0;
   }
 
   /** Bring a surface's chrome back (and forget any travel towards hiding). */
