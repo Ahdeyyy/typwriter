@@ -2,7 +2,7 @@ import { describe, expect, it, mock } from 'bun:test';
 import { CompletionContext } from '@codemirror/autocomplete';
 import { EditorState } from '@codemirror/state';
 import { semanticCompletionSource, typstCompletionSource, typstApplyToSnippet } from './typst-completion';
-import type { CompletionsResponse } from '$lib/types';
+import type { CompletionsResponse } from '#lib/types.ts';
 import { completionScope } from './completion-context';
 import { snippetCompletionSource } from './snippet-completion';
 

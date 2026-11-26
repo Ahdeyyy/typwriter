@@ -164,7 +164,7 @@ class SemanticTokenRequester implements PluginValue {
         plugin.client.sync();
         const syncedDoc = plugin.syncedDoc;
 
-        let deco: DecorationSet | null = null;
+        let deco: DecorationSet | null;
         try {
             deco = await plugin.client.withMapping(async (mapping) => {
                 const result = await plugin.client.request<

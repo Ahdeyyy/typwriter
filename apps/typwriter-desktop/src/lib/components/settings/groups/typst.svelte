@@ -9,16 +9,16 @@
     BookOpen01Icon,
     LinkSquare02Icon,
   } from "@hugeicons/core-free-icons";
-  import Button from "$lib/components/ui/button/button.svelte";
+  import Button from "#lib/components/ui/button/button.svelte";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
   import SettingMatch from "../setting-match.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { getTypstVersion } from "$lib/ipc/commands";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { getTypstVersion } from "#lib/ipc/commands.ts";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { toast } from "svelte-sonner";
-  import { logError } from "$lib/logger";
+  import { logError } from "#lib/logger.ts";
 
   // Reported by the compiler itself, so it can't drift from what actually
   // renders your documents.

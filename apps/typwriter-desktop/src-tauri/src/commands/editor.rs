@@ -561,20 +561,16 @@ pub fn save_file(
         workspace.generate_thumbnail();
     }
 
-    // Auto-commit a restore point. Cheap when no-op: `commit_if_changed`
-    // diffs the working tree against HEAD and short-circuits if nothing
-    // changed (e.g. user hit save without edits).
+    // Queue a restore point. The snapshot is taken off this thread — saving
+    // must not wait on a walk of the whole workspace — and is a no-op when
+    // the working tree still matches HEAD (e.g. user hit save without edits).
     let file_label = abs
         .file_name()
         .and_then(|n| n.to_str())
         .map(|s| s.to_string())
         .unwrap_or_else(|| path.clone());
     let policy = snapshot_policy.read().clone();
-    if let Err(err) =
-        vcs.auto_commit_if_changed(CommitTrigger::Save, &format!("Saved {file_label}"), &policy)
-    {
-        warn!("save_file: vcs commit failed err=\"{err}\"");
-    }
+    vcs.request_auto_snapshot(CommitTrigger::Save, &format!("Saved {file_label}"), &policy);
 
     pipeline.request_compile(CompileReason::Save);
 

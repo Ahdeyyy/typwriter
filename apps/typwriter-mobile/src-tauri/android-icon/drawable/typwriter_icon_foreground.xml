@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The T from app-icon.png, scaled so every corner sits inside the 66dp
+     safe-zone circle (radius 33 around 54,54): no mask can clip it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <path android:pathData="M33.77,27.93H74.23V29.85H33.77ZM33.77,32.21H74.23V34.13H33.77ZM33.77,36.5H74.23V38.42H33.77ZM48.83,40.49H50.75V80.07H48.83ZM53.11,40.49H55.03V80.07H53.11ZM57.4,40.49H59.32V80.07H57.4Z">
+    <aapt:attr name="android:fillColor">
+      <gradient
+          android:type="linear"
+          android:startX="74"
+          android:startY="28"
+          android:endX="34"
+          android:endY="80"
+          android:startColor="#FFF5F7FA"
+          android:endColor="#FFCDD7E7"/>
+    </aapt:attr>
+  </path>
+</vector>

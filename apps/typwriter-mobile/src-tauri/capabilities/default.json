@@ -8,6 +8,7 @@
     "opener:default",
     "store:default",
     "log:default",
-    "android-fs:default"
+    "android-fs:default",
+    "system-bars:default"
   ]
 }

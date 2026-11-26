@@ -20,16 +20,16 @@ import { keymap } from '@codemirror/view';
 import { autocompletion } from '@codemirror/autocomplete';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
-import { lspStart, lspStop } from '$lib/ipc/commands';
-import { workspace } from '$lib/stores/workspace.svelte';
-import { diagnostics } from '$lib/stores/diagnostics.svelte';
-import { platform } from '$lib/stores/platform.svelte';
-import { logError, logInfo } from '$lib/logger';
-import type { SerializedDiagnostic } from '$lib/types';
+import { lspStart, lspStop } from '#lib/ipc/commands.ts';
+import { workspace } from '#lib/stores/workspace.svelte.ts';
+import { diagnostics } from '#lib/stores/diagnostics.svelte.ts';
+import { platform } from '#lib/stores/platform.svelte.ts';
+import { logError, logInfo } from '#lib/logger.ts';
+import type { SerializedDiagnostic } from '#lib/types.ts';
 
 import { lspProbeState } from './probe.svelte';
 import { createTauriLspTransport, type TauriLspTransport } from './transport';
-import { semanticCompletionSource } from '$lib/codemirror/typst-completion';
+import { semanticCompletionSource } from '#lib/codemirror/typst-completion.ts';
 
 const INIT_TIMEOUT_MS = 10_000;
 
@@ -246,6 +246,10 @@ class LspClientStore {
         const lastPublished = new Map<string, string>();
         const client = new LSPClient({
             rootUri,
+            // The 3 s default is shorter than tinymist's first responses while
+            // it compiles a workspace, so hovers and completions timed out and
+            // their late answers were logged as unknown requests.
+            timeout: 10_000,
             // The deprecated `languageServerExtensions()` bundle also binds
             // `formatKeymap` (Shift-Alt-f), which would shadow the app's own
             // typstyle formatter binding — list the extensions explicitly and

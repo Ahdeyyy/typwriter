@@ -9,10 +9,10 @@
   import { getSettingControl } from "./control-context";
   const settingControl = getSettingControl();
   const valueId = $props.id();
-  import Button from "$lib/components/ui/button/button.svelte";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import * as Popover from "$lib/components/ui/popover/index.js";
-  import type { FontGroup } from "$lib/stores/system-fonts.svelte";
+  import Button from "#lib/components/ui/button/button.svelte";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import * as Popover from "#lib/components/ui/popover/index.ts";
+  import type { FontGroup } from "#lib/stores/system-fonts.svelte.ts";
 
   interface Props {
     groups: readonly FontGroup[];
@@ -79,7 +79,7 @@
       {:else}
         {#each filtered as group (group.label)}
           <p
-            class="sticky top-0 z-10 border-b border-border/40 bg-popover/95 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground backdrop-blur-sm"
+            class="sticky top-0 z-10 border-b border-border/40 bg-popover/95 px-3 py-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground backdrop-blur-sm"
           >
             {group.label}
           </p>

@@ -7,12 +7,12 @@ import {
     setOnboardingCompleted,
     triggerPreview,
     updateFileContent,
-} from '$lib/ipc/commands';
+} from '#lib/ipc/commands.ts';
 import { preview } from './preview.svelte';
 import { workspace } from './workspace.svelte';
 import { page } from './page.svelte';
-import { normalize } from '$lib/paths';
-import { logError } from '$lib/logger';
+import { normalize } from '#lib/paths.ts';
+import { logError } from '#lib/logger.ts';
 
 /** Debounce for the typing → shadow-write → recompile path. Small enough to
  *  feel live, large enough to coalesce same-burst keystrokes into one IPC. */

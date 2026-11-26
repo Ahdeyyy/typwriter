@@ -57,7 +57,9 @@ use tauri::{AppHandle, Emitter};
 use typst_layout::PagedDocument;
 
 use super::cache::{key_to_path, parse_key, zoom_to_bucket, PageCache, PageCacheKey};
-use super::diff::{align_pages, fingerprint_pages, PageAlignment, PageChangeKind};
+use super::diff::{
+    align_pages, fingerprint_page, fingerprint_pages, PageAlignment, PageChangeKind,
+};
 use super::render::render_page;
 use super::snapshot_world::SnapshotWorld;
 use super::PreviewPipeline;
@@ -290,7 +292,7 @@ impl PageDiffEngine {
         // Same key scheme as everything else on this URI: fingerprint the
         // frame, pair it with the zoom bucket. That is what makes the
         // full-size render cacheable and immutable at its URL.
-        let key: PageCacheKey = (typst::utils::hash128(&page.frame), zoom_to_bucket(scale));
+        let key: PageCacheKey = (fingerprint_page(page), zoom_to_bucket(scale));
         if self.cache.lock().peek(key).is_some() {
             return Ok(key_to_path(key));
         }

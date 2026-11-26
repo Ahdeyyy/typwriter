@@ -161,7 +161,7 @@ fn is_searchable(path: &Path, extensions: &[String]) -> bool {
 }
 
 /// Collect candidate files, applying the same ignore rules as the file tree.
-fn collect_candidates(root: &Path, extensions: &[String]) -> Vec<PathBuf> {
+pub(crate) fn collect_candidates(root: &Path, extensions: &[String]) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![(root.to_path_buf(), 0usize)];
 

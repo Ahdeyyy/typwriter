@@ -11,18 +11,18 @@
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { toast } from "svelte-sonner";
 
-  import { editorSearch } from "$lib/stores/editor-search.svelte";
-  import { ui } from "$lib/stores/ui.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { page } from "$lib/stores/page.svelte";
-  import { fuzzyRank, fuzzySegments } from "$lib/fuzzy";
-  import { listPackages, initPackageWorkspace } from "$lib/ipc/commands";
-  import { importLineFor } from "$lib/packages";
-  import type { PackageEntry } from "$lib/types";
-  import { logError } from "$lib/logger";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import { editorSearch } from "#lib/stores/editor-search.svelte.ts";
+  import { ui } from "#lib/stores/ui.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { page } from "#lib/stores/page.svelte.ts";
+  import { fuzzyRank, fuzzySegments } from "#lib/fuzzy.ts";
+  import { listPackages, initPackageWorkspace } from "#lib/ipc/commands.ts";
+  import { importLineFor } from "#lib/packages.ts";
+  import type { PackageEntry } from "#lib/types.ts";
+  import { logError } from "#lib/logger.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import * as Dialog from "#lib/components/ui/dialog/index.ts";
 
   let query = $state("");
   let inputEl = $state<HTMLInputElement | null>(null);
@@ -203,20 +203,20 @@
         <div class="flex items-center gap-1 rounded-md bg-muted/60 p-0.5 text-xs">
           <button
             type="button"
-            class="rounded px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer {filterMode === 'all' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}"
+            class="rounded px-2 py-0.5 text-[0.6875rem] font-medium transition-colors cursor-pointer {filterMode === 'all' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}"
             onclick={() => { filterMode = 'all'; }}
           >
             All
           </button>
           <button
             type="button"
-            class="rounded px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer {filterMode === 'templates' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}"
+            class="rounded px-2 py-0.5 text-[0.6875rem] font-medium transition-colors cursor-pointer {filterMode === 'templates' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}"
             onclick={() => { filterMode = 'templates'; }}
           >
             Templates
           </button>
         </div>
-        <kbd class="text-muted-foreground shrink-0 text-[10px] tabular-nums">
+        <kbd class="text-muted-foreground shrink-0 text-[0.625rem] tabular-nums">
           {matches.length}
         </kbd>
       </div>
@@ -250,11 +250,11 @@
                       <span class={segment.hit ? "font-semibold underline" : ""}>{segment.text}</span>
                     {/each}
                   </span>
-                  <span class="text-muted-foreground shrink-0 text-[10px] tabular-nums">
+                  <span class="text-muted-foreground shrink-0 text-[0.625rem] tabular-nums">
                     {item.version}
                   </span>
                   {#if item.isTemplate}
-                    <span class="rounded bg-primary/10 px-1.5 py-0.2 text-[10px] font-medium text-primary shrink-0">
+                    <span class="rounded bg-primary/10 px-1.5 py-0.2 text-[0.625rem] font-medium text-primary shrink-0">
                       Template
                     </span>
                   {/if}
@@ -264,7 +264,7 @@
                   <Button
                     variant="outline"
                     size="sm"
-                    class="h-6 px-2 text-[11px] gap-1 shrink-0 opacity-80 group-hover/row:opacity-100 hover:bg-primary hover:text-primary-foreground"
+                    class="h-6 px-2 text-[0.6875rem] gap-1 shrink-0 opacity-80 group-hover/row:opacity-100 hover:bg-primary hover:text-primary-foreground"
                     onclick={(e) => {
                       e.stopPropagation();
                       openInitDialog(item);
@@ -286,7 +286,7 @@
         {/if}
       </div>
 
-      <div class="text-muted-foreground bg-muted/40 flex items-center justify-between px-4 py-2 text-[10px]">
+      <div class="text-muted-foreground bg-muted/40 flex items-center justify-between px-4 py-2 text-[0.625rem]">
         <div class="flex items-center gap-3">
           <span><kbd class="font-semibold">↑↓</kbd> navigate</span>
           <span><kbd class="font-semibold">↵</kbd> insert import</span>

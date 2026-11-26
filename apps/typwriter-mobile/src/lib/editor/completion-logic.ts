@@ -1,6 +1,6 @@
 // Pure completion helpers (no Svelte/CM imports) so they're unit-testable.
 
-import type { IpcCompletion } from "$lib/ipc/types";
+import type { IpcCompletion } from "#lib/ipc/types.ts";
 import type { CompletionScope } from "./completion-context";
 
 export interface StripItem {

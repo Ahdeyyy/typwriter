@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { errAsync, okAsync, ResultAsync } from "../../apps/typwriter-mobile/node_modules/neverthrow";
-import type { EntryChange, FileNode, WorkspaceFilesChangedPayload, WorkspaceInfo, WorkspaceMeta } from "../../apps/typwriter-mobile/src/lib/ipc/types";
+import type { EntryChange, FileNode, SyncStatus, WorkspaceFilesChangedPayload, WorkspaceInfo, WorkspaceMeta } from "../../apps/typwriter-mobile/src/lib/ipc/types";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -12,7 +12,7 @@ function deferred<T>() {
 const tick = () => new Promise<void>((done) => setTimeout(done, 0));
 const tree = (name: string): FileNode => ({ name, relPath: "", isDir: true, children: [] });
 const info = (name: string): WorkspaceInfo => ({
-  name, root: `/workspaces/${name}`, tree: tree(name), mainFile: null,
+  id: name, name, root: `/workspaces/${name}`, tree: tree(name), mainFile: null,
   lastFile: null, openTabs: [], activeTab: null, cursor: null,
 });
 const getFileTree = mock(() => okAsync<FileNode, string>(tree("default")));
@@ -51,17 +51,29 @@ const onWorkspaceFilesChanged = mock((handler: Listener["handler"]) => {
   registrations.push({ handler, registration });
   return registration.result;
 });
+const onSyncStatus = mock((_handler: (status: SyncStatus) => void) => okAsync<() => void, string>(() => {}));
+const setSyncPaused = mock((_paused: boolean) => okAsync<null, string>(null));
+const stopFolderSync = mock(() => okAsync<null, string>(null));
+const getSyncStatus = mock(() => okAsync<SyncStatus | null, string>(null));
+const toastMock = Object.assign(mock((_message: string, _options?: unknown) => {}), {
+  error: mock((_message: string, _options?: unknown) => {}),
+  success: mock((_message: string, _options?: unknown) => {}),
+  loading: mock((_message: string, _options?: unknown) => {}),
+  dismiss: mock((_id?: string) => {}),
+});
 const loadStore = mock(async () => ({
   get: async () => null, set: async () => {}, save: async () => {},
 }));
 
-mock.module("$lib/ipc/commands", () => ({
+mock.module("#lib/ipc/commands.ts", () => ({
   getFileTree, rescanWorkspace, openWorkspace, pickDocument, openDocument, createFile, renameEntry, listWorkspaces, setMainFile,
+  setSyncPaused, stopFolderSync, getSyncStatus,
 }));
-mock.module("$lib/ipc/events", () => ({ onWorkspaceFilesChanged }));
+mock.module("#lib/ipc/events.ts", () => ({ onWorkspaceFilesChanged, onSyncStatus }));
 mock.module("../../apps/typwriter-mobile/src/lib/stores/editor.svelte.ts", () => ({ editor: editorMock }));
 mock.module("../../apps/typwriter-mobile/src/lib/stores/compile.svelte.ts", () => ({ compileStore: compileMock }));
 mock.module("@tauri-apps/plugin-store", () => ({ load: loadStore }));
+mock.module("svelte-sonner", () => ({ toast: toastMock }));
 
 // EventTarget is enough for listener ownership tests; no renderer or Tauri runs.
 class Surface extends EventTarget {
@@ -119,6 +131,8 @@ beforeEach(() => {
   workspace.mainFile = "main.typ";
   workspace.document = false;
   workspace.workspaces = [];
+  workspace.sync = null;
+  workspace.syncDetailsOpen = false;
   app.screen = "editor";
   app.overlay = "none";
   historyMock.state = { screen: "editor", overlay: "none" };
@@ -127,7 +141,8 @@ beforeEach(() => {
   documentSurface.body.style.overflow = "";
   documentSurface.body.style.removeProperty.mockClear();
   for (const fn of [getFileTree, rescanWorkspace, openWorkspace, pickDocument, openDocument, createFile, renameEntry, listWorkspaces,
-    setMainFile, onWorkspaceFilesChanged, loadStore, setLastWorkspace,
+    setMainFile, onWorkspaceFilesChanged, loadStore, setLastWorkspace, onSyncStatus, setSyncPaused, stopFolderSync,
+    getSyncStatus, toastMock, ...Object.values(toastMock),
     ...Object.values(editorMock).filter((value) => typeof value === "function"),
     ...Object.values(compileMock)]) fn.mockClear();
 });
@@ -509,5 +524,206 @@ describe("application listener ownership", () => {
     app.destroy();
     await new Promise((done) => setTimeout(done, 350));
     expect(documentSurface.body.style.removeProperty).not.toHaveBeenCalled();
+  });
+});
+
+describe("back dismisses modal layers", () => {
+  type Entry = typeof historyMock.state & { layer?: number };
+  /** A history stack whose traversals land a task later, like the WebView's. */
+  function simulateHistory() {
+    const entries: Entry[] = [{ ...historyMock.state }];
+    let index = 0;
+    const go = (delta: number) => setTimeout(() => {
+      index = Math.max(0, Math.min(entries.length - 1, index + delta));
+      historyMock.state = entries[index];
+      windowSurface.dispatchEvent(Object.assign(new Event("popstate"), { state: entries[index] }));
+    }, 0);
+    historyMock.pushState.mockImplementation((state: Entry) => {
+      entries.splice(index + 1);
+      entries.push(state);
+      index++;
+      historyMock.state = state;
+    });
+    historyMock.replaceState.mockImplementation((state: Entry) => {
+      entries[index] = state;
+      historyMock.state = state;
+    });
+    historyMock.go.mockImplementation(go);
+    historyMock.back.mockImplementation(() => go(-1));
+    return {
+      entries,
+      get index() { return index; },
+      /** The user's back gesture. */
+      back: () => go(-1),
+    };
+  }
+  const settle = () => new Promise((done) => setTimeout(done, 20));
+
+  afterEach(() => {
+    historyMock.pushState.mockImplementation((state) => { historyMock.state = state; });
+    historyMock.replaceState.mockImplementation((state) => { historyMock.state = state; });
+    historyMock.go.mockImplementation(() => {});
+    historyMock.back.mockImplementation(() => {});
+  });
+
+  test("back closes an open layer instead of leaving the editor", async () => {
+    const history = simulateHistory();
+    app.init();
+    const close = mock(() => {});
+    const release = app.pushLayer(close);
+    expect(history.index).toBe(1);
+    history.back();
+    await settle();
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(app.screen).toBe("editor");
+    release(); // the modal's own cleanup after back closed it
+    await settle();
+    expect(history.index).toBe(0);
+    expect(historyMock.go).not.toHaveBeenCalled();
+  });
+
+  test("a layer closed in the UI retires its entry before the next one is pushed", async () => {
+    const history = simulateHistory();
+    app.init();
+    const releaseDrawer = app.pushLayer(() => {});
+    releaseDrawer();
+    const closeDialog = mock(() => {});
+    app.pushLayer(closeDialog);
+    await settle();
+    expect(history.index).toBe(1);
+    expect(history.entries[1].layer).toBe(1);
+    history.back();
+    await settle();
+    expect(closeDialog).toHaveBeenCalledTimes(1);
+    expect(app.screen).toBe("editor");
+  });
+
+  test("an overlay opened from a menu replaces the menu's entry", async () => {
+    const history = simulateHistory();
+    app.init();
+    const closeMenu = mock(() => {});
+    const releaseMenu = app.pushLayer(closeMenu);
+    app.openOverlay("export");
+    releaseMenu();
+    await settle();
+    expect(closeMenu).toHaveBeenCalledTimes(1);
+    expect(history.index).toBe(1);
+    expect(history.entries[1]).toEqual({ screen: "editor", overlay: "export" });
+    history.back();
+    await settle();
+    expect(app.overlay).toBe("none");
+    expect(app.screen).toBe("editor");
+  });
+
+  test("closing an overlay with a drawer open over it lands on the editor entry", async () => {
+    const history = simulateHistory();
+    app.init();
+    app.openOverlay("filetree");
+    const closeDrawer = mock(() => {});
+    app.pushLayer(closeDrawer);
+    expect(history.index).toBe(2);
+    await app.closeOverlayAsync();
+    expect(closeDrawer).toHaveBeenCalledTimes(1);
+    expect(app.overlay).toBe("none");
+    expect(history.index).toBe(0);
+    app.openEditor(); // a workspace switch replaces the entry it landed on
+    await settle();
+    expect(history.index).toBe(0);
+    expect(history.entries[0]).toEqual({ screen: "editor", overlay: "none" });
+  });
+
+  test("a swipe dismiss reporting the close twice steps back only once", async () => {
+    const history = simulateHistory();
+    app.init();
+    app.openOverlay("diagnostics");
+    const backs = historyMock.back.mock.calls.length;
+    // vaul's drag release calls onOpenChange(false) directly and again via `open`.
+    app.closeOverlay();
+    app.closeOverlay();
+    await settle();
+    expect(historyMock.back.mock.calls.length - backs).toBe(1);
+    expect(history.index).toBe(0);
+    expect(app.screen).toBe("editor");
+    expect(app.overlay).toBe("none");
+    app.openOverlay("export");
+    app.closeOverlay();
+    await settle();
+    expect(historyMock.back.mock.calls.length - backs).toBe(2);
+  });
+});
+
+describe("folder workspace sync visibility", () => {
+  const status = (state: SyncStatus["state"], extra: Partial<SyncStatus> = {}): SyncStatus => ({
+    workspaceId: "folder:1", name: "Thesis", location: "Sync/Thesis", state,
+    message: null, done: null, total: null, lastSyncedMs: null, ...extra,
+  });
+  const listen = async () => {
+    workspace.init();
+    await tick();
+    const handler = onSyncStatus.mock.calls.at(-1)?.[0];
+    if (!handler) throw new Error("no sync listener");
+    return handler;
+  };
+  const messages = (fn: { mock: { calls: unknown[][] } }) => fn.mock.calls.map((call) => call[0]);
+
+  test("starting, stopping and routine syncs only move the indicator, without toasts", async () => {
+    const emit = await listen();
+    emit(status("syncing"));
+    expect(workspace.sync?.state).toBe("syncing");
+    emit(status("synced", { lastSyncedMs: 1 }));
+    emit(status("paused"));
+    emit(status("syncing", { done: 3, total: 40 }));
+    emit(status("synced", { lastSyncedMs: 2 }));
+    expect(workspace.sync?.state).toBe("synced");
+    emit(status("stopped"));
+    expect(workspace.sync).toBeNull();
+    expect(toastMock).not.toHaveBeenCalled();
+    expect(toastMock.loading).not.toHaveBeenCalled();
+    expect(toastMock.success).not.toHaveBeenCalled();
+    expect(toastMock.error).not.toHaveBeenCalled();
+  });
+
+  test("the first copy (before the editor is up) shows progress; losing or regaining the folder is announced once", async () => {
+    const emit = await listen();
+    app.screen = "home";
+    emit(status("syncing", { done: 0, total: 40 }));
+    emit(status("syncing", { done: 20, total: 40 }));
+    expect(messages(toastMock.loading)).toEqual(["Copying 0 of 40 files", "Copying 20 of 40 files"]);
+    app.screen = "editor";
+    emit(status("synced"));
+    expect(toastMock.dismiss).toHaveBeenCalled();
+    emit(status("offline", { message: "gone" }));
+    emit(status("offline", { message: "gone" }));
+    expect(toastMock.error).toHaveBeenCalledTimes(1);
+    // The toast times out, but its "Details" brings the explanation back.
+    const options = toastMock.error.mock.calls[0]?.[1] as { action?: { label: string; onClick: () => void } };
+    expect(options.action?.label).toBe("Details");
+    expect(workspace.syncDetailsOpen).toBe(false);
+    options.action?.onClick();
+    expect(workspace.syncDetailsOpen).toBe(true);
+    emit(status("synced"));
+    expect(messages(toastMock.success)).toEqual(["Sync/Thesis is back"]);
+  });
+
+  test("the background pauses an open folder's sync and coming back resumes and catches up", async () => {
+    const emit = await listen();
+    emit(status("synced"));
+    documentSurface.visibilityState = "hidden";
+    documentSurface.dispatchEvent(new Event("visibilitychange"));
+    expect(setSyncPaused).toHaveBeenLastCalledWith(true);
+    expect(rescanWorkspace).not.toHaveBeenCalled();
+    documentSurface.visibilityState = "visible";
+    documentSurface.dispatchEvent(new Event("visibilitychange"));
+    expect(setSyncPaused).toHaveBeenLastCalledWith(false);
+    expect(rescanWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  test("leaving for home stops the sync; with none running nothing is sent", async () => {
+    expect((await workspace.stopSync()).isOk()).toBe(true);
+    expect(stopFolderSync).not.toHaveBeenCalled();
+    const emit = await listen();
+    emit(status("synced"));
+    await workspace.stopSync();
+    expect(stopFolderSync).toHaveBeenCalledTimes(1);
   });
 });

@@ -4,10 +4,10 @@
   // selected. Absent from the app until now, and the first thing a writer looks
   // for in a typesetting tool.
 
-  import { editor } from "$lib/stores/editor.svelte";
-  import { preview } from "$lib/stores/preview.svelte";
-  import { documentStats, selectionStats, EMPTY_STATS } from "$lib/doc-stats";
-  import { extractOutline, activeOutlineIndex, outlineBreadcrumb } from "$lib/outline";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { preview } from "#lib/stores/preview.svelte.ts";
+  import { documentStats, selectionStats, EMPTY_STATS } from "#lib/doc-stats.ts";
+  import { extractOutline, activeOutlineIndex, outlineBreadcrumb } from "#lib/outline.ts";
 
   /** Counting walks the whole syntax tree, so it is debounced off the typing
    *  hot path. Long enough to skip mid-word churn, short enough that the number
@@ -74,7 +74,7 @@
 
 {#if isTypst}
   <div
-    class="text-muted-foreground flex shrink-0 items-center gap-3 px-3 py-1 text-[11px]
+    class="text-muted-foreground flex shrink-0 items-center gap-3 px-3 py-1 text-[0.6875rem]
            tabular-nums select-none"
   >
     {#if breadcrumb}

@@ -3,12 +3,12 @@
   // store, which persists to Rust via `set_app_settings` — that swaps the
   // shared typstyle config in place, so the next format in the editor window
   // (manual, format-on-save, or Format workspace) uses the new value.
-  import { Switch } from "$lib/components/ui/switch/index.js";
+  import { Switch } from "#lib/components/ui/switch/index.ts";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
   import SettingMatch from "../setting-match.svelte";
   import SliderControl from "../slider-control.svelte";
-  import { settings, FORMAT_LIMITS } from "$lib/stores/settings.svelte";
+  import { settings, FORMAT_LIMITS } from "#lib/stores/settings.svelte.ts";
 
   const indentReadout = $derived(
     `${settings.formatTabSpaces} ${settings.formatTabSpaces === 1 ? "space" : "spaces"}`,

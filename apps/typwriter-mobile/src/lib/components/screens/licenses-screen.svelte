@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Input } from "$lib/components/ui/input";
-  import { Button } from "$lib/components/ui/button";
-  import type { LicenseCatalog } from "$lib/licenses/types";
-  import catalogUrl from "$lib/licenses/catalog.json?url";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import type { LicenseCatalog } from "#lib/licenses/types.ts";
+  import catalogUrl from "#lib/licenses/catalog.json?url";
 
   let catalog = $state.raw<LicenseCatalog | null>(null);
   let failed = $state(false);
@@ -53,7 +53,7 @@
   </div>
 
   <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4"
-    style="padding-bottom: max(1rem, env(safe-area-inset-bottom));">
+    style="padding-bottom: calc(var(--safe-bottom) + 1rem);">
     {#if failed}
       <div class="flex flex-col items-start gap-3" role="alert">
         <p class="text-muted-foreground text-sm">Couldn't load the licenses.</p>

@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
 	import { MinusSignIcon, Tick02Icon } from "@hugeicons/core-free-icons";
-	import Icon from "$lib/components/icon.svelte";
-	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+	import Icon from "#lib/components/icon.svelte";
+	import { cn, type WithoutChildrenOrChild } from "#lib/utils.ts";
 	import type { Snippet } from "svelte";
 
 	let {

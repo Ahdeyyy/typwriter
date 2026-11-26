@@ -39,6 +39,7 @@ pub fn set_grammar_config(
 ) {
     engine.set_config(config.clone());
     write_grammar_config(&handle, &config);
+    warm(&engine);
 }
 
 /// The full rule catalog for the settings pane. Forces the lint group to be
@@ -63,7 +64,16 @@ pub fn add_grammar_dictionary_word(
 ) -> GrammarConfig {
     let config = engine.add_dictionary_word(&word);
     write_grammar_config(&handle, &config);
+    warm(&engine);
     config
+}
+
+/// Start bringing the lint group in line with a changed config in the
+/// background, so a dictionary or dialect rebuild is under way (or done) by
+/// the time the next check asks for it.
+fn warm(engine: &State<'_, Arc<GrammarEngine>>) {
+    let engine = engine.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || engine.warm());
 }
 
 /// Turn checking on or off for a single file.

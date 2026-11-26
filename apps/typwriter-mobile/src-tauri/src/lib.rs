@@ -5,8 +5,10 @@
 mod commands;
 mod compiler;
 mod document;
+mod folders;
 mod fonts;
 mod renderer;
+mod spell;
 mod watcher;
 mod workspace;
 mod world;
@@ -23,8 +25,10 @@ use world::MobileWorld;
 
 /// Resolve the (cache, packages) directories for the package store. Both point
 /// at an app-reachable `Typwriter/Packages` dir; `std::fs` can always read it.
-/// Note this lives *inside* the managed-workspaces root, so the workspace list
-/// marks it as a system entry (see `commands::workspace::list_workspaces`).
+/// Note this lives *inside* the app-storage workspaces root, so the workspace
+/// list marks it as a system entry (see `commands::workspace::list_workspaces`).
+/// It stays in app storage when workspaces move to a picked folder: packages
+/// are a per-device download cache, not something to sync.
 pub(crate) fn packages_dirs(app: &tauri::AppHandle) -> (Option<PathBuf>, Option<PathBuf>) {
     let base = app
         .path()
@@ -42,6 +46,7 @@ pub(crate) fn packages_dirs(app: &tauri::AppHandle) -> (Option<PathBuf>, Option<
 pub fn run() {
     tauri::Builder::default()
         .manage(document::FileOpenState::default())
+        .manage(Arc::new(spell::SpellState::default()))
         .register_asynchronous_uri_scheme_protocol("previewimg", |ctx, request, responder| {
             // URL: http://previewimg.localhost/{fp}-{bucket}.png (Android/Windows)
             //      previewimg://localhost/{fp}-{bucket}.png (macOS/iOS/Linux)
@@ -87,6 +92,8 @@ pub fn run() {
             });
         })
         .plugin(tauri_plugin_android_fs::init())
+        .plugin(tauri_plugin_system_bars::init())
+        .plugin(tauri_plugin_spellcheck::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -119,8 +126,17 @@ pub fn run() {
             document::pick_document,
             document::open_document,
             commands::app::get_typst_version,
+            commands::app::check_for_update,
             commands::workspace::list_workspaces,
             commands::workspace::create_workspace,
+            commands::workspace::add_folder_workspace,
+            commands::workspace::get_workspace_location,
+            commands::workspace::pick_workspace_location,
+            commands::workspace::move_workspace_to_folder,
+            commands::workspace::move_workspace_to_app,
+            commands::workspace::get_sync_status,
+            commands::workspace::set_sync_paused,
+            commands::workspace::stop_folder_sync,
             commands::workspace::delete_workspace,
             commands::workspace::open_workspace,
             commands::workspace::get_file_tree,
@@ -144,6 +160,8 @@ pub fn run() {
             commands::click::jump_from_click,
             commands::format::format_typst_source,
             commands::format::format_typst_cursor_virtual,
+            commands::spell::spell_check,
+            commands::spell::spell_suggest,
             commands::export::export_pdf,
             commands::export::export_png,
             commands::export::export_svg,

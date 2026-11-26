@@ -15,7 +15,7 @@ const readFile = mock(() => ResultAsync.fromSafePromise(Promise.resolve<FileCont
 const compile = mock(() => ResultAsync.fromSafePromise(Promise.resolve<CompileResult>({ generation: 1, pages: [], errors: [], warnings: [], compileMs: 0 })));
 const getCompletions = mock(() => ResultAsync.fromSafePromise(Promise.resolve({ from: 0, completions: [] })));
 
-mock.module("$lib/ipc/commands", () => ({
+mock.module("#lib/ipc/commands.ts", () => ({
   saveFile, readFile, compile, getCompletions,
   setLastFile: () => ResultAsync.fromSafePromise(Promise.resolve()),
   setOpenTabs: () => ResultAsync.fromSafePromise(Promise.resolve()),

@@ -6,8 +6,9 @@
   import ColorSchemePicker from "../color-scheme-picker.svelte";
   import ThemeGrid from "../theme-grid.svelte";
   import FontPicker from "../font-picker.svelte";
-  import { settings, BUNDLED_UI_FONTS } from "$lib/stores/settings.svelte";
-  import { systemFonts, withoutBundled, type FontGroup } from "$lib/stores/system-fonts.svelte";
+  import SliderControl from "../slider-control.svelte";
+  import { settings, BUNDLED_UI_FONTS, UI_FONT_SIZE_LIMITS } from "#lib/stores/settings.svelte.ts";
+  import { systemFonts, withoutBundled, type FontGroup } from "#lib/stores/system-fonts.svelte.ts";
 
   // The OS font scan takes a moment, so kick it off as soon as this pane opens
   // rather than when the picker is first clicked.
@@ -67,6 +68,23 @@
           loading={systemFonts.loading}
           value={settings.uiFontFamily}
           onselect={(f) => settings.setUiFontFamily(f)}
+        />
+      {/snippet}
+    </SettingRow>
+
+    <SettingRow
+      title="UI font size"
+      description="Scales the interface text, icons, and spacing together. The editor and preview have their own size settings."
+      keywords={["interface size", "ui scale", "zoom", "hidpi", "bigger", "smaller", "text size", "px"]}
+    >
+      {#snippet control()}
+        <SliderControl
+          min={UI_FONT_SIZE_LIMITS.min}
+          max={UI_FONT_SIZE_LIMITS.max}
+          step={1}
+          value={settings.uiFontSize}
+          onchange={(v) => settings.setUiFontSize(v)}
+          readout="{settings.uiFontSize}px"
         />
       {/snippet}
     </SettingRow>

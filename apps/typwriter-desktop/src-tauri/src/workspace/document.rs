@@ -43,7 +43,8 @@ pub fn document_id(path: &Path) -> String {
     let path = path.to_string_lossy();
     #[cfg(windows)]
     let path = path.to_lowercase();
-    format!("{:x}", Sha256::digest(path.as_bytes()))
+    let digest = Sha256::digest(path.as_bytes());
+    digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]
@@ -57,6 +58,17 @@ mod tests {
             document_id(Path::new("/docs/b.typ"))
         );
         assert_eq!(document_id(Path::new("/docs/a.typ")).len(), 64);
+    }
+
+    /// The id names each document's recovery and cache directories, so it
+    /// must not change across hashing-crate upgrades. Pinned against the value
+    /// sha2 0.10 produced. Lowercase input keeps it identical on Windows.
+    #[test]
+    fn document_id_is_stable() {
+        assert_eq!(
+            document_id(Path::new("c:/users/me/notes/main.typ")),
+            "4561017e24f8a18046e11db81f3a243e53c866c91c412780ae09754ac284b559"
+        );
     }
 
     #[test]

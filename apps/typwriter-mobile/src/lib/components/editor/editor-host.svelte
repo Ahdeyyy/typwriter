@@ -9,17 +9,22 @@
     themeC,
     lineNumbersC,
     fontSizeC,
+    titleC,
+    spellC,
     themeExtensionFor,
     fontThemeFor,
-  } from "$lib/editor/create-editor";
+  } from "#lib/editor/create-editor.ts";
+  import { inlineTitle, inlineTitleFor } from "#lib/editor/inline-title.ts";
+  import { immersive } from "#lib/stores/immersive.svelte.ts";
   import {
     setInlineDiagnostics,
     type InlineDiagnostic,
-  } from "$lib/editor/inline-diagnostics";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { compileStore } from "$lib/stores/compile.svelte";
-  import { completions } from "$lib/editor/completion-controller.svelte";
+  } from "#lib/editor/inline-diagnostics.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { compileStore } from "#lib/stores/compile.svelte.ts";
+  import { completions } from "#lib/editor/completion-controller.svelte.ts";
+  import { refreshSpell, spellcheckFor } from "#lib/editor/spellcheck/index.ts";
 
   let host = $state<HTMLElement | null>(null);
 
@@ -28,11 +33,14 @@
     const relPath = editor.relPath;
     const view = createEditorView(host, editor.loadedText, relPath ?? "");
     editor.view = view;
+    // Scrolling the text hides the phone header, dock and status bar.
+    const unbindImmersive = immersive.bind("editor", view.scrollDOM);
     const cursor = editor.relPath ? editor.takePendingCursor(editor.relPath) : null;
     if (cursor !== null) {
       editor.programmatic(() => loadDocInto(view, editor.loadedText, editor.relPath!, cursor));
     }
     return () => {
+      unbindImmersive();
       // A history/back transition may unmount while a save is still draining.
       // Keep the seed current if this screen is mounted again before it ends.
       if (editor.relPath === relPath && !editor.loading && editor.fileKind === "text") {
@@ -61,6 +69,30 @@
   // Line numbers toggle.
   watch([() => editor.view, () => settings.showLineNumbers], ([view, show]) => {
     view?.dispatch({ effects: lineNumbersC.reconfigure(show ? lineNumbers() : []) });
+  });
+
+  // Inline title follows renames and moves — the view outlives them.
+  // Also follows its setting.
+  watch(
+    [() => editor.view, () => editor.relPath, () => settings.showInlineTitle],
+    ([view, relPath, show]) => {
+      const title = show ? inlineTitleFor(relPath ?? "") : "";
+      view?.dispatch({ effects: titleC.reconfigure(inlineTitle(title)) });
+    },
+  );
+
+  // Spell check follows its setting; a file switch rebuilds the extensions
+  // (and so this compartment) anyway, which is why relPath isn't watched.
+  watch([() => editor.view, () => settings.spellcheck], ([view, on]) => {
+    view?.dispatch({
+      effects: spellC.reconfigure(spellcheckFor(editor.relPath?.endsWith(".typ") ?? false, on)),
+    });
+  });
+
+  // Words added to (or removed from) the dictionary re-derive the underlines
+  // from the cache; nothing is re-checked.
+  watch([() => editor.view, () => settings.spellIgnoredWords], ([view]) => {
+    view?.dispatch({ effects: refreshSpell.of(null) });
   });
 
   // Font size.

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Typwriter Nightly",
+  "mainBinaryName": "typwriter-nightly",
+  "identifier": "com.ahdey.typwriter.nightly",
+  "bundle": {
+    "fileAssociations": [
+      {
+        "ext": ["typ"],
+        "name": "Typst document (Nightly)",
+        "description": "Typst source document",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/vnd.typst"
+      }
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/nightly-file-association.nsh"
+      }
+    },
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/typwriter-nightly.desktop",
+        "files": {
+          "/usr/share/mime/packages/com.ahdey.typwriter.xml": null,
+          "/usr/share/mime/packages/com.ahdey.typwriter.nightly.xml": "linux/com.ahdey.typwriter.xml"
+        }
+      },
+      "rpm": {
+        "desktopTemplate": "linux/typwriter-nightly.desktop",
+        "files": {
+          "/usr/share/mime/packages/com.ahdey.typwriter.xml": null,
+          "/usr/share/mime/packages/com.ahdey.typwriter.nightly.xml": "linux/com.ahdey.typwriter.xml"
+        }
+      }
+    },
+    "icon": [
+      "icons-nightly/32x32.png",
+      "icons-nightly/128x128.png",
+      "icons-nightly/128x128@2x.png",
+      "icons-nightly/icon.icns",
+      "icons-nightly/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/ahdeyyy/typwriter/releases/download/nightly/latest.json"
+      ]
+    }
+  }
+}

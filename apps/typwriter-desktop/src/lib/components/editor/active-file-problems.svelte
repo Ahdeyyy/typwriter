@@ -1,9 +1,9 @@
 <script lang="ts">
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Alert01Icon } from "@hugeicons/core-free-icons";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { diagnostics } from "$lib/stores/diagnostics.svelte";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { diagnostics } from "#lib/stores/diagnostics.svelte.ts";
 
   const diagCount = $derived(diagnostics.errors.length + diagnostics.warnings.length);
   const hasErrors = $derived(diagnostics.errors.length > 0);
@@ -26,7 +26,7 @@
         />
         {#if diagCount > 0}
           <span
-            class="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-destructive text-[9px] font-bold leading-none text-destructive-foreground"
+            class="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-destructive text-[0.5625rem] font-bold leading-none text-destructive-foreground"
           >
             {diagCount > 9 ? "9+" : diagCount}
           </span>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { flattenFiles, fuzzyScore, searchFiles, type FileEntry } from "./file-search";
-import type { FileNode } from "$lib/ipc/types";
+import type { FileNode } from "#lib/ipc/types.ts";
 
 const dir = (name: string, relPath: string, children: FileNode[]): FileNode => ({
   name,

@@ -4,22 +4,22 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "svelte-sonner";
 
-import { preview } from "$lib/stores/preview.svelte";
-import { editor } from "$lib/stores/editor.svelte";
-import { settings } from "$lib/stores/settings.svelte";
-import { workspace } from "$lib/stores/workspace.svelte";
+import { preview } from "#lib/stores/preview.svelte.ts";
+import { editor } from "#lib/stores/editor.svelte.ts";
+import { settings } from "#lib/stores/settings.svelte.ts";
+import { workspace } from "#lib/stores/workspace.svelte.ts";
 import {
   jumpFromClick,
   listDisplays,
   setVisiblePage,
   syncPreview,
   triggerPreview,
-} from "$lib/ipc/commands";
-import type { DisplayInfo, PreviewScrollTarget } from "$lib/types";
-import { emitPreviewSourceJump } from "$lib/ipc/events";
-import { matchesCommand } from "$lib/keybindings";
-import { logError, logPreview } from "$lib/logger";
-import { buildPreviewUrl } from "$lib/preview-url";
+} from "#lib/ipc/commands.ts";
+import type { DisplayInfo, PreviewScrollTarget } from "#lib/types.ts";
+import { emitPreviewSourceJump } from "#lib/ipc/events.ts";
+import { matchesCommand } from "#lib/keybindings/index.ts";
+import { logError, logPreview } from "#lib/logger.ts";
+import { buildPreviewUrl } from "#lib/preview-url.ts";
 
 export type PreviewControllerOptions = {
   onPresentationMode?: () => void;

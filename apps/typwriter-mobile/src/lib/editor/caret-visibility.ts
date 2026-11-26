@@ -38,6 +38,7 @@
 
 import { EditorView, ViewPlugin, type PluginValue, type ViewUpdate } from "@codemirror/view";
 import { keyboard, visibleViewportRect } from "./keyboard-visibility.svelte";
+import { immersive } from "#lib/stores/immersive.svelte.ts";
 
 /** Breathing room between the caret and the edge it gets scrolled to. */
 const CARET_MARGIN_PX = 24;
@@ -204,8 +205,10 @@ class CaretVisibility implements PluginValue {
   private safeBand(): { top: number; bottom: number } {
     const box = this.view.scrollDOM.getBoundingClientRect();
     const screen = visibleViewportRect();
-    const top = Math.max(box.top, screen.top);
-    let bottom = Math.min(box.bottom, screen.bottom);
+    // The floating phone header covers the top of the scroller while shown,
+    // and the floating keyboard toolbar its bottom.
+    const top = Math.max(box.top + immersive.editorObscuredTop, screen.top);
+    let bottom = Math.min(box.bottom - immersive.editorObscuredBottom, screen.bottom);
     if (this.predicting()) bottom = Math.min(bottom, screen.bottom - keyboard.pending);
     return { top, bottom };
   }

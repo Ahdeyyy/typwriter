@@ -3,16 +3,18 @@
 // patches the tree client-side.
 
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
+import { toast } from "svelte-sonner";
 import type {
   EntryChange,
   FileNode,
+  SyncStatus,
   WorkspaceFileChange,
   WorkspaceInfo,
   WorkspaceMeta,
-} from "$lib/ipc/types";
-import * as ipc from "$lib/ipc/commands";
-import { onWorkspaceFilesChanged, type UnlistenFn } from "$lib/ipc/events";
-import { remapPath } from "$lib/paths";
+} from "#lib/ipc/types.ts";
+import * as ipc from "#lib/ipc/commands.ts";
+import { onSyncStatus, onWorkspaceFilesChanged, type UnlistenFn } from "#lib/ipc/events.ts";
+import { remapPath } from "#lib/paths.ts";
 import { app } from "./app.svelte";
 import { editor } from "./editor.svelte";
 import { settings } from "./settings.svelte";
@@ -20,13 +22,26 @@ import { compileStore } from "./compile.svelte";
 
 class WorkspaceStore {
   workspaces = $state<WorkspaceMeta[]>([]);
+  /** Where "New workspace" creates folders, or null before the user chose. */
+  location = $state<string | null>(null);
+  /** The open workspace's id (`app:<name>` / `folder:<hex>`); empty for a
+   *  standalone document. Names are not unique once workspaces can live in
+   *  any folder, so everything that picks a workspace goes by this. */
+  id = $state<string | null>(null);
   name = $state<string | null>(null);
+  /** The open folder workspace's sync, or null when none is running. Drives
+   *  the (small) sync indicator, which is on screen exactly while it runs. */
+  sync = $state<SyncStatus | null>(null);
+  /** The sync details sheet (`sync-details.svelte`). One flag, so the
+   *  indicator, the header alert and the toast's "Details" all open it. */
+  syncDetailsOpen = $state(false);
   root = $state<string | null>(null);
   tree = $state<FileNode | null>(null);
   mainFile = $state<string | null>(null);
   document = $state(false);
 
   private filesChangedUnlisten: UnlistenFn | null = null;
+  private syncStatusUnlisten: UnlistenFn | null = null;
   private foregroundUnlisten: (() => void) | null = null;
   private initialized = false;
   private listenerPending = false;
@@ -45,10 +60,89 @@ class WorkspaceStore {
       this.initialized = true;
       this.listenerGeneration++;
       this.watchForeground();
+      void this.listenForSyncStatus(this.listenerGeneration);
     }
     if (!this.filesChangedUnlisten && !this.listenerPending) {
       void this.listenForExternalChanges(this.listenerGeneration);
     }
+  }
+
+  private async listenForSyncStatus(generation: number): Promise<void> {
+    const result = await onSyncStatus((status) => {
+      if (generation !== this.listenerGeneration) return;
+      this.applySyncStatus(status);
+    });
+    if (result.isErr()) {
+      console.error("onSyncStatus listener failed:", result.error);
+      return;
+    }
+    if (generation === this.listenerGeneration) this.syncStatusUnlisten = result.value;
+    else result.value();
+  }
+
+  /** Track a sync status. Starting, stopping and routine syncs only move the
+   *  small indicator; a toast appears for just two things: the first copy of
+   *  a folder (the editor isn't on screen yet, so the indicator can't show
+   *  it), and the folder becoming unreachable or reachable again. */
+  private applySyncStatus(status: SyncStatus) {
+    const previous = this.sync?.workspaceId === status.workspaceId ? this.sync : null;
+    const progressToast = `folder-sync-progress:${status.workspaceId}`;
+
+    if (status.state === "stopped") {
+      toast.dismiss(progressToast);
+      if (this.sync?.workspaceId === status.workspaceId) {
+        this.sync = null;
+        this.syncDetailsOpen = false;
+      }
+      return;
+    }
+
+    const opening = app.screen !== "editor";
+    if (opening && status.state === "syncing" && status.total !== null && status.total >= 3) {
+      toast.loading(`Copying ${status.done ?? 0} of ${status.total} files`, {
+        id: progressToast,
+        description: `From ${status.location}`,
+      });
+    } else if (status.state !== "syncing") {
+      toast.dismiss(progressToast);
+    }
+
+    if (status.state === "offline" && previous?.state !== "offline") {
+      // Goes away on its own like any toast; "Details" (and the red header
+      // button that stays while offline) bring the explanation back.
+      toast.error(`Can't reach ${status.location}`, {
+        description: "Saving fails until the folder is back.",
+        action: { label: "Details", onClick: () => (this.syncDetailsOpen = true) },
+      });
+    } else if (previous?.state === "offline" && status.state === "synced") {
+      toast.success(`${status.location} is back`, { description: "Syncing again." });
+    }
+
+    this.sync = status;
+  }
+
+  /** Stop syncing the open folder workspace — the user left it for home. */
+  stopSync(): ResultAsync<void, string> {
+    if (!this.sync) return okAsync(undefined);
+    return ipc.stopFolderSync().map(() => undefined);
+  }
+
+  /** Pull the folder now ("Sync now", resuming, and right after opening from
+   *  the last synced copy), then show what changed. */
+  syncNow(): ResultAsync<void, string> {
+    const generation = this.generation;
+    const root = this.root;
+    if (!this.ownsWorkspace(generation, root) || app.screen !== "editor") return okAsync(undefined);
+    const request = ++this.treeRequest;
+    return ipc.rescanWorkspace().map((tree) => {
+      if (!this.ownsWorkspace(generation, root) || request !== this.treeRequest) return;
+      if (app.screen !== "editor") return;
+      this.replaceTree(tree);
+      compileStore.onSaved();
+      // A file edited elsewhere is the whole reason for this path; a clean
+      // buffer should show it rather than the text from before.
+      if (!editor.dirty) void editor.reloadActiveFromDisk(false);
+    });
   }
 
   destroy() {
@@ -60,6 +154,8 @@ class WorkspaceStore {
     this.listRequest++;
     this.filesChangedUnlisten?.();
     this.filesChangedUnlisten = null;
+    this.syncStatusUnlisten?.();
+    this.syncStatusUnlisten = null;
     this.foregroundUnlisten?.();
     this.foregroundUnlisten = null;
   }
@@ -84,16 +180,74 @@ class WorkspaceStore {
     });
   }
 
-  create(name: string): ResultAsync<void, string> {
-    return ipc.createWorkspace(name).andThen(() => this.refreshList());
+  refreshLocation(): ResultAsync<void, string> {
+    return ipc.getWorkspaceLocation().map((label) => {
+      this.location = label;
+    });
   }
 
-  delete(name: string): ResultAsync<void, string> {
-    return ipc.deleteWorkspace(name).andThen(() => this.refreshList());
+  /** Ask where new workspaces go. Resolves to false if the user cancelled. */
+  pickLocation(): ResultAsync<boolean, string> {
+    return ipc.pickWorkspaceLocation().map((label) => {
+      if (label !== null) this.location = label;
+      return label !== null;
+    });
   }
 
-  open(name: string): ResultAsync<WorkspaceInfo, string> {
-    return this.openSession(() => ipc.openWorkspace(name));
+  /** Create a workspace — in app storage, or with `inFolder` as a new folder
+   *  in {@link location} that it syncs with; resolves to its id. */
+  create(name: string, inFolder: boolean): ResultAsync<string, string> {
+    return ipc
+      .createWorkspace(name, inFolder)
+      .andThen((meta) => this.refreshList().map(() => meta.id));
+  }
+
+  /** List an existing folder as a workspace; resolves to its id, or null if
+   *  the user cancelled the picker. */
+  addFolder(): ResultAsync<string | null, string> {
+    return ipc
+      .addFolderWorkspace()
+      .andThen((meta) => (meta ? this.refreshList().map(() => meta.id) : okAsync(null)));
+  }
+
+  /** Delete an app-storage workspace, or take a folder workspace off the list. */
+  delete(id: string): ResultAsync<void, string> {
+    return ipc.deleteWorkspace(id).andThen(() => {
+      if (settings.lastWorkspace === id) settings.setLastWorkspace(null);
+      return this.refreshList();
+    });
+  }
+
+  /** Start syncing one workspace: move it from app storage into a folder
+   *  the user picks. Resolves to its new id, or null if they cancelled. */
+  moveToFolder(id: string): ResultAsync<string | null, string> {
+    return ipc.moveWorkspaceToFolder(id).andThen((moved) => {
+      if (!moved) return okAsync(null);
+      this.followMove(moved.from, moved.to);
+      return this.refreshList()
+        .andThen(() => this.refreshLocation())
+        .map(() => moved.to);
+    });
+  }
+
+  /** Stop syncing one workspace: bring it back into app storage. The folder
+   *  keeps its files. Resolves to the workspace's new id. */
+  moveToApp(id: string): ResultAsync<string, string> {
+    return ipc.moveWorkspaceToApp(id).andThen((moved) => {
+      this.followMove(moved.from, moved.to);
+      return this.refreshList().map(() => moved.to);
+    });
+  }
+
+  /** The reopen-on-launch hint follows its workspace to its new id (it may
+   *  still be a bare name saved by an older build). */
+  private followMove(from: string, to: string) {
+    const last = settings.lastWorkspace;
+    if (last === from || `app:${last}` === from) settings.setLastWorkspace(to);
+  }
+
+  open(id: string): ResultAsync<WorkspaceInfo, string> {
+    return this.openSession(() => ipc.openWorkspace(id));
   }
 
   openDocument(uri: string): ResultAsync<WorkspaceInfo, string> {
@@ -141,12 +295,13 @@ class WorkspaceStore {
       if (generation !== this.generation) return errAsync("Workspace opening was canceled");
       if (info === null) return okAsync(info);
       this.changing = false;
+      this.id = info.id || null;
       this.name = info.name;
       this.root = info.root;
       this.replaceTree(info.tree);
       this.mainFile = info.mainFile;
       this.document = info.document ?? false;
-      settings.setLastWorkspace(this.document ? null : info.name);
+      settings.setLastWorkspace(this.document ? null : info.id);
       app.openEditor();
       // Seed open tabs (persisted), falling back to last/main file.
       const initialTabs = info.openTabs?.length
@@ -161,6 +316,14 @@ class WorkspaceStore {
       compileStore.onWorkspaceOpened(!!info.mainFile);
       // Retry a failed native subscription on the next workspace open.
       this.init();
+      // A folder workspace opens straight from its last synced copy for speed;
+      // catch up with the folder now that the editor can show what changes.
+      if (info.id?.startsWith("folder:")) {
+        void ipc.getSyncStatus().map((status) => {
+          if (status && generation === this.generation) this.applySyncStatus(status);
+        });
+        void this.syncNow().mapErr((e) => console.error("folder sync:", e));
+      }
       return okAsync(info);
     }).andTee(() => this.finishOpen()).orTee(() => this.finishOpen());
     this.openQueue = Promise.resolve(run).then(() => undefined);
@@ -178,9 +341,9 @@ class WorkspaceStore {
    * the old file's text at the same relative path inside the new workspace),
    * and the tab state is dropped for the same reason.
    */
-  switchTo(name: string): ResultAsync<void, string> {
-    if (!this.document && name === this.name) return okAsync(undefined);
-    const opening = this.open(name);
+  switchTo(id: string): ResultAsync<void, string> {
+    if (!this.document && id === this.id) return okAsync(undefined);
+    const opening = this.open(id);
     const generation = this.generation;
     return opening
       .map(() => undefined)
@@ -259,20 +422,12 @@ class WorkspaceStore {
   private watchForeground() {
     const target = document;
     const onVisibility = () => {
-      if (target.visibilityState !== "visible") return;
-      const generation = this.generation;
-      const root = this.root;
-      if (!this.ownsWorkspace(generation, root) || app.screen !== "editor") return;
-      const request = ++this.treeRequest;
-      void ipc.rescanWorkspace().map((tree) => {
-        if (!this.ownsWorkspace(generation, root) || request !== this.treeRequest) return;
-        if (app.screen !== "editor") return;
-        this.replaceTree(tree);
-        compileStore.onSaved();
-        // A file the user edited elsewhere is the whole reason for this path;
-        // a clean buffer should show it rather than the text from before.
-        if (!editor.dirty) void editor.reloadActiveFromDisk(false);
-      });
+      const visible = target.visibilityState === "visible";
+      // A folder workspace polls nothing while the app is hidden (battery);
+      // coming back resumes it and catches up at once, below.
+      if (this.sync) void ipc.setSyncPaused(!visible).mapErr((e) => console.error("sync pause:", e));
+      if (!visible) return;
+      void this.syncNow();
     };
     target.addEventListener("visibilitychange", onVisibility);
     this.foregroundUnlisten = () => target.removeEventListener("visibilitychange", onVisibility);

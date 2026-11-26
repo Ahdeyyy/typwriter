@@ -12,20 +12,20 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { toast } from "svelte-sonner";
 
-  import * as Resizable from "$lib/components/ui/resizable/index.js";
-  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Button } from "$lib/components/ui/button";
-  import Titlebar from "$lib/components/titlebar/titlebar.svelte";
-  import OnboardingEditor from "$lib/components/editor/onboarding-editor.svelte";
-  import Preview from "$lib/components/sidebar/preview.svelte";
-  import Appearance from "$lib/components/settings/groups/appearance.svelte";
+  import * as Resizable from "#lib/components/ui/resizable/index.ts";
+  import * as ScrollArea from "#lib/components/ui/scroll-area/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import Titlebar from "#lib/components/titlebar/titlebar.svelte";
+  import OnboardingEditor from "#lib/components/editor/onboarding-editor.svelte";
+  import Preview from "#lib/components/sidebar/preview.svelte";
+  import Appearance from "#lib/components/settings/groups/appearance.svelte";
 
-  import { selectColorScheme } from "$lib/appearance";
-  import { onboarding } from "$lib/stores/onboarding.svelte";
-  import { preview } from "$lib/stores/preview.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { logError } from "$lib/logger";
+  import { selectColorScheme } from "#lib/appearance.ts";
+  import { onboarding } from "#lib/stores/onboarding.svelte.ts";
+  import { preview } from "#lib/stores/preview.svelte.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { logError } from "#lib/logger.ts";
 
   const DOCS_URL = "https://typst.app/docs/";
 

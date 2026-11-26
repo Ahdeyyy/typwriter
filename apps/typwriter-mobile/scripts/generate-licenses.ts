@@ -8,7 +8,7 @@ import { sourceText } from "./licenses/source-text";
 
 type Package = { name: string; version: string; ecosystem: string; license: string;
   notices: { title: string; text: string }[] };
-type CargoDependency = string | { package?: string };
+type CargoDependency = string | { package?: string; path?: string };
 interface DependencyTables {
   dependencies?: Record<string, CargoDependency>;
   "build-dependencies"?: Record<string, CargoDependency>;
@@ -20,15 +20,7 @@ interface CargoManifest extends DependencyTables {
 }
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const root = resolve(app, "../..");
 const output = join(app, "src/lib/licenses/catalog.json");
-const inputs = ["package.json", "bun.lock", "apps/typwriter-mobile/package.json",
-  "apps/typwriter-mobile/src-tauri/Cargo.toml", "apps/typwriter-mobile/src-tauri/Cargo.lock",
-  "apps/typwriter-mobile/scripts/generate-licenses.ts", "apps/typwriter-mobile/scripts/licenses/collect-rust.ts",
-  "apps/typwriter-mobile/scripts/licenses/source-text.ts"];
-const fingerprint = createHash("sha256");
-for (const input of inputs) fingerprint.update(input).update(readFileSync(join(root, input), "utf8").replace(/\r\n/g, "\n"));
-const inputHash = fingerprint.digest("hex");
 
 function packageDirectory(name: string): string {
   for (let directory = app; ; directory = dirname(directory)) {
@@ -53,6 +45,9 @@ const directCrateNames = new Set<string>();
 for (const config of [cargo, ...Object.values(cargo.target ?? {})]) {
   for (const table of [config.dependencies, config["build-dependencies"], config["dev-dependencies"]]) {
     for (const [name, dependency] of Object.entries(table ?? {})) {
+      // Path crates (src-tauri/plugins/*) are the app's own code, not
+      // third-party dependencies with notices to carry.
+      if (typeof dependency !== "string" && dependency.path) continue;
       directCrateNames.add(typeof dependency === "string" ? name : dependency.package ?? name);
     }
   }
@@ -73,24 +68,35 @@ for (const name of [...directCrateNames].sort()) {
   }
 }
 
+// Data the app ships that no package manager knows about. Each directory
+// holds its own license file.
+const bundledData = [{
+  name: "en_US Hunspell dictionary (SCOWL)", version: "2020.12.07", ecosystem: "Data", license: "MIT AND BSD",
+  directory: join(app, "src-tauri/dictionaries/en_US"),
+}];
+
 const packageId = (pkg: Pick<Package, "ecosystem" | "name" | "version">) => `${pkg.ecosystem}/${pkg.name}/${pkg.version}`;
 const expectedIds = new Set([
   ...directNpm.map(({ meta }) => packageId({ ecosystem: "JavaScript", name: meta.name, version: meta.version })),
   ...directRust.map(pkg => packageId({ ...pkg, ecosystem: "Rust" })),
+  ...bundledData.map(packageId),
 ]);
+// The catalog is stale only when the set of direct dependencies or their
+// versions changed. It deliberately doesn't hash the manifests or lockfiles:
+// a feature flag, a comment or a transitive lock bump changes no notice.
+const stale = (message: string) => new Error(`${message}. Run bun run licenses:generate.`);
 if (process.argv.includes("--check")) {
   const catalog = await Bun.file(output).json();
-  if (catalog.inputHash !== inputHash) throw new Error("Mobile licenses are stale. Run bun run licenses:generate.");
   const actualIds = new Set<string>();
   for (const pkg of catalog.packages as Package[]) {
     const id = packageId(pkg);
-    if (!expectedIds.has(id) || actualIds.has(id)) throw new Error(`Unexpected dependency notice: ${id}`);
+    if (!expectedIds.has(id) || actualIds.has(id)) throw stale(`Unexpected dependency notice: ${id}`);
     actualIds.add(id);
     if (!pkg.license || !pkg.notices.length || pkg.notices.some(n => !catalog.texts[n.text])) {
       throw new Error(`Incomplete license notice: ${pkg.name} ${pkg.version}`);
     }
   }
-  for (const id of expectedIds) if (!actualIds.has(id)) throw new Error(`Missing direct dependency notice: ${id}`);
+  for (const id of expectedIds) if (!actualIds.has(id)) throw stale(`Missing direct dependency notice: ${id}`);
   console.log(`Verified ${actualIds.size} direct mobile dependency notices.`);
   process.exit(0);
 }
@@ -142,6 +148,7 @@ for (const { directory, meta } of directNpm) {
   await addPackage({ name: meta.name, version: meta.version, ecosystem: "JavaScript", license }, directory,
     [meta.author, ...(meta.contributors ?? [])].filter(Boolean).map((person: string | { name: string }) => typeof person === "string" ? person : person.name).join("\n"));
 }
+for (const { directory, ...data } of bundledData) await addPackage(data, directory);
 const registries = registryDirectories();
 for (const pkg of directRust) {
   if (!pkg.source?.startsWith("registry+")) throw new Error(`Add license collection for ${pkg.name}: ${pkg.source}`);
@@ -158,5 +165,5 @@ for (const pkg of directRust) {
 }
 const unique = [...new Map(packages.map(pkg => [packageId(pkg), pkg])).values()];
 unique.sort((a, b) => a.name.localeCompare(b.name, "en") || a.version.localeCompare(b.version, "en") || a.ecosystem.localeCompare(b.ecosystem, "en"));
-await Bun.write(output, JSON.stringify({ inputHash, packages: unique, texts }, null, 2) + "\n");
+await Bun.write(output, JSON.stringify({ packages: unique, texts }, null, 2) + "\n");
 console.log(`Wrote ${unique.length} direct dependencies and ${Object.keys(texts).length} license/notice texts.`);

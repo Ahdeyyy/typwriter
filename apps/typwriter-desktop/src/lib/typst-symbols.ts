@@ -9,7 +9,7 @@
 // math mode you write `alpha`, in markup you write `#sym.alpha`, and a few
 // symbols live in the `math` scope and have to be wrapped in `$…$` outside it.
 
-import { parser } from '$lib/typst-codemirror-lang/lezer-typst';
+import { parser } from 'codemirror-typst';
 
 export interface TypstSymbol {
     /** Typst name, as written in math mode. */

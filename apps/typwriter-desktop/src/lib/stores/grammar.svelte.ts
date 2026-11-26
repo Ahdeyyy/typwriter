@@ -15,16 +15,16 @@ import {
   getGrammarRules,
   setGrammarConfig,
   setGrammarFileEnabled,
-} from "$lib/ipc/commands";
+} from "#lib/ipc/commands.ts";
 import type {
   GrammarConfig,
   GrammarDialect,
   GrammarLint,
   GrammarReport,
   GrammarRuleInfo,
-} from "$lib/types";
-import { emitGrammarConfigChanged } from "$lib/ipc/events";
-import { logError } from "$lib/logger";
+} from "#lib/types.ts";
+import { emitGrammarConfigChanged } from "#lib/ipc/events.ts";
+import { logError } from "#lib/logger.ts";
 
 /** How long the buffer must be quiet before a re-check. Long enough that
  *  ordinary typing never triggers one — a grammar pass over a large document

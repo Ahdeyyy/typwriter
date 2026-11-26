@@ -19,7 +19,7 @@
   import { onDestroy } from "svelte";
   import { watch } from "runed";
 
-  import { crossWindowState } from "$lib/ipc/cross-window-state.svelte";
+  import { crossWindowState } from "#lib/ipc/cross-window-state.svelte.ts";
 
   let {
     name,

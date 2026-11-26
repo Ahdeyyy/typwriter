@@ -57,8 +57,8 @@ use commands::{
         clear_recent_workspaces, close_session, create_file, create_folder, create_workspace,
         delete_file, delete_folder, get_file_tree, get_project_snippets, get_recent_workspaces,
         get_workspace_tabs, import_dropped, import_files, list_recent_documents, move_file,
-        move_folder, open_document, open_folder, remove_recent_document, remove_recent_workspace,
-        rename_file, save_workspace_tabs, set_main_file, set_project_snippets,
+        apply_link_updates, move_folder, open_document, open_folder, plan_link_updates,
+        remove_recent_document, remove_recent_workspace, rename_file, save_workspace_tabs, set_main_file, set_project_snippets,
     },
 };
 
@@ -279,10 +279,12 @@ pub fn run() {
                 );
             }
 
-            // Fonts are loaded lazily: the first workspace open (and, as a
-            // safety net, the first compile) calls `EditorWorld::ensure_fonts_loading`,
-            // so the system font scan overlaps the rest of the open path instead
-            // of blocking startup. See `world::mod`.
+            // Start the system font scan now, on its own thread. It takes
+            // seconds and the first compile blocks on it, so it should overlap
+            // the time spent on the home screen rather than start only once a
+            // workspace is opened. Never blocks startup; workspace open and
+            // the compile worker call this again as a (free) safety net.
+            world.ensure_fonts_loading();
 
             Ok(())
         })
@@ -313,6 +315,8 @@ pub fn run() {
             rename_file,
             move_file,
             move_folder,
+            plan_link_updates,
+            apply_link_updates,
             import_files,
             import_dropped,
             // editor buffer + IDE features

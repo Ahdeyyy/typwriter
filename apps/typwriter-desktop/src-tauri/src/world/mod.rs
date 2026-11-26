@@ -4,14 +4,14 @@ pub use progress::TauriProgress;
 use chrono::Datelike;
 use ecow::EcoString;
 use log::{error, info};
-use parking_lot::{Condvar, Mutex, RwLock};
+use parking_lot::{Condvar, Mutex, RwLock, RwLockWriteGuard};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
         Arc, OnceLock,
     },
     time::Instant,
@@ -45,6 +45,9 @@ pub struct EditorWorld {
     root: RwLock<PathBuf>,
     /// Compilation and session replacement cannot observe a half-rebound world.
     pub session_gate: RwLock<()>,
+    /// Number of session replacements currently waiting on `session_gate`.
+    /// See [`Self::lock_session_for_change`].
+    session_changes_pending: AtomicUsize,
     session_generation: AtomicU64,
     /// Present only for standalone sessions; dependencies are discovered by reads.
     document_watcher: RwLock<Option<Arc<crate::workspace::watcher::DocumentWatcher>>>,
@@ -175,6 +178,7 @@ impl EditorWorld {
         Self {
             root: RwLock::new(root),
             session_gate: RwLock::new(()),
+            session_changes_pending: AtomicUsize::new(0),
             session_generation: AtomicU64::new(0),
             document_watcher: RwLock::new(None),
             vcs,
@@ -194,6 +198,29 @@ impl EditorWorld {
             index_downloader: SystemDownloader::new(user_agent),
             package_index: OnceLock::new(),
         }
+    }
+
+    /// Take the session gate exclusively, to replace the session (open a
+    /// workspace or document, or close one).
+    ///
+    /// The compile worker holds the gate shared for a whole compile cycle —
+    /// compile, render, cross-file diagnostics — which can be many seconds on
+    /// a cold workspace. A waiting writer also turns away every *new* reader,
+    /// so while the switch waits, all editor IPC stalls with it and the app
+    /// looks frozen. Announcing the wait through
+    /// [`Self::session_change_pending`] lets the worker drop the rest of a
+    /// cycle whose results are about to be thrown away anyway.
+    pub fn lock_session_for_change(&self) -> RwLockWriteGuard<'_, ()> {
+        self.session_changes_pending.fetch_add(1, Ordering::AcqRel);
+        let guard = self.session_gate.write();
+        self.session_changes_pending.fetch_sub(1, Ordering::AcqRel);
+        guard
+    }
+
+    /// Whether a session replacement is waiting for in-flight work to let go
+    /// of the gate. Long-running readers should bail out when this is set.
+    pub fn session_change_pending(&self) -> bool {
+        self.session_changes_pending.load(Ordering::Acquire) > 0
     }
 
     /// Build a [`FontStore`] from the embedded fonts, optionally the system
@@ -241,8 +268,8 @@ impl EditorWorld {
     }
 
     /// Kick off the background font search exactly once. Idempotent — cheap to
-    /// call on every workspace open and every compile (a single atomic swap
-    /// after the first). The system font scan can take seconds, so it runs on
+    /// call at startup, on every workspace open and every compile (a single
+    /// atomic swap after the first). The system font scan can take seconds, so it runs on
     /// its own thread; when it finishes the fonts are installed (which wakes
     /// `wait_until_fonts_loaded`) and `app:fonts-loaded` is emitted.
     pub fn ensure_fonts_loading(self: &Arc<Self>) {
@@ -251,6 +278,7 @@ impl EditorWorld {
         }
         let world = Arc::clone(self);
         std::thread::spawn(move || {
+            let t = Instant::now();
             let extra_dirs = crate::commands::settings::load_font_directories(&world.app_handle);
             // A corrupt font file or a stalled font directory can panic the
             // fontdb scan. Catch it so the compile worker is never left blocked
@@ -266,6 +294,10 @@ impl EditorWorld {
                     world.load_fonts(Self::build_font_store(&[], false));
                 }
             }
+            info!(
+                "ensure_fonts_loading: fonts ready ({:.1}ms)",
+                t.elapsed().as_secs_f64() * 1000.0
+            );
             if let Err(err) = world.app_handle.emit("app:fonts-loaded", ()) {
                 error!("ensure_fonts_loading: emit app:fonts-loaded failed err=\"{err}\"");
             }

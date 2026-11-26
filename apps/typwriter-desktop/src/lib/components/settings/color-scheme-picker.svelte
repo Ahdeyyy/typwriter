@@ -7,10 +7,10 @@
   // mode-watcher keeps its state per webview, so every change is also
   // broadcast over `app:mode-changed` for the other windows to apply.
   import { userPrefersMode } from "mode-watcher";
-  import { selectColorScheme } from "$lib/appearance";
-  import { cn } from "$lib/utils";
-  import type { ModePreference } from "$lib/ipc/events";
-  import { settings } from "$lib/stores/settings.svelte";
+  import { selectColorScheme } from "#lib/appearance.ts";
+  import { cn } from "#lib/utils.ts";
+  import type { ModePreference } from "#lib/ipc/events.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
   import "./theme-preview.css";
 
   const OPTIONS: { id: ModePreference; label: string }[] = [

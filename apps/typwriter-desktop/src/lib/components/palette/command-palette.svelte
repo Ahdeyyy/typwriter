@@ -16,14 +16,14 @@
     Search01Icon,
   } from "@hugeicons/core-free-icons";
 
-  import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { workspace, type FileNode } from "$lib/stores/workspace.svelte";
-  import { ui } from "$lib/stores/ui.svelte";
-  import { shortcutLabel } from "$lib/keybindings";
-  import { fuzzySegments } from "$lib/fuzzy";
-  import { extractOutline } from "$lib/outline";
-  import { buildCommands, type CommandContext } from "$lib/commands/registry";
+  import * as Sidebar from "#lib/components/ui/sidebar/index.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { workspace, type FileNode } from "#lib/stores/workspace.svelte.ts";
+  import { ui } from "#lib/stores/ui.svelte.ts";
+  import { shortcutLabel } from "#lib/keybindings/index.ts";
+  import { fuzzySegments } from "#lib/fuzzy.ts";
+  import { extractOutline } from "#lib/outline.ts";
+  import { buildCommands, type CommandContext } from "#lib/commands/registry.ts";
   import {
     buildRows,
     groupOf,
@@ -33,8 +33,8 @@
     seedFor,
     MAX_ROWS,
     type PaletteRow,
-  } from "$lib/commands/palette-model";
-  import { logError } from "$lib/logger";
+  } from "#lib/commands/palette-model.ts";
+  import { logError } from "#lib/logger.ts";
 
   interface Props {
     /** Everything except `toggleSidebar`, which this component supplies —
@@ -223,7 +223,7 @@
           spellcheck="false"
           autocomplete="off"
         />
-        <kbd class="text-muted-foreground shrink-0 text-[10px] tabular-nums">
+        <kbd class="text-muted-foreground shrink-0 text-[0.625rem] tabular-nums">
           {rows.length}{rows.length === MAX_ROWS ? "+" : ""}
         </kbd>
       </div>
@@ -246,7 +246,7 @@
 
             {#if showGroups && (index === 0 || newGroup)}
               <div
-                class="text-muted-foreground px-2 pb-1 pt-3 text-[10px] font-semibold
+                class="text-muted-foreground px-2 pb-1 pt-3 text-[0.625rem] font-semibold
                        uppercase tracking-wider first:pt-1"
               >
                 {group}
@@ -282,7 +282,7 @@
                 {/if}
               {:else if row.kind === "outline"}
                 <span
-                  class="text-muted-foreground w-6 shrink-0 text-right text-[10px] tabular-nums"
+                  class="text-muted-foreground w-6 shrink-0 text-right text-[0.625rem] tabular-nums"
                 >
                   H{row.item.level}
                 </span>
@@ -310,7 +310,7 @@
                   {#if label}
                     <kbd
                       class="bg-muted text-muted-foreground ml-auto shrink-0 rounded px-1.5
-                             py-0.5 text-[10px]"
+                             py-0.5 text-[0.625rem]"
                     >
                       {label}
                     </kbd>
@@ -324,7 +324,7 @@
 
       <!-- Mode hints -->
       <div
-        class="text-muted-foreground bg-muted/40 flex items-center gap-3 px-4 py-2 text-[10px]"
+        class="text-muted-foreground bg-muted/40 flex items-center gap-3 px-4 py-2 text-[0.625rem]"
       >
         <span><kbd class="font-semibold">↑↓</kbd> navigate</span>
         <span><kbd class="font-semibold">↵</kbd> select</span>

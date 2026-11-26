@@ -3,7 +3,7 @@
 
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
 import { ResultAsync } from "neverthrow";
-import type { WorkspaceFilesChangedPayload } from "./types";
+import type { SyncStatus, WorkspaceFilesChangedPayload } from "./types";
 
 export type { UnlistenFn };
 
@@ -23,6 +23,19 @@ export function onWorkspaceFilesChanged(
     listen<WorkspaceFilesChangedPayload>(
       "workspace:files-changed",
       (event: Event<WorkspaceFilesChangedPayload>) => handler(event.payload),
+    ),
+    toErrString,
+  );
+}
+
+/** A folder workspace's sync changed state (started, syncing with progress,
+ *  synced, paused, offline, stopped) — see `src-tauri/src/folders/sync.rs`. */
+export function onSyncStatus(
+  handler: (payload: SyncStatus) => void,
+): ResultAsync<UnlistenFn, string> {
+  return ResultAsync.fromPromise(
+    listen<SyncStatus>("workspace:sync-status", (event: Event<SyncStatus>) =>
+      handler(event.payload),
     ),
     toErrString,
   );

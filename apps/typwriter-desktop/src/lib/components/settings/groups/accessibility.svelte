@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { Switch } from "$lib/components/ui/switch/index.js";
+  import { Switch } from "#lib/components/ui/switch/index.ts";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { shortcutLabel } from "$lib/keybindings";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { shortcutLabel } from "#lib/keybindings/index.ts";
 </script>
 
 <SettingGroup

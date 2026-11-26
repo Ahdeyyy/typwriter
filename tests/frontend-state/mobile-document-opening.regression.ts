@@ -23,10 +23,10 @@ const surface = Object.assign(new EventTarget(), { visibilityState: "visible" })
 const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 Object.defineProperty(globalThis, "document", { value: surface, configurable: true });
 
-mock.module("$lib/ipc/commands", () => ({ takeOpenFiles }));
-mock.module("$lib/ipc/events", () => ({ onOpenFiles }));
-mock.module("$lib/stores/workspace.svelte", () => ({ workspace: { openDocument, pickDocument } }));
-mock.module("$lib/stores/settings.svelte", () => ({ settings: { init } }));
+mock.module("#lib/ipc/commands.ts", () => ({ takeOpenFiles }));
+mock.module("#lib/ipc/events.ts", () => ({ onOpenFiles }));
+mock.module("#lib/stores/workspace.svelte.ts", () => ({ workspace: { openDocument, pickDocument } }));
+mock.module("#lib/stores/settings.svelte.ts", () => ({ settings: { init } }));
 mock.module("svelte-sonner", () => ({ toast: { error: toastError } }));
 
 const { startDocumentOpening, pickDocument: pick } = await import("../../apps/typwriter-mobile/src/lib/document-opening");

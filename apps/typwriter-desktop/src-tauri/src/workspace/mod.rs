@@ -4,6 +4,7 @@
 
 pub mod document;
 mod error;
+pub mod links;
 pub(crate) mod path;
 mod self_writes;
 pub mod store;
@@ -64,6 +65,16 @@ pub struct FileTreeEntry {
 pub struct DroppedFile {
     pub path: String,
     pub len: usize,
+}
+
+// ─── Link updates ────────────────────────────────────────────────────────────
+
+/// Which files [`WorkspaceState::apply_link_updates`] wrote, and which it left
+/// alone because they changed after the plan was made.
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct LinkApplyOutcome {
+    pub applied: Vec<String>,
+    pub skipped: Vec<String>,
 }
 
 // ─── WorkspaceState ──────────────────────────────────────────────────────────
@@ -139,7 +150,7 @@ impl WorkspaceState {
             return Err(e);
         }
 
-        let _session = self.world.session_gate.write();
+        let _session = self.world.lock_session_for_change();
         *self.document_path.write() = None;
 
         // Stop any previous watcher.
@@ -259,7 +270,7 @@ impl WorkspaceState {
             .join(document::document_id(&path));
         let watcher = watcher::DocumentWatcher::prepare(root.clone(), self.app_handle.clone())
             .map_err(|e| format!("Cannot watch document: {e}"))?;
-        let _session = self.world.session_gate.write();
+        let _session = self.world.lock_session_for_change();
         *self._watcher.lock() = None;
         self.world.set_root(root.clone());
         self.pipeline.invalidate_cache();
@@ -301,7 +312,7 @@ impl WorkspaceState {
 
     /// Stop watching/compiling a session when the editor returns home.
     pub fn close_session(&self) {
-        let _session = self.world.session_gate.write();
+        let _session = self.world.lock_session_for_change();
         *self._watcher.lock() = None;
         self.world.set_root(PathBuf::new());
         *self.root.write() = None;
@@ -1127,6 +1138,137 @@ impl WorkspaceState {
             t.elapsed().as_secs_f64() * 1000.0
         );
         Ok(())
+    }
+
+    // ─── Link updates ──────────────────────────────────────────────────────
+
+    /// Find the path literals the given moves broke, across every `.typ` file
+    /// in the workspace. Read-only: nothing is written until
+    /// [`Self::apply_link_updates`].
+    ///
+    /// `buffers` holds the open tabs' text keyed by workspace-relative path;
+    /// it wins over disk, since an open tab is what the user is looking at and
+    /// may hold unsaved edits.
+    ///
+    /// Cost: one walk plus one read per `.typ` file, but a file is only
+    /// *parsed* when it moved or mentions the name of something that did —
+    /// see [`links::MoveSet::may_reference`]. Runs on the async command pool
+    /// and only after a rename, never on the edit or compile paths.
+    pub fn plan_link_updates(
+        &self,
+        moves: &[links::PathMove],
+        buffers: &HashMap<String, String>,
+    ) -> Result<Vec<links::FileLinkUpdate>, String> {
+        use rayon::prelude::*;
+
+        self.require_workspace()?;
+        let t = Instant::now();
+        let root = self.root.read().clone().ok_or("No workspace open")?;
+        let moves = links::MoveSet::new(moves);
+        if moves.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut paths: Vec<String> =
+            crate::commands::search::collect_candidates(&root, &["typ".to_string()])
+                .iter()
+                .filter_map(|abs| abs.strip_prefix(&root).ok())
+                .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+                .collect();
+        for path in buffers.keys() {
+            if path.ends_with(".typ") && !paths.contains(path) {
+                paths.push(path.clone());
+            }
+        }
+
+        let exists = |rel: &str| root.join(rel).exists();
+        let mut updates: Vec<links::FileLinkUpdate> = paths
+            .par_iter()
+            .filter_map(|path| {
+                let text = match buffers.get(path) {
+                    Some(text) => text.clone(),
+                    None => std::fs::read_to_string(root.join(path)).ok()?,
+                };
+                let edits = links::plan_file(path, &text, &moves, exists);
+                (!edits.is_empty()).then(|| links::FileLinkUpdate {
+                    path: path.clone(),
+                    edits: links::to_utf16_edits(&text, edits),
+                })
+            })
+            .collect();
+        updates.sort_by(|a, b| a.path.cmp(&b.path));
+
+        info!(
+            "WorkspaceState::plan_link_updates: {} file(s) scanned, {} to update ({:.1}ms)",
+            paths.len(),
+            updates.len(),
+            t.elapsed().as_secs_f64() * 1000.0
+        );
+        Ok(updates)
+    }
+
+    /// Write planned link edits to files on disk — files *without* an open
+    /// tab; the frontend applies the rest to its buffers so they stay
+    /// undoable and keep any unsaved work.
+    ///
+    /// Every file is re-checked first: when it changed since the plan (the
+    /// edits no longer line up with what is on disk) it is skipped whole and
+    /// reported, never partially rewritten. The written files share one
+    /// recompile and one restore point, so the timeline can undo the lot.
+    pub fn apply_link_updates(
+        &self,
+        updates: &[links::FileLinkUpdate],
+        message: &str,
+    ) -> Result<LinkApplyOutcome, String> {
+        self.require_workspace()?;
+        let t = Instant::now();
+        let fs = self.working_fs()?;
+        let mut outcome = LinkApplyOutcome::default();
+
+        for update in updates {
+            let Ok(abs) = self.resolve(&update.path) else {
+                outcome.skipped.push(update.path.clone());
+                continue;
+            };
+            let next = std::fs::read_to_string(&abs)
+                .ok()
+                .and_then(|text| links::apply_edits(&text, &update.edits));
+            let Some(next) = next else {
+                warn!(
+                    "WorkspaceState::apply_link_updates: {} changed since the plan; skipped",
+                    update.path
+                );
+                outcome.skipped.push(update.path.clone());
+                continue;
+            };
+            self.note_self_write(&abs);
+            if let Err(e) = fs.write_file(&abs, next.as_bytes()) {
+                error!(
+                    "WorkspaceState::apply_link_updates: write failed path={:?} err=\"{e}\"",
+                    update.path
+                );
+                outcome.skipped.push(update.path.clone());
+                continue;
+            }
+            // The compiler may hold the old text parsed; a shadow (an open
+            // buffer) still takes precedence over disk, as it should.
+            if let Some(id) = self.world.path_to_id(&abs) {
+                self.world.invalidate_file(id);
+            }
+            outcome.applied.push(update.path.clone());
+        }
+
+        if !outcome.applied.is_empty() {
+            self.pipeline.request_compile(CompileReason::Save);
+            self.snapshot_file_op(message);
+        }
+        info!(
+            "WorkspaceState::apply_link_updates: {} written, {} skipped ({:.1}ms)",
+            outcome.applied.len(),
+            outcome.skipped.len(),
+            t.elapsed().as_secs_f64() * 1000.0
+        );
+        Ok(outcome)
     }
 
     // ─── File tree ─────────────────────────────────────────────────────────

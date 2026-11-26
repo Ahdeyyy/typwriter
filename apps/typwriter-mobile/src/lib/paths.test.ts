@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { basename, parentDir, remapPath } from "./paths";
+import { basename, parentDir, remapPath, workspaceLocation } from "./paths";
 
 describe("basename", () => {
   it("returns the last segment", () => {
@@ -50,5 +50,41 @@ describe("remapPath", () => {
 
   it("moves a file into the workspace root", () => {
     expect(remapPath("sub/a.typ", "sub/a.typ", "a.typ")).toEqual({ kind: "moved", to: "a.typ" });
+  });
+});
+
+describe("workspaceLocation", () => {
+  const managed = ["/storage/emulated/0/Documents/Typwriter"];
+  const roots = [
+    { path: "/storage/emulated/0", label: "" },
+    { path: "/storage/emulated/0/Documents", label: "Documents" },
+  ];
+
+  it("hides the shared managed folder", () => {
+    expect(workspaceLocation("/storage/emulated/0/Documents/Typwriter/notes", managed, roots)).toBeNull();
+    expect(workspaceLocation("/storage/emulated/0/Documents/Typwriter/notes/", managed, roots)).toBeNull();
+  });
+
+  it("shows the parent folder relative to the storage root", () => {
+    expect(workspaceLocation("/storage/emulated/0/Download/2024/thesis", managed, roots)).toBe("Download/2024");
+    expect(workspaceLocation("/storage/emulated/0/Documents/Typwriter/a/b", managed, roots)).toBe(
+      "Documents/Typwriter/a",
+    );
+  });
+
+  it("keeps the full path outside every root", () => {
+    expect(workspaceLocation(String.raw`C:\Users\me\Code Repository\typwriter`, [], [])).toBe(
+      "C:/Users/me/Code Repository",
+    );
+  });
+
+  it("compares Windows roots case-insensitively", () => {
+    expect(workspaceLocation("C:/Users/Me/Typwriter/notes", ["c:/users/me/typwriter"], [])).toBeNull();
+  });
+
+  it("returns null when there is no parent to name", () => {
+    expect(workspaceLocation("/storage/emulated/0/notes", managed, roots)).toBeNull();
+    expect(workspaceLocation("/notes", managed, roots)).toBeNull();
+    expect(workspaceLocation("notes", managed, roots)).toBeNull();
   });
 });

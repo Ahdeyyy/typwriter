@@ -11,31 +11,32 @@
     LeftToRightListBulletIcon,
     Search01Icon,
     Tick02Icon,
+    FolderTransferIcon,
   } from "@hugeicons/core-free-icons";
-  import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { diagnostics } from "$lib/stores/diagnostics.svelte";
-  import { grammar } from "$lib/stores/grammar.svelte";
-  import { ui, type SidebarSection } from "$lib/stores/ui.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
-  import { normalize, shortenHomePath } from "$lib/paths";
-  import { getRecentWorkspaces } from "$lib/ipc/commands";
+  import * as Sidebar from "#lib/components/ui/sidebar/index.ts";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { diagnostics } from "#lib/stores/diagnostics.svelte.ts";
+  import { grammar } from "#lib/stores/grammar.svelte.ts";
+  import { ui, type SidebarSection } from "#lib/stores/ui.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { platform } from "#lib/stores/platform.svelte.ts";
+  import { normalize, workspaceLocation } from "#lib/paths.ts";
+  import { getRecentWorkspaces } from "#lib/ipc/commands.ts";
   import { toast } from "svelte-sonner";
-  import { logError } from "$lib/logger";
-  import FileTree from "$lib/components/sidebar/filetree.svelte";
-  import StandaloneDocument from "$lib/components/sidebar/standalone-document.svelte";
-  import { chooseDocument } from "$lib/services/document-opening";
-  import DiagnosticsPane from "$lib/components/editor/diagnostics-pane.svelte";
-  import GrammarPane from "$lib/components/editor/grammar-pane.svelte";
-  import OutlinePane from "$lib/components/sidebar/outline-pane.svelte";
-  import SearchPane from "$lib/components/sidebar/search-pane.svelte";
-  import HistoryPane from "$lib/components/vcs/ledger.svelte";
-  import { vcs } from "$lib/stores/vcs.svelte";
-  import { openDiffWindow, openSettingsWindow } from "$lib/windows";
-  import type { RecentWorkspaceEntry } from "$lib/types";
+  import { logError } from "#lib/logger.ts";
+  import FileTree from "#lib/components/sidebar/filetree.svelte";
+  import StandaloneDocument from "#lib/components/sidebar/standalone-document.svelte";
+  import { chooseDocument } from "#lib/services/document-opening.ts";
+  import DiagnosticsPane from "#lib/components/editor/diagnostics-pane.svelte";
+  import GrammarPane from "#lib/components/editor/grammar-pane.svelte";
+  import OutlinePane from "#lib/components/sidebar/outline-pane.svelte";
+  import SearchPane from "#lib/components/sidebar/search-pane.svelte";
+  import HistoryPane from "#lib/components/vcs/ledger.svelte";
+  import { vcs } from "#lib/stores/vcs.svelte.ts";
+  import { openDiffWindow, openSettingsWindow } from "#lib/windows.ts";
+  import type { RecentWorkspaceEntry } from "#lib/types.ts";
 
   const sidebarCtx = Sidebar.useSidebar();
 
@@ -59,9 +60,13 @@
   const diagCount = $derived(diagnostics.errors.length + diagnostics.warnings.length);
   const hasErrors = $derived(diagnostics.errors.length > 0);
   const grammarCount = $derived(grammar.totalLints);
-  const workspaceName = $derived(
-    (workspace.documentPath ?? workspace.rootPath)?.split(/[/\\]/).pop() ?? "Workspace"
-  );
+  const workspacePath = $derived(workspace.documentPath ?? workspace.rootPath ?? "");
+  const homePath = $derived(platform.homePath);
+  const shownRecents = $derived(recentWorkspaces);
+  const workspaceName = $derived(workspacePath.split(/[/\\]/).pop() || "Workspace");
+  // The subtitle is the containing folder relative to home (the name line
+  // already says which workspace this is); the full path is the tooltip.
+  const workspaceSubtitle = $derived(workspacePath ? workspaceLocation(workspacePath, homePath) : "");
 
   onMount(async () => {
     const result = await getRecentWorkspaces({ includeThumbnails: false });
@@ -113,15 +118,17 @@
                 {...props}
                 tooltipContent={workspaceName}
                 aria-label={workspaceName}
-                class="md:px-2 px-0"
+                class="md:px-2 px-0 group-data-[collapsible=icon]:justify-center"
               >
+                <!-- Collapsed, the name has no room; a switch glyph stands in for it. -->
+                <HugeiconsIcon icon={FolderTransferIcon} class="hidden size-4 shrink-0 text-sidebar-foreground/70 group-data-[collapsible=icon]:block" aria-hidden="true" />
                 <div class="flex min-w-0 flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
                   <span class="truncate font-semibold">{workspaceName}</span>
-                  <span class="truncate text-[10px] opacity-50">
-                    {shortenHomePath(workspace.rootPath ?? "", platform.homePath)}
+                  <span class="truncate text-[0.6875rem] opacity-60" title={workspacePath}>
+                    {workspaceSubtitle}
                   </span>
                 </div>
-                <HugeiconsIcon icon={ArrowDown01Icon} class="ml-auto size-4 shrink-0 opacity-50" />
+                <HugeiconsIcon icon={ArrowDown01Icon} class="ml-auto size-4 shrink-0 opacity-50 group-data-[collapsible=icon]:hidden transition-transform duration-200 ease-(--ease-out) group-data-[state=open]/menu-button:rotate-180" />
               </Sidebar.MenuButton>
             {/snippet}
           </DropdownMenu.Trigger>
@@ -130,10 +137,10 @@
             <DropdownMenu.Separator />
             <DropdownMenu.Label>Recent projects</DropdownMenu.Label>
             <DropdownMenu.Separator />
-            {#if recentWorkspaces.length === 0}
+            {#if shownRecents.length === 0}
               <DropdownMenu.Item disabled>No recent projects</DropdownMenu.Item>
             {:else}
-              {#each recentWorkspaces as recent (recent.path)}
+              {#each shownRecents as recent (recent.path)}
                 {@const isCurrent = isCurrentWorkspace(recent.path)}
                 <DropdownMenu.Item
                   class="py-2"
@@ -142,8 +149,8 @@
                 >
                   <div class="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span class="truncate font-medium">{recent.name}</span>
-                    <span class="text-muted-foreground truncate text-[10px]">
-                      {shortenHomePath(recent.path, platform.homePath)}
+                    <span class="text-muted-foreground truncate text-[0.6875rem]" title={recent.path}>
+                      {workspaceLocation(recent.path, homePath)}
                     </span>
                   </div>
                   {#if isCurrent}
@@ -270,7 +277,7 @@
                 <span
                   class="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5
                          items-center justify-center rounded-full bg-destructive
-                         text-[9px] font-bold leading-none text-destructive-foreground"
+                         text-[0.5625rem] font-bold leading-none text-destructive-foreground"
                 >
                   {diagCount > 9 ? "9+" : diagCount}
                 </span>
@@ -298,7 +305,7 @@
                 <span
                   class="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5
                          items-center justify-center rounded-full bg-muted-foreground
-                         text-[9px] font-bold leading-none text-background"
+                         text-[0.5625rem] font-bold leading-none text-background"
                 >
                   {grammarCount > 9 ? "9+" : grammarCount}
                 </span>
@@ -353,3 +360,4 @@
 
   <Sidebar.Rail />
 </Sidebar.Root>
+

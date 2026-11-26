@@ -9,7 +9,8 @@ use log::{error, info};
 
 use super::commit::{commit_if_changed, CommitTrigger};
 use super::fs::WorkingTreeFs;
-use super::paths::IGNORED_TOP_LEVEL;
+use super::index::TreeIndex;
+use super::paths::{is_ignored_name, is_ignored_rel};
 use super::retention::RetentionPolicy;
 use super::store::{find_snapshot_by_id, read_blob};
 
@@ -19,11 +20,12 @@ use super::store::{find_snapshot_by_id, read_blob};
 /// state is still reachable in history), then write each blob to disk and
 /// remove any path that exists locally but isn't in the target.
 ///
-/// `.git/` and `.typwriter/` are skipped on both sides — restoring must
-/// never wipe our own metadata.
+/// `.git/` and `.typwriter/` are skipped on both sides, at any depth —
+/// restoring must never wipe our own metadata, nor a sub-workspace's.
 pub fn restore_workspace(
     workspace_root: &Path,
     fs: &impl WorkingTreeFs,
+    index: &mut TreeIndex,
     commit_id: &str,
 ) -> Result<(), String> {
     // Safety snapshot. If it skips because nothing changed since HEAD,
@@ -32,6 +34,7 @@ pub fn restore_workspace(
     commit_if_changed(
         workspace_root,
         fs,
+        index,
         CommitTrigger::PreRestore,
         "Pre-restore snapshot",
         &RetentionPolicy::unlimited(),
@@ -47,6 +50,12 @@ pub fn restore_workspace(
     // Write target files. Directories are created on demand; existing files
     // are overwritten in place.
     for (rel, hash) in &target.files {
+        // Older snapshots recorded nested `.typwriter` / `.git` folders.
+        // Writing those back would roll a sub-workspace's own history and
+        // caches to an arbitrary earlier state.
+        if is_ignored_rel(rel) {
+            continue;
+        }
         let bytes = read_blob(fs, workspace_root, hash)?;
         let abs = workspace_root.join(rel);
         if let Some(parent) = abs.parent() {
@@ -99,6 +108,7 @@ pub fn restore_workspace(
 pub fn restore_file(
     workspace_root: &Path,
     fs: &impl WorkingTreeFs,
+    index: &mut TreeIndex,
     commit_id: &str,
     rel_path: &str,
 ) -> Result<(), String> {
@@ -108,6 +118,7 @@ pub fn restore_file(
     commit_if_changed(
         workspace_root,
         fs,
+        index,
         CommitTrigger::PreRestore,
         &format!("Pre-restore (single file): {rel_path}"),
         &RetentionPolicy::unlimited(),
@@ -115,6 +126,11 @@ pub fn restore_file(
 
     let target = find_snapshot_by_id(fs, workspace_root, commit_id)?;
     let path_key = target_path.to_string_lossy().replace('\\', "/");
+    if is_ignored_rel(&path_key) {
+        return Err(format!(
+            "invalid restore path {rel_path:?}: workspace metadata is not versioned"
+        ));
+    }
 
     match target.files.get(&path_key) {
         Some(hash) => {
@@ -212,7 +228,7 @@ fn walk_working(
 ) -> Result<(), String> {
     let entries = fs.read_dir(dir)?;
     for entry in entries {
-        if dir == workspace_root && IGNORED_TOP_LEVEL.contains(&entry.name.as_str()) {
+        if is_ignored_name(&entry.name) {
             continue;
         }
         if entry.is_dir {

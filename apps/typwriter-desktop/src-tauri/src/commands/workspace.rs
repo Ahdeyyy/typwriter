@@ -4,7 +4,10 @@ use log::{error, info};
 use serde::Deserialize;
 use tauri::State;
 
-use crate::workspace::{DroppedFile, FileTreeEntry, RecentWorkspaceEntry, WorkspaceState};
+use crate::workspace::{
+    links::{FileLinkUpdate, PathMove},
+    DroppedFile, FileTreeEntry, LinkApplyOutcome, RecentWorkspaceEntry, WorkspaceState,
+};
 
 #[tauri::command(async)]
 pub fn open_document(
@@ -242,6 +245,33 @@ pub fn move_folder(
     result
 }
 
+/// Plan the link fixes for a batch of renames/moves that already happened.
+/// `buffers` carries the open tabs' text by workspace-relative path.
+#[tauri::command(async)]
+pub fn plan_link_updates(
+    moves: Vec<PathMove>,
+    buffers: HashMap<String, String>,
+    workspace: State<'_, Arc<WorkspaceState>>,
+) -> Result<Vec<FileLinkUpdate>, String> {
+    workspace.plan_link_updates(&moves, &buffers).map_err(|e| {
+        error!("plan_link_updates: err=\"{e}\"");
+        e
+    })
+}
+
+/// Write planned link fixes to files that have no open tab.
+#[tauri::command(async)]
+pub fn apply_link_updates(
+    updates: Vec<FileLinkUpdate>,
+    message: String,
+    workspace: State<'_, Arc<WorkspaceState>>,
+) -> Result<LinkApplyOutcome, String> {
+    workspace.apply_link_updates(&updates, &message).map_err(|e| {
+        error!("apply_link_updates: err=\"{e}\"");
+        e
+    })
+}
+
 #[tauri::command(async)]
 pub fn import_files(
     sources: Vec<String>,
@@ -437,7 +467,7 @@ pub fn create_workspace(parent_path: String, name: String) -> Result<String, Str
 //
 // Both are read and written as raw JSON text: the schema, and the deliberately
 // forgiving parser that reports one bad entry without losing the rest, live in
-// the frontend's `$lib/snippets.ts`.
+// the frontend's `#lib/snippets.ts`.
 
 #[tauri::command(async)]
 pub fn get_project_snippets(workspace: State<'_, Arc<WorkspaceState>>) -> Option<String> {

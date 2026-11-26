@@ -2,7 +2,7 @@
 	import { Pagination as PaginationPrimitive } from "bits-ui";
 	import { HugeiconsIcon } from "@hugeicons/svelte"
 	import { ArrowRightIcon } from '@hugeicons/core-free-icons';
-	import { cn } from "$lib/utils.js";
+	import { cn } from "#lib/utils.ts";
 	import { buttonVariants } from "../button/index.js";
 
 	let {

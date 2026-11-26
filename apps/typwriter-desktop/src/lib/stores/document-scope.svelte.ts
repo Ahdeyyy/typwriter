@@ -22,8 +22,8 @@
 
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
-import { readFile } from '$lib/ipc/commands';
-import { logError } from '$lib/logger';
+import { readFile } from '#lib/ipc/commands.ts';
+import { logError } from '#lib/logger.ts';
 import {
     computeDocumentScope,
     emptyFacts,
@@ -32,9 +32,9 @@ import {
     extractLetValues,
     extractModuleRefs,
     type FileScopeFacts,
-} from '$lib/module-graph';
-import { extractLabels, type LabelDef } from '$lib/references';
-import { workspace, type FileNode } from '$lib/stores/workspace.svelte';
+} from '#lib/module-graph.ts';
+import { extractLabels, type LabelDef } from '#lib/references.ts';
+import { workspace, type FileNode } from '#lib/stores/workspace.svelte.ts';
 
 /** Guard against a pathological project; a real book is well under this. */
 const MAX_FILES = 512;

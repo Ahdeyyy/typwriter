@@ -1,7 +1,7 @@
 import { errAsync, okAsync } from "neverthrow";
-import type { ExportFormat } from "$lib/ipc/types";
-import { editor } from "$lib/stores/editor.svelte";
-import { compileStore } from "$lib/stores/compile.svelte";
+import type { ExportFormat } from "#lib/ipc/types.ts";
+import { editor } from "#lib/stores/editor.svelte.ts";
+import { compileStore } from "#lib/stores/compile.svelte.ts";
 
 /** Always save first, even when the last compile was fresh before this edit.
  * HTML compiles independently in the backend; paged exports use its cached

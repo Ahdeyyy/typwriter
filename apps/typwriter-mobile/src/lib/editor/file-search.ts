@@ -2,7 +2,7 @@
 // they're unit-testable). Flattens the file tree and ranks files against a
 // query with a light subsequence fuzzy match.
 
-import type { FileNode } from "$lib/ipc/types";
+import type { FileNode } from "#lib/ipc/types.ts";
 
 export interface FileEntry {
   name: string;

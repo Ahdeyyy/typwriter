@@ -5,10 +5,10 @@ import tailwindcss from "@tailwindcss/vite";
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 const mocked = [
-  "@/stores/page.svelte", "$lib/stores/page.svelte", "$lib/ipc/commands",
-  "$lib/stores/workspace.svelte", "$lib/stores/onboarding.svelte",
-  "$lib/stores/platform.svelte", "$lib/stores/settings.svelte", "$lib/services/document-opening",
-  "$lib/windows", "$lib/logger", "@tauri-apps/api/window",
+  "#lib/stores/page.svelte.ts", "#lib/ipc/commands.ts",
+  "#lib/stores/workspace.svelte.ts", "#lib/stores/onboarding.svelte.ts",
+  "#lib/stores/platform.svelte.ts", "#lib/stores/settings.svelte.ts", "#lib/services/document-opening.ts",
+  "#lib/windows.ts", "#lib/logger.ts", "@tauri-apps/api/window",
   "@tauri-apps/plugin-dialog",
 ];
 
@@ -20,8 +20,7 @@ export default defineConfig({
   resolve: {
     alias: [
       ...mocked.map((find) => ({ find, replacement: here("./mocks.ts") })),
-      { find: "$lib", replacement: here("../../src/lib") },
-      { find: "@", replacement: here("../../src/lib") },
+      { find: "#lib", replacement: here("../../src/lib") },
     ],
     dedupe: ["svelte"],
   },

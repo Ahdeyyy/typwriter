@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { Button } from "$lib/components/ui/button/index.js";
+	import { Button } from "#lib/components/ui/button/index.ts";
 	import { HugeiconsIcon } from "@hugeicons/svelte"
 	import { SidebarLeftIcon } from '@hugeicons/core-free-icons';
-	import { cn } from "$lib/utils.js";
+	import { cn } from "#lib/utils.ts";
 	import type { ComponentProps } from "svelte";
 	import { useSidebar } from "./context.svelte.js";
 

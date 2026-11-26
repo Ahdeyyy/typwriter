@@ -14,17 +14,36 @@
     ArrowLeft01Icon,
     ArrowRight01Icon,
     File02Icon,
+    BookOpen01Icon,
   } from "@hugeicons/core-free-icons";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import Icon from "$lib/components/icon.svelte";
-  import { Button } from "$lib/components/ui/button";
-  import { Switch } from "$lib/components/ui/switch";
-  import * as Sheet from "$lib/components/ui/sheet";
-  import { ScrollArea } from "$lib/components/ui/scroll-area";
-  import { app } from "$lib/stores/app.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { pickFontsDir, clearFontsDir, getFontsStatus, getTypstVersion } from "$lib/ipc/commands";
+  import Icon from "#lib/components/icon.svelte";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Switch } from "#lib/components/ui/switch/index.ts";
+  import * as Sheet from "#lib/components/ui/sheet/index.ts";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { spell } from "#lib/stores/spell.svelte.ts";
+  import { updater, type UpdateStatus } from "#lib/stores/updater.svelte.ts";
+  import { pickFontsDir, clearFontsDir, getFontsStatus, getTypstVersion } from "#lib/ipc/commands.ts";
   import LicensesScreen from "./licenses-screen.svelte";
+  import DictionaryScreen from "./dictionary-screen.svelte";
+
+  /** Settings' sub-screens: they share the sheet and go back to settings. */
+  const subScreenTitles: Partial<Record<typeof app.overlay, string>> = {
+    licenses: "Open-source licenses",
+    dictionary: "Your dictionary",
+  };
+  const subScreenTitle = $derived(subScreenTitles[app.overlay]);
+
+  const spellSource = $derived(
+    spell.deviceGrammar === true
+      ? "Spelling from the built-in English dictionary, grammar from your keyboard"
+      : spell.deviceGrammar === false
+        ? "Spelling from the built-in English dictionary — your keyboard doesn't check grammar here"
+        : "Spelling from the built-in English dictionary, grammar from your keyboard when it can",
+  );
 
   let pickingFonts = $state(false);
   /** Font families the compiler has loaded, or null before we've asked. */
@@ -131,6 +150,14 @@
 
   let version = $state("");
   let typstVersion = $state("");
+
+  const updateLabel: Record<UpdateStatus, string> = {
+    idle: "Check for updates",
+    checking: "Checking…",
+    "up-to-date": "Up to date · Check again",
+    available: "Check for updates",
+    failed: "Check failed · Retry",
+  };
   onMount(() => {
     getVersion().then((v) => (version = v)).catch(() => {});
     // The Typst release this build compiles with — the same value documents see
@@ -164,30 +191,34 @@
 </script>
 
 <Sheet.Root
-  open={app.overlay === "settings" || app.overlay === "licenses"}
+  open={app.overlay === "settings" || subScreenTitle !== undefined}
   onOpenChange={(o) => {
     if (!o) app.closeOverlay();
   }}
 >
   <Sheet.Content side="right" class="w-full max-w-md p-0 data-[side=right]:w-full sm:max-w-md"
-    showCloseButton={app.overlay !== "licenses"}
+    showCloseButton={subScreenTitle === undefined}
     style={`height: var(--app-height, ${viewportHeight});`}>
     <div class="flex h-full min-h-0 flex-col"
-      style={`padding-top: calc(${viewportTop}px + env(safe-area-inset-top));`}>
+      style={`padding-top: calc(${viewportTop}px + var(--safe-top));`}>
       <div class="flex h-12 shrink-0 items-center border-b px-4">
-        {#if app.overlay === "licenses"}
+        {#if subScreenTitle}
           <Button variant="ghost" size="icon-sm" class="mr-2" aria-label="Back to settings" onclick={() => app.closeOverlay()}>
             <Icon icon={ArrowLeft01Icon} />
           </Button>
         {/if}
-        <Sheet.Title class="text-base font-semibold">{app.overlay === "licenses" ? "Open-source licenses" : "Settings"}</Sheet.Title>
+        <Sheet.Title class="text-base font-semibold">{subScreenTitle ?? "Settings"}</Sheet.Title>
       </div>
       <Sheet.Description class="sr-only">App preferences and third-party software notices.</Sheet.Description>
       {#if app.overlay === "licenses"}
         <LicensesScreen />
+      {:else if app.overlay === "dictionary"}
+        <DictionaryScreen />
       {:else}
-      <ScrollArea class="flex-1">
-        <div class="flex flex-col gap-6 p-4">
+      <ScrollArea class="min-h-0 flex-1">
+        <!-- The sheet runs behind the navigation bar (edge to edge); the last row
+             has to scroll clear of it. -->
+        <div class="flex flex-col gap-6 p-4" style="padding-bottom: calc(var(--safe-bottom) + 1.5rem);">
           <section class="flex flex-col gap-2">
             <span class="text-sm font-medium">Theme</span>
             <div class="grid grid-cols-3 gap-1">
@@ -234,6 +265,55 @@
             />
           </section>
 
+          <section class="flex items-center justify-between">
+            <span class="text-sm font-medium">Inline title</span>
+            <Switch
+              checked={settings.showInlineTitle}
+              onCheckedChange={(v) => settings.setShowInlineTitle(v)}
+            />
+          </section>
+
+          <section class="flex items-center justify-between gap-4">
+            <div class="flex flex-col">
+              <span class="text-sm font-medium">Hide controls while scrolling</span>
+              <span class="text-muted-foreground text-xs">Also hides the status bar for distraction-free reading</span>
+            </div>
+            <Switch
+              checked={settings.hideChromeOnScroll}
+              onCheckedChange={(v) => settings.setHideChromeOnScroll(v)}
+            />
+          </section>
+
+          <section class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-4">
+              <div class="flex flex-col">
+                <span class="text-sm font-medium">Spell check</span>
+                <span class="text-muted-foreground text-xs">{spellSource}</span>
+              </div>
+              <Switch
+                checked={settings.spellcheck}
+                onCheckedChange={(v) => settings.setSpellcheck(v)}
+              />
+            </div>
+            {#if settings.spellcheck && settings.spellIgnoredWords.length > 0}
+              <!-- A row, not the words themselves: the list grows without bound
+                   and would push every setting below it off the screen. -->
+              <button
+                type="button"
+                class="flex min-h-11 items-center gap-2 rounded-md text-left text-sm focus-visible:outline-ring"
+                onclick={() => app.openOverlay("dictionary")}
+              >
+                <Icon icon={BookOpen01Icon} class="text-muted-foreground size-5" />
+                <span class="flex-1">Your dictionary</span>
+                <span class="text-muted-foreground text-sm tabular-nums">
+                  {settings.spellIgnoredWords.length}
+                  {settings.spellIgnoredWords.length === 1 ? "word" : "words"}
+                </span>
+                <Icon icon={ArrowRight01Icon} class="text-muted-foreground size-5" />
+              </button>
+            {/if}
+          </section>
+
           <section class="flex flex-col gap-2">
             <span class="text-sm font-medium">Autosave delay</span>
             <div class="grid grid-cols-3 gap-1">
@@ -266,7 +346,7 @@
 
           <section class="flex flex-col gap-2">
             <div class="flex items-center gap-2">
-              <Icon icon={TextFontIcon} class="text-muted-foreground size-4" />
+              <Icon icon={TextFontIcon} class="text-muted-foreground size-5" />
               <span class="text-sm font-medium">Fonts folder</span>
             </div>
             <p class="text-muted-foreground text-xs">
@@ -275,7 +355,7 @@
             </p>
             {#if settings.fontsDir}
               <div class="bg-muted/50 flex items-center gap-2 rounded-md px-2.5 py-1.5">
-                <Icon icon={Folder01Icon} class="text-muted-foreground size-4 shrink-0" />
+                <Icon icon={Folder01Icon} class="text-muted-foreground size-5 shrink-0" />
                 <span class="truncate text-xs">{settings.fontsDir}</span>
               </div>
             {/if}
@@ -308,13 +388,30 @@
               class="flex min-h-11 items-center gap-2 rounded-md text-left text-sm focus-visible:outline-ring"
               onclick={() => app.openOverlay("licenses")}
             >
-              <Icon icon={File02Icon} class="text-muted-foreground size-4" />
+              <Icon icon={File02Icon} class="text-muted-foreground size-5" />
               <span class="flex-1">Open-source licenses</span>
-              <Icon icon={ArrowRight01Icon} class="text-muted-foreground size-4" />
+              <Icon icon={ArrowRight01Icon} class="text-muted-foreground size-5" />
             </button>
             <div class="flex items-center justify-between">
               <span class="text-muted-foreground text-sm">Version</span>
               <span class="text-sm tabular-nums">{version || "—"}</span>
+            </div>
+            <div class="flex min-h-11 items-center justify-between gap-2">
+              <span class="text-muted-foreground text-sm">Updates</span>
+              {#if updater.status === "available" && updater.update}
+                <Button size="sm" onclick={() => updater.download()}>
+                  Download {updater.update.version}
+                </Button>
+              {:else}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={updater.status === "checking"}
+                  onclick={() => void updater.check()}
+                >
+                  {updateLabel[updater.status]}
+                </Button>
+              {/if}
             </div>
             <div class="flex items-center justify-between">
               <span class="text-muted-foreground text-sm">Typst</span>
@@ -325,14 +422,14 @@
               class="text-muted-foreground active:text-foreground flex items-center gap-2 text-sm"
               onclick={() => openExternal(REPO_URL)}
             >
-              <Icon icon={GithubIcon} class="size-4" /> GitHub repository
+              <Icon icon={GithubIcon} class="size-5" /> GitHub repository
             </button>
             <button
               type="button"
               class="text-muted-foreground active:text-foreground flex items-center gap-2 text-sm"
               onclick={() => openExternal(SPONSOR_URL)}
             >
-              <Icon icon={FavouriteIcon} class="size-4" /> Sponsor Typwriter
+              <Icon icon={FavouriteIcon} class="size-5" /> Sponsor Typwriter
             </button>
           </section>
         </div>

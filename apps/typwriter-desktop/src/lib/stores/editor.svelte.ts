@@ -8,21 +8,22 @@ import {
     saveFile,
     triggerPreview,
     updateFileContent,
-} from '$lib/ipc/commands';
-import { emitSnippetsChanged } from '$lib/ipc/events';
-import { SNIPPETS_REL_PATH } from '$lib/snippets';
+} from '#lib/ipc/commands.ts';
+import { emitSnippetsChanged } from '#lib/ipc/events.ts';
+import { SNIPPETS_REL_PATH } from '#lib/snippets.ts';
+import { applyLinkEdits, type LinkEdit } from '#lib/link-updates.ts';
 import type {
     CompileReason,
     FileContentResponse,
     FileMeta,
     WorkspaceFileChange
-} from '$lib/types';
+} from '#lib/types.ts';
 import { workspace } from './workspace.svelte';
 import { bibliography } from './bibliography.svelte';
 import { settings } from './settings.svelte';
 import { grammar } from './grammar.svelte';
-import { normalize, basename } from '$lib/paths';
-import { logError } from '$lib/logger';
+import { normalize, basename } from '#lib/paths.ts';
+import { logError } from '#lib/logger.ts';
 import { toast } from 'svelte-sonner';
 
 export type ViewMode = 'text' | 'image' | 'unsupported';
@@ -113,6 +114,13 @@ class EditorStore {
      *  content sync's coarse fallback yank the caret. Deliberately not
      *  reactive state: it's a callback, not data. */
     cursorProvider: ((tabId: string) => number | undefined) | null = null;
+
+    /** Applies link edits to a tab's live CodeMirror view, registered by the
+     *  editor component. `no-view` means the tab has never been mounted, so
+     *  its buffer is only `tab.content`. Not reactive state: a callback. */
+    linkEditApplier:
+        | ((tabId: string, edits: LinkEdit[]) => 'applied' | 'stale' | 'no-view')
+        | null = null;
 
     private _shadowWriteVersions = new Map<string, number>();
     private _idleSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -419,6 +427,47 @@ class EditorStore {
         // Persist the unsaved buffer to durable storage (debounced) so it
         // survives a non-graceful teardown — see getTabState / hot-exit restore.
         workspace.schedulePersistTabs();
+    }
+
+    // ─── Link updates (rename / move) ────────────────────────────────────────
+
+    /** The open tab whose buffer is the truth for `relPath`, if any — a loaded
+     *  text tab. A tab still loading will read disk once it's done, so for link
+     *  updates it counts as not open. */
+    linkTab(relPath: string): TabInfo | null {
+        const id = normalize(relPath);
+        const tab = this.tabs.find((t) => t.id === id);
+        return tab && tab.viewMode === 'text' && tab.isEditable && !tab.isLoading ? tab : null;
+    }
+
+    /** Every open `.typ` buffer by workspace-relative path, so a link plan
+     *  reads what the user is looking at — unsaved edits included. */
+    linkBuffers(): Record<string, string> {
+        const out: Record<string, string> = {};
+        for (const tab of this.tabs) {
+            if (tab.relPath.endsWith('.typ') && this.linkTab(tab.relPath) === tab) {
+                out[tab.relPath] = tab.content;
+            }
+        }
+        return out;
+    }
+
+    /** Patch link edits into the open tab at `relPath`. Goes through the
+     *  editor like typing would, so the tab turns dirty, auto-save and the
+     *  preview pick it up, and Ctrl+Z reverts it. False when the tab is gone
+     *  or its text no longer matches the edits. */
+    applyLinkEdits(relPath: string, edits: LinkEdit[]): boolean {
+        const tab = this.linkTab(relPath);
+        if (!tab) return false;
+        const next = applyLinkEdits(tab.content, edits);
+        if (next === null) return false;
+        const result = this.linkEditApplier?.(tab.id, edits) ?? 'no-view';
+        if (result === 'stale') return false;
+        if (result === 'no-view') {
+            // Never mounted: the view seeds from tab.content when it is.
+            this.handleTabContentChange(tab.id, next);
+        }
+        return true;
     }
 
     formatActiveFile(): ResultAsync<void, string> {

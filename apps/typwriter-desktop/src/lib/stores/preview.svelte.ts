@@ -6,7 +6,7 @@ import {
     setZoom,
     syncPreview,
     triggerPreview,
-} from '$lib/ipc/commands'; // triggerPreview still used by zoom/refresh paths
+} from '#lib/ipc/commands.ts'; // triggerPreview still used by zoom/refresh paths
 import {
     emitEditorCursorPosition,
     onEditorCursorPosition,
@@ -15,16 +15,16 @@ import {
     onPreviewPageUpdated,
     onPreviewTotalPages,
     type UnlistenFn,
-} from '$lib/ipc/events';
+} from '#lib/ipc/events.ts';
 import type {
     CompileReason,
     DisplayInfo,
     PreviewHighlightRect,
     PreviewScrollTarget,
-} from '$lib/types';
-import { logError, logPreview } from '$lib/logger';
+} from '#lib/types.ts';
+import { logError, logPreview } from '#lib/logger.ts';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
+import { crossWindowState } from '#lib/ipc/cross-window-state.svelte.ts';
 import { settings } from './settings.svelte';
 
 const PREVIEW_WINDOW_LABEL = 'preview';
@@ -86,7 +86,7 @@ class PreviewStore {
 
     // Synced across every Tauri window so the popout and main pane stay
     // consistent without each consumer wiring its own listener. See
-    // `$lib/ipc/cross-window-state.svelte.ts`.
+    // `#lib/ipc/cross-window-state.svelte.ts`.
     private _zoom = crossWindowState<number>('preview:zoom', 2.0);
     private _paginated = crossWindowState<boolean>('preview:paginated', false);
     private _totalPages = crossWindowState<number>('preview:totalPages', 0);

@@ -5,6 +5,10 @@
 @import "@fontsource-variable/jetbrains-mono";
 
 @custom-variant dark (&:is(.dark *));
+/* Form factor, set on <html> by `lib/stores/layout.svelte.ts`: `tablet` is a
+   sw600dp screen, `wide` a tablet with room to dock panes beside the editor. */
+@custom-variant tablet (&:is(.tablet *));
+@custom-variant wide (&:is(.wide *));
 
 /* ──────────────────────────────────────────────────────────────────────────
    Design tokens — byte-identical oklch palette to typwriter-desktop. This is
@@ -260,5 +264,136 @@
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Motion. One scale for the whole app — `lib/motion.ts` mirrors these curves
+   for Svelte transitions, so the two must change together.
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Touch ripple (see `lib/ripple.ts`). The host clips it; the wave itself is a
+   currentColor disc so it reads on every surface and in both themes. */
+.ripple-host {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  contain: strict;
+}
+.ripple-wave {
+  position: absolute;
+  border-radius: 9999px;
+  background-color: currentColor;
+  opacity: 0.12;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* Reduced motion keeps fades (they aid comprehension) and drops movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    --tw-enter-translate-x: 0 !important;
+    --tw-enter-translate-y: 0 !important;
+    --tw-exit-translate-x: 0 !important;
+    --tw-exit-translate-y: 0 !important;
+    --tw-enter-scale: 1 !important;
+    --tw-exit-scale: 1 !important;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Edge to edge. The app draws behind the status and navigation bars; these
+   are their heights. `lib/stores/system-bars.svelte.ts` overrides them with
+   the native plugin's measurement (env() reads 0 in many Android WebViews) —
+   always go through the vars, never env() directly.
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  /* Height of a floating header's button row (2.75rem buttons + 0.5rem gap). */
+  --float-header-h: 3.5rem;
+}
+
+/* In the components layer so utilities on the same element (a banner's
+   `rounded-2xl`) still win. */
+@layer components {
+  /* Floating chrome (Obsidian-style): no bar behind the controls, just round
+     buttons with their own frosted fill over the content. */
+  .float-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 9999px;
+    color: var(--foreground);
+    background-color: color-mix(in oklch, var(--background) 72%, transparent);
+    border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+    box-shadow: 0 2px 10px -2px oklch(0 0 0 / 0.18);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    position: relative;
+    pointer-events: auto;
+    transition: transform 120ms var(--ease-out);
+  }
+  .float-btn:active {
+    transform: scale(0.94);
+  }
+  .float-pill {
+    border-radius: 9999px;
+    background-color: color-mix(in oklch, var(--background) 72%, transparent);
+    border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+    box-shadow: 0 2px 10px -2px oklch(0 0 0 / 0.18);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    pointer-events: auto;
+  }
+
+  /* Keeps the status bar's icons legible over scrolled content without drawing
+     a bar: a soft fade from the page colour, exactly as tall as the bar. */
+  .status-scrim {
+    height: calc(var(--safe-top) + 0.75rem);
+    margin-bottom: -0.75rem;
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklch, var(--scrim-color, var(--background)) 92%, transparent) 0%,
+      color-mix(in oklch, var(--scrim-color, var(--background)) 70%, transparent) 60%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
+
+  /* Hide-on-scroll (see `lib/stores/immersive.svelte.ts`). Slides off the
+     nearest edge and fades; hidden chrome takes no taps. */
+  .immersive-top,
+  .immersive-bottom {
+    transition:
+      transform 240ms var(--ease-out),
+      opacity 200ms var(--ease-out);
+    will-change: transform, opacity;
+  }
+  .immersive-top[data-hidden="true"] {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  .immersive-bottom[data-hidden="true"] {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  .immersive-top[data-hidden="true"] *,
+  .immersive-bottom[data-hidden="true"] * {
+    pointer-events: none !important;
   }
 }

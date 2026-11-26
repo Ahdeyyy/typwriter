@@ -1,3 +1,6 @@
+// Mirrored in apps/typwriter-mobile/src/lib/editor/langs.ts so both apps
+// highlight the same languages. Change one, change the other.
+
 import type { Extension } from "@codemirror/state"
 import {
   Language,

@@ -17,9 +17,9 @@ import {
     Tag01Icon
 } from '@hugeicons/core-free-icons';
 
-import { vcs } from '$lib/stores/vcs.svelte';
-import type { DiffWindowView } from '$lib/windows';
-import type { CommitTrigger, RestorePoint } from '$lib/types';
+import { vcs } from '#lib/stores/vcs.svelte.ts';
+import type { DiffWindowView } from '#lib/windows.ts';
+import type { CommitTrigger, RestorePoint } from '#lib/types.ts';
 
 // ─── Trigger presentation ────────────────────────────────────────────────
 

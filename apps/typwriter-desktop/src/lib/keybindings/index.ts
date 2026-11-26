@@ -6,8 +6,8 @@
 // the user rebinds something, and the change lands in every window (the
 // settings store broadcasts on `settings:changed`).
 
-import { settings } from '$lib/stores/settings.svelte';
-import { platform } from '$lib/stores/platform.svelte';
+import { settings } from '#lib/stores/settings.svelte.ts';
+import { platform } from '#lib/stores/platform.svelte.ts';
 import { KEY_COMMANDS, commandById, defaultKeysFor, type KeyCommandDef } from './registry';
 import { formatChord, matchesChord } from './keys';
 

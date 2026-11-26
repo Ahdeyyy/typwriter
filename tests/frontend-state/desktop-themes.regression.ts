@@ -18,13 +18,13 @@ Object.defineProperty(globalThis, 'localStorage', {
 const setAppSettings = mock((_settings: AppSettings) => okAsync());
 const getAppSettings = mock((): ResultAsync<AppSettings, string> => errAsync('Backend unavailable'));
 const emitSettingsChanged = mock((_payload: SettingsSyncPayload) => okAsync());
-mock.module('$lib/ipc/commands', () => ({
+mock.module('#lib/ipc/commands.ts', () => ({
   getAppSettings,
   setAppSettings,
   setTypstFontDirectories: () => okAsync(),
 }));
-mock.module('$lib/ipc/events', () => ({ emitSettingsChanged }));
-mock.module('$lib/logger', () => ({ logError: () => {} }));
+mock.module('#lib/ipc/events.ts', () => ({ emitSettingsChanged }));
+mock.module('#lib/logger.ts', () => ({ logError: () => {} }));
 
 const { settings } = await import('../../apps/typwriter-desktop/src/lib/stores/settings.svelte');
 

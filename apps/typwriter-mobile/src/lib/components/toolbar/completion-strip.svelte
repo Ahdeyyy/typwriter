@@ -7,12 +7,19 @@
     SourceCodeIcon,
     AtIcon,
     AiMagicIcon,
+    BookOpenCheckIcon,
   } from "@hugeicons/core-free-icons";
   import type { IconSvgElement } from "@hugeicons/svelte";
-  import Icon from "$lib/components/icon.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { completions } from "$lib/editor/completion-controller.svelte";
-  import type { StripItem } from "$lib/editor/completion-logic";
+  import Icon from "#lib/components/icon.svelte";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { completions } from "#lib/editor/completion-controller.svelte.ts";
+  import type { StripItem } from "#lib/editor/completion-logic.ts";
+  import { spell } from "#lib/stores/spell.svelte.ts";
+
+  // Completions win the row: they answer what's being typed right now. The
+  // caret resting in a flagged word (and nothing being completed) shows that
+  // word's fixes instead, the way a keyboard's suggestion row does.
+  const spellIssue = $derived(completions.items.length === 0 ? spell.active : null);
 
   // Match the desktop's mapBackendCompletionKind: lowercase substring match.
   function iconFor(kind: string): IconSvgElement {
@@ -46,6 +53,14 @@
     if (editor.view) completions.accept(editor.view, item);
   }
 
+  /** The same tap-vs-scroll rule, for the spelling chips. */
+  function onSpellTap(e: PointerEvent, run: () => void) {
+    const moved = Math.hypot(e.clientX - startX, e.clientY - startY);
+    if (moved > TAP_SLOP) return;
+    e.preventDefault();
+    run();
+  }
+
   // Buttons steal focus from the editor's contenteditable on mousedown, which
   // blurs it and dismisses the soft keyboard. Preventing the mousedown default
   // keeps focus (and the keyboard) on the editor. Fires only on a tap — a scroll
@@ -65,7 +80,7 @@
 >
   {#each completions.items as item, i (item.label + i)}
     <button
-      class="bg-muted active:bg-accent active:text-accent-foreground flex shrink-0 items-center gap-1 rounded-full border px-3 font-mono text-sm whitespace-nowrap shadow-sm {i === 0 ? 'border-foreground/40' : ''}"
+      class="bg-muted active:bg-foreground/10 flex shrink-0 items-center gap-1 rounded-full border px-3 font-mono text-sm whitespace-nowrap shadow-sm {i === 0 ? 'border-foreground/40' : ''}"
       onmousedown={keepEditorFocus}
       onpointerdown={onPointerDown}
       onpointerup={(e) => onPointerUp(e, item)}
@@ -74,4 +89,34 @@
       <span class="max-w-[24ch] truncate">{item.label}</span>
     </button>
   {/each}
+  {#if spellIssue}
+    {#if spellIssue.suggestions === null}
+      <span class="text-muted-foreground flex shrink-0 items-center px-2 text-sm">Looking up “{spellIssue.word}”…</span>
+    {:else}
+      {#each spellIssue.suggestions as suggestion, i (suggestion)}
+        <button
+          class="bg-muted active:bg-foreground/10 flex shrink-0 items-center rounded-full border px-3 text-sm whitespace-nowrap shadow-sm {i === 0 ? 'border-foreground/40' : ''}"
+          onmousedown={keepEditorFocus}
+          onpointerdown={onPointerDown}
+          onpointerup={(e) => onSpellTap(e, () => editor.view && spell.apply(editor.view, suggestion))}
+        >
+          <span class="max-w-[24ch] truncate">{suggestion}</span>
+        </button>
+      {/each}
+      {#if spellIssue.suggestions.length === 0 && spellIssue.kind === "grammar"}
+        <span class="text-muted-foreground flex shrink-0 items-center px-2 text-sm">Possible grammar issue</span>
+      {/if}
+    {/if}
+    {#if spellIssue.kind === "spelling"}
+      <button
+        class="text-muted-foreground active:bg-foreground/10 flex shrink-0 items-center gap-1 rounded-full border border-dashed px-3 text-sm whitespace-nowrap"
+        onmousedown={keepEditorFocus}
+        onpointerdown={onPointerDown}
+        onpointerup={(e) => onSpellTap(e, () => spell.ignore())}
+      >
+        <Icon icon={BookOpenCheckIcon} class="size-3.5 shrink-0" />
+        <span>Add to dictionary</span>
+      </button>
+    {/if}
+  {/if}
 </div>

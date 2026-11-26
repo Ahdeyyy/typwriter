@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { err, ok, ResultAsync } from 'neverthrow';
 import * as events from '@tauri-apps/api/event';
-import * as commands from '$lib/ipc/commands';
-import * as logger from '$lib/logger';
+import * as commands from '#lib/ipc/commands.ts';
+import * as logger from '#lib/logger.ts';
 import { createTauriLspTransport } from './transport';
 
 afterEach(() => mock.restore());

@@ -1,11 +1,11 @@
 <script lang="ts">
   import type { Component } from "svelte";
-  import { page } from "@/stores/page.svelte";
-  import { workspace } from "@/stores/workspace.svelte";
-  import Button from "$lib/components/ui/button/button.svelte";
-  import { armRevealFallback, revealCurrentWindow } from "$lib/windows";
-  import { logError } from "$lib/logger";
-  import { basename } from "$lib/paths";
+  import { page } from "#lib/stores/page.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import Button from "#lib/components/ui/button/button.svelte";
+  import { armRevealFallback, revealCurrentWindow } from "#lib/windows.ts";
+  import { logError } from "#lib/logger.ts";
+  import { basename } from "#lib/paths.ts";
 
   import { Window } from "@tauri-apps/api/window";
 
@@ -38,16 +38,16 @@
   // every language mode first. Each window now fetches only what it renders;
   // the main window's pages split the same way, in the page store.
   const roleLoaders: Record<string, () => Promise<{ default: Component }>> = {
-    preview: () => import("$lib/components/pages/preview-window.svelte"),
-    settings: () => import("$lib/components/pages/settings.svelte"),
-    diff: () => import("$lib/components/pages/diff-window.svelte"),
+    preview: () => import("#lib/components/pages/preview-window.svelte"),
+    settings: () => import("#lib/components/pages/settings.svelte"),
+    diff: () => import("#lib/components/pages/diff-window.svelte"),
   };
   const roleLoader = windowRole ? roleLoaders[windowRole] : undefined;
 
   let RoleView = $state<Component | null>(null);
 
   if (roleLoader) {
-    // Child windows are created hidden (see $lib/windows.ts); this fallback is
+    // Child windows are created hidden (see #lib/windows.ts); this fallback is
     // what keeps a failed load from stranding one off screen forever.
     armRevealFallback();
     roleLoader()

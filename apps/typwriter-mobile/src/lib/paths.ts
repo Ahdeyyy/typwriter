@@ -44,6 +44,24 @@ export function displayPath(path: string, roots: DisplayPathRoot[]): string {
   return path;
 }
 
+/** Where a workspace sits — what the workspace switcher shows under each
+ *  workspace: its parent folder through `displayPath`, so relative to the
+ *  storage root (`Download/shared drafts`). That is short yet always unique,
+ *  where the folder's name alone is not. `null` when the folder is one of
+ *  `sharedRoots` (every managed workspace lives in the same one, so naming it
+ *  tells the user nothing), when it is a root itself, or when `path` has no
+ *  parent. */
+export function workspaceLocation(path: string, sharedRoots: string[], roots: DisplayPathRoot[]): string | null {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  const i = normalized.lastIndexOf("/");
+  if (i <= 0) return null;
+  const parent = normalized.slice(0, i);
+  const windows = /^[A-Za-z]:\//.test(normalized) || normalized.startsWith("//");
+  const same = (a: string, b: string) => (windows ? a.toLowerCase() === b.toLowerCase() : a === b);
+  if (sharedRoots.some((root) => same(root.replace(/\\/g, "/").replace(/\/+$/, ""), parent))) return null;
+  return displayPath(parent, roots) || null;
+}
+
 export type PathRemap =
   | { kind: "unaffected" }
   | { kind: "moved"; to: string }

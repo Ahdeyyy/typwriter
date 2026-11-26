@@ -7,17 +7,18 @@
     FavouriteIcon,
     LinkSquare02Icon,
   } from "@hugeicons/core-free-icons";
-  import Button from "$lib/components/ui/button/button.svelte";
-  import { Switch } from "$lib/components/ui/switch/index.js";
+  import Button from "#lib/components/ui/button/button.svelte";
+  import { Switch } from "#lib/components/ui/switch/index.ts";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
-  import { setOnboardingCompleted, getLogFilePath } from "$lib/ipc/commands";
-  import { emitShowTutorialRequest } from "$lib/ipc/events";
+  import SettingMatch from "../setting-match.svelte";
+  import UpdateCard from "../update-card.svelte";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { setOnboardingCompleted, getLogFilePath } from "#lib/ipc/commands.ts";
+  import { emitShowTutorialRequest } from "#lib/ipc/events.ts";
   import { openPath, openUrl } from "@tauri-apps/plugin-opener";
   import { toast } from "svelte-sonner";
-  import { logError } from "$lib/logger";
+  import { logError } from "#lib/logger.ts";
 
   // The tutorial is a page in the *main* window; this window can only ask for
   // it. The main window navigates and focuses itself.
@@ -69,6 +70,12 @@
   keywords={["about", "misc", "other"]}
 >
   <div class="flex flex-col gap-3">
+    <SettingMatch
+      keywords={["updates", "check for updates", "upgrade", "new version", "release notes", "download", "about", "app version", "build"]}
+    >
+      <UpdateCard />
+    </SettingMatch>
+
     <SettingRow
       label
       title="Check for updates on launch"
@@ -126,11 +133,5 @@
         </Button>
       {/snippet}
     </SettingRow>
-
-    <SettingRow
-      title="Typwriter"
-      description={platform.appVersion ? `Version ${platform.appVersion}` : "Loading version…"}
-      keywords={["about", "app version", "build"]}
-    />
   </div>
 </SettingGroup>

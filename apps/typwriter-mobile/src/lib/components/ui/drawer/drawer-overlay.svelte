@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Drawer as DrawerPrimitive } from "vaul-svelte";
-	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+	import { cn, type WithoutChildrenOrChild } from "#lib/utils.ts";
 
 	let {
 		ref = $bindable(null),
@@ -12,6 +12,6 @@
 <DrawerPrimitive.Overlay
 	bind:ref
 	data-slot="drawer-overlay"
-	class={cn("fixed inset-0 z-50 bg-black/50", className)}
+	class={cn("fixed inset-0 z-50 bg-black/40", className)}
 	{...restProps}
 />

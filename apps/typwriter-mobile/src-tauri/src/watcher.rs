@@ -281,6 +281,18 @@ fn dispatch_loop(
     }
 }
 
+/// Report changes that reached `root` from outside the app, exactly as a poll
+/// would: keep the metadata and the compiler consistent with removals, then
+/// tell the frontend. Folder workspaces call this straight from their sync
+/// instead of running a second poll over their mirror.
+pub fn report_external(app: &AppHandle, root: &Path, changes: Vec<FileChange>) {
+    if changes.is_empty() {
+        return;
+    }
+    reconcile_removals(app, root, &changes);
+    let _ = app.emit("workspace:files-changed", FilesChangedPayload { changes });
+}
+
 /// Follow the workspace metadata through paths that disappeared outside the
 /// app.
 ///

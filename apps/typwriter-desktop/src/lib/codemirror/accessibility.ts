@@ -14,7 +14,14 @@ export function editorAccessibility(enabled: boolean, label: string, description
             'aria-describedby': descriptionId,
         }),
         ViewPlugin.define((view) => {
-            view.setTabFocusMode(enabled);
+            // EditorView creates plugins before the input state that
+            // `setTabFocusMode` writes to, so calling it here throws and
+            // CodeMirror drops the whole plugin. Apply it once construction
+            // has finished.
+            let destroyed = false;
+            queueMicrotask(() => {
+                if (!destroyed) view.setTabFocusMode(enabled);
+            });
             // Capture before the contentDOM key handler. Stop propagation only:
             // browser/assistive-technology defaults remain available.
             const reserveNavigation = (event: KeyboardEvent) => {
@@ -23,6 +30,7 @@ export function editorAccessibility(enabled: boolean, label: string, description
             view.dom.addEventListener('keydown', reserveNavigation, true);
             return {
                 destroy() {
+                    destroyed = true;
                     view.dom.removeEventListener('keydown', reserveNavigation, true);
                     view.setTabFocusMode(false);
                 },

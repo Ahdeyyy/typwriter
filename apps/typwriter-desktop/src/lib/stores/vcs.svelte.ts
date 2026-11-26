@@ -14,7 +14,7 @@
 
 import { ResultAsync } from 'neverthrow';
 
-import type { RestorePoint, WorkspaceDiff, FileDiff, PageDiffPayload } from '$lib/types';
+import type { RestorePoint, WorkspaceDiff, FileDiff, PageDiffPayload } from '#lib/types.ts';
 import {
     triggerPreview,
     vcsCreateRestorePoint,
@@ -26,11 +26,11 @@ import {
     vcsPageDiffRequest,
     vcsRestoreFile,
     vcsRestoreWorkspace
-} from '$lib/ipc/commands';
+} from '#lib/ipc/commands.ts';
 import { editor } from './editor.svelte';
 import { workspace } from './workspace.svelte';
-import { closeDiffWindow } from '$lib/windows';
-import { logError } from '$lib/logger';
+import { closeDiffWindow } from '#lib/windows.ts';
+import { logError } from '#lib/logger.ts';
 
 class VcsStore {
     private refreshRequest = 0;

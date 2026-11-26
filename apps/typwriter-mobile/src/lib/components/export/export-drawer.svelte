@@ -13,26 +13,25 @@
     Package01Icon,
   } from "@hugeicons/core-free-icons";
   import { toast } from "svelte-sonner";
-  import { openPath } from "@tauri-apps/plugin-opener";
-  import Icon from "$lib/components/icon.svelte";
-  import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
-  import { Switch } from "$lib/components/ui/switch";
-  import { ScrollArea } from "$lib/components/ui/scroll-area";
-  import * as Drawer from "$lib/components/ui/drawer";
+  import Icon from "#lib/components/icon.svelte";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import { Switch } from "#lib/components/ui/switch/index.ts";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.ts";
+  import * as Drawer from "#lib/components/ui/drawer/index.ts";
   import {
     exportPdf,
     exportPng,
     exportSvg,
     exportHtml,
     exportForShare,
-  } from "$lib/ipc/commands";
-  import type { ExportFormat } from "$lib/ipc/types";
-  import { app } from "$lib/stores/app.svelte";
-  import { compileStore } from "$lib/stores/compile.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { prepareExport } from "$lib/services/prepare-export";
-  import { settings } from "$lib/stores/settings.svelte";
+  } from "#lib/ipc/commands.ts";
+  import type { ExportFormat } from "#lib/ipc/types.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { compileStore } from "#lib/stores/compile.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { prepareExport } from "#lib/services/prepare-export.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
 
   // ── State ──────────────────────────────────────────────────────────────────
 
@@ -172,6 +171,9 @@
         if (prepared.error !== "Export cancelled") toast.error(`Share export failed: ${prepared.error}`);
         return;
       }
+      // Renders into the app cache and opens Android's share sheet natively:
+      // the WebView has no Web Share API, and a cache path can't be opened by
+      // another app without a content URI.
       const res = await exportForShare(config);
       if (!owns()) return;
 
@@ -179,44 +181,7 @@
         toast.error(`Share export failed: ${res.error}`);
         return;
       }
-
-      const { filePath, fileName, mimeType, dataBase64 } = res.value;
-
-      // First attempt: Web Share API with binary File
-      let shared = false;
-      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-        try {
-          const binary = atob(dataBase64);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) {
-            bytes[i] = binary.charCodeAt(i);
-          }
-          const blob = new Blob([bytes], { type: mimeType });
-          const file = new File([blob], fileName, { type: mimeType });
-          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: fileName });
-            shared = true;
-          }
-        } catch (err) {
-          if (err instanceof Error && err.name === "AbortError") {
-            return;
-          }
-        }
-      }
-
-      // Fallback: Open with system viewer / intent via opener
-      if (!owns()) return;
-      if (!shared) {
-        try {
-          await openPath(filePath);
-          toast.success(`Exported for sharing: ${fileName}`);
-          if (owns()) app.closeOverlay();
-        } catch {
-          toast.info(`Exported to ${filePath}`);
-        }
-      } else if (owns()) {
-        app.closeOverlay();
-      }
+      app.closeOverlay();
     } catch (e) {
       toast.error(`Share export failed: ${e}`);
     } finally {
@@ -249,7 +214,7 @@
         <!-- Error warning banner -->
         {#if compileStore.errors.length > 0}
           <div class="border-amber-500/30 bg-amber-500/10 flex items-start gap-2.5 rounded-lg border p-3">
-            <Icon icon={Alert02Icon} class="mt-0.5 size-4 shrink-0 text-amber-500" />
+            <Icon icon={Alert02Icon} class="mt-px size-5 shrink-0 text-amber-500" />
             <div class="min-w-0 flex-1">
               <p class="text-xs font-medium text-amber-500">Document has compile errors</p>
               <p class="text-muted-foreground mt-0.5 text-xs">
@@ -275,28 +240,28 @@
               class="flex flex-col items-center gap-1 rounded-md py-2 text-xs font-medium transition-colors {format === 'pdf' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
               onclick={() => selectFormat("pdf")}
             >
-              <Icon icon={Pdf01Icon} class="size-4" />
+              <Icon icon={Pdf01Icon} class="size-[18px]" />
               <span>PDF</span>
             </button>
             <button
               class="flex flex-col items-center gap-1 rounded-md py-2 text-xs font-medium transition-colors {format === 'png' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
               onclick={() => selectFormat("png")}
             >
-              <Icon icon={ImageIcon} class="size-4" />
+              <Icon icon={ImageIcon} class="size-[18px]" />
               <span>PNG</span>
             </button>
             <button
               class="flex flex-col items-center gap-1 rounded-md py-2 text-xs font-medium transition-colors {format === 'svg' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
               onclick={() => selectFormat("svg")}
             >
-              <Icon icon={FileCodeIcon} class="size-4" />
+              <Icon icon={FileCodeIcon} class="size-[18px]" />
               <span>SVG</span>
             </button>
             <button
               class="flex flex-col items-center gap-1 rounded-md py-2 text-xs font-medium transition-colors {format === 'html' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
               onclick={() => selectFormat("html")}
             >
-              <Icon icon={CodeIcon} class="size-4" />
+              <Icon icon={CodeIcon} class="size-[18px]" />
               <span>HTML</span>
             </button>
           </div>
@@ -417,14 +382,14 @@
                     class="border-input flex items-center justify-center gap-1.5 rounded-lg border p-2 text-xs font-medium transition-colors {packageMode === 'zip' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground hover:bg-muted'}"
                     onclick={() => selectPackageMode("zip")}
                   >
-                    <Icon icon={Package01Icon} class="size-4" />
+                    <Icon icon={Package01Icon} class="size-[18px]" />
                     ZIP archive
                   </button>
                   <button
                     class="border-input flex items-center justify-center gap-1.5 rounded-lg border p-2 text-xs font-medium transition-colors {packageMode === 'folder' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground hover:bg-muted'}"
                     onclick={() => selectPackageMode("folder")}
                   >
-                    <Icon icon={FolderExportIcon} class="size-4" />
+                    <Icon icon={FolderExportIcon} class="size-[18px]" />
                     Save to folder
                   </button>
                 </div>
@@ -444,14 +409,14 @@
                     class="border-input flex items-center justify-center gap-1.5 rounded-lg border p-2 text-xs font-medium transition-colors {packageMode === 'zip' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground hover:bg-muted'}"
                     onclick={() => selectPackageMode("zip")}
                   >
-                    <Icon icon={Package01Icon} class="size-4" />
+                    <Icon icon={Package01Icon} class="size-[18px]" />
                     ZIP archive
                   </button>
                   <button
                     class="border-input flex items-center justify-center gap-1.5 rounded-lg border p-2 text-xs font-medium transition-colors {packageMode === 'folder' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground hover:bg-muted'}"
                     onclick={() => selectPackageMode("folder")}
                   >
-                    <Icon icon={FolderExportIcon} class="size-4" />
+                    <Icon icon={FolderExportIcon} class="size-[18px]" />
                     Save to folder
                   </button>
                 </div>
@@ -485,10 +450,10 @@
           onclick={handleShare}
         >
           {#if sharing}
-            <Icon icon={Loading03Icon} class="size-4 animate-spin" />
+            <Icon icon={Loading03Icon} class="size-[18px] animate-spin" />
             <span>Sharing…</span>
           {:else}
-            <Icon icon={Share01Icon} class="size-4" />
+            <Icon icon={Share01Icon} class="size-[18px]" />
             <span>Share</span>
           {/if}
         </Button>
@@ -498,10 +463,10 @@
           onclick={handleSave}
         >
           {#if saving}
-            <Icon icon={Loading03Icon} class="size-4 animate-spin" />
+            <Icon icon={Loading03Icon} class="size-[18px] animate-spin" />
             <span>Saving…</span>
           {:else}
-            <Icon icon={Download01Icon} class="size-4" />
+            <Icon icon={Download01Icon} class="size-[18px]" />
             <span>Save</span>
           {/if}
         </Button>

@@ -11,18 +11,22 @@
     FolderOpenIcon,
   } from "@hugeicons/core-free-icons";
   import type { IconSvgElement } from "@hugeicons/svelte";
-  import Icon from "$lib/components/icon.svelte";
-  import * as Drawer from "$lib/components/ui/drawer";
-  import { longpress } from "$lib/actions/longpress";
-  import { basename, parentDir } from "$lib/paths";
-  import { app } from "$lib/stores/app.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
+  import Icon from "#lib/components/icon.svelte";
+  import * as Drawer from "#lib/components/ui/drawer/index.ts";
+  import { longpress } from "#lib/actions/longpress.ts";
+  import { basename, parentDir } from "#lib/paths.ts";
+  import { flip } from "svelte/animate";
+  import { easeOut, screen } from "#lib/motion.ts";
+  import { app } from "#lib/stores/app.svelte.ts";
+  import { dismissOnBack } from "#lib/back-dismiss.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
 
   const open = $derived(app.overlay === "tabswitcher");
   const count = $derived(editor.tabs.length + (editor.newTabOpen ? 1 : 0));
 
   // Long-press action drawer for a single tab.
   let actionTarget = $state<string | null>(null);
+  dismissOnBack(() => actionTarget !== null, () => (actionTarget = null));
   /** A long press already opened the drawer — don't also treat the release as a
    *  tap (which would switch to the tab and dismiss the switcher). */
   let longpressed = false;
@@ -76,15 +80,22 @@
 
 {#if open}
   <div
+    transition:screen
     class="bg-background fixed inset-0 z-50 flex flex-col"
-    style="padding-top: env(safe-area-inset-top);"
+    style="padding-top: var(--safe-top);"
   >
     <!-- Tab grid -->
-    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
-      <div class="grid grid-cols-2 gap-4">
+    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 tablet:p-8">
+      <div class="grid grid-cols-2 gap-4 tablet:mx-auto tablet:max-w-5xl tablet:grid-cols-4 tablet:gap-6 wide:grid-cols-5">
         {#each editor.tabs as rel (rel)}
           {@const active = editor.isActiveTab(rel)}
-          <div class="flex flex-col gap-1.5">
+          <!-- A closed card shrinks away and its neighbours slide into the
+               gap, so the grid never jumps under the finger. -->
+          <div
+            class="flex flex-col gap-1.5"
+            animate:flip={{ duration: 260, easing: easeOut }}
+            out:screen={{ duration: 180, scale: 0.9 }}
+          >
             <div class="relative">
               <button
                 class="bg-card flex aspect-[3/4] w-full items-center justify-center rounded-xl border transition-shadow {active
@@ -102,11 +113,11 @@
                 <Icon icon={iconFor(rel)} class="text-muted-foreground size-10" />
               </button>
               <button
-                class="bg-background/80 hover:text-foreground text-muted-foreground absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-full"
+                class="bg-background/80 hover:text-foreground text-muted-foreground absolute right-1.5 top-1.5 flex size-9 items-center justify-center rounded-full"
                 aria-label="Close tab"
                 onclick={() => editor.closeTab(rel)}
               >
-                <Icon icon={Cancel01Icon} class="size-4" />
+                <Icon icon={Cancel01Icon} class="size-5" />
               </button>
             </div>
             <span class="truncate px-1 text-center text-sm {active ? 'text-foreground font-medium' : 'text-muted-foreground'}">
@@ -132,10 +143,10 @@
     <!-- Bottom bar: new tab · count · done -->
     <div
       class="flex shrink-0 items-center border-t px-4 py-3"
-      style="padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem);"
+      style="padding-bottom: calc(var(--safe-bottom) + 0.75rem);"
     >
       <button
-        class="hover:text-foreground text-foreground flex size-9 items-center justify-center"
+        class="text-foreground -ml-1.5 flex size-11 items-center justify-center rounded-full"
         aria-label="New tab"
         onclick={newTab}
       >
@@ -144,7 +155,7 @@
       <span class="text-foreground flex-1 text-center text-sm font-medium">
         {count} tab{count === 1 ? "" : "s"}
       </span>
-      <button class="text-foreground px-1 text-sm font-medium" onclick={() => app.closeOverlay()}>
+      <button class="text-foreground -mr-2 h-11 rounded-full px-4 text-sm font-medium" onclick={() => app.closeOverlay()}>
         Done
       </button>
     </div>
@@ -157,9 +168,9 @@
     type="button"
     {onclick}
     {disabled}
-    class="active:bg-accent flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm transition-colors disabled:opacity-40"
+    class="flex min-h-14 w-full items-center gap-4 px-4 py-3 text-left text-[15px] disabled:opacity-40"
   >
-    <Icon icon={icon} class="text-muted-foreground size-5 shrink-0" />
+    <Icon icon={icon} class="text-muted-foreground size-6 shrink-0" />
     <span class="min-w-0 flex-1 truncate">{label}</span>
   </button>
 {/snippet}
@@ -177,7 +188,7 @@
       </div>
       <div
         class="flex flex-col gap-3 px-3 pb-4 pt-2"
-        style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);"
+        style="padding-bottom: calc(var(--safe-bottom) + 1rem);"
       >
         {#if !editor.isActiveTab(target)}
           <div class="bg-muted/40 overflow-hidden rounded-xl">

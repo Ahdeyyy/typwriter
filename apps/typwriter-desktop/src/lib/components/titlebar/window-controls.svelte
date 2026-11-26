@@ -8,9 +8,9 @@
     SquareIcon,
     CopyIcon,
   } from "@hugeicons/core-free-icons";
-  import { platform } from "$lib/stores/platform.svelte";
-  import { logError } from "$lib/logger";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import { platform } from "#lib/stores/platform.svelte.ts";
+  import { logError } from "#lib/logger.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
 
   const win = getCurrentWindow();
   let isMaximized = $state(false);

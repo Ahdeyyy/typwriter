@@ -6,16 +6,16 @@
     Search01Icon,
     Tick02Icon,
   } from "@hugeicons/core-free-icons";
-  import { Switch } from "$lib/components/ui/switch/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import Button from "$lib/components/ui/button/button.svelte";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import { Switch } from "#lib/components/ui/switch/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import Button from "#lib/components/ui/button/button.svelte";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.ts";
   import SettingGroup from "../setting-group.svelte";
   import SettingRow from "../setting-row.svelte";
   import SettingMatch from "../setting-match.svelte";
   import { getSettingsSearch } from "../search.svelte";
-  import { grammar } from "$lib/stores/grammar.svelte";
-  import type { GrammarDialect } from "$lib/types";
+  import { grammar } from "#lib/stores/grammar.svelte.ts";
+  import type { GrammarDialect } from "#lib/types.ts";
   import { toast } from "svelte-sonner";
 
   const DIALECTS: { id: GrammarDialect; label: string }[] = [

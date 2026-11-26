@@ -4,11 +4,46 @@
 // plans/typwriter-mobile/02-rust-core.md.
 
 export interface WorkspaceMeta {
+  /** What `openWorkspace` takes: `app:<name>` or `folder:<hex>`. */
+  id: string;
   name: string;
+  /** Where it lives: an absolute path, or a readable label such as
+   *  `Sync/Thesis` for a folder picked through Android's folder picker.
+   *  Display only. */
   path: string;
+  /** `app`: in the app's own storage (how workspaces were kept before they
+   *  could live anywhere). `folder`: a folder the user picked. */
+  kind: "app" | "folder";
   lastOpenedMs: number | null;
   /** App-managed entry (the Typst package store), not a user workspace. */
   system: boolean;
+}
+
+/** A workspace moved between app storage and a folder: its id before and
+ *  after (the name can change when it comes back into the app). */
+export interface MovedWorkspace {
+  name: string;
+  from: string;
+  to: string;
+}
+
+/** Where the open folder workspace's sync stands — mirrors `SyncState` in
+ *  src-tauri/src/folders/sync.rs. */
+export type SyncState = "syncing" | "synced" | "paused" | "offline" | "stopped";
+
+/** `workspace:sync-status` / `get_sync_status`. Emitted on every state change,
+ *  plus throttled progress while files are being copied in. */
+export interface SyncStatus {
+  workspaceId: string;
+  name: string;
+  /** Readable folder location, e.g. `Sync/Thesis`. */
+  location: string;
+  state: SyncState;
+  message: string | null;
+  /** Files copied so far / to copy, while syncing a batch. */
+  done: number | null;
+  total: number | null;
+  lastSyncedMs: number | null;
 }
 
 export interface FileNode {
@@ -60,6 +95,8 @@ export interface WorkspaceFilesChangedPayload {
 export interface WorkspaceInfo {
   /** Standalone file with a private compilation mirror and original URI. */
   document?: boolean;
+  /** The id it was opened with; empty for a standalone document. */
+  id: string;
   name: string;
   root: string;
   tree: FileNode;
@@ -138,9 +175,14 @@ export interface CompileResult {
 export interface AppSettings {
   editorFontSize: number;
   showLineNumbers: boolean;
+  /** File name as a heading above the first line (Obsidian's inline title). */
+  showInlineTitle?: boolean;
+  /** Scrolling hides the floating header, dock and status bar (phones). */
+  hideChromeOnScroll?: boolean;
   autosaveMs: number;
   previewScaleBucket: 1 | 2 | 3 | 4;
-  /** Name of the most recently opened workspace, re-opened on launch. */
+  /** Id of the most recently opened workspace, re-opened on launch (a bare
+   *  name from older builds still resolves to its app-storage workspace). */
   lastWorkspace: string | null;
   /** App-wide fonts source folder (path or SAF URI) loaded into the compiler. */
   fontsDir: string | null;
@@ -148,6 +190,40 @@ export interface AppSettings {
   lastPdfStandard?: string;
   lastPngScale?: number;
   lastPackageMode?: "zip" | "folder";
+  /** When the launch-time update check last reached the server (epoch ms). */
+  lastUpdateCheck?: number;
+  /** Underline misspellings (and, where the device's checker reports them,
+   *  grammar slips) in Typst prose. */
+  spellcheck?: boolean;
+  /** Words the user added to the dictionary, kept as typed. */
+  spellIgnoredWords?: string[];
+}
+
+/** One flagged range; UTF-16 offsets into the text it was found in. */
+export interface SpellIssue {
+  start: number;
+  end: number;
+  kind: "spelling" | "grammar";
+  /** `null`: not computed up front — ask `spell_suggest` for the word. */
+  suggestions: string[] | null;
+}
+
+/** Spelling always comes from the bundled dictionary; grammar from the
+ *  device's spellchecker service, when it has one that reports it. */
+export interface SpellReport {
+  /** One list per text sent, in order. Shorter than the request when the
+   *  request ran over the backend's size cap; the rest went unchecked. */
+  results: SpellIssue[][];
+  /** Whether the device's service checked grammar. */
+  deviceGrammar: boolean;
+}
+
+/** A newer build on this app's release track (`check_for_update`). */
+export interface UpdateInfo {
+  version: string;
+  /** The APK download, opened in the browser to install over this app. */
+  url: string;
+  notes: string;
 }
 
 // ─── Export configuration ──────────────────────────────────────────────────
@@ -192,6 +268,14 @@ export interface ExportShareResult {
   filePath: string;
   fileName: string;
   mimeType: string;
-  dataBase64: string;
 }
 
+
+/** `tauri-plugin-system-bars::Insets` — system-bar and display-cutout insets,
+ *  in CSS px. All zero off Android. */
+export interface SystemInsets {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}

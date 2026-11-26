@@ -109,7 +109,7 @@ const inlineDiagnosticsTheme = EditorView.baseTheme({
     marginLeft: "3ch",
     padding: "0.125rem 0.75rem",
     fontFamily: "var(--font-sans)",
-    fontSize: "12px",
+    fontSize: "0.75rem",
     fontStyle: "normal",
     fontWeight: "normal",
     lineHeight: "1.45",

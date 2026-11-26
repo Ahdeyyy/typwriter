@@ -1,5 +1,5 @@
 import { snippet, type Completion, type CompletionSource } from '@codemirror/autocomplete';
-import type { CompletionsResponse } from '$lib/types';
+import type { CompletionsResponse } from '#lib/types.ts';
 import { completionScope, completionTree, referenceContextAt } from './completion-context';
 
 /** Escape literal Typst braces while preserving IDE placeholders as tab stops. */

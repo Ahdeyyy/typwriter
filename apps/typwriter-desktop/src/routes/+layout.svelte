@@ -1,14 +1,14 @@
 <script lang="ts">
   import "./layout.css";
   import { onMount, untrack } from "svelte";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Toaster } from "$lib/components/ui/sonner/index.js";
-  import { installGlobalErrorLogging } from "$lib/logger";
-  import { updater } from "$lib/stores/updater.svelte";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { Toaster } from "#lib/components/ui/sonner/index.ts";
+  import { installGlobalErrorLogging } from "#lib/logger.ts";
+  import { updater } from "#lib/stores/updater.svelte.ts";
   import { mode, ModeWatcher, setMode, resetMode, setTheme } from "mode-watcher";
   import { app } from "@tauri-apps/api"
   import { Window } from "@tauri-apps/api/window";
-  import { settings, type SettingsSyncPayload } from "$lib/stores/settings.svelte";
+  import { settings, type SettingsSyncPayload } from "#lib/stores/settings.svelte.ts";
   import {
     onAppFontsLoaded,
     onSettingsChanged,
@@ -16,19 +16,19 @@
     onAppModeChanged,
     onShowTutorialRequest,
     onSnippetsChanged,
-  } from "$lib/ipc/events";
-  import { ListenerScope } from "$lib/ipc/listener-scope";
-  import { grammar } from "$lib/stores/grammar.svelte";
-  import { snippets } from "$lib/stores/snippets.svelte";
-  import { page } from "$lib/stores/page.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
+  } from "#lib/ipc/events.ts";
+  import { ListenerScope } from "#lib/ipc/listener-scope.ts";
+  import { grammar } from "#lib/stores/grammar.svelte.ts";
+  import { snippets } from "#lib/stores/snippets.svelte.ts";
+  import { page } from "#lib/stores/page.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { logError } from "$lib/logger";
-  import { hasExternalFiles } from "$lib/services/drop-import";
+  import { logError } from "#lib/logger.ts";
+  import { hasExternalFiles } from "#lib/services/drop-import.ts";
   import { toast } from "svelte-sonner";
-  import { chooseDocument, initializeDocumentOpening, destroyDocumentOpening } from "$lib/services/document-opening";
-  import { matchesCommand } from "$lib/keybindings";
+  import { chooseDocument, initializeDocumentOpening, destroyDocumentOpening } from "#lib/services/document-opening.ts";
+  import { matchesCommand } from "#lib/keybindings/index.ts";
 
   function handleGlobalKeydown(event: KeyboardEvent) {
     if (event.defaultPrevented) return;
@@ -238,6 +238,9 @@
       untrack(() => setTheme(activeTheme));
     }
     root.setAttribute("data-theme", activeTheme);
+    // The interface is sized in rem, so the root font size scales text, icons,
+    // and spacing together.
+    root.style.fontSize = `${settings.uiFontSize}px`;
     root.style.setProperty("--app-font-sans", `${quote(settings.uiFontFamily)}, sans-serif`);
     root.style.setProperty("--font-heading", `${quote(settings.uiFontFamily)}, sans-serif`);
     root.style.setProperty(

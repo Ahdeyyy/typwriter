@@ -4,7 +4,6 @@
 
 use std::{path::Path, sync::Arc, time::Instant};
 
-use base64::prelude::*;
 use log::info;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -63,7 +62,6 @@ pub struct ExportShareResult {
     pub file_path: String,
     pub file_name: String,
     pub mime_type: String,
-    pub data_base64: String,
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -544,102 +542,153 @@ pub async fn export_for_share(
     let world = world.inner().clone();
     let compile = compile.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let stem = main_stem(&world);
-        let cache_dir = app
-            .path()
-            .app_cache_dir()
-            .map_err(|e| e.to_string())?
-            .join("export");
-        std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
-
-        match config.format.as_str() {
-            "png" => {
-                let scale = config.scale.unwrap_or(2.0);
-                let pages = render_png_pages(&compile, config.page_range.as_deref(), scale, &stem)?;
-                if pages.len() == 1 {
-                    let (name, bytes) = &pages[0];
-                    let path = cache_dir.join(name);
-                    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
-                    Ok(ExportShareResult {
-                        file_path: path.to_string_lossy().into_owned(),
-                        file_name: name.clone(),
-                        mime_type: "image/png".into(),
-                        data_base64: BASE64_STANDARD.encode(bytes),
-                    })
-                } else {
-                    let zip_name = format!("{stem}-png.zip");
-                    let zip_bytes = create_zip_archive(&pages)?;
-                    let path = cache_dir.join(&zip_name);
-                    std::fs::write(&path, &zip_bytes).map_err(|e| e.to_string())?;
-                    Ok(ExportShareResult {
-                        file_path: path.to_string_lossy().into_owned(),
-                        file_name: zip_name,
-                        mime_type: "application/zip".into(),
-                        data_base64: BASE64_STANDARD.encode(&zip_bytes),
-                    })
-                }
-            }
-            "svg" => {
-                let pages = render_svg_pages(&compile, config.page_range.as_deref(), &stem)?;
-                if pages.len() == 1 {
-                    let (name, bytes) = &pages[0];
-                    let path = cache_dir.join(name);
-                    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
-                    Ok(ExportShareResult {
-                        file_path: path.to_string_lossy().into_owned(),
-                        file_name: name.clone(),
-                        mime_type: "image/svg+xml".into(),
-                        data_base64: BASE64_STANDARD.encode(bytes),
-                    })
-                } else {
-                    let zip_name = format!("{stem}-svg.zip");
-                    let zip_bytes = create_zip_archive(&pages)?;
-                    let path = cache_dir.join(&zip_name);
-                    std::fs::write(&path, &zip_bytes).map_err(|e| e.to_string())?;
-                    Ok(ExportShareResult {
-                        file_path: path.to_string_lossy().into_owned(),
-                        file_name: zip_name,
-                        mime_type: "application/zip".into(),
-                        data_base64: BASE64_STANDARD.encode(&zip_bytes),
-                    })
-                }
-            }
-            "html" => {
-                let bytes = render_html_bytes(&world, config.pretty.unwrap_or(false))?;
-                let file_name = format!("{stem}.html");
-                let path = cache_dir.join(&file_name);
-                std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
-                Ok(ExportShareResult {
-                    file_path: path.to_string_lossy().into_owned(),
-                    file_name,
-                    mime_type: "text/html".into(),
-                    data_base64: BASE64_STANDARD.encode(&bytes),
-                })
-            }
-            _ => {
-                // Default to PDF
-                let pdf_opts = PdfExportOptions {
-                    page_range: config.page_range,
-                    standard: config.standard,
-                    title: config.title,
-                    author: config.author,
-                    include_date: None,
-                };
-                let bytes = render_pdf_bytes(&compile, &pdf_opts)?;
-                let file_name = format!("{stem}.pdf");
-                let path = cache_dir.join(&file_name);
-                std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
-                Ok(ExportShareResult {
-                    file_path: path.to_string_lossy().into_owned(),
-                    file_name,
-                    mime_type: "application/pdf".into(),
-                    data_base64: BASE64_STANDARD.encode(&bytes),
-                })
-            }
-        }
+        let res = write_share_cache(&app, &world, &compile, config)?;
+        share_cached_file(&app, &res)?;
+        Ok(res)
     })
     .await
     .map_err(|e| format!("export task panicked: {e}"))?
+}
+
+/// Hand a file from the share cache to Android's share sheet (`ACTION_SEND`).
+///
+/// The WebView has no Web Share API, and a bare `file://` path can't cross
+/// into another app, so the file is served through the android-fs plugin's
+/// content provider. The URI must outlive this call — the receiving app reads
+/// it after the chooser closes — so only the previous share is released here.
+fn share_cached_file(app: &AppHandle, res: &ExportShareResult) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        use std::sync::Mutex;
+        use tauri_plugin_android_fs::{AndroidFsExt, CustomFile, FsUri};
+
+        static LAST_SHARED: Mutex<Option<FsUri>> = Mutex::new(None);
+
+        let api = app.android_fs();
+        let path = std::path::PathBuf::from(&res.file_path);
+        let len = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+        let uri = api
+            .register_simple_readonly_custom_file(
+                res.file_name.clone(),
+                Some(res.mime_type.clone()),
+                Some(len),
+                None,
+                move || std::fs::File::open(&path).map(CustomFile::from_file),
+            )
+            .map_err(|e| e.to_string())?;
+        api.opener().share_file(&uri).map_err(|e| e.to_string())?;
+
+        let mut last = LAST_SHARED.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(prev) = last.replace(uri) {
+            let _ = api.unregister_simple_custom_file(&prev);
+        }
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        // Desktop dev loop: no share sheet; reveal the cached file instead.
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .reveal_item_in_dir(&res.file_path)
+            .map_err(|e| e.to_string())
+    }
+}
+
+/// Render an export into `<app cache>/export` for sharing.
+fn write_share_cache(
+    app: &AppHandle,
+    world: &MobileWorld,
+    compile: &CompileState,
+    config: ExportShareOptions,
+) -> Result<ExportShareResult, String> {
+    let stem = main_stem(world);
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("export");
+    std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+
+    match config.format.as_str() {
+        "png" => {
+            let scale = config.scale.unwrap_or(2.0);
+            let pages = render_png_pages(compile, config.page_range.as_deref(), scale, &stem)?;
+            if pages.len() == 1 {
+                let (name, bytes) = &pages[0];
+                let path = cache_dir.join(name);
+                std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+                Ok(ExportShareResult {
+                    file_path: path.to_string_lossy().into_owned(),
+                    file_name: name.clone(),
+                    mime_type: "image/png".into(),
+                })
+            } else {
+                let zip_name = format!("{stem}-png.zip");
+                let zip_bytes = create_zip_archive(&pages)?;
+                let path = cache_dir.join(&zip_name);
+                std::fs::write(&path, &zip_bytes).map_err(|e| e.to_string())?;
+                Ok(ExportShareResult {
+                    file_path: path.to_string_lossy().into_owned(),
+                    file_name: zip_name,
+                    mime_type: "application/zip".into(),
+                })
+            }
+        }
+        "svg" => {
+            let pages = render_svg_pages(compile, config.page_range.as_deref(), &stem)?;
+            if pages.len() == 1 {
+                let (name, bytes) = &pages[0];
+                let path = cache_dir.join(name);
+                std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+                Ok(ExportShareResult {
+                    file_path: path.to_string_lossy().into_owned(),
+                    file_name: name.clone(),
+                    mime_type: "image/svg+xml".into(),
+                })
+            } else {
+                let zip_name = format!("{stem}-svg.zip");
+                let zip_bytes = create_zip_archive(&pages)?;
+                let path = cache_dir.join(&zip_name);
+                std::fs::write(&path, &zip_bytes).map_err(|e| e.to_string())?;
+                Ok(ExportShareResult {
+                    file_path: path.to_string_lossy().into_owned(),
+                    file_name: zip_name,
+                    mime_type: "application/zip".into(),
+                })
+            }
+        }
+        "html" => {
+            let bytes = render_html_bytes(world, config.pretty.unwrap_or(false))?;
+            let file_name = format!("{stem}.html");
+            let path = cache_dir.join(&file_name);
+            std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+            Ok(ExportShareResult {
+                file_path: path.to_string_lossy().into_owned(),
+                file_name,
+                mime_type: "text/html".into(),
+            })
+        }
+        _ => {
+            // Default to PDF
+            let pdf_opts = PdfExportOptions {
+                page_range: config.page_range,
+                standard: config.standard,
+                title: config.title,
+                author: config.author,
+                include_date: None,
+            };
+            let bytes = render_pdf_bytes(compile, &pdf_opts)?;
+            let file_name = format!("{stem}.pdf");
+            let path = cache_dir.join(&file_name);
+            std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+            Ok(ExportShareResult {
+                file_path: path.to_string_lossy().into_owned(),
+                file_name,
+                mime_type: "application/pdf".into(),
+            })
+        }
+    }
 }
 
 // ─── Platform File IO Primitives ─────────────────────────────────────────────
@@ -657,7 +706,7 @@ fn save_single_file(
         use tauri_plugin_android_fs::AndroidFsExt;
         let api = app.android_fs();
         let uri = api
-            .file_picker()
+            .picker()
             .save_file(None, suggested_name, Some(_mime_type), false)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "Export cancelled".to_string())?;
@@ -693,7 +742,7 @@ fn save_files_to_folder(
         use tauri_plugin_android_fs::AndroidFsExt;
         let api = app.android_fs();
         let dest = api
-            .file_picker()
+            .picker()
             .pick_dir(None, false)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "Export cancelled".to_string())?;
@@ -757,11 +806,10 @@ pub async fn export_pdf_to_cache_file(
     world: State<'_, Arc<MobileWorld>>,
     compile: State<'_, Arc<CompileState>>,
 ) -> Result<String, String> {
-    let res = export_for_share(
-        app,
-        world,
-        compile,
-        ExportShareOptions {
+    let world = world.inner().clone();
+    let compile = compile.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let config = ExportShareOptions {
             format: "pdf".into(),
             page_range: None,
             scale: None,
@@ -770,22 +818,53 @@ pub async fn export_pdf_to_cache_file(
             author: None,
             pretty: None,
             package_mode: None,
-        },
-    )
-    .await?;
-    Ok(res.file_path)
+        };
+        write_share_cache(&app, &world, &compile, config).map(|res| res.file_path)
+    })
+    .await
+    .map_err(|e| format!("export task panicked: {e}"))?
 }
 
 #[tauri::command]
-pub async fn export_workspace(name: String, app: AppHandle) -> Result<usize, String> {
-    tauri::async_runtime::spawn_blocking(move || export_workspace_blocking(&app, &name))
+pub async fn export_workspace(
+    id: String,
+    app: AppHandle,
+    workspace: State<'_, Arc<crate::workspace::WorkspaceState>>,
+) -> Result<usize, String> {
+    let workspace = workspace.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || export_workspace_blocking(&app, &workspace, &id))
         .await
         .map_err(|e| format!("export task panicked: {e}"))?
 }
 
-fn export_workspace_blocking(app: &AppHandle, name: &str) -> Result<usize, String> {
+fn export_workspace_blocking(
+    app: &AppHandle,
+    workspace: &crate::workspace::WorkspaceState,
+    id: &str,
+) -> Result<usize, String> {
+    use crate::commands::workspace::{resolve_target, Target};
+    use crate::folders::{remote::open_remote, sync::FolderSync};
+
     let t = Instant::now();
-    let src = crate::commands::workspace::root_dir(app).join(name);
+    let (name, src) = match resolve_target(app, id)? {
+        Target::App { name, dir } => (name, dir),
+        Target::Folder { entry, mirror } => {
+            // Export what the folder holds now, not what the mirror last saw.
+            // The open workspace's own sync does that; any other folder gets a
+            // one-off sync (nothing else is touching its mirror).
+            match workspace.sync().filter(|s| s.mirror() == mirror.as_path()) {
+                Some(sync) => sync.pull().map(|_| ())?,
+                None => {
+                    std::fs::create_dir_all(&mirror).map_err(|e| e.to_string())?;
+                    FolderSync::new(open_remote(app, &entry.remote), mirror.clone())
+                        .pull()
+                        .map(|_| ())?
+                }
+            };
+            (entry.name, mirror)
+        }
+    };
+    let name = name.as_str();
     if !src.is_dir() {
         return Err(format!("Workspace \"{name}\" not found"));
     }
@@ -801,7 +880,7 @@ fn export_workspace_blocking(app: &AppHandle, name: &str) -> Result<usize, Strin
         use tauri_plugin_android_fs::AndroidFsExt;
         let api = app.android_fs();
         let dest = api
-            .file_picker()
+            .picker()
             .pick_dir(None, false)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "Export cancelled".to_string())?;

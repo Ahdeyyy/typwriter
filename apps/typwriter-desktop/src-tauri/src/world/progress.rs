@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -37,6 +37,7 @@ pub struct TauriProgress {
     app_handle: AppHandle,
     /// Human-readable package label, e.g. `"@preview/cetz:0.3.5"`.
     package_label: String,
+    started: Option<Instant>,
 }
 
 impl TauriProgress {
@@ -44,12 +45,17 @@ impl TauriProgress {
         Self {
             app_handle,
             package_label: package_label.into(),
+            started: None,
         }
     }
 }
 
 impl ProgressReporter for TauriProgress {
     fn start(&mut self, _progress: &Progress) {
+        // Logged because a download happens *inside* a compile: without these
+        // two lines a slow fetch is indistinguishable from a slow compile.
+        self.started = Some(Instant::now());
+        log::info!("package download: {} started", self.package_label);
         let _ = self
             .app_handle
             .emit("package:download:start", &self.package_label);
@@ -67,6 +73,14 @@ impl ProgressReporter for TauriProgress {
     }
 
     fn finish(&mut self, progress: &Progress) {
+        log::info!(
+            "package download: {} finished, {} bytes ({:.1}ms)",
+            self.package_label,
+            progress.downloaded,
+            self.started
+                .map(|t| t.elapsed().as_secs_f64() * 1000.0)
+                .unwrap_or(0.0)
+        );
         let _ = self.app_handle.emit(
             "package:download:finish",
             DownloadProgressPayload {

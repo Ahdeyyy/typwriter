@@ -19,7 +19,7 @@
   // transitively (its export map blocks the deep import anyway). All we
   // have to do is create the element and pass it as `fileContainer`; the
   // constructor takes care of the shadow + adopted stylesheet.
-  import type { FileDiff as FileDiffEntry } from "$lib/types";
+  import type { FileDiff as FileDiffEntry } from "#lib/types.ts";
 
   let {
     entry,
@@ -36,30 +36,6 @@
   let container: HTMLElement | undefined;
   let instance: FileDiff | undefined;
   let lastLayout: "split" | "unified" | undefined;
-
-  // Stylesheet injected into the diffs-container shadow root so long lines
-  // wrap instead of producing a horizontal scrollbar. pierre/diffs's core
-  // stylesheet is `adopted` into the shadow root, so we can't reach it from
-  // the light DOM — we have to add our own sheet to the same shadow root.
-  const WRAP_CSS = `
-    pre, code, .line, .line-content, .diff-line, .diff-line-content,
-    [class*="line-content"], [class*="diff-content"] {
-      white-space: pre-wrap !important;
-      overflow-wrap: anywhere !important;
-      word-break: break-word !important;
-    }
-  `;
-
-  function injectWrapStyles(el: HTMLElement | undefined) {
-    if (!el) return;
-    const root = (el as HTMLElement & { shadowRoot: ShadowRoot | null }).shadowRoot;
-    if (!root) return;
-    if (root.querySelector("style[data-typwriter-wrap]")) return;
-    const style = document.createElement("style");
-    style.dataset.typwriterWrap = "true";
-    style.textContent = WRAP_CSS;
-    root.appendChild(style);
-  }
 
   function teardown() {
     try {
@@ -90,6 +66,8 @@
       // content diff without breaking the layout.
       theme: { light: "github-light", dark: "github-dark" },
       disableFileHeader: true,
+      // Long lines wrap instead of producing a horizontal scrollbar.
+      overflow: "wrap",
     });
     lastLayout = layout;
     render();
@@ -108,9 +86,6 @@
       },
       fileContainer: container,
     });
-    // The diff content lands inside the custom element's shadow root after
-    // render. Pierce in with our wrap stylesheet now that it exists.
-    injectWrapStyles(container);
   }
 
   function mountHost(node: HTMLDivElement) {
@@ -160,7 +135,7 @@
     /* @pierre/diffs renders its own <pre> + theme styles; we just give it a
        scrollable host. font-feature-settings forwarded for ligatures-off look
        in line numbers. */
-    font-size: 12px;
+    font-size: 0.75rem;
     overflow: auto;
     border: 1px solid var(--border, #2b2b2b);
     border-radius: 4px;

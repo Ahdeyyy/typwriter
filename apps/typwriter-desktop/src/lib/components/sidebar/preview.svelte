@@ -1,17 +1,17 @@
 <script lang="ts">
   import { onDestroy, untrack } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { ZoomInAreaIcon, ZoomOutAreaIcon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon, ArrowLeft01Icon, ArrowRight01Icon, ArrowDown01Icon, Tick02Icon, Menu01Icon, File01Icon } from "@hugeicons/core-free-icons";
+  import { ZoomInAreaIcon, ZoomOutAreaIcon, Download01Icon, Refresh01Icon, PresentationBarChart01Icon, Cancel01Icon, ArrowLeft01Icon, ArrowRight01Icon, ArrowDown01Icon, Tick02Icon, BookOpen01Icon, ScrollVerticalIcon } from "@hugeicons/core-free-icons";
   import ExportDialog from "./export-dialog.svelte";
 
-  import { preview } from "$lib/stores/preview.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { workspace } from "$lib/stores/workspace.svelte";
-  import { Button } from "$lib/components/ui/button";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { preview } from "#lib/stores/preview.svelte.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { workspace } from "#lib/stores/workspace.svelte.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
   import { displayLabel, previewController } from "./preview-controller.svelte";
-  import { buildPreviewUrl } from "$lib/preview-url";
+  import { buildPreviewUrl } from "#lib/preview-url.ts";
 
   type Props = { onPresentationMode?: () => void };
   let { onPresentationMode }: Props = $props();
@@ -196,7 +196,7 @@
     <!-- Status + actions -->
     <div class={ctrl.isNarrow ? "flex items-center gap-0.5 w-full" : "flex items-center gap-0.5"}>
       {#if preview.isCompiling}
-        <span class="mr-2 text-[11px] uppercase tracking-wide text-muted-foreground animate-pulse">
+        <span class="mr-2 text-[0.6875rem] uppercase tracking-wide text-muted-foreground animate-pulse">
           Compiling
         </span>
       {:else if preview.staleRender && preview.totalPages > 0}
@@ -207,7 +207,7 @@
             {#snippet child({ props })}
               <span
                 {...props}
-                class="mr-2 text-[11px] uppercase tracking-wide text-destructive"
+                class="mr-2 text-[0.6875rem] uppercase tracking-wide text-destructive"
               >
                 Stale
               </span>
@@ -276,9 +276,8 @@
               aria-pressed={preview.paginated}
               onclick={() => ctrl.togglePaginated()}
               disabled={preview.totalPages === 0}
-              class={preview.paginated ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground" : ""}
             >
-              <HugeiconsIcon icon={preview.paginated ? Menu01Icon : File01Icon} class="size-3.5" />
+              <HugeiconsIcon icon={ScrollVerticalIcon} altIcon={BookOpen01Icon} showAlt={preview.paginated} class="size-3.5" />
             </Button>
           {/snippet}
         </Tooltip.Trigger>
@@ -333,9 +332,8 @@
                 aria-label={presenting ? "Exit presentation mode" : "Present full-screen"}
                 onclick={() => ctrl.togglePresentation()}
                 disabled={preview.totalPages === 0 && !presenting}
-                class={presenting ? "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground" : ""}
               >
-                <HugeiconsIcon icon={presenting ? Cancel01Icon : PresentationBarChart01Icon} class="size-3.5" />
+                <HugeiconsIcon icon={PresentationBarChart01Icon} altIcon={Cancel01Icon} showAlt={presenting} class="size-3.5" />
               </Button>
             {/snippet}
           </Tooltip.Trigger>

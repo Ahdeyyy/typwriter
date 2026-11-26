@@ -3,7 +3,7 @@
 	import { HugeiconsIcon } from "@hugeicons/svelte"
 	import { MinusSignIcon } from '@hugeicons/core-free-icons';
 	import { Tick02Icon } from '@hugeicons/core-free-icons';
-	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+	import { cn, type WithoutChildrenOrChild } from "#lib/utils.ts";
 	import type { Snippet } from "svelte";
 
 	let {

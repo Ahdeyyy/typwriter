@@ -1,26 +1,77 @@
-// Managed-storage workspaces: each workspace is a direct subdirectory of
-// `<documents>/Typwriter/`, reachable with plain `std::fs`. All file IO is
-// funnelled through this module so an alternative storage backend (e.g.
-// SAF-picked external folders, which `std::fs` cannot reach) can be swapped in
-// at one seam.
+// Workspace IO on a plain `std::fs` root. That root is one of:
+//
+// - an *app-storage* workspace: a direct subdirectory of
+//   `<documents>/Typwriter/` (the app's own external files dir on Android) —
+//   how every workspace was stored before folders could be picked;
+// - a *folder* workspace's private mirror (see `crate::folders`), which the
+//   folder sync keeps in step with the folder the user picked.
+//
+// Either way everything here works on local paths; only `crate::folders`
+// knows a folder can be a SAF tree.
 
-use std::path::{Component, Path, PathBuf};
+use std::{
+    path::{Component, Path, PathBuf},
+    sync::Arc,
+};
 
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
+
+use crate::folders::sync::{FolderSync, SyncOps};
 
 /// Tauri-managed: the currently open workspace root (absolute), or `None`.
 #[derive(Default)]
 pub struct WorkspaceState {
     pub root: RwLock<Option<PathBuf>>,
     pub document: Mutex<Option<crate::document::DocumentSession>>,
+    /// The open folder workspace's sync engine. `None` for app-storage
+    /// workspaces and standalone documents, whose root is the real thing.
+    pub sync: Mutex<Option<Arc<FolderSync>>>,
+}
+
+impl WorkspaceState {
+    pub fn sync(&self) -> Option<Arc<FolderSync>> {
+        self.sync.lock().clone()
+    }
+
+    /// Swap the folder sync, stopping the previous one's polling. Every
+    /// session change goes through here, so an old folder is never polled into
+    /// a mirror nobody is looking at.
+    pub fn replace_sync(&self, next: Option<Arc<FolderSync>>) {
+        if let Some(previous) = std::mem::replace(&mut *self.sync.lock(), next) {
+            previous.stop();
+        }
+    }
+
+    /// Run a file operation: on the folder first (when this is a folder
+    /// workspace), then `local` on the root, both under the sync lock so a pull
+    /// can't land in between. A folder-side failure leaves the root untouched.
+    pub fn mutate<T>(
+        &self,
+        remote: impl FnOnce(&mut SyncOps<'_>) -> Result<(), String>,
+        local: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        match self.sync() {
+            Some(sync) => sync.run(|ops| {
+                remote(ops)?;
+                local()
+            }),
+            None => local(),
+        }
+    }
 }
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceMeta {
+    /// What `open_workspace` takes: `app:<name>` or `folder:<hex>`.
+    pub id: String,
     pub name: String,
+    /// Where the workspace lives: an absolute path, or a readable label such
+    /// as `Sync/Thesis` for a SAF folder. Display only.
     pub path: String,
+    /// `"app"` (in the app's own storage) or `"folder"` (a picked folder).
+    pub kind: &'static str,
     pub last_opened_ms: Option<i64>,
     /// App-managed entry (the Typst package store), not a user workspace.
     pub system: bool,
@@ -51,6 +102,8 @@ pub struct EntryChange {
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceInfo {
+    /// The id this was opened with; empty for a standalone document.
+    pub id: String,
     pub name: String,
     pub root: String,
     pub tree: FileNode,

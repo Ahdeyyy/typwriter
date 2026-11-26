@@ -2,7 +2,7 @@
 // there are no Rust settings commands. Writes are debounced.
 
 import { load, type Store } from "@tauri-apps/plugin-store";
-import type { AppSettings } from "$lib/ipc/types";
+import type { AppSettings } from "#lib/ipc/types.ts";
 
 const STORE_FILE = "settings.json";
 const SAVE_DEBOUNCE_MS = 300;
@@ -15,6 +15,8 @@ function defaultBucket(): 1 | 2 | 3 | 4 {
 export class SettingsStore {
   editorFontSize = $state(15);
   showLineNumbers = $state(false);
+  showInlineTitle = $state(true);
+  hideChromeOnScroll = $state(true);
   autosaveMs = $state(600);
   previewScaleBucket = $state<1 | 2 | 3 | 4>(defaultBucket());
   lastWorkspace = $state<string | null>(null);
@@ -23,6 +25,9 @@ export class SettingsStore {
   lastPdfStandard = $state<string>("1.7");
   lastPngScale = $state<number>(2.0);
   lastPackageMode = $state<"zip" | "folder">("zip");
+  lastUpdateCheck = $state(0);
+  spellcheck = $state(true);
+  spellIgnoredWords = $state<string[]>([]);
 
   private store: Store | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -47,6 +52,8 @@ export class SettingsStore {
       if (saved) {
         this.editorFontSize = saved.editorFontSize ?? this.editorFontSize;
         this.showLineNumbers = saved.showLineNumbers ?? this.showLineNumbers;
+        this.showInlineTitle = saved.showInlineTitle ?? this.showInlineTitle;
+        this.hideChromeOnScroll = saved.hideChromeOnScroll ?? this.hideChromeOnScroll;
         this.autosaveMs = saved.autosaveMs ?? this.autosaveMs;
         this.previewScaleBucket = saved.previewScaleBucket ?? this.previewScaleBucket;
         this.lastWorkspace = saved.lastWorkspace ?? this.lastWorkspace;
@@ -55,6 +62,9 @@ export class SettingsStore {
         this.lastPdfStandard = saved.lastPdfStandard ?? this.lastPdfStandard;
         this.lastPngScale = saved.lastPngScale ?? this.lastPngScale;
         this.lastPackageMode = saved.lastPackageMode ?? this.lastPackageMode;
+        this.lastUpdateCheck = saved.lastUpdateCheck ?? this.lastUpdateCheck;
+        this.spellcheck = saved.spellcheck ?? this.spellcheck;
+        this.spellIgnoredWords = saved.spellIgnoredWords ?? this.spellIgnoredWords;
       }
       this.store = store;
       this.loaded = true;
@@ -67,6 +77,8 @@ export class SettingsStore {
     return {
       editorFontSize: this.editorFontSize,
       showLineNumbers: this.showLineNumbers,
+      showInlineTitle: this.showInlineTitle,
+      hideChromeOnScroll: this.hideChromeOnScroll,
       autosaveMs: this.autosaveMs,
       previewScaleBucket: this.previewScaleBucket,
       lastWorkspace: this.lastWorkspace,
@@ -75,6 +87,9 @@ export class SettingsStore {
       lastPdfStandard: this.lastPdfStandard,
       lastPngScale: this.lastPngScale,
       lastPackageMode: this.lastPackageMode,
+      lastUpdateCheck: this.lastUpdateCheck,
+      spellcheck: this.spellcheck,
+      spellIgnoredWords: this.spellIgnoredWords,
     };
   }
 
@@ -102,6 +117,14 @@ export class SettingsStore {
     this.showLineNumbers = value;
     this.save();
   }
+  setShowInlineTitle(value: boolean) {
+    this.showInlineTitle = value;
+    this.save();
+  }
+  setHideChromeOnScroll(value: boolean) {
+    this.hideChromeOnScroll = value;
+    this.save();
+  }
   setAutosaveMs(ms: number) {
     this.autosaveMs = ms;
     this.save();
@@ -110,8 +133,29 @@ export class SettingsStore {
     this.previewScaleBucket = bucket;
     this.save();
   }
-  setLastWorkspace(name: string | null) {
-    this.lastWorkspace = name;
+  setSpellcheck(value: boolean) {
+    this.spellcheck = value;
+    this.save();
+  }
+  /** Stop flagging `word` (compared case-insensitively). */
+  addSpellIgnoredWord(word: string) {
+    const trimmed = word.trim();
+    const key = trimmed.toLowerCase();
+    if (!trimmed || this.spellIgnoredWords.some((w) => w.toLowerCase() === key)) return;
+    this.spellIgnoredWords = [...this.spellIgnoredWords, trimmed].sort((a, b) => a.localeCompare(b));
+    this.save();
+  }
+  removeSpellIgnoredWord(word: string) {
+    this.spellIgnoredWords = this.spellIgnoredWords.filter((w) => w !== word);
+    this.save();
+  }
+  setLastUpdateCheck(at: number) {
+    this.lastUpdateCheck = at;
+    this.save();
+  }
+  /** The workspace id (not its name) to reopen on launch. */
+  setLastWorkspace(id: string | null) {
+    this.lastWorkspace = id;
     this.save();
   }
   setFontsDir(dir: string | null) {

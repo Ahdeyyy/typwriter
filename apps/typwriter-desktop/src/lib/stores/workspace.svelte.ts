@@ -16,23 +16,25 @@ import {
     setMainFile,
     triggerPreview,
     syncPreview,
-} from '$lib/ipc/commands';
-import { onWorkspaceFilesChanged, onDocumentDependenciesChanged, type UnlistenFn } from '$lib/ipc/events';
-import type { FileTreeEntry, WorkspaceFileChange } from '$lib/types';
-import { logError } from '$lib/logger';
-import { bibliography } from '$lib/stores/bibliography.svelte';
-import { documentScope } from '$lib/stores/document-scope.svelte';
-import { snippets } from '$lib/stores/snippets.svelte';
-import { crossWindowState } from '$lib/ipc/cross-window-state.svelte';
+} from '#lib/ipc/commands.ts';
+import { onWorkspaceFilesChanged, onDocumentDependenciesChanged, type UnlistenFn } from '#lib/ipc/events.ts';
+import type { FileTreeEntry, WorkspaceFileChange } from '#lib/types.ts';
+import { logError } from '#lib/logger.ts';
+import { bibliography } from '#lib/stores/bibliography.svelte.ts';
+import { documentScope } from '#lib/stores/document-scope.svelte.ts';
+import { snippets } from '#lib/stores/snippets.svelte.ts';
+import { crossWindowState } from '#lib/ipc/cross-window-state.svelte.ts';
 import { editor } from './editor.svelte';
+import { linkUpdates } from './link-updates.svelte';
 import { preview } from './preview.svelte';
-import { importFilesToWorkspace } from '$lib/services/workspace-file-service';
-import { importDroppedFiles, type DroppedFile } from '$lib/services/drop-import';
-import { normalize, basename, dirname } from '$lib/paths';
-import { SerialQueue } from '$lib/async';
+import type { PathMove } from '#lib/link-updates.ts';
+import { importFilesToWorkspace } from '#lib/services/workspace-file-service.ts';
+import { importDroppedFiles, type DroppedFile } from '#lib/services/drop-import.ts';
+import { normalize, basename, dirname } from '#lib/paths.ts';
+import { SerialQueue } from '#lib/async.ts';
 
-// Re-exported for back-compat with existing `from '$lib/stores/workspace.svelte'`
-// imports. New code should import from `$lib/paths` directly.
+// Re-exported for back-compat with existing `from '#lib/stores/workspace.svelte.ts'`
+// imports. New code should import from `#lib/paths.ts` directly.
 export { normalize, basename, dirname };
 
 export interface FileNode {
@@ -180,6 +182,10 @@ class WorkspaceStore {
     private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
     private _persistTabsTimer: ReturnType<typeof setTimeout> | null = null;
     private _opQueue = new SerialQueue();
+    /** Root of the workspace the backend currently has open, set only once
+     *  `open_folder` has succeeded. Lets a repeated open of that same folder
+     *  be recognised as a no-op. */
+    private _openedRoot: string | null = null;
 
     toAbs(path: string): string {
         if (!this.rootPath) {
@@ -237,6 +243,7 @@ class WorkspaceStore {
                 const previousRoot = this.rootPath;
                 const result = await openDocument(path, root);
                 if (result.isErr()) throw new Error(result.error);
+                this._openedRoot = null;
                 await editor.reset();
                 this._generation++;
                 this._disposeFilesChangedListener();
@@ -304,6 +311,12 @@ class WorkspaceStore {
         this.opening = true;
         this.hydrating = true;
         try {
+            // A second click on the same workspace (a double-click lands the
+            // second one after the first open has already finished) must not
+            // tear the session down and open it again: that throws away the
+            // compile in flight, re-reads every file, and the new
+            // `open_folder` then waits behind the very compile it obsoleted.
+            if (this._openedRoot === normalize(root) && !this.isStandalone) return;
             await this._initCriticalPhase(root);
             void this._opQueue
                 .run(() => this._initDeferredPhase(root))
@@ -330,6 +343,7 @@ class WorkspaceStore {
         this._disposeFilesChangedListener();
         this._clearRefreshTimer();
 
+        this._openedRoot = null;
         this.documentPath = null;
         this.rootPath = normalize(root);
         this.tree = [];
@@ -342,6 +356,7 @@ class WorkspaceStore {
         if (openResult.isErr()) {
             throw new Error(openResult.error);
         }
+        this._openedRoot = normalize(root);
 
         if (openResult.value) {
             this.mainFile = normalize(openResult.value);
@@ -396,6 +411,7 @@ class WorkspaceStore {
         this._generation++;
         const closed = await closeSession();
         if (closed.isErr()) throw new Error(closed.error);
+        this._openedRoot = null;
         preview.clear();
         this._clearPersistTabsTimer();
         bibliography.clear();
@@ -538,6 +554,13 @@ class WorkspaceStore {
     private async _renameAction(src: string, newName: string): Promise<void> {
         const dir = dirname(src);
         const dst = dir ? `${dir}/${newName}` : newName;
+        // A folder rename is a folder move in place: `move_folder` claims every
+        // file inside for the watcher and carries the main file along, and
+        // `_moveAction` remaps the tabs beneath it. The file path below only
+        // knows how to follow a single tab.
+        if (findNode(this.tree, normalize(src))?.is_dir) {
+            return this._moveAction(src, dst, true);
+        }
 
         const result = await renameFile(normalize(src), normalize(dst));
         if (result.isErr()) {
@@ -561,6 +584,10 @@ class WorkspaceStore {
                 logError('preview trigger after main file rename failed:', err);
             });
         }
+
+        // Tabs follow above; this fixes the links in files. Not awaited — the
+        // rename is done, and the link store reports on its own.
+        void linkUpdates.afterMove([{ from: normalizedSrc, to: normalize(dst), isDir: false }]);
 
         const refreshResult = await this.refreshTree();
         if (refreshResult.isErr()) {
@@ -603,6 +630,8 @@ class WorkspaceStore {
                 logError('preview trigger after moving main path failed:', err);
             });
         }
+
+        void linkUpdates.afterMove([{ from: normalize(src), to: normalize(dst), isDir: is_dir }]);
 
         const refreshResult = await this.refreshTree();
         if (refreshResult.isErr()) {
@@ -690,19 +719,24 @@ class WorkspaceStore {
     private async _applyExternalChanges(changes: WorkspaceFileChange[]): Promise<void> {
         this._scheduleTreeRefresh();
 
+        const moves: PathMove[] = [];
         for (const change of changes) {
             if (change.kind === 'renamed' && change.to) {
-                this._followExternalRename(
-                    this.toRel(change.path),
-                    this.toRel(change.to),
-                    change.isDir
-                );
+                const from = normalize(this.toRel(change.path));
+                const to = normalize(this.toRel(change.to));
+                this._followExternalRename(from, to, change.isDir);
+                moves.push({ from, to, isDir: change.isDir });
             } else if (change.kind === 'removed') {
                 this._forgetExternallyRemoved(this.toRel(change.path));
             }
         }
 
         await editor.applyExternalChanges(changes);
+
+        // Only offered, never applied unasked: whatever moved the files may
+        // have fixed the links itself. Planned after the tabs followed, so
+        // the open buffers are keyed by their new paths.
+        void linkUpdates.afterExternalMoves(moves);
 
         // The editor may have closed the tab the sidebar was highlighting, or
         // carried it to a new path; either way the active tab is the truth.

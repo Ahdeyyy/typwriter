@@ -2,14 +2,15 @@
 // manifest + new blobs, advance HEAD, then prune. Every read/write goes
 // through `WorkingTreeFs`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 
 use super::fs::WorkingTreeFs;
-use super::paths::IGNORED_TOP_LEVEL;
+use super::index::TreeIndex;
+use super::paths::{is_ignored_name, object_path};
 use super::retention::{prune_snapshots, RetentionPolicy};
 use super::store::{
     build_manifest, find_snapshot_by_id, read_head, write_blob_if_missing,
@@ -64,19 +65,21 @@ impl CommitTrigger {
     }
 }
 
-/// Walk the working tree, hash every file, write blobs that aren't already in
-/// the object store, and compare the resulting (path → hash) map against
-/// HEAD. If identical, no-op. Otherwise persist the manifest and update HEAD.
+/// Walk the working tree, hash every file whose stat changed since the last
+/// walk (see [`TreeIndex`]), write blobs that aren't already in the object
+/// store, and compare the resulting (path → hash) map against HEAD. If
+/// identical, no-op. Otherwise persist the manifest and update HEAD.
 ///
 /// Returns the new snapshot id, or `None` when there was nothing to commit.
 pub fn commit_if_changed(
     workspace_root: &Path,
     fs: &impl WorkingTreeFs,
+    index: &mut TreeIndex,
     trigger: CommitTrigger,
     message: &str,
     retention: &RetentionPolicy,
 ) -> Result<Option<String>, String> {
-    let files = build_tree(workspace_root, fs)?;
+    let files = build_tree(workspace_root, fs, index)?;
 
     // Stash blobs first. If we're going to dedupe against HEAD we still want
     // these on disk — but in the dedupe case they were already there from
@@ -117,15 +120,19 @@ pub fn commit_if_changed(
     Ok(Some(manifest.id))
 }
 
-/// Recursively walk `workspace_root`, skipping the ignored top-level dirs,
+/// Recursively walk `workspace_root`, skipping the ignored metadata dirs,
 /// and build a flat path → blob-hash map. Blob bytes are stored as a
 /// side-effect (zstd-compressed, deduped by content).
 fn build_tree(
     workspace_root: &Path,
     fs: &impl WorkingTreeFs,
+    index: &mut TreeIndex,
 ) -> Result<BTreeMap<String, String>, String> {
     let mut out = BTreeMap::new();
-    walk(workspace_root, workspace_root, fs, &mut out)?;
+    walk(workspace_root, workspace_root, fs, index, &mut out)?;
+    let seen: HashSet<String> = out.keys().cloned().collect();
+    index.retain_seen(&seen);
+    index.save(fs);
     Ok(out)
 }
 
@@ -133,23 +140,41 @@ fn walk(
     workspace_root: &Path,
     dir: &Path,
     fs: &impl WorkingTreeFs,
+    index: &mut TreeIndex,
     out: &mut BTreeMap<String, String>,
 ) -> Result<(), String> {
     let entries = fs.read_dir(dir)?;
     for entry in entries {
-        if dir == workspace_root && IGNORED_TOP_LEVEL.contains(&entry.name.as_str()) {
+        if is_ignored_name(&entry.name) {
             continue;
         }
         if entry.is_dir {
-            walk(workspace_root, &entry.path, fs, out)?;
+            walk(workspace_root, &entry.path, fs, index, out)?;
         } else if entry.is_file {
-            let bytes = fs.read_file(&entry.path)?;
-            let hash = write_blob_if_missing(fs, workspace_root, &bytes)?;
             let rel = match entry.path.strip_prefix(workspace_root) {
                 Ok(p) => p.to_path_buf(),
                 Err(_) => continue,
             };
             let rel_str = rel.to_string_lossy().replace('\\', "/");
+            // Stat before reading: a write that races the read then shows up
+            // as a stat mismatch on the next walk instead of a stale hash.
+            let stat = fs.stat(&entry.path);
+            // A cached hash is only usable while its blob is still in the
+            // store (a prune may have swept it) — one `exists`, not a read.
+            let cached = stat
+                .as_ref()
+                .and_then(|stat| index.lookup(&rel_str, stat))
+                .filter(|hash| fs.exists(&object_path(workspace_root, hash)))
+                .map(str::to_string);
+            let hash = match cached {
+                Some(hash) => hash,
+                None => {
+                    let bytes = fs.read_file(&entry.path)?;
+                    let hash = write_blob_if_missing(fs, workspace_root, &bytes)?;
+                    index.record(&rel_str, stat.as_ref(), &hash);
+                    hash
+                }
+            };
             out.insert(rel_str, hash);
         }
         // Symlinks etc. silently dropped — not relevant for our use case.
@@ -188,4 +213,75 @@ pub fn changed_files(
     out.sort();
     out.dedup();
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vcs::fs::LocalWorkingTreeFs;
+    use crate::vcs::store::read_head;
+    use std::path::PathBuf;
+
+    struct TempWorkspace(PathBuf);
+
+    impl TempWorkspace {
+        fn new(tag: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!("typwriter-commit-{tag}-{}", now_ms()));
+            std::fs::create_dir_all(dir.join("chapters")).unwrap();
+            Self(dir)
+        }
+    }
+
+    impl Drop for TempWorkspace {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn commit(root: &Path) -> Option<String> {
+        // A fresh index per call, as after an app restart: whatever was
+        // persisted is all the walk gets to rely on.
+        let fs = LocalWorkingTreeFs;
+        let mut index = TreeIndex::load(&fs, root);
+        commit_if_changed(
+            root,
+            &fs,
+            &mut index,
+            CommitTrigger::Save,
+            "test",
+            &RetentionPolicy::unlimited(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn unchanged_tree_is_a_no_op_and_edits_are_still_seen() {
+        let ws = TempWorkspace::new("roundtrip");
+        let root = ws.0.as_path();
+        std::fs::write(root.join("main.typ"), "= Hello").unwrap();
+        std::fs::write(root.join("chapters/one.typ"), "one").unwrap();
+        // A subfolder that was opened as its own workspace: its metadata must
+        // stay out of the parent's snapshots.
+        std::fs::create_dir_all(root.join("chapters/.typwriter/cache")).unwrap();
+        std::fs::write(root.join("chapters/.typwriter/cache/page.png"), "png").unwrap();
+
+        let first = commit(root).expect("first commit snapshots the tree");
+        assert_eq!(commit(root), None);
+
+        // Same length, so only the mtime (or a re-hash) can reveal the edit.
+        std::fs::write(root.join("chapters/one.typ"), "two").unwrap();
+        let second = commit(root).expect("an edit produces a new snapshot");
+        assert_ne!(first, second);
+        assert_eq!(read_head(&LocalWorkingTreeFs, root).unwrap(), Some(second.clone()));
+
+        let manifest = find_snapshot_by_id(&LocalWorkingTreeFs, root, &second).unwrap();
+        assert_eq!(
+            manifest.files.keys().collect::<Vec<_>>(),
+            ["chapters/one.typ", "main.typ"]
+        );
+        assert_eq!(find_snapshot_by_id(&LocalWorkingTreeFs, root, &first).unwrap().id, first);
+
+        std::fs::remove_file(root.join("main.typ")).unwrap();
+        assert!(commit(root).is_some());
+    }
 }

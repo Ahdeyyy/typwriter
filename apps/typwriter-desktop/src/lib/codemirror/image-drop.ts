@@ -7,8 +7,8 @@
 import { EditorView } from '@codemirror/view';
 import { toast } from 'svelte-sonner';
 
-import { hasImageItems, imageFilesFrom } from '$lib/services/drop-import';
-import { workspace } from '$lib/stores/workspace.svelte';
+import { hasImageItems, imageFilesFrom } from '#lib/services/drop-import.ts';
+import { workspace } from '#lib/stores/workspace.svelte.ts';
 
 /** Build the Typst call for an imported image. Paths are written root-absolute
  *  (`/logo.png`) so they resolve the same no matter which sub-directory the

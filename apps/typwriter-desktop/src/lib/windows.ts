@@ -17,8 +17,8 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 
-import { emitVcsDiffSelection } from '$lib/ipc/events';
-import { logError } from '$lib/logger';
+import { emitVcsDiffSelection } from '#lib/ipc/events.ts';
+import { logError } from '#lib/logger.ts';
 
 export const SETTINGS_WINDOW_LABEL = 'settings';
 export const DIFF_WINDOW_LABEL = 'diff';

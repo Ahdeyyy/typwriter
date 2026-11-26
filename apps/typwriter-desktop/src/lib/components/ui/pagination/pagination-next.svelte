@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { ComponentProps } from "svelte";
-	import { cn } from "$lib/utils.js";
+	import { cn } from "#lib/utils.ts";
 	import { PaginationLink } from "./index.js";
 	import { HugeiconsIcon } from "@hugeicons/svelte"
 	import { ArrowRight01Icon } from '@hugeicons/core-free-icons';

@@ -12,13 +12,18 @@ import { EditorState, Compartment, type Extension } from "@codemirror/state";
 import { history, historyKeymap, defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { indentOnInput, bracketMatching } from "@codemirror/language";
+import { markdown } from "@codemirror/lang-markdown";
 import { typst, light, dark } from "./typst-lang";
+import { langExtensionForPath, resolveCodeLanguage } from "./langs";
 import { typstKeymap } from "./commands";
 import { inlineDiagnostics } from "./inline-diagnostics";
 import { caretVisibility } from "./caret-visibility";
-import { settings } from "$lib/stores/settings.svelte";
-import { editor } from "$lib/stores/editor.svelte";
+import { inlineTitle, inlineTitleFor } from "./inline-title";
+import { immersive } from "#lib/stores/immersive.svelte.ts";
+import { settings } from "#lib/stores/settings.svelte.ts";
+import { editor } from "#lib/stores/editor.svelte.ts";
 import { completions } from "./completion-controller.svelte";
+import { spellcheckFor } from "./spellcheck";
 
 /** Breathing room CodeMirror leaves around the caret when it scrolls to it —
  *  roughly a line and a half at the default size. */
@@ -27,6 +32,8 @@ const CARET_SCROLL_MARGIN_PX = 32;
 export const themeC = new Compartment(); // light | dark (follows mode-watcher)
 export const lineNumbersC = new Compartment(); // settings.showLineNumbers
 export const fontSizeC = new Compartment(); // settings.editorFontSize
+export const titleC = new Compartment(); // inline title (follows renames)
+export const spellC = new Compartment(); // settings.spellcheck (Typst only)
 
 export function themeExtensionFor(isDark: boolean): Extension {
   return isDark ? dark : light;
@@ -50,8 +57,11 @@ function baseTheme(): Extension {
       // long-press landing one line off from where it was aimed.
       lineHeight: "1.75",
     },
-    // Caret can always scroll above the soft keyboard.
-    ".cm-content": { paddingBottom: "40vh" },
+    // Caret can always scroll above the soft keyboard. The top clears the
+    // status bar and the floating header on phones — the shell is edge to
+    // edge, so the editor starts at the top of the screen. The editor screen
+    // sets `--editor-pad-top`.
+    ".cm-content": { paddingTop: "var(--editor-pad-top, 4px)", paddingBottom: "40vh" },
     ".cm-line": { padding: "0 0.5rem" },
     // A 1px caret is hard to find on a phone, and finding it is the whole job
     // when you are placing it by hand.
@@ -59,8 +69,11 @@ function baseTheme(): Extension {
   });
 }
 
-/** The lean extension set. `lang` is the language support (or null for plain text). */
-export function createExtensions(lang: Extension | null): Extension[] {
+/** The lean extension set. `lang` is the language support (or null for plain
+ *  text); `relPath` names the inline title and decides whether the
+ *  Typst-only extras (keymap, spellcheck) apply. */
+export function createExtensions(lang: Extension | null, relPath: string): Extension[] {
+  const isTypst = relPath.endsWith(".typ");
   return [
     history(),
     indentOnInput(),
@@ -74,17 +87,28 @@ export function createExtensions(lang: Extension | null): Extension[] {
     // arrow keys, the cursor row — otherwise parks the caret hard against the
     // scroller's edge, i.e. tucked under the completion strip, with no context
     // on the side you are moving towards.
-    EditorView.scrollMargins.of(() => ({ top: CARET_SCROLL_MARGIN_PX, bottom: CARET_SCROLL_MARGIN_PX })),
+    // On phones the floating header sits over the top of the scroller, and
+    // the keyboard toolbar floats over its bottom, so that much more is out of
+    // bounds at either edge while they are showing.
+    EditorView.scrollMargins.of(() => ({
+      top: CARET_SCROLL_MARGIN_PX + immersive.editorObscuredTop,
+      bottom: CARET_SCROLL_MARGIN_PX + immersive.editorObscuredBottom,
+    })),
+    titleC.of(inlineTitle(settings.showInlineTitle ? inlineTitleFor(relPath) : "")),
     lineNumbersC.of(settings.showLineNumbers ? lineNumbers() : []),
     themeC.of(themeExtensionFor(document.documentElement.classList.contains("dark"))),
     fontSizeC.of(fontThemeFor(settings.editorFontSize)),
     ...(lang ? [lang] : []),
+    // The keyboard's own spellcheck stays off (`spellcheck: "false"` below):
+    // on a contenteditable it fights CodeMirror over the composing word. This
+    // asks the same spellchecker service directly instead, about prose only.
+    spellC.of(spellcheckFor(isTypst, settings.spellcheck)),
     // typstKeymap before defaultKeymap so Enter continues list items (and
     // Mod-b/i/e toggle marks on hardware keyboards) ahead of the defaults.
     // Typst buffers only — plain text keeps the stock behavior.
     keymap.of([
       ...closeBracketsKeymap,
-      ...(lang ? typstKeymap : []),
+      ...(isTypst ? typstKeymap : []),
       ...defaultKeymap,
       ...historyKeymap,
       indentWithTab,
@@ -113,16 +137,23 @@ export function createExtensions(lang: Extension | null): Extension[] {
   ];
 }
 
-/** Build the language support for a file, or null for non-Typst text. */
+/** Build the language support for a file, or null for plain text. Matches
+ *  desktop: Typst and Markdown highlight nested code blocks; every other
+ *  extension resolves through the shared table in `langs.ts`. */
 export function languageFor(relPath: string): Extension | null {
-  return relPath.endsWith(".typ") ? typst() : null;
+  const lower = relPath.toLowerCase();
+  if (lower.endsWith(".typ")) return typst({ codeLanguages: resolveCodeLanguage });
+  if (lower.endsWith(".md") || lower.endsWith(".markdown")) {
+    return markdown({ codeLanguages: resolveCodeLanguage });
+  }
+  return langExtensionForPath(relPath);
 }
 
 /** Create the EditorView mounted into `parent`, seeded with `doc`. */
 export function createEditorView(parent: HTMLElement, doc: string, relPath: string): EditorView {
   return new EditorView({
     parent,
-    state: EditorState.create({ doc, extensions: createExtensions(languageFor(relPath)) }),
+    state: EditorState.create({ doc, extensions: createExtensions(languageFor(relPath), relPath) }),
   });
 }
 
@@ -141,7 +172,7 @@ export function loadDocInto(
     EditorState.create({
       doc,
       selection: anchor === undefined ? undefined : { anchor },
-      extensions: createExtensions(languageFor(relPath)),
+      extensions: createExtensions(languageFor(relPath), relPath),
     }),
   );
   // `setState` doesn't scroll, so a restored caret deep in the file would sit

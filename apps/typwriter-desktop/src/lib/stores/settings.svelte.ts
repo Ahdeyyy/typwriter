@@ -11,10 +11,10 @@ import {
     getAppSettings,
     setAppSettings,
     setTypstFontDirectories,
-} from '$lib/ipc/commands';
-import { emitSettingsChanged } from '$lib/ipc/events';
-import { commandById, normalizeKeybindings } from '$lib/keybindings/registry';
-import { logError } from '$lib/logger';
+} from '#lib/ipc/commands.ts';
+import { emitSettingsChanged } from '#lib/ipc/events.ts';
+import { commandById, normalizeKeybindings } from '#lib/keybindings/registry.ts';
+import { logError } from '#lib/logger.ts';
 
 const LS_KEY = 'typwriter:settings:v1';
 
@@ -90,8 +90,21 @@ export const THEMES: { id: ThemeId; label: string; description: string }[] = [
     { id: 'gruvbox', label: 'Gruvbox', description: 'Retro warm earth tones.' },
 ];
 
+/** See `PersistedSettings.linkUpdateMode`. */
+export type LinkUpdateMode = 'always' | 'ask' | 'never';
+
+const LINK_UPDATE_MODES: readonly LinkUpdateMode[] = ['always', 'ask', 'never'];
+
+function isLinkUpdateMode(value: unknown): value is LinkUpdateMode {
+    return LINK_UPDATE_MODES.includes(value as LinkUpdateMode);
+}
+
 export interface PersistedSettings {
     uiFontFamily: string;
+    /** Root font size in pixels. The interface is sized in `rem`, so this
+     *  scales text, icons, and spacing together; the editor and the preview
+     *  keep their own size controls. */
+    uiFontSize: number;
     editorFontFamily: string;
     editorFontSize: number;
     lightTheme: ThemeId;
@@ -120,6 +133,11 @@ export interface PersistedSettings {
     /** Use the tinymist language server (when installed) for completion, hover,
      *  and diagnostics. UI-only — not round-tripped through the Rust settings. */
     useLsp: boolean;
+
+    /** What to do with links (`#include`, `#image`, …) a rename or move
+     *  breaks: fix them with an Undo toast, show them for review first, or
+     *  leave them. UI-only — not round-tripped through the Rust settings. */
+    linkUpdateMode: LinkUpdateMode;
 
     /** UI-only, opt-in keyboard behavior for assistive technology. */
     screenReaderMode: boolean;
@@ -152,7 +170,7 @@ export interface PersistedSettings {
     snapshotRetentionMaxDays: number;
 
     /** Keyboard shortcut overrides, keyed by command id (see
-     *  `$lib/keybindings/registry`). Only commands the user actually changed
+     *  `#lib/keybindings/registry.ts`). Only commands the user actually changed
      *  appear here — everything else resolves to the shipped default, so
      *  revising a default later still reaches users who never touched it. */
     keybindings: Record<string, string[]>;
@@ -165,6 +183,7 @@ export type SettingsSyncPayload = PersistedSettings & { fontDirectories: string[
 
 const DEFAULTS: PersistedSettings = {
     uiFontFamily: 'IBM Plex Sans Variable',
+    uiFontSize: 16,
     editorFontFamily: 'JetBrains Mono Variable',
     editorFontSize: 13,
     lightTheme: 'default',
@@ -184,6 +203,7 @@ const DEFAULTS: PersistedSettings = {
     focusMode: false,
     typewriterScrolling: false,
     useLsp: true,
+    linkUpdateMode: 'always',
     screenReaderMode: false,
     screenReaderModeChosen: false,
 
@@ -217,6 +237,10 @@ export const FORMAT_LIMITS = {
     blankLines: { min: 0, max: 8 },
 } as const;
 
+/** Range for the interface font size, in pixels. 16 is the size the layout
+ *  was designed at. */
+export const UI_FONT_SIZE_LIMITS = { min: 12, max: 24 } as const;
+
 function clampInt(value: number, { min, max }: { min: number; max: number }): number {
     return Math.max(min, Math.min(max, Math.round(value)));
 }
@@ -224,6 +248,8 @@ function clampInt(value: number, { min, max }: { min: number; max: number }): nu
 /** Bounds for the numeric settings that are clamped in two places — once when
  *  loading persisted values, once in the setter. Naming each one keeps the two
  *  call sites from drifting apart. */
+const clampUiFontSize = (v: number) =>
+    Math.max(UI_FONT_SIZE_LIMITS.min, Math.min(UI_FONT_SIZE_LIMITS.max, Math.round(v)));
 const clampEditorFontSize = (v: number) => Math.max(8, Math.min(32, Math.round(v)));
 const clampPreviewZoom = (v: number) => Math.max(0.25, Math.min(8, v));
 const clampTabWidth = (v: number) => Math.max(1, Math.min(8, Math.round(v)));
@@ -280,6 +306,7 @@ class SettingsStore {
     private appearanceChanged = false;
 
     uiFontFamily = $state(INITIAL.uiFontFamily);
+    uiFontSize = $state(clampUiFontSize(INITIAL.uiFontSize));
     editorFontFamily = $state(INITIAL.editorFontFamily);
     editorFontSize = $state(INITIAL.editorFontSize);
     lightTheme = $state<ThemeId>(INITIAL.lightTheme);
@@ -299,6 +326,7 @@ class SettingsStore {
     focusMode = $state(INITIAL.focusMode);
     typewriterScrolling = $state(INITIAL.typewriterScrolling);
     useLsp = $state(INITIAL.useLsp);
+    linkUpdateMode = $state<LinkUpdateMode>(INITIAL.linkUpdateMode);
     screenReaderMode = $state(INITIAL.screenReaderMode);
     screenReaderModeChosen = $state(INITIAL.screenReaderModeChosen);
 
@@ -333,6 +361,7 @@ class SettingsStore {
                 const legacyTheme = isThemeId(s.theme) ? s.theme : undefined;
                 const rustSettings: PersistedSettings = {
                     uiFontFamily: s.ui_font_family,
+                    uiFontSize: s.ui_font_size,
                     editorFontFamily: s.editor_font_family,
                     editorFontSize: s.editor_font_size,
                     lightTheme: isThemeId(s.light_theme) ? s.light_theme : (legacyTheme ?? DEFAULTS.lightTheme),
@@ -350,6 +379,7 @@ class SettingsStore {
                     typewriterScrolling: s.typewriter_scrolling,
                     // UI-only: Rust has no say — always reseed from the local value.
                     useLsp: INITIAL.useLsp,
+                    linkUpdateMode: INITIAL.linkUpdateMode,
                     screenReaderMode: this.screenReaderMode,
                     screenReaderModeChosen: this.screenReaderModeChosen,
                     autoSaveEnabled: s.auto_save_enabled,
@@ -394,6 +424,7 @@ class SettingsStore {
     private currentSettings(): PersistedSettings {
         return {
             uiFontFamily: this.uiFontFamily,
+            uiFontSize: this.uiFontSize,
             editorFontFamily: this.editorFontFamily,
             editorFontSize: this.editorFontSize,
             lightTheme: this.lightTheme,
@@ -410,6 +441,7 @@ class SettingsStore {
             focusMode: this.focusMode,
             typewriterScrolling: this.typewriterScrolling,
             useLsp: this.useLsp,
+            linkUpdateMode: this.linkUpdateMode,
             screenReaderMode: this.screenReaderMode,
             screenReaderModeChosen: this.screenReaderModeChosen,
             autoSaveEnabled: this.autoSaveEnabled,
@@ -435,6 +467,7 @@ class SettingsStore {
     private applyPersistedSettings(next: Partial<PersistedSettings>): void {
         const settings = normalizeSettings(next);
         this.uiFontFamily = settings.uiFontFamily;
+        this.uiFontSize = clampUiFontSize(settings.uiFontSize);
         this.editorFontFamily = settings.editorFontFamily;
         this.editorFontSize = clampEditorFontSize(settings.editorFontSize);
         this.lightTheme = settings.lightTheme;
@@ -451,6 +484,7 @@ class SettingsStore {
         this.focusMode = settings.focusMode;
         this.typewriterScrolling = settings.typewriterScrolling;
         this.useLsp = settings.useLsp;
+        this.linkUpdateMode = isLinkUpdateMode(settings.linkUpdateMode) ? settings.linkUpdateMode : DEFAULTS.linkUpdateMode;
         this.screenReaderMode = settings.screenReaderMode === true;
         this.screenReaderModeChosen = settings.screenReaderModeChosen === true || this.screenReaderMode;
         this.autoSaveEnabled = settings.autoSaveEnabled;
@@ -504,6 +538,7 @@ class SettingsStore {
         setAppSettings({
             font_directories: this.fontDirectories,
             ui_font_family: current.uiFontFamily,
+            ui_font_size: current.uiFontSize,
             editor_font_family: current.editorFontFamily,
             editor_font_size: current.editorFontSize,
             // Keep the legacy palette readable by older app versions.
@@ -545,6 +580,11 @@ class SettingsStore {
     setUiFontFamily(family: string) {
         this.appearanceChanged = true;
         this.uiFontFamily = family;
+        this.persist();
+    }
+
+    setUiFontSize(size: number) {
+        this.uiFontSize = clampUiFontSize(size);
         this.persist();
     }
 
@@ -624,6 +664,11 @@ class SettingsStore {
     setScreenReaderMode(value: boolean) {
         this.screenReaderMode = value;
         this.screenReaderModeChosen = true;
+        this.persist();
+    }
+
+    setLinkUpdateMode(value: LinkUpdateMode) {
+        this.linkUpdateMode = value;
         this.persist();
     }
 
@@ -756,6 +801,7 @@ class SettingsStore {
         // Keep screenReaderModeChosen: replaying setup should not ask again
         // merely because the user reset their editing preferences.
         this.uiFontFamily = DEFAULTS.uiFontFamily;
+        this.uiFontSize = DEFAULTS.uiFontSize;
         this.editorFontFamily = DEFAULTS.editorFontFamily;
         this.editorFontSize = DEFAULTS.editorFontSize;
         this.lightTheme = DEFAULTS.lightTheme;
@@ -771,6 +817,7 @@ class SettingsStore {
         this.focusMode = DEFAULTS.focusMode;
         this.typewriterScrolling = DEFAULTS.typewriterScrolling;
         this.useLsp = DEFAULTS.useLsp;
+        this.linkUpdateMode = DEFAULTS.linkUpdateMode;
         this.screenReaderMode = DEFAULTS.screenReaderMode;
         this.autoSaveEnabled = DEFAULTS.autoSaveEnabled;
         this.autoSaveDelayMs = DEFAULTS.autoSaveDelayMs;

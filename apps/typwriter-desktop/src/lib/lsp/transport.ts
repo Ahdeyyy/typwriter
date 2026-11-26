@@ -5,8 +5,8 @@
 
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { Transport } from '@codemirror/lsp-client';
-import { lspSend } from '$lib/ipc/commands';
-import { logError } from '$lib/logger';
+import { lspSend } from '#lib/ipc/commands.ts';
+import { logError } from '#lib/logger.ts';
 
 export interface TauriLspTransport extends Transport {
     dispose(): void;

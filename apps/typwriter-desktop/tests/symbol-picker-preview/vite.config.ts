@@ -10,7 +10,7 @@ export default defineConfig({
   root: here("./"),
   plugins: [svelte({ configFile: false }), tailwindcss()],
   resolve: {
-    alias: { $lib: here("../../src/lib") },
+    alias: { "#lib": here("../../src/lib") },
     dedupe: ["svelte"],
   },
   build: { outDir: here("../../dist/symbol-picker-preview"), emptyOutDir: true },

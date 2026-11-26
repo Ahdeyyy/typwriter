@@ -6,11 +6,11 @@
     Cancel01Icon,
     PresentationBarChart01Icon,
   } from "@hugeicons/core-free-icons";
-  import { Button } from "$lib/components/ui/button";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { preview } from "$lib/stores/preview.svelte";
-  import { previewController } from "$lib/components/sidebar/preview-controller.svelte";
-  import { matchesCommand } from "$lib/keybindings";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { preview } from "#lib/stores/preview.svelte.ts";
+  import { previewController } from "#lib/components/sidebar/preview-controller.svelte.ts";
+  import { matchesCommand } from "#lib/keybindings/index.ts";
 
   type Props = {
     onReturnToPresenter: () => void;
@@ -82,7 +82,7 @@
     </div>
 
     {#if preview.blackout}
-      <span class="rounded bg-amber-500/20 px-1.5 py-0.5 text-[11px] font-medium text-amber-300">
+      <span class="rounded bg-amber-500/20 px-1.5 py-0.5 text-[0.6875rem] font-medium text-amber-300">
         Blacked Out
       </span>
     {/if}
@@ -167,7 +167,7 @@
     >
       <HugeiconsIcon icon={PresentationBarChart01Icon} class="size-3.5" />
       <span>Presenter View</span>
-      <kbd class="ml-0.5 rounded border border-primary-foreground/30 bg-primary-foreground/10 px-1 text-[10px]">Tab</kbd>
+      <kbd class="ml-0.5 rounded border border-primary-foreground/30 bg-primary-foreground/10 px-1 text-[0.625rem]">Tab</kbd>
     </Button>
 
     <!-- End Presentation -->

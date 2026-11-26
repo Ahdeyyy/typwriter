@@ -4,12 +4,12 @@
 
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { activeOutlineIndex, extractOutline } from "$lib/outline";
-  import { fuzzyRank, fuzzySegments } from "$lib/fuzzy";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { activeOutlineIndex, extractOutline } from "#lib/outline.ts";
+  import { fuzzyRank, fuzzySegments } from "#lib/fuzzy.ts";
 
   interface Props {
     onclose?: () => void;
@@ -124,7 +124,7 @@
                   aria-current={heading.index === current ? "location" : undefined}
                   onclick={() => jump(heading.from)}
                 >
-                  <span class="text-muted-foreground shrink-0 text-[9px] tabular-nums">
+                  <span class="text-muted-foreground shrink-0 text-[0.5625rem] tabular-nums">
                     H{heading.level}
                   </span>
                   <span class="truncate">

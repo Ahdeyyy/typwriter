@@ -26,19 +26,19 @@ import {
     type ResolvedSnippet,
     type Snippet,
     type SnippetScope,
-} from '$lib/snippets';
+} from '#lib/snippets.ts';
 import {
     getProjectSnippets,
     getUserSnippets,
     setProjectSnippets,
     setUserSnippets,
-} from '$lib/ipc/commands';
+} from '#lib/ipc/commands.ts';
 import {
     emitSnippetsChanged,
     type SnippetScopeChanged,
-} from '$lib/ipc/events';
-import { logError } from '$lib/logger';
-import { workspace } from '$lib/stores/workspace.svelte';
+} from '#lib/ipc/events.ts';
+import { logError } from '#lib/logger.ts';
+import { workspace } from '#lib/stores/workspace.svelte.ts';
 
 /** Scopes a user can actually write to. */
 export type WritableScope = Exclude<SnippetScope, 'builtin'>;

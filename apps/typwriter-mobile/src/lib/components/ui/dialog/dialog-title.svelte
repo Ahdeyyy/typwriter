@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Dialog as DialogPrimitive } from "bits-ui";
-	import { cn } from "$lib/utils.js";
+	import { cn } from "#lib/utils.ts";
 
 	let {
 		ref = $bindable(null),
@@ -12,6 +12,6 @@
 <DialogPrimitive.Title
 	bind:ref
 	data-slot="dialog-title"
-	class={cn("font-heading text-sm font-medium", className)}
+	class={cn("font-heading text-lg font-semibold tracking-tight", className)}
 	{...restProps}
 />

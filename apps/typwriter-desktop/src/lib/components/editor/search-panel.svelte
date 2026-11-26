@@ -1,10 +1,10 @@
 <script lang="ts">
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { ArrowUp01Icon, ArrowDown01Icon, ArrowRight01Icon, Cancel01Icon, RotateClockwiseIcon, ReplaceAllIcon } from "@hugeicons/core-free-icons";
-  import { editorSearch } from "$lib/stores/editor-search.svelte";
-  import { matchesCommand, shortcutLabel } from "$lib/keybindings";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { editorSearch } from "#lib/stores/editor-search.svelte.ts";
+  import { matchesCommand, shortcutLabel } from "#lib/keybindings/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
   import { tick } from "svelte";
 
   let searchInput = $state<HTMLInputElement | null>(null);
@@ -143,7 +143,7 @@
             aria-label="Find"
           />
           <span
-            class="counter shrink-0 px-1.5 text-[11px] tabular-nums text-muted-foreground select-none"
+            class="counter shrink-0 px-1.5 text-[0.6875rem] tabular-nums text-muted-foreground select-none"
           >
             {counterText}
           </span>
@@ -324,7 +324,7 @@
     height: 1.125rem;
     min-width: 1.25rem;
     padding: 0 0.25rem;
-    font-size: 10.5px;
+    font-size: 0.65625rem;
     font-family: var(--font-mono, monospace);
     line-height: 1;
     border-radius: 2px;
@@ -350,7 +350,7 @@
     flex-shrink: 0;
     height: 1.5rem;
     width: 1.5rem;
-    border-radius: 4px;
+    border-radius: 0.25rem;
     color: var(--foreground);
     transition: background-color 120ms;
   }

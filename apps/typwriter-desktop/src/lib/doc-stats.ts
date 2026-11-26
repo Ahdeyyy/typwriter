@@ -6,7 +6,7 @@
 // The grammar already separates those — markup prose is exactly the `Text`
 // nodes — so this is a tree walk rather than a pile of regexes.
 
-import { parser } from '$lib/typst-codemirror-lang/lezer-typst';
+import { parser } from 'codemirror-typst';
 
 export interface DocStats {
     /** Whitespace-separated prose tokens containing at least one letter or digit. */

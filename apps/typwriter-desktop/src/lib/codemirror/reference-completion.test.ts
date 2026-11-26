@@ -3,8 +3,8 @@ import { CompletionContext } from '@codemirror/autocomplete';
 import { EditorState } from '@codemirror/state';
 
 import { createLabelIndex, mergeLabels, referenceCompletionSource } from './reference-completion';
-import { extractLabels } from '$lib/references';
-import type { BibEntry } from '$lib/bibliography';
+import { extractLabels } from '#lib/references.ts';
+import type { BibEntry } from '#lib/bibliography.ts';
 
 /** A parsed bibliography entry as the Rust `parse_bibliography` command
  *  would hand it over (path attached, display fields filled). */

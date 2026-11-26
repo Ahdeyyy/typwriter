@@ -1,6 +1,6 @@
-import type { SerializedDiagnostic } from '$lib/types';
-import { onCompileDiagnostics, type UnlistenFn } from '$lib/ipc/events';
-import { logError } from '$lib/logger';
+import type { SerializedDiagnostic } from '#lib/types.ts';
+import { onCompileDiagnostics, type UnlistenFn } from '#lib/ipc/events.ts';
+import { logError } from '#lib/logger.ts';
 
 class DiagnosticsStore {
     errors   = $state<SerializedDiagnostic[]>([]);

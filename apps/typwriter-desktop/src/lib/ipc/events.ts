@@ -26,7 +26,7 @@ import type {
     PageDiffPayload,
     PageDiffStartedPayload,
     PageDiffErrorPayload
-} from '$lib/types';
+} from '#lib/types.ts';
 
 export type { UnlistenFn };
 

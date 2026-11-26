@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nightly build background: the stable layer recoloured blue, so the two
+     installs are told apart on the home screen. Same geometry as
+     android-icon/drawable/typwriter_icon_background.xml. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <path android:pathData="M0,0H108V108H0Z">
+    <aapt:attr name="android:fillColor">
+      <gradient
+          android:type="linear"
+          android:startX="90"
+          android:startY="18"
+          android:endX="18"
+          android:endY="90"
+          android:startColor="#FF07112A"
+          android:endColor="#FF22406E"/>
+    </aapt:attr>
+  </path>
+</vector>

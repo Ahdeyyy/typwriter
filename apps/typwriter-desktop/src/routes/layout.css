@@ -989,3 +989,32 @@
     height: calc(100svh - var(--titlebar-height));
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Motion. One curve set for the whole app; use `ease-(--ease-out)` etc. in
+   markup rather than Tailwind's built-in (much weaker) `ease-out`.
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Reduced motion keeps fades and colour changes, drops movement: every
+   tw-animate enter/exit loses its slide and zoom, and press feedback stops
+   scaling. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    --tw-enter-translate-x: 0 !important;
+    --tw-enter-translate-y: 0 !important;
+    --tw-exit-translate-x: 0 !important;
+    --tw-exit-translate-y: 0 !important;
+    --tw-enter-scale: 1 !important;
+    --tw-exit-scale: 1 !important;
+  }
+  [data-slot="button"]:active {
+    scale: none !important;
+  }
+}

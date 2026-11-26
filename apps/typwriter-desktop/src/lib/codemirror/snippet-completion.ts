@@ -7,8 +7,8 @@
 
 import { snippet as cmSnippet, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 
-import { refPrefixAt } from '$lib/references';
-import type { Snippet } from '$lib/snippets';
+import { refPrefixAt } from '#lib/references.ts';
+import type { Snippet } from '#lib/snippets.ts';
 import { completionScope, completionTree } from './completion-context';
 import type { Tree } from '@lezer/common';
 

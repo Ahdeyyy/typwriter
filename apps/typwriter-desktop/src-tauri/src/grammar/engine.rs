@@ -13,7 +13,7 @@ use std::sync::Arc;
 use harper_core::linting::{Lint, LintKind, Suggestion};
 use harper_core::spell::{FstDictionary, MergedDictionary, MutableDictionary};
 use harper_core::{Dialect, DictWordMetadata, Document};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 
 use super::format::CheckedFormat;
@@ -165,88 +165,99 @@ pub enum SkipReason {
 // ─── Engine ─────────────────────────────────────────────────────────────────
 
 pub struct GrammarEngine {
-    state: Mutex<State>,
-}
-
-struct State {
-    config: GrammarConfig,
-    /// Built on first use and dropped whenever the dialect or user dictionary
-    /// changes. Construction loads the curated dictionary and instantiates
-    /// several hundred linters — far too slow to sit on the startup path, and
-    /// wasted entirely if the user never opens a checkable file.
-    built: Option<Built>,
+    /// The live configuration and a generation bumped on every change. Held
+    /// only for clones and swaps, so the settings pane and "Add to dictionary"
+    /// never wait behind a running check or a rebuild.
+    config: RwLock<(u64, GrammarConfig)>,
+    /// Built on first use. Construction loads the curated dictionary and
+    /// instantiates several hundred linters: far too slow for the startup
+    /// path, and wasted if the user never opens a checkable file. Each user
+    /// reconciles it against the current config (see [`Built::sync`]), so a
+    /// config change never has to wait for this lock.
+    built: Mutex<Option<Built>>,
 }
 
 struct Built {
     dictionary: Arc<MergedDictionary>,
     group: harper_core::linting::LintGroup,
+    /// What the dictionary was built from. A change to either needs a rebuild.
+    dialect: GrammarDialect,
+    user_dictionary: Vec<String>,
+    /// Config generation whose rule toggles `group` currently reflects.
+    rules_generation: u64,
 }
 
 impl GrammarEngine {
     pub fn new(config: GrammarConfig) -> Self {
         Self {
-            state: Mutex::new(State {
-                config,
-                built: None,
-            }),
+            config: RwLock::new((0, config)),
+            built: Mutex::new(None),
         }
     }
 
     pub fn config(&self) -> GrammarConfig {
-        self.state.lock().config.clone()
+        self.config.read().1.clone()
     }
 
-    /// Swap in a new configuration. The lint group is thrown away — and so
-    /// rebuilt on the next check — only when the dialect or dictionary
-    /// changed; plain rule toggles are applied in place.
-    pub fn set_config(&self, config: GrammarConfig) {
-        let mut state = self.state.lock();
-        let needs_rebuild = state.config.dialect != config.dialect
-            || state.config.user_dictionary != config.user_dictionary;
+    fn snapshot(&self) -> (u64, GrammarConfig) {
+        self.config.read().clone()
+    }
 
-        state.config = config;
-        if needs_rebuild {
-            state.built = None;
-        } else {
-            let State { config, built } = &mut *state;
-            if let Some(built) = built {
-                apply_rules(&mut built.group, config);
-            }
-        }
+    /// Swap in a new configuration. The next check (or [`Self::warm`]) brings
+    /// the lint group in line: a dialect or dictionary change rebuilds it,
+    /// rule toggles are applied in place.
+    pub fn set_config(&self, config: GrammarConfig) {
+        let mut current = self.config.write();
+        current.0 += 1;
+        current.1 = config;
     }
 
     /// Add a word to the user dictionary, returning the updated config so the
     /// caller can persist it. No-op if the word is already there.
     pub fn add_dictionary_word(&self, word: &str) -> GrammarConfig {
         let word = word.trim().to_string();
-        let mut config = self.config();
-        if !word.is_empty() && !config.user_dictionary.iter().any(|w| w == &word) {
-            config.user_dictionary.push(word);
-            config.user_dictionary.sort();
-            self.set_config(config.clone());
+        let mut current = self.config.write();
+        if !word.is_empty() && !current.1.user_dictionary.iter().any(|w| w == &word) {
+            current.1.user_dictionary.push(word);
+            current.1.user_dictionary.sort();
+            current.0 += 1;
         }
-        config
+        current.1.clone()
     }
 
     /// Turn checking on or off for one file, returning the updated config.
     pub fn set_file_enabled(&self, path: &str, enabled: bool) -> GrammarConfig {
-        let mut config = self.config();
+        let mut current = self.config.write();
         let normalized = normalize_path(path);
-        config
+        current
+            .1
             .disabled_files
             .retain(|disabled| normalize_path(disabled) != normalized);
         if !enabled {
-            config.disabled_files.push(path.to_string());
+            current.1.disabled_files.push(path.to_string());
         }
-        self.set_config(config.clone());
-        config
+        current.0 += 1;
+        current.1.clone()
+    }
+
+    /// Bring the lint group up to date with the current config now, so the
+    /// rebuild after a dictionary or dialect change starts immediately rather
+    /// than on the next (debounced) check. Blocking; run it off the main thread.
+    pub fn warm(&self) {
+        let (generation, config) = self.snapshot();
+        if !config.enabled {
+            return;
+        }
+        let mut built = self.built.lock();
+        Built::sync(&mut built, generation, &config);
     }
 
     /// Every rule Harper knows about, with its description and current state.
     /// Drives the rule list in Settings.
     pub fn rule_catalog(&self) -> Vec<GrammarRuleInfo> {
-        let mut state = self.state.lock();
-        let built = state.ensure_built();
+        let (generation, config) = self.snapshot();
+        let mut guard = self.built.lock();
+        let built = Built::sync(&mut guard, generation, &config);
 
         let descriptions = built.group.all_descriptions();
         let mut catalog: Vec<GrammarRuleInfo> = built
@@ -269,13 +280,13 @@ impl GrammarEngine {
     /// parser and honour per-file opt-outs.
     pub fn check(&self, path: &str, text: &str) -> GrammarReport {
         let format = CheckedFormat::from_path(path);
-        let mut state = self.state.lock();
+        let (generation, config) = self.snapshot();
 
-        let skipped = if !state.config.enabled {
+        let skipped = if !config.enabled {
             Some(SkipReason::Disabled)
         } else if format.is_none() {
             Some(SkipReason::UnsupportedFormat)
-        } else if state.config.is_file_disabled(path) {
+        } else if config.is_file_disabled(path) {
             Some(SkipReason::FileDisabled)
         } else {
             None
@@ -291,7 +302,8 @@ impl GrammarEngine {
             };
         };
 
-        let built = state.ensure_built();
+        let mut guard = self.built.lock();
+        let built = Built::sync(&mut guard, generation, &config);
         let document = Document::new(text, &format.parser(), built.dictionary.as_ref());
         let organized = built.group.organized_lints(&document);
 
@@ -317,17 +329,25 @@ impl GrammarEngine {
     }
 }
 
-impl State {
-    fn ensure_built(&mut self) -> &mut Built {
-        if self.built.is_none() {
-            self.built = Some(Built::new(&self.config));
-        }
-        self.built.as_mut().expect("just built")
-    }
-}
-
 impl Built {
-    fn new(config: &GrammarConfig) -> Self {
+    /// Make `slot` match `config`: (re)build when there is no group yet or
+    /// its dictionary is stale, and re-apply rule toggles when only they moved.
+    fn sync<'a>(slot: &'a mut Option<Built>, generation: u64, config: &GrammarConfig) -> &'a mut Built {
+        let stale = slot.as_ref().is_none_or(|built| {
+            built.dialect != config.dialect || built.user_dictionary != config.user_dictionary
+        });
+        if stale {
+            *slot = Some(Built::new(config, generation));
+        }
+        let built = slot.as_mut().expect("just built");
+        if built.rules_generation != generation {
+            apply_rules(&mut built.group, config);
+            built.rules_generation = generation;
+        }
+        built
+    }
+
+    fn new(config: &GrammarConfig, generation: u64) -> Self {
         let mut dictionary = MergedDictionary::new();
         dictionary.add_dictionary(FstDictionary::curated());
 
@@ -337,6 +357,14 @@ impl Built {
                 let word = word.trim();
                 if !word.is_empty() {
                     user.append_word_str(word, DictWordMetadata::default());
+                    // Harper 3 matches dictionary entries case-sensitively, so
+                    // "Adeala" alone no longer covers "ADEALA" in a heading.
+                    // All caps is fine for any accepted word; lowercase stays
+                    // checked, since a proper noun written lowercase is a slip.
+                    let upper = word.to_uppercase();
+                    if upper != word {
+                        user.append_word_str(&upper, DictWordMetadata::default());
+                    }
                 }
             }
             dictionary.add_dictionary(Arc::new(user));
@@ -347,7 +375,13 @@ impl Built {
             harper_core::linting::LintGroup::new_curated(dictionary.clone(), config.dialect.into());
         apply_rules(&mut group, config);
 
-        Self { dictionary, group }
+        Self {
+            dictionary,
+            group,
+            dialect: config.dialect,
+            user_dictionary: config.user_dictionary.clone(),
+            rules_generation: generation,
+        }
     }
 }
 
@@ -581,6 +615,76 @@ mod tests {
                 .iter()
                 .any(|l| l.text == "zorbulator"),
             "the user dictionary should suppress the word"
+        );
+    }
+
+    /// A word added in lowercase must still be accepted when it starts a
+    /// sentence. Guards harper's dictionary case-sensitivity changes (3.0).
+    #[test]
+    fn a_user_dictionary_word_is_accepted_capitalized() {
+        let engine = GrammarEngine::new(GrammarConfig {
+            user_dictionary: vec!["zorbulator".into()],
+            ..Default::default()
+        });
+        let lints = engine.check("a.typ", "Zorbulator is ready.\n").lints;
+        assert!(
+            !lints.iter().any(|l| l.text == "Zorbulator"),
+            "sentence-initial capitalization should not count as a misspelling: {lints:?}"
+        );
+    }
+
+    /// A capitalised entry (a name) also covers its all-caps form, but its
+    /// lowercase form is still flagged.
+    #[test]
+    fn a_capitalized_user_word_covers_all_caps_but_not_lowercase() {
+        let engine = GrammarEngine::new(GrammarConfig {
+            user_dictionary: vec!["Zorbulator".into()],
+            ..Default::default()
+        });
+        let flagged = |text: &str, word: &str| {
+            engine.check("a.typ", text).lints.iter().any(|l| l.text == word)
+        };
+        assert!(!flagged("Zorbulator is ready.\n", "Zorbulator"));
+        assert!(!flagged("ZORBULATOR is ready.\n", "ZORBULATOR"));
+        assert!(flagged("The zorbulator is ready.\n", "zorbulator"));
+    }
+
+    /// Adding a word after the lint group exists must rebuild it, so the very
+    /// next check honours the word.
+    #[test]
+    fn a_word_added_after_the_first_check_takes_effect() {
+        let engine = GrammarEngine::new(GrammarConfig::default());
+        let text = "The zorbulator is ready.\n";
+        let flagged = |engine: &GrammarEngine| {
+            engine.check("a.typ", text).lints.iter().any(|l| l.text == "zorbulator")
+        };
+        assert!(flagged(&engine));
+
+        engine.add_dictionary_word("zorbulator");
+        assert!(!flagged(&engine), "the added word should no longer be flagged");
+    }
+
+    /// Rule toggles made after the lint group exists apply without a rebuild,
+    /// and reading the config reflects them immediately.
+    #[test]
+    fn a_rule_toggled_after_the_first_check_takes_effect() {
+        let engine = GrammarEngine::new(GrammarConfig::default());
+        let text = "This sentence has a mispelled word.\n";
+        let rule = engine
+            .check("a.typ", text)
+            .lints
+            .into_iter()
+            .find(|l| l.text == "mispelled")
+            .map(|l| l.rule)
+            .expect("the misspelling is found by default");
+
+        let mut config = engine.config();
+        config.rules.insert(rule.clone(), false);
+        engine.set_config(config);
+        assert_eq!(engine.config().rules.get(&rule), Some(&false));
+        assert!(
+            !engine.check("a.typ", text).lints.iter().any(|l| l.rule == rule),
+            "{rule} should be off"
         );
     }
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { untrack, type Snippet } from "svelte";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import {
     PanelLeftOpenIcon,
@@ -9,11 +9,11 @@
     ViewOffSlashIcon,
     LinkSquare01Icon,
   } from "@hugeicons/core-free-icons";
-  import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import * as Sidebar from "#lib/components/ui/sidebar/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { Button } from "#lib/components/ui/button/index.ts";
   import WindowControls from "./window-controls.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
+  import { platform } from "#lib/stores/platform.svelte.ts";
 
   type Props = {
     variant?: "workspace" | "minimal";
@@ -24,6 +24,12 @@
     onTogglePreview?: () => void;
     onPopoutPreview?: () => void;
     onReturnHome?: () => void;
+    /** Window-specific controls centred in the titlebar row, in place of the
+     *  title. */
+    actions?: Snippet;
+    /** Leave out the macOS traffic lights, for a window that draws them
+     *  itself (the settings window puts them in its full-height sidebar). */
+    hideMacControls?: boolean;
   };
 
   let {
@@ -35,6 +41,8 @@
     onTogglePreview,
     onPopoutPreview,
     onReturnHome,
+    actions,
+    hideMacControls = false,
   }: Props = $props();
 
   const sidebarCtx = untrack(() => variant) === "workspace" ? Sidebar.useSidebar() : null;
@@ -49,7 +57,7 @@
 >
   <!-- ─── Left: macOS traffic lights → sidebar toggle ─────────────────── -->
   <div class="flex items-center gap-1 pl-2 pr-1">
-    {#if isMac}
+    {#if isMac && !hideMacControls}
       <WindowControls />
     {/if}
 
@@ -100,7 +108,12 @@
     {/if}
   </div>
 
-  <!-- ─── Center: workspace + opened folder/file name ─────────────────── -->
+  <!-- ─── Center: window actions, or workspace + opened folder/file name ─ -->
+  {#if actions}
+    <div class="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2">
+      {@render actions()}
+    </div>
+  {:else}
   <div
     data-tauri-drag-region
     class="pointer-events-none absolute left-1/2 top-1/2
@@ -117,6 +130,7 @@
       <span class="truncate max-w-[40vw] text-foreground/60">{subtitle}</span>
     {/if}
   </div>
+  {/if}
 
   <!-- ─── Spacer fills remaining drag region ──────────────────────────── -->
   <div data-tauri-drag-region class="flex-1"></div>

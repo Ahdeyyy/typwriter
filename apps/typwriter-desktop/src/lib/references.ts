@@ -8,8 +8,8 @@
 // Extraction goes through the grammar, so a `<not-a-label>` inside a raw block
 // or a comment is correctly ignored.
 
-import { parser } from '$lib/typst-codemirror-lang/lezer-typst';
-import { lineAt, lineStarts } from '$lib/text-position';
+import { parser } from 'codemirror-typst';
+import { lineAt, lineStarts } from '#lib/text-position.ts';
 
 export interface LabelDef {
     name: string;

@@ -1,40 +1,41 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import * as Resizable from "$lib/components/ui/resizable/index.js";
-  import * as Sidebar from "$lib/components/ui/sidebar/index.js";
+  import * as Resizable from "#lib/components/ui/resizable/index.ts";
+  import * as Sidebar from "#lib/components/ui/sidebar/index.ts";
   import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
-  import AppSidebar from "$lib/components/sidebar/app-sidebar.svelte";
-  import Preview from "$lib/components/sidebar/preview.svelte";
-  import EditorPane from "$lib/components/editor/editor-pane.svelte";
-  import Titlebar from "$lib/components/titlebar/titlebar.svelte";
-  import CommandPalette from "$lib/components/palette/command-palette.svelte";
-  import { diagnostics } from "$lib/stores/diagnostics.svelte";
-  import { grammar } from "$lib/stores/grammar.svelte";
-  import { editor } from "$lib/stores/editor.svelte";
-  import { preview } from "$lib/stores/preview.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { vcs } from "$lib/stores/vcs.svelte";
-  import { workspace, basename } from "$lib/stores/workspace.svelte";
-  import { lspClient } from "$lib/lsp/client.svelte";
+  import AppSidebar from "#lib/components/sidebar/app-sidebar.svelte";
+  import Preview from "#lib/components/sidebar/preview.svelte";
+  import EditorPane from "#lib/components/editor/editor-pane.svelte";
+  import Titlebar from "#lib/components/titlebar/titlebar.svelte";
+  import CommandPalette from "#lib/components/palette/command-palette.svelte";
+  import { diagnostics } from "#lib/stores/diagnostics.svelte.ts";
+  import { grammar } from "#lib/stores/grammar.svelte.ts";
+  import { editor } from "#lib/stores/editor.svelte.ts";
+  import { preview } from "#lib/stores/preview.svelte.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { vcs } from "#lib/stores/vcs.svelte.ts";
+  import { workspace, basename } from "#lib/stores/workspace.svelte.ts";
+  import { lspClient } from "#lib/lsp/client.svelte.ts";
   import {
     onPreviewSourceJump,
     onVcsRestoreFileRequest,
     emitVcsRestoreFileResult,
     emitPresentationToggleRequest,
-  } from "$lib/ipc/events";
-  import { childWindowChrome, closeDiffWindow } from "$lib/windows";
-  import { logError } from "$lib/logger";
-  import { ui } from "$lib/stores/ui.svelte";
-  import { matchesCommand } from "$lib/keybindings";
-   import { page } from "$lib/stores/page.svelte";
+  } from "#lib/ipc/events.ts";
+  import { childWindowChrome, closeDiffWindow } from "#lib/windows.ts";
+  import { logError } from "#lib/logger.ts";
+  import { ui } from "#lib/stores/ui.svelte.ts";
+  import { matchesCommand } from "#lib/keybindings/index.ts";
+   import { page } from "#lib/stores/page.svelte.ts";
    import { toast } from "svelte-sonner";
    import { HugeiconsIcon } from "@hugeicons/svelte";
    import { Loading03Icon } from "@hugeicons/core-free-icons";
-  import PresenterView from "$lib/components/presentation/presenter-view.svelte";
-  import PresentationBanner from "$lib/components/presentation/presentation-banner.svelte";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import { listDisplays } from "$lib/ipc/commands";
+  import PresenterView from "#lib/components/presentation/presenter-view.svelte";
+  import LinkReviewDialog from "#lib/components/editor/link-review-dialog.svelte";
+  import PresentationBanner from "#lib/components/presentation/presentation-banner.svelte";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import { listDisplays } from "#lib/ipc/commands.ts";
 
   const PREVIEW_WINDOW_LABEL = "preview";
 
@@ -378,6 +379,7 @@
     </div>
 
     <CommandPalette ctx={paletteContext} />
+    <LinkReviewDialog />
   </Sidebar.Provider>
 {/if}
 </Tooltip.Provider>

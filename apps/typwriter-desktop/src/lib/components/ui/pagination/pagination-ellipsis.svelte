@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { HTMLAttributes } from "svelte/elements";
-	import { cn, type WithElementRef, type WithoutChildren } from "$lib/utils.js";
+	import { cn, type WithElementRef, type WithoutChildren } from "#lib/utils.ts";
 	import { HugeiconsIcon } from "@hugeicons/svelte"
 	import { MoreHorizontalCircle01Icon } from '@hugeicons/core-free-icons';
 

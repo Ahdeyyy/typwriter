@@ -1,21 +1,21 @@
 <script lang="ts">
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { RefreshIcon, Search01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
-  import Button from "$lib/components/ui/button/button.svelte";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import Titlebar from "$lib/components/titlebar/titlebar.svelte";
-  import * as ScrollArea from "$lib/components/ui/scroll-area/index.js";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import SettingsNav from "$lib/components/settings/nav.svelte";
-  import GroupPane from "$lib/components/settings/group-pane.svelte";
+  import Button from "#lib/components/ui/button/button.svelte";
+  import { Input } from "#lib/components/ui/input/index.ts";
+  import Titlebar from "#lib/components/titlebar/titlebar.svelte";
+  import * as ScrollArea from "#lib/components/ui/scroll-area/index.ts";
+  import * as Tooltip from "#lib/components/ui/tooltip/index.ts";
+  import SettingsNav from "#lib/components/settings/nav.svelte";
+  import GroupPane from "#lib/components/settings/group-pane.svelte";
   import {
     SETTINGS_GROUPS,
     DEFAULT_SETTINGS_GROUP,
     type SettingsGroupId,
-  } from "$lib/components/settings/groups";
-  import { SettingsSearch, setSettingsSearch } from "$lib/components/settings/search.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { matchesCommand, shortcutLabel } from "$lib/keybindings";
+  } from "#lib/components/settings/groups.ts";
+  import { SettingsSearch, setSettingsSearch } from "#lib/components/settings/search.svelte.ts";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { matchesCommand, shortcutLabel } from "#lib/keybindings/index.ts";
   import { toast } from "svelte-sonner";
 
   interface Props {
@@ -86,51 +86,51 @@
      from Sidebar.Provider, but this window has no sidebar context, and
      Tooltip.Root throws without a provider above it. -->
 <Tooltip.Provider>
-<div class="relative flex h-screen w-screen flex-col overflow-hidden">
-  <Titlebar variant="minimal" title="Settings" />
+<div class="relative flex h-screen w-screen overflow-hidden">
+  <SettingsNav active={activeGroup} onselect={selectGroup} />
 
-  <div class="flex shrink-0 items-center gap-3 border-b border-border px-6 py-3">
-    <h1 class="shrink-0 text-base font-semibold">Settings</h1>
+  <div class="flex min-w-0 flex-1 flex-col">
+    <!-- The window title is the nav's header; search and reset sit centred in
+         the titlebar row beside it. -->
+    <Titlebar variant="minimal" hideMacControls>
+      {#snippet actions()}
+      <div class="relative w-96">
+        <HugeiconsIcon
+          icon={Search01Icon}
+          class="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          bind:ref={searchInput}
+          bind:value={search.query}
+          type="text"
+          class="h-7 pl-7 pr-7 text-xs"
+          placeholder={searchPlaceholder}
+          aria-label="Search settings"
+          onkeydown={onSearchKeydown}
+        />
+        {#if search.query}
+          <button
+            type="button"
+            class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+            aria-label="Clear search"
+            onclick={() => {
+              search.clear();
+              searchInput?.focus();
+            }}
+          >
+            <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
+          </button>
+        {/if}
+      </div>
 
-    <div class="relative ml-auto w-full max-w-xs">
-      <HugeiconsIcon
-        icon={Search01Icon}
-        class="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-      />
-      <Input
-        bind:ref={searchInput}
-        bind:value={search.query}
-        type="text"
-        class="h-8 pl-8 pr-8"
-        placeholder={searchPlaceholder}
-        aria-label="Search settings"
-        onkeydown={onSearchKeydown}
-      />
-      {#if search.query}
-        <button
-          type="button"
-          class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
-          aria-label="Clear search"
-          onclick={() => {
-            search.clear();
-            searchInput?.focus();
-          }}
-        >
-          <HugeiconsIcon icon={Cancel01Icon} class="size-3.5" />
-        </button>
-      {/if}
-    </div>
+      <Button variant="ghost" size="sm" class="h-7 shrink-0 gap-1.5 text-xs" onclick={resetSettings}>
+        <HugeiconsIcon icon={RefreshIcon} class="size-3.5" />
+        Reset to defaults
+      </Button>
+      {/snippet}
+    </Titlebar>
 
-    <Button variant="outline" size="sm" class="shrink-0 gap-2" onclick={resetSettings}>
-      <HugeiconsIcon icon={RefreshIcon} class="size-4" />
-      Reset to defaults
-    </Button>
-  </div>
-
-  <div class="flex min-h-0 flex-1">
-    <SettingsNav active={activeGroup} onselect={selectGroup} />
-
-    <main id="main-content" tabindex="-1" class="min-w-0 flex-1">
+    <main id="main-content" tabindex="-1" class="min-h-0 flex-1">
       <ScrollArea.Root class="h-full">
         <div class="mx-auto w-full max-w-3xl px-8 py-8">
           {#if search.active}

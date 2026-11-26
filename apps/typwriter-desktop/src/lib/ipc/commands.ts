@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ResultAsync } from 'neverthrow';
+import type { FileLinkUpdate, PathMove } from '#lib/link-updates.ts';
 
 import type {
     FileTreeEntry,
@@ -27,7 +28,7 @@ import type {
     SearchResults,
     ReplaceOutcome,
     InitWorkspaceResult
-} from '$lib/types';
+} from '#lib/types.ts';
 
 const toErrString = (e: unknown): string => String(e);
 
@@ -113,12 +114,30 @@ export function moveFolder(src: string, dst: string) {
     return ResultAsync.fromPromise(invoke<void>('move_folder', { src, dst }), toErrString);
 }
 
+/** Plan the link fixes for moves that already happened. `buffers` holds the
+ *  open tabs' text by workspace-relative path. */
+export function planLinkUpdates(moves: PathMove[], buffers: Record<string, string>) {
+    return ResultAsync.fromPromise(
+        invoke<FileLinkUpdate[]>('plan_link_updates', { moves, buffers }),
+        toErrString
+    );
+}
+
+/** Write link fixes to files without an open tab; `message` labels the
+ *  restore point. Files that changed since the plan come back as skipped. */
+export function applyLinkUpdates(updates: FileLinkUpdate[], message: string) {
+    return ResultAsync.fromPromise(
+        invoke<{ applied: string[]; skipped: string[] }>('apply_link_updates', { updates, message }),
+        toErrString
+    );
+}
+
 export function importFiles(sources: string[], destDir: string) {
     return ResultAsync.fromPromise(invoke<void>('import_files', { sources, destDir }), toErrString);
 }
 
 /** Import an external drag-and-drop batch. `body` is the framed payload built
- *  by `$lib/services/drop-import` and is passed as the *raw* IPC body — an
+ *  by `#lib/services/drop-import.ts` and is passed as the *raw* IPC body — an
  *  object argument would JSON-encode the file bytes as a number array.
  *  Resolves to the workspace-relative paths that were written. */
 export function importDropped(body: Uint8Array) {
@@ -174,7 +193,7 @@ export function getLogFilePath() {
 // ─── Editor ───────────────────────────────────────────────────────────────────
 
 /** Named export configurations. Opaque JSON on the Rust side — the shape lives
- *  in `$lib/export-presets.ts`, which validates whatever comes back. */
+ *  in `#lib/export-presets.ts`, which validates whatever comes back. */
 export function getExportPresets() {
     return ResultAsync.fromPromise(invoke<unknown>('get_export_presets'), toErrString);
 }
@@ -211,7 +230,7 @@ export function listPackages() {
 }
 
 /** App-wide snippets. Opaque JSON on the Rust side — the shape and its
- *  validation live in `$lib/snippets.ts`. */
+ *  validation live in `#lib/snippets.ts`. */
 export function getUserSnippets() {
     return ResultAsync.fromPromise(invoke<unknown>('get_user_snippets'), toErrString);
 }
@@ -228,7 +247,7 @@ export function setUserSnippets(snippets: unknown) {
  *  they mean the same thing, and the file is absent in most projects.
  *
  *  Raw text rather than parsed JSON because the file is meant to be
- *  hand-editable, and `$lib/snippets.ts` owns the forgiving parse that reports
+ *  hand-editable, and `#lib/snippets.ts` owns the forgiving parse that reports
  *  a malformed entry instead of dropping the whole set. */
 export function getProjectSnippets() {
     return ResultAsync.fromPromise(invoke<string | null>('get_project_snippets'), toErrString);
@@ -624,6 +643,7 @@ export function setOnboardingCompleted(completed: boolean) {
 export interface AppSettings {
     font_directories: string[];
     ui_font_family: string;
+    ui_font_size: number;
     editor_font_family: string;
     editor_font_size: number;
     theme: string;
@@ -655,7 +675,7 @@ export interface AppSettings {
     snapshot_retention_max_count: number;
     snapshot_retention_max_days: number;
     /** Shortcut overrides, keyed by command id. Rust only stores these — the
-     *  frontend owns what they mean (see `$lib/keybindings/registry`). */
+     *  frontend owns what they mean (see `#lib/keybindings/registry.ts`). */
     keybindings: Record<string, string[]>;
 }
 

@@ -10,13 +10,13 @@
     Search01Icon,
     Alert02Icon,
   } from "@hugeicons/core-free-icons";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
+  import { Button } from "#lib/components/ui/button/index.ts";
+  import { Input } from "#lib/components/ui/input/index.ts";
   import SettingGroup from "../setting-group.svelte";
   import SettingMatch from "../setting-match.svelte";
   import { getSettingsSearch } from "../search.svelte";
-  import { settings } from "$lib/stores/settings.svelte";
-  import { platform } from "$lib/stores/platform.svelte";
+  import { settings } from "#lib/stores/settings.svelte.ts";
+  import { platform } from "#lib/stores/platform.svelte.ts";
   import {
     KEY_SECTIONS,
     chordFromEvent,
@@ -26,7 +26,7 @@
     isCustomized,
     keysFor,
     type KeyCommandDef,
-  } from "$lib/keybindings";
+  } from "#lib/keybindings/index.ts";
 
   // Bindings we don't own: they come from the VS Code keymap and CodeMirror's
   // own defaults. Listed so the pane still documents them.
@@ -181,10 +181,10 @@
                     <!-- Unkeyed: a chord can legitimately repeat a token. -->
                     {#each chordTokens(chord, platform.isMac) as token, i (i)}
                       {#if i > 0 && !platform.isMac}
-                        <span class="text-[10px] text-muted-foreground">+</span>
+                        <span class="text-[0.625rem] text-muted-foreground">+</span>
                       {/if}
                       <kbd
-                        class="inline-flex h-5 min-w-5 items-center justify-center rounded px-1 font-mono text-[11px] text-foreground"
+                        class="inline-flex h-5 min-w-5 items-center justify-center rounded px-1 font-mono text-[0.6875rem] text-foreground"
                       >
                         {token}
                       </kbd>
@@ -258,10 +258,10 @@
         <span class="flex shrink-0 items-center gap-1">
           {#each chordTokens(binding.keys, platform.isMac) as token, i (i)}
             {#if i > 0 && !platform.isMac}
-              <span class="text-[10px] text-muted-foreground">+</span>
+              <span class="text-[0.625rem] text-muted-foreground">+</span>
             {/if}
             <kbd
-              class="inline-flex h-6 min-w-6 items-center justify-center rounded border border-border bg-muted px-1.5 font-mono text-[11px] text-muted-foreground"
+              class="inline-flex h-6 min-w-6 items-center justify-center rounded border border-border bg-muted px-1.5 font-mono text-[0.6875rem] text-muted-foreground"
             >
               {token}
             </kbd>
