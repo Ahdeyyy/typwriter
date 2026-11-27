@@ -84,7 +84,8 @@
           step={1}
           value={settings.uiFontSize}
           onchange={(v) => settings.setUiFontSize(v)}
-          readout="{settings.uiFontSize}px"
+          readout={(v) => `${v}px`}
+          commit="release"
         />
       {/snippet}
     </SettingRow>
